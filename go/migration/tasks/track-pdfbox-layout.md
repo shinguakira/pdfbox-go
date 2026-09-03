@@ -30,7 +30,7 @@ Five phases, in this order, never overlapping. See
 [`TEMPLATE.md`](TEMPLATE.md) for what each phase means.
 
 A — write the test · B — port the implementation · C — run and fix ·
-D — adversarial review · E — user feedback
+D — adversarial review · E — user feedback, strict test first
 
 ## Scope
 
@@ -107,7 +107,9 @@ choice is the work — not the 7 files around it.
 
 # Phase E — User feedback
 
-See [`TEMPLATE.md`](TEMPLATE.md) for E1–E4.
+See [`TEMPLATE.md`](TEMPLATE.md) for E1–E4. E3 is the one to read: a strict
+test fails before the fix, takes the real path with the real types, asserts
+what the Java does, and stays.
 
 ---
 

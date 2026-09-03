@@ -157,4 +157,4 @@ port, not in the test.
 the tests, not that the migration is faithful.
 
 **E — user feedback.** Stop. Wait. Judge each item before acting, and where it
-needs fixing, write the failing test first.
+needs fixing, write a strict failing test first.
