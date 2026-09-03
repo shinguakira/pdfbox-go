@@ -51,17 +51,26 @@ defect, write a strict failing test first and only then fix.
 
 Ported from the Java test files. Nothing compiles yet; that is expected.
 
-- [ ] A1. `fontbox/afm` — port all 8 Java tests
+- [x] A1. `fontbox/afm` — port all 8 Java tests
   - `AFMParserTest`, `FontMetricsTest`, `CharMetricTest`, `KernPairTest`,
     `TrackKernTest`, `LigatureTest`, `CompositeTest`, `CompositePartTest`
 
-- [ ] A2. `fontbox/encoding` — port `EncodingTest`
+- [x] A2. `fontbox/encoding` — port `EncodingTest`
 
-- [ ] A3. `fontbox/ttf` — port the 5 that text extraction needs
+- [x] A3. `fontbox/ttf` — port the 5 that text extraction needs
   - `TestTTFParser`, `TestCMapSubtable`, `WGL4NamesTest`,
     `GlyfCompositeDescriptTest`, `RandomAccessReadBufferDataStreamTest`
   - Skip `GlyphSubstitutionTable*Test`, `TTFSubsetterTest`,
     `TrueTypeFontCollectionTest` — slice 4
+  - `TestCMapSubtable` is **not** ported: both of its tests read fonts that the
+    Java build downloads into `target/fonts` (`NotoSansSC-Regular.otf`,
+    `ipag00303/ipag.ttf`), which this repository does not carry. Its subject,
+    `CmapSubtable.getCharCodes` with several codes for one glyph, is covered by
+    the format 4 read that `TestPostTable` exercises.
+  - `TestTTFParser.testParseVertical` and `testParseHeaders` are not ported
+    either: the first reads the same downloaded font, the second goes through
+    `FontHeaders`, which slice 4 ports. `testParseMisc` is ported for the part
+    this slice covers -- the kerning, vertical and GSUB assertions are slice 4.
 
 - [ ] A4. `pdmodel/font/encoding` — port `TestFontEncoding`
   - Write from source for `GlyphList` — Java has no test for it
@@ -95,14 +104,14 @@ Written from the Java source, in dependency order.
   - `FontBoxFont`, `EncodedFont`. `PDFont` is written against `FontBoxFont`, so
     nothing below compiles without it.
 
-- [ ] B1. `fontbox/afm` — 8 files
+- [x] B1. `fontbox/afm` — 8 files
   - `AFMParser`, `FontMetrics`, `CharMetric`, `KernPair`, `TrackKern`,
     `Ligature`, `Composite`, `CompositePart`
 
-- [ ] B2. `fontbox/encoding` — 4 files
+- [x] B2. `fontbox/encoding` — 4 files
   - `Encoding`, `BuiltInEncoding`, `MacRomanEncoding`, `StandardEncoding`
 
-- [ ] B3. `fontbox/ttf` — the reading path only, roughly 15 of 44 files
+- [x] B3. `fontbox/ttf` — the reading path only, roughly 15 of 44 files
   - `TTFDataStream`, `RandomAccessReadDataStream`, `TTFParser`, `TTFTable`,
     `TrueTypeFont`
   - `HeaderTable`, `MaximumProfileTable`, `HorizontalHeaderTable`,

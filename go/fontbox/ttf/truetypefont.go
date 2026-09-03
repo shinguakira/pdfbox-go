@@ -3,7 +3,14 @@ package ttf
 import (
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
+
+	"github.com/shinguakira/pdfbox-go/go/awt/geom"
+	"github.com/shinguakira/pdfbox-go/go/fontbox"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/util"
 )
 
 // TrueTypeFont is a TrueType font, read from its table directory.
@@ -25,7 +32,10 @@ type TrueTypeFont struct {
 	tables         map[string]tableBase
 	data           DataStream
 
+	postScriptNames map[string]int
+
 	lockReadTable sync.Mutex
+	lockPSNames   sync.Mutex
 }
 
 // NewTrueTypeFont returns a font reading from the given stream.
@@ -259,3 +269,237 @@ func (f *TrueTypeFont) Name() (string, error) {
 	}
 	return namingTable.PostScriptName(), nil
 }
+
+// --- what FontBoxFont asks of a font ---
+
+// postScriptNames indexes the glyph names of the post table by name, reading
+// the table the first time it is asked for.
+func (f *TrueTypeFont) readPostScriptNames() error {
+	f.lockPSNames.Lock()
+	defer f.lockPSNames.Unlock()
+	if f.postScriptNames != nil {
+		return nil
+	}
+	post, err := f.PostScript()
+	if err != nil {
+		return err
+	}
+	var names []string
+	if post != nil {
+		names = post.GlyphNames()
+	}
+	psnames := make(map[string]int, len(names))
+	for i, name := range names {
+		psnames[name] = i
+	}
+	f.postScriptNames = psnames
+	return nil
+}
+
+// NameToGID returns the glyph the given name stands for, or zero where the font
+// has no such glyph.
+func (f *TrueTypeFont) NameToGID(name string) (int, error) {
+	// look up in 'post' table
+	if err := f.readPostScriptNames(); err != nil {
+		return 0, err
+	}
+	if f.postScriptNames != nil {
+		if gid, ok := f.postScriptNames[name]; ok {
+			maximumProfile, err := f.MaximumProfile()
+			if err != nil {
+				return 0, err
+			}
+			if gid > 0 && gid < maximumProfile.NumGlyphs() {
+				return gid, nil
+			}
+		}
+	}
+
+	// look up in 'cmap'
+	uni := parseUniName(name)
+	if uni > -1 {
+		cmap, err := f.UnicodeCmapLookup(false)
+		if err != nil {
+			return 0, err
+		}
+		return cmap.GetGlyphID(uni), nil
+	}
+
+	// PDFBOX-5604: assume gnnnnn is a gid
+	if gidName.MatchString(name) {
+		gid, err := strconv.Atoi(name[1:])
+		if err != nil {
+			// Java's Integer.parseInt throws where the digits overrun an int,
+			// and nothing catches it.
+			panic(err)
+		}
+		return gid, nil
+	}
+	return 0, nil
+}
+
+// gidName matches the gnnnnn form of a glyph name.
+var gidName = regexp.MustCompile(`^g\d+$`)
+
+// parseUniName returns the code point a uniXXXX name stands for, or -1 where
+// the name is not one.
+func parseUniName(name string) int {
+	if strings.HasPrefix(name, "uni") && len(name) == 7 {
+		nameLength := len(name)
+		var uniStr strings.Builder
+		for chPos := 3; chPos+4 <= nameLength; chPos += 4 {
+			codePoint, err := strconv.ParseInt(name[chPos:chPos+4], 16, 32)
+			if err != nil {
+				return -1
+			}
+			if codePoint <= 0xD7FF || codePoint >= 0xE000 { // disallowed code area
+				uniStr.WriteRune(rune(codePoint))
+			}
+		}
+		unicode := uniStr.String()
+		if unicode == "" {
+			return -1
+		}
+		return int([]rune(unicode)[0])
+	}
+	return -1
+}
+
+// UnicodeCmapLookup returns the Unicode subtable of the cmap table.
+//
+// Where isStrict is false and the font has no Unicode subtable at all, the
+// result is a nil subtable, which is what Java returns; calling through it
+// panics, as dereferencing Java's null does.
+func (f *TrueTypeFont) UnicodeCmapLookup(isStrict bool) (CmapLookup, error) {
+	// Java wraps the subtable in a SubstitutingCmapLookup where GSUB features
+	// are enabled; the GSUB table is read by a later slice, and no feature can
+	// be enabled until it is. See migration/STATUS.md.
+	return f.unicodeCmapImpl(isStrict)
+}
+
+// unicodeCmapImpl picks the best Unicode subtable the font carries.
+func (f *TrueTypeFont) unicodeCmapImpl(isStrict bool) (*CmapSubtable, error) {
+	cmapTable, err := f.Cmap()
+	if err != nil {
+		return nil, err
+	}
+	if cmapTable == nil {
+		if isStrict {
+			name, err := f.Name()
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("ttf: The TrueType font %s does not contain a 'cmap' table", name)
+		}
+		return nil, nil
+	}
+
+	cmap := cmapTable.GetSubtable(CmapPlatformUnicode, CmapEncodingUnicode20Full)
+	if cmap == nil {
+		cmap = cmapTable.GetSubtable(CmapPlatformWindows, EncodingWinUnicodeFull)
+	}
+	if cmap == nil {
+		cmap = cmapTable.GetSubtable(CmapPlatformUnicode, CmapEncodingUnicode20BMP)
+	}
+	if cmap == nil {
+		cmap = cmapTable.GetSubtable(CmapPlatformWindows, EncodingWinUnicodeBMP)
+	}
+	if cmap == nil {
+		// Microsoft's "Recommendations for OpenType Fonts" says that "Symbol"
+		// encoding actually means "Unicode, non-standard character set"
+		cmap = cmapTable.GetSubtable(CmapPlatformWindows, EncodingWinSymbol)
+	}
+	if cmap == nil {
+		// PDFBOX-6015
+		cmap = cmapTable.GetSubtable(CmapPlatformUnicode, CmapEncodingUnicode11)
+	}
+	if cmap == nil {
+		if isStrict {
+			return nil, fmt.Errorf("ttf: The TrueType font does not contain a Unicode cmap")
+		} else if len(cmapTable.Cmaps()) > 0 {
+			// fallback to the first cmap (may not be Unicode, so may produce
+			// poor results)
+			cmap = cmapTable.Cmaps()[0]
+		}
+	}
+	return cmap, nil
+}
+
+// GetPath returns the outline of the named glyph.
+//
+// Rendering a glyph to a path is left to a later slice, which ports
+// GlyphRenderer; see migration/STATUS.md.
+func (f *TrueTypeFont) GetPath(name string) (*geom.Path2D, error) {
+	return nil, fmt.Errorf("ttf: glyph outlines are not ported yet")
+}
+
+// GetWidth returns how far the pen moves after the named glyph.
+func (f *TrueTypeFont) GetWidth(name string) (float32, error) {
+	gid, err := f.NameToGID(name)
+	if err != nil {
+		return 0, err
+	}
+	advanceWidth, err := f.AdvanceWidth(gid)
+	if err != nil {
+		return 0, err
+	}
+	return float32(advanceWidth), nil
+}
+
+// HasGlyph reports whether the font has the named glyph.
+func (f *TrueTypeFont) HasGlyph(name string) (bool, error) {
+	gid, err := f.NameToGID(name)
+	if err != nil {
+		return false, err
+	}
+	return gid != 0, nil
+}
+
+// FontBBox returns the box every glyph of the font fits in, scaled to a
+// thousandth of an em.
+func (f *TrueTypeFont) FontBBox() (*util.BoundingBox, error) {
+	headerTable, err := f.Header()
+	if err != nil {
+		return nil, err
+	}
+	xMin := headerTable.XMin()
+	xMax := headerTable.XMax()
+	yMin := headerTable.YMin()
+	yMax := headerTable.YMax()
+	unitsPerEm, err := f.UnitsPerEm()
+	if err != nil {
+		return nil, err
+	}
+	scale := 1000.0 / float32(unitsPerEm)
+	return util.NewBoundingBoxOf(float32(xMin)*scale, float32(yMin)*scale,
+		float32(xMax)*scale, float32(yMax)*scale), nil
+}
+
+// FontMatrix returns the transform from glyph space to text space.
+//
+// Java returns a List<Number> holding a mix of boxed floats and ints, and every
+// caller reads it with floatValue.
+func (f *TrueTypeFont) FontMatrix() ([]float32, error) {
+	unitsPerEm, err := f.UnitsPerEm()
+	if err != nil {
+		return nil, err
+	}
+	scale := 1000.0 / float32(unitsPerEm)
+	return []float32{0.001 * scale, 0, 0, 0.001 * scale, 0, 0}, nil
+}
+
+// String returns the PostScript name of the font.
+func (f *TrueTypeFont) String() string {
+	name, err := f.Name()
+	if err != nil {
+		// Java's toString swallows the failure and reports it in place of the
+		// name.
+		return err.Error()
+	}
+	return name
+}
+
+// A TrueType font is one of the fonts this library reads.
+var (
+	_ fontbox.FontBoxFont = (*TrueTypeFont)(nil)
+)

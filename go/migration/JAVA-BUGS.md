@@ -381,3 +381,55 @@ too, and `string_test.go` pins the throwing behaviour.
 
 **Confidence** high. The offset is plainly computed and plainly not used, and
 the comment above it states an intent the code does not carry out.
+
+---
+
+## 12. `TrueTypeFont.nameToGID` dereferences a null cmap for a `uniXXXX` name
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/ttf/TrueTypeFont.java`,
+`nameToGID`.
+
+```java
+int uni = parseUniName(name);
+if (uni > -1)
+{
+    CmapLookup cmap = getUnicodeCmapLookup(false);
+    return cmap.getGlyphId(uni);
+}
+```
+
+**What it does** `getUnicodeCmapLookup(false)` is the lenient form, and its
+whole point is that it returns `null` rather than throwing when the font has no
+`cmap` table:
+
+```java
+CmapTable cmapTable = getCmap();
+if (cmapTable == null)
+{
+    if (isStrict) { throw new IOException(...); }
+    else { return null; }
+}
+```
+
+`nameToGID` then calls `getGlyphId` on it without a null check, so the lenient
+path throws a `NullPointerException` instead of the `IOException` it was written
+to avoid.
+
+**What correct would be** a null check returning 0, which is what `nameToGID`
+returns for every other name it cannot resolve.
+
+**Why it matters** `TTFParser` requires a `cmap` table only when the font is not
+embedded — `if (!isEmbedded && font.getCmap() == null) throw` — so an embedded
+TrueType font with no `cmap` parses fine, and is exactly the case this branch
+was written for. Asking such a font for `getWidth("uni0041")` or
+`hasGlyph("uni0041")` — both of which go through `nameToGID` — throws NPE out of
+a method declared to throw `IOException`. The name has to survive the `post`
+table lookup first, which an embedded subset with no `post` names will.
+
+**Where the Go carries it** `go/fontbox/ttf/truetypefont.go`, `NameToGID`.
+`unicodeCmapImpl` returns a nil `*CmapSubtable`, `UnicodeCmapLookup` hands it
+back inside a `CmapLookup` interface, and `cmap.GetGlyphID(uni)` dereferences
+nil and panics — which is what this port does with an unchecked Java exception.
+
+**Confidence** high. The null return is explicit three lines up in the same
+class, and no caller of the lenient form checks it.
