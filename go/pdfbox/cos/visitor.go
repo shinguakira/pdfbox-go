@@ -15,6 +15,7 @@ package cos
 type Visitor interface {
 	VisitArray(obj *Array) error
 	VisitBoolean(obj *Boolean) error
+	VisitDictionary(obj *Dictionary) error
 	VisitFloat(obj *Float) error
 	VisitInteger(obj *Integer) error
 	VisitName(obj *Name) error
