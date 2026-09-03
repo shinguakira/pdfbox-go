@@ -18,5 +18,6 @@ type Visitor interface {
 	VisitInteger(obj *Integer) error
 	VisitName(obj *Name) error
 	VisitNull(obj *Null) error
+	VisitObject(obj *Object) error
 	VisitStringObj(obj *StringObj) error
 }
