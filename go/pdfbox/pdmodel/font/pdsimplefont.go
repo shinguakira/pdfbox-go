@@ -1,8 +1,6 @@
 package font
 
 import (
-	"fmt"
-
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
@@ -337,6 +335,3 @@ func (f *pdSimpleFont) assignGlyphList(fontName FontName) {
 		f.glyphList = encoding.AdobeGlyphList()
 	}
 }
-
-// unused keeps fmt in play for the errors the concrete fonts return.
-var _ = fmt.Errorf

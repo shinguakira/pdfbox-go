@@ -163,7 +163,7 @@ Written from the Java source, in dependency order.
   - Note `PDFTextStripper` extends `LegacyPDFStreamEngine`, not the engine
     directly
 
-- [ ] B10. `pdfbox/util/IterativeMergeSort` — 1 file
+- [x] B10. `pdfbox/util/IterativeMergeSort` — 1 file
   - `PDFTextStripper` falls back to it when `TextPositionComparator` turns out
     not to be transitive and the JDK sort throws. Port `TestSort` with it.
 

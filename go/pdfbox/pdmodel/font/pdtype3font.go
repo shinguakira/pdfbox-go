@@ -2,7 +2,6 @@ package font
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
@@ -312,6 +311,3 @@ func cosStream(d *cos.Dictionary, key *cos.Name) *cos.Stream {
 	stream, _ := d.GetDictionaryObject(key).(*cos.Stream)
 	return stream
 }
-
-// unused keeps fmt in play for the errors this file's neighbours return.
-var _ = fmt.Errorf

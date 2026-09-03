@@ -2,9 +2,7 @@ package contentstream
 
 import (
 	"bytes"
-	"fmt"
 
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -231,12 +229,6 @@ func (e *PDFStreamEngine) DefaultFont() (font.PDFont, error) {
 	}
 	return e.defaultFont, nil
 }
-
-// unused keeps fmt and operator in play for the operators in this package.
-var (
-	_ = fmt.Errorf
-	_ = operator.Operator{}
-)
 
 // type3CharProcStream is a Type 3 char proc seen as a content stream.
 //
