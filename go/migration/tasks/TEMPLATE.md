@@ -130,27 +130,10 @@ the ported tests cannot answer.
     user is told why it stays.
 
 - [ ] E3. Where it needs fixing, write a **strict** test first
-
-  Strict means all four. A test that misses any of them is why the defect got
-  past the first time.
-
-  - **It fails before the fix.** Run it against the unfixed code and watch it
-    fail, for the reason the feedback names. A test written after the fix
-    proves only that the fix is self-consistent.
-  - **It exercises the real path, with the real types.** The slice 2 review
-    found a broken `COSStream.createView` that an existing passing test
-    covered — the test built its stream over a `ReadBuffer`, so it never took
-    the path that was wrong.
-  - **It asserts what the Java does, not what the Go does.** Read the Java and
-    copy the value. If the two differ, the Java wins.
-  - **It stays.** The test is the record that this was once wrong. Do not fold
-    it into a broader one afterwards.
-
-  Then fix the Go. Then `gofmt`, `go vet`, `go test ./...` again.
-
-  If the feedback turns out to name Java behaviour rather than a port defect,
-  there is no fix: write the test that pins the Java behaviour, add the
-  `JAVA-BUGS.md` entry, and say so in E4.
+  - Strict: it fails before the fix, takes the real path with the real types,
+    and asserts what the Java does
+  - Then fix the Go
+  - Then `gofmt`, `go vet`, `go test ./...` again
 
 - [ ] E4. Report back
   - What was changed, what was not, and why for each

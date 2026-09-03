@@ -102,9 +102,7 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 
 # Phase E — User feedback
 
-See [`TEMPLATE.md`](TEMPLATE.md) for E1–E4. E3 is the one to read: a strict
-test fails before the fix, takes the real path with the real types, asserts
-what the Java does, and stays.
+See [`TEMPLATE.md`](TEMPLATE.md) for E1–E4. E3 is the strict-test rule.
 
 ---
 
