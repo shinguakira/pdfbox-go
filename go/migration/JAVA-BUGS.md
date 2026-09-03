@@ -433,3 +433,51 @@ nil and panics — which is what this port does with an unchecked Java exception
 
 **Confidence** high. The null return is explicit three lines up in the same
 class, and no caller of the lenient form checks it.
+
+---
+
+## 13. `GlyphList.loadList` stops at the first stream that is not ready
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/GlyphList.java`,
+`loadList`.
+
+```java
+try (BufferedReader in = new BufferedReader(new InputStreamReader(input, StandardCharsets.ISO_8859_1)))
+{
+    while (in.ready())
+    {
+        String line = in.readLine();
+```
+
+**What it does** `BufferedReader.ready()` reports whether the *next read will
+not block*, not whether the stream has more data. The loop therefore ends both
+at end of input and at any point where the reader has drained its buffer and the
+underlying stream has nothing available yet. The glyph list is then silently
+short: no exception, no log line, just names that resolve to null from there on.
+
+**What correct would be** the ordinary idiom the class already half-writes,
+since it null-checks `line` inside the loop anyway:
+
+```java
+String line;
+while ((line = in.readLine()) != null)
+```
+
+**Why it matters** the two shipped lists come off the classpath, where `ready()`
+is true until the end, so the bundled path is unaffected. But both constructors
+are public and take an arbitrary `InputStream`: `GlyphList(InputStream, int)`
+and `GlyphList(GlyphList, InputStream)`. A caller handing it a socket, a pipe,
+or a slow decompressing stream gets a truncated glyph list and no indication of
+it. `LegacyPDFStreamEngine` uses the second constructor to add `additional.txt`
+on top of the Adobe Glyph List.
+
+**Where the Go carries it** it does not, and cannot: Go has no `ready()`, and
+there is nothing to emulate it with -- a `bufio.Scanner` reads to end of input.
+`go/pdfbox/pdmodel/font/encoding/glyphlist.go`, `loadList`, therefore reads the
+whole stream. For every input this library actually passes -- the embedded
+files -- the two behave identically.
+
+**Confidence** high. `ready()` is documented as "Tells whether this stream is
+ready to be read", and using it as a loop condition in place of a null check on
+`readLine` is a long-standing known misuse.

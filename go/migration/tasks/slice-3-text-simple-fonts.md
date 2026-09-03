@@ -72,8 +72,12 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
     `FontHeaders`, which slice 4 ports. `testParseMisc` is ported for the part
     this slice covers -- the kerning, vertical and GSUB assertions are slice 4.
 
-- [ ] A4. `pdmodel/font/encoding` — port `TestFontEncoding`
+- [x] A4. `pdmodel/font/encoding` — port `TestFontEncoding`
   - Write from source for `GlyphList` — Java has no test for it
+  - `testPDFBox3884` is **not** ported: it builds a document, saves it, loads it
+    back and runs the text stripper over it. Its subject, the reverse mapping
+    preferring a name a standard encoding carries, is covered directly in
+    `glyphlist_test.go`.
 
 - [ ] A5. `pdmodel/font` — port `PDFontTest`
   - Write from source for `PDFontDescriptor`, `PDFontFactory`, `Standard14Fonts`
@@ -100,7 +104,7 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
 
 Written from the Java source, in dependency order.
 
-- [ ] B0. `fontbox` root — 2 files
+- [x] B0. `fontbox` root — 2 files
   - `FontBoxFont`, `EncodedFont`. `PDFont` is written against `FontBoxFont`, so
     nothing below compiles without it.
 
@@ -123,7 +127,7 @@ Written from the Java source, in dependency order.
   - Leave `gsub/`, `TTFSubsetter`, `TrueTypeCollection`, `OTFParser`,
     `OpenTypeFont`, `CFFTable`, the vertical and kerning tables to slice 4
 
-- [ ] B4. `pdmodel/font/encoding` — 12 files
+- [x] B4. `pdmodel/font/encoding` — 12 files
   - `Encoding`, `BuiltInEncoding`, `DictionaryEncoding`, `GlyphList`,
     `StandardEncoding`, `WinAnsiEncoding`, `MacRomanEncoding`,
     `MacOSRomanEncoding`, `MacExpertEncoding`, `SymbolEncoding`,
