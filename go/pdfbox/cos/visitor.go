@@ -14,6 +14,8 @@ package cos
 // incomplete.
 type Visitor interface {
 	VisitBoolean(obj *Boolean) error
+	VisitFloat(obj *Float) error
+	VisitInteger(obj *Integer) error
 	VisitName(obj *Name) error
 	VisitNull(obj *Null) error
 }
