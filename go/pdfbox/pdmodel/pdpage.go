@@ -57,14 +57,18 @@ func (p *PDPage) Dictionary() *cos.Dictionary { return p.page }
 // ContentsForRandomAccess returns the content stream or streams of this page as
 // one random access read, never nil. Several content streams are concatenated
 // and separated with a newline; a page with none gives an empty read.
-func (p *PDPage) ContentsForRandomAccess() pdfio.RandomAccessRead {
+//
+// Java narrows the signature here and declares no exception, but the interface
+// method it implements does; the port keeps the error result so that PDPage
+// still satisfies contentstream.PDContentStream. It is always nil.
+func (p *PDPage) ContentsForRandomAccess() (pdfio.RandomAccessRead, error) {
 	if contentStream := p.getCOSStream(cos.Contents); contentStream != nil {
 		view, err := contentStream.CreateView()
 		if err != nil {
 			slog.Warn("skipped malformed content stream", "err", err)
-			return pdfio.NewReadBufferBytes(delimiter)
+			return pdfio.NewReadBufferBytes(delimiter), nil
 		}
-		return view
+		return view, nil
 	}
 	if array := p.page.GetCOSArray(cos.Contents); array != nil {
 		var reads []pdfio.RandomAccessRead
@@ -87,12 +91,12 @@ func (p *PDPage) ContentsForRandomAccess() pdfio.RandomAccessRead {
 			sequence, err := pdfio.NewSequenceRead(reads)
 			if err != nil {
 				slog.Warn("skipped malformed content stream", "err", err)
-				return pdfio.NewReadBufferBytes(delimiter)
+				return pdfio.NewReadBufferBytes(delimiter), nil
 			}
-			return sequence
+			return sequence, nil
 		}
 	}
-	return pdfio.NewReadBufferBytes(nil)
+	return pdfio.NewReadBufferBytes(nil), nil
 }
 
 // ContentsForStreamParsing returns the content of this page for a parser that
@@ -102,7 +106,7 @@ func (p *PDPage) ContentsForRandomAccess() pdfio.RandomAccessRead {
 // rather than into a buffer. It needs the decoder stream and the non-seekable
 // wrapper, neither of which is ported yet, so this is the general path for now
 // — the same one Java falls back to. See migration/STATUS.md.
-func (p *PDPage) ContentsForStreamParsing() pdfio.RandomAccessRead {
+func (p *PDPage) ContentsForStreamParsing() (pdfio.RandomAccessRead, error) {
 	return p.ContentsForRandomAccess()
 }
 

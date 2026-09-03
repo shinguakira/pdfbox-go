@@ -60,7 +60,7 @@ func TestPDPageContents(t *testing.T) {
 	if page.HasContents() {
 		t.Error("a new page has contents")
 	}
-	if got := readAll(t, page.ContentsForRandomAccess()); got != "" {
+	if got := readAll(t, mustContents(t, page)); got != "" {
 		t.Errorf("a page with no contents read %q", got)
 	}
 
@@ -68,7 +68,7 @@ func TestPDPageContents(t *testing.T) {
 	if !page.HasContents() {
 		t.Error("the page has no contents after one was set")
 	}
-	if got := readAll(t, page.ContentsForRandomAccess()); got != "BT ET" {
+	if got := readAll(t, mustContents(t, page)); got != "BT ET" {
 		t.Errorf("contents = %q, want %q", got, "BT ET")
 	}
 }
@@ -85,7 +85,7 @@ func TestPDPageContentsArray(t *testing.T) {
 	if !page.HasContents() {
 		t.Error("a page with an array of contents has none")
 	}
-	if got, want := readAll(t, page.ContentsForRandomAccess()), "BT\nET\n"; got != want {
+	if got, want := readAll(t, mustContents(t, page)), "BT\nET\n"; got != want {
 		t.Errorf("contents = %q, want %q", got, want)
 	}
 }
@@ -99,7 +99,7 @@ func TestPDPageContentsArraySkipsNonStreams(t *testing.T) {
 	page := NewPDPage()
 	page.Dictionary().SetItem(cos.Contents, array)
 
-	if got, want := readAll(t, page.ContentsForRandomAccess()), "BT\n"; got != want {
+	if got, want := readAll(t, mustContents(t, page)), "BT\n"; got != want {
 		t.Errorf("contents = %q, want %q", got, want)
 	}
 }
@@ -263,4 +263,14 @@ func TestPDPageEquals(t *testing.T) {
 	if NewPDPage().Equals(nil) {
 		t.Error("Equals = true against nil")
 	}
+}
+
+// mustContents reads the page's content, failing the test if it cannot.
+func mustContents(t *testing.T, page *PDPage) pdfio.RandomAccessRead {
+	t.Helper()
+	r, err := page.ContentsForRandomAccess()
+	if err != nil {
+		t.Fatalf("ContentsForRandomAccess: %v", err)
+	}
+	return r
 }
