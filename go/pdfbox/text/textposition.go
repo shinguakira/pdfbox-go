@@ -358,7 +358,7 @@ func (t *TextPosition) CompletelyContains(tp2 *TextPosition) bool {
 // MergeDiacritic folds the given diacritic into whichever character of this
 // text it sits over.
 func (t *TextPosition) MergeDiacritic(diacritic *TextPosition) {
-	if len([]rune(diacritic.Unicode())) > 1 {
+	if utf16Length(diacritic.Unicode()) > 1 {
 		return
 	}
 
@@ -467,7 +467,7 @@ func combineDiacritic(str string) string {
 func (t *TextPosition) IsDiacritic() bool {
 	text := t.Unicode()
 	runes := []rune(text)
-	if len(runes) != 1 {
+	if utf16Length(text) != 1 {
 		return false
 	}
 	if text == "ー" {
@@ -588,4 +588,23 @@ func compareFloat32(a, b float32) int {
 	default:
 		return 0
 	}
+}
+
+// utf16Length returns how many UTF-16 code units the string takes, which is
+// what Java's String.length() counts.
+//
+// Every place the Java compares a length against a number is comparing code
+// units, so a character outside the basic plane counts twice there and once in
+// a Go range loop. The port counts the way Java does wherever the number is
+// then compared.
+func utf16Length(s string) int {
+	n := 0
+	for _, r := range s {
+		if r > 0xFFFF {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
 }

@@ -102,7 +102,7 @@ func (e *PDFMarkedContentExtractor) ProcessTextPosition(text *TextPosition) erro
 		// each character). Also, we subtract an amount to allow for kerning (a
 		// percentage of the width of the last character).
 		suppressCharacter := false
-		tolerance := text.Width() / float32(len([]rune(textCharacter))) / 3.0
+		tolerance := text.Width() / float32(utf16Length(textCharacter)) / 3.0
 		for _, sameTextCharacter := range sameTextCharacters {
 			charX := sameTextCharacter.X()
 			charY := sameTextCharacter.Y()

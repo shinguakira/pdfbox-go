@@ -603,3 +603,44 @@ library does not carry.
   cannot be scored and every Java test in `pdmodel/font` and `pdfbox/text` bar
   one is unportable. This was flagged as a blocked decision when the slice was
   planned and is still open.
+
+### Port defects found in the slice 3 review, fixed
+
+Five, all found by reading the Java beside the Go rather than by the ported
+tests. Each carries a test in `text/review_test.go` that fails without the fix.
+
+- **Four length comparisons counted runes where Java counts UTF-16 units.**
+  `TextPosition.mergeDiacritic` returns early for a diacritic of length > 1,
+  `isDiacritic` requires length 1, and the duplicate-suppression tolerance in
+  both `PDFTextStripper` and `PDFMarkedContentExtractor` divides by the length.
+  A character outside the basic plane is one rune and two UTF-16 units, so the
+  port merged diacritics Java leaves alone and used half the tolerance Java uses.
+  `utf16Length` now counts the way Java does at each of the four.
+- **`hasFontOrSizeChanged` dropped Java's last branch.** Java compares font
+  names, and where *both* are null falls back to comparing `PDFont.hashCode`,
+  which is the hash of the font dictionary. The port had collapsed that to a
+  name comparison on the grounds that Go's `Name` never returns null — but a
+  Type 3 font with no `/Name` returns the empty string, so two different unnamed
+  Type 3 fonts compared equal and the running average character width was never
+  reset between them.
+- **`removeContainedSpaces` did not shrink the article.** Java removes through
+  the list iterator, so the list the article holds shrinks with it; the port
+  returned a new slice and assigned it only to the local. Anything reading
+  `getCharactersByArticle` after a page — which `PDFTextStripperByArea` does —
+  still saw the space.
+- **`multiplyFloat` widened before multiplying.** Java multiplies in `float` and
+  rounds that; the port converted to `float64` first, which rounds the other way
+  either side of a half. It decides whether a line is indented enough to start a
+  paragraph.
+
+### Known behaviour differences, not defects
+
+- **A symbolic TrueType font that is not embedded aborts the page.** Its
+  encoding is synthesised from the font program, and there is none until the
+  font mapper arrives in slice 4; the port reports that rather than guessing, and
+  the error travels out through `Tf` and stops the walk. Java always has a
+  substitute, because its font mapper never returns null. The same holds for
+  `PDFont.getWidthFromFont` on a font with no `/Widths` array. This is the
+  largest practical gap in the slice after the missing ToUnicode CMap.
+- **`minYTopForLine` is computed and never read**, in the port as in Java, whose
+  own comment says the check it was meant for caused regression failures.

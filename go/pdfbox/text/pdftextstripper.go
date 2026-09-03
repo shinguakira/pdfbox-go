@@ -265,7 +265,8 @@ func (s *PDFTextStripper) WritePage() error {
 		}
 	}
 
-	for _, textList := range s.charactersByArticle {
+	for articleIndex := range s.charactersByArticle {
+		textList := s.charactersByArticle[articleIndex]
 		if s.SortByPosition() {
 			// because the TextPositionComparator is not transitive, but JDK7+
 			// enforces transitivity on comparators, we need to use a custom
@@ -276,7 +277,10 @@ func (s *PDFTextStripper) WritePage() error {
 
 			// PDFBOX-5487: Remove all space characters if contained within the
 			// adjacent letters
+			// Java removes through the iterator, so the list the article holds
+			// shrinks too; the port writes the shortened slice back.
 			textList = removeContainedSpaces(textList)
+			s.charactersByArticle[articleIndex] = textList
 		}
 
 		if err := s.StartArticle(); err != nil {
@@ -465,6 +469,10 @@ func (s *PDFTextStripper) WritePage() error {
 			return err
 		}
 	}
+	// minYTopForLine is computed and never read, in Java as here: the comment in
+	// writePage says the check it was meant for caused regression failures and
+	// was left out. Kept so the port does not quietly drop a variable the Java
+	// still maintains.
 	_ = minYTopForLine
 	return s.WritePageEnd()
 }
@@ -485,10 +493,20 @@ func hasFontOrSizeChanged(current, last *TextPosition) bool {
 	}
 	currentFontName := current.Font().Name()
 	lastFontName := last.Font().Name()
-	// Java distinguishes a null name from an empty one and falls back to the
-	// hash where both are null; the port's Name never returns null, so the name
-	// comparison is the whole test.
-	return currentFontName != lastFontName
+	if currentFontName != "" {
+		// compare font names
+		return currentFontName != lastFontName
+	}
+	if lastFontName != "" {
+		// currentFontName is null but lastFontName isn't -> font changes
+		return true
+	}
+	// both fonts don't have a name -> compare hashes
+	//
+	// Java compares PDFont.hashCode, which is the hash of the font dictionary;
+	// the port compares the dictionaries, which is what that hash stands for.
+	// A Type 3 font with no /Name is the case this reaches.
+	return current.Font().Dictionary() != last.Font().Dictionary()
 }
 
 // overlap reports whether two lines of text share any vertical extent.
@@ -609,7 +627,7 @@ func (s *PDFTextStripper) ProcessTextPosition(text *TextPosition) error {
 		// each character). Also, we subtract an amount to allow for kerning (a
 		// percentage of the width of the last character).
 		suppressCharacter := false
-		tolerance := text.Width() / float32(len([]rune(textCharacter))) / 3.0
+		tolerance := text.Width() / float32(utf16Length(textCharacter)) / 3.0
 		// Java walks a sorted map's submap; the port walks the keys it holds
 		// and takes the same range.
 		for x, xMatch := range sameTextCharacters {
@@ -803,8 +821,12 @@ func (s *PDFTextStripper) isParagraphSeparation(position, lastPosition,
 
 // multiplyFloat multiplies two floats and truncates the resulting value to 3
 // decimal places to avoid wrong results when comparing with another float.
+//
+// Java multiplies in float and then calls Math.round(float), which is
+// floor(x + 0.5); the port multiplies in float32 for the same reason, since
+// widening first would round differently at the boundary.
 func multiplyFloat(value1, value2 float32) float32 {
-	return float32(math.Floor(float64(value1)*float64(value2)*1000+0.5)) / 1000
+	return float32(math.Floor(float64(value1*value2*1000)+0.5)) / 1000
 }
 
 // WriteParagraphSeparator writes whatever goes between two paragraphs.
@@ -961,7 +983,7 @@ func normalizeWord(word string) string {
 				// Hebrew in Alphabetic Presentation Forms from FB1D to FB4F and
 				// Arabic Presentation Forms-A from FB50 to FDFF and
 				// Arabic Presentation Forms-B from FE70 to FEFF
-				if 0xFB1D <= c && len([]rune(normalized)) > 1 {
+				if 0xFB1D <= c && utf16Length(normalized) > 1 {
 					// Reverse the order of decomposed Hebrew and Arabic letters
 					normalized = reverseString(normalized)
 				}
