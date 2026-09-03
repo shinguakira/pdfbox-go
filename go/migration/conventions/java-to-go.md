@@ -1,7 +1,7 @@
 # Java to Go porting conventions
 
 These are the rules every ported package follows. They exist so that the port
-reads as one library rather than 77 independently translated packages, and so
+reads as one library rather than 81 independently translated packages, and so
 that a reviewer holding the Java file next to the Go file can tell at a glance
 whether a difference is deliberate.
 
@@ -124,7 +124,7 @@ JDK lacked something:
 | Log4j `LOG.debug(...)` | `log/slog` at the matching level |
 
 `java.awt` is the deep one. Rendering, printing and the debugger lean on AWT and
-Java2D throughout, and Go has no equivalent; see PLAN.md phase 6 for how that is
+Java2D throughout, and Go has no equivalent; see PLAN.md slice 9 for how that is
 scoped.
 
 ## Numeric types
@@ -180,8 +180,8 @@ Concretely, so far:
 
 The areas the project itself names as having changed most — reader/writer
 infrastructure, font instantiation, colour signatures, the CLI, incremental
-parsing — are the areas where a port is most likely to freeze something upstream
-is still moving. Follow the current source there rather than any tutorial.
+parsing — are the areas where the Java API churned most between 2.0 and 3.0.
+Follow the source in this repository, not any tutorial written against 2.0.
 
 More background in [`prior-art.md`](prior-art.md).
 
@@ -196,5 +196,5 @@ of difference, naming the Java behaviour and the reason. Examples in `pdfio`:
   does, so a cursor holding an evicted page keeps reading valid bytes.
 - `BufferedFile.IsEOF` compares offset to length instead of `peek() == -1`.
 
-These comments are the migration's audit trail. A reviewer diffing against
-upstream needs to know which differences were decisions.
+These comments are the migration's audit trail. Anyone diffing a Go file
+against the Java it came from needs to know which differences were decisions.

@@ -132,52 +132,49 @@ Three things stand out:
 
 ### Where this port disagrees, and why
 
-**We mirror the Java package tree; PdfPig did not.** This is a real trade, and
-PdfPig's choice is the more ergonomic one for the target language. We are taking
-the other side deliberately:
+**The port currently mirrors the Java package tree; PdfPig did not.** PdfPig's
+choice is the more ergonomic one for the target language, and the mirrored
+layout has a real cost — `pdmodel/interchange/logicalstructure` is not a package
+path anyone would pick from scratch.
 
-PDFBox is not a finished artifact. Per `AGENTS.md`, `3.0` and `2.0` are both
-actively maintained, security fixes land in both, and `trunk` is where new work
-goes. A port that mirrors the upstream layout can diff a Go file against the
-Java file it came from, and can absorb an upstream fix by finding the one place
-it belongs. A port that has reorganised cannot do either without a translation
-step in someone's head. For a library whose value is two decades of absorbed
-PDF-format breakage, staying diffable against upstream is worth more than a
-tidier tree.
+The argument originally made here for mirroring anyway was that PDFBox is not a
+finished artifact: `3.0` and `2.0` are both maintained, security fixes land in
+both, and a mirrored layout can absorb one by finding the single place it
+belongs.
 
-The cost is real and should be expected: parts of the mirrored layout will read
-as Java-shaped in Go. `pdmodel/interchange/logicalstructure` is not a package
-path anyone would choose from scratch. We accept that.
+**That argument does not apply to this project.** It assumed this repository
+tracks Apache PDFBox, and it does not — see below.
 
-**There is a precedent on each side of this.** PdfPig reorganised and is
-thriving. PdfBox-Android kept the package layout as a flat namespace rename and
-can therefore rebase onto upstream releases — and is still pinned to 2.0.27
-while upstream ships 3.0.7. So the evidence says mirroring buys the *ability* to
-track upstream, not the act of doing it; someone still has to do the rebase.
+**The argument for mirroring that this document previously made does not apply
+to this project.** It ran: mirror the Java layout so an upstream fix can be
+located and absorbed. That assumed this repository tracks Apache PDFBox. It does
+not, and never will — the Java here is a frozen snapshot and there is no
+upstream relationship. See the scope rule in [`../BRANCHING.md`](../BRANCHING.md).
 
-**And the git history sharpens it further: PdfPig's divergence was not a day-one
+With that gone, PdfPig's choice is the better-supported one for this project:
+there is no ongoing benefit to a Java-shaped package tree, and there is an
+ongoing cost to reading it.
+
+**The git history sharpens it further: PdfPig's divergence was not a day-one
 decision.** They mirrored first and diverged over ten weeks, once they had
 something working to diverge from. That is a materially different claim than
 "they chose a different layout", and it is the one the evidence supports.
 
-This leaves an open question for phase 1, which should be decided deliberately
-rather than by inertia:
+So the open question for `slice/1` is between the last two of these:
 
-- **Mirror COS and keep it.** Diffable against upstream forever. But no
-  successful PDFBox port has done this — PdfPig deleted its COS layer, and
-  PdfBox-Android only keeps its layout by staying a major version behind.
-- **Mirror COS as scaffolding, expect to replace it.** What PdfPig actually did.
+- ~~**Mirror and keep it.**~~ The justification was upstream tracking. Dead.
+- **Mirror as scaffolding, expect to replace it.** What PdfPig actually did.
   Gets a parser working fast, at the cost of writing the object model twice.
-- **Design the Go object model up front.** Skips the rewrite, but gives up the
-  bootstrap and commits to a design before anything parses a real PDF.
+- **Design the Go object model up front.** Skips the rewrite, but commits to a
+  design before anything has parsed a real PDF.
 
-`COSBase` is where this bites hardest: it is an abstract class with a visitor
-over a mutable, reference-identity object graph, and Go has neither inheritance
-nor a natural visitor. The awkwardness PdfPig felt in C# will be worse in Go.
+`COSBase` is where this bites hardest: an abstract class with a visitor over a
+mutable, reference-identity object graph. Go has neither inheritance nor a
+natural visitor, so the awkwardness PdfPig felt in C# will be worse here.
 
-The current plan assumes option 1. That assumption is now known to be the one
-without precedent, and should be revisited before phase 1 starts rather than
-discovered ten weeks in.
+Note that this question is about the **object model**, not about the algorithms.
+Everything PdfPig kept — the parsers, the font handling, the format quirks — is
+kept here too, whichever way the model goes.
 
 *Caveat:* this research did not establish whether PdfPig still tracks upstream
 PDFBox or has permanently diverged — their documentation does not say, and the

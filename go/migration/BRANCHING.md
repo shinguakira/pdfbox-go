@@ -1,59 +1,54 @@
 # Migration flow and branch strategy
 
-How the port moves from upstream Java to shipped Go, which branches exist, and
-what depends on what.
+How the port moves from the Java in this repository to shipped Go, which
+branches exist, and what depends on what.
 
 Work units are the capability slices in [`PLAN.md`](PLAN.md). This file is about
 how those slices are arranged in git.
 
-## The one structural fact everything follows from
+## Scope rule — read this first
 
-**The Go port is very nearly additive.** It lives under `go/` and does not touch
-a single `.java`, `pom.xml` or test resource. So merging upstream Java changes
-and doing Go work are, with one exception, operations on disjoint file sets.
+**This repository has no relationship with Apache PDFBox going forward.**
 
-**The one exception is `AGENTS.md`** at the repository root. It is edited to
-tell agents that `go/` exists, that the Java tree is read-only for port work,
-and that porting is test-first — none of which is discoverable from a file
-inside `go/` by an agent that starts at the root. That is worth one conflict
-point.
+- **Never** open a pull request against `apache/pdfbox`, or prepare a change for
+  contribution upstream.
+- **Never** pull, fetch, merge or rebase from `apache/pdfbox`. Do not add it as
+  a remote.
+- The Java tree here is a **one-time snapshot**. It does not get updated.
 
-So: `AGENTS.md` is the only upstream file this fork modifies, and therefore the
-only file an upstream merge can conflict on. If a sync conflicts anywhere else,
-something has written local commits to `trunk`.
+The Java is a reference to port *from* and to check the Go *against*, and
+nothing else. Apache's later work is out of scope.
 
-The consequence: **git conflicts between upstream and the port are close to
-impossible.** What can go wrong is not textual, it is semantic — upstream
-changes a Java file we already ported, and the Go copy silently becomes wrong.
-Git will not warn about that. The sync procedure below is what catches it.
+This is a deliberate decision, not an oversight. Do not re-introduce upstream
+sync tooling, sync procedures, or "keep in step with upstream" reasoning into
+these documents.
+
+## Consequences of that rule
+
+Two things follow, and both matter:
+
+**There is no sync procedure, and no drift to check.** The Java never changes,
+so a ported Go file can never fall out of step with it. Whatever was true about
+the Java when a package was ported stays true.
+
+**Mirroring the Java package layout has lost its main justification.** The
+argument for `pdfbox/pdmodel/interchange/logicalstructure` over a Go-shaped
+name was "so an upstream fix can be located." There are no upstream fixes. See
+the open question in [`PLAN.md`](PLAN.md) — this should be settled before
+`slice/1`, because it gets expensive to reverse afterwards.
 
 ## Branch roles
 
-| Branch | Role | Who writes to it |
+| Branch | Role | Notes |
 | --- | --- | --- |
-| `trunk` | **Pure upstream mirror.** Apache PDFBox as-is. Never contains Go code | only `git merge upstream/trunk` |
-| `migration-base` | **Port mainline.** `trunk` plus everything under `go/` | merges from `trunk` and from slice branches |
-| `slice/N-name` | One capability slice from `PLAN.md` | the person porting that slice |
-| `track/name` | Parallel work with no slice ordering | whoever picks it up |
+| `trunk` | The Java snapshot the port started from | Frozen reference. Nothing is committed here |
+| `migration-base` | Port mainline | `trunk` plus everything under `go/`. Always builds, always passes |
+| `slice/N-name` | One capability slice from `PLAN.md` | Branched from and merged back to `migration-base` |
+| `track/name` | Parallel work with no slice ordering | Same lifecycle as a slice |
 
-Rules that keep this honest:
-
-- **Nothing but upstream ever lands on `trunk`.** It is the reference the port is
-  diffed against. The moment it carries local commits, that stops working.
-- **Slice branches never merge `trunk` directly.** They take upstream by merging
-  `migration-base`, so there is one place where upstream lands and one place
-  where it is reviewed.
-- **`migration-base` always builds and always passes.** `gofmt -l`, `go vet`,
-  `go test` clean before any slice merges in.
-
-## Flow
-
-```
-apache/pdfbox ──fetch──▶ trunk ──merge──▶ migration-base ──branch──▶ slice/N
-                          ▲                    ▲                        │
-                          │                    └────────merge───────────┘
-                    (never edited)
-```
+`trunk` is kept as a clean copy of the starting point so the Go can be diffed
+against the Java it came from. It is frozen — not because anything upstream
+would conflict, but because a moving reference is not a reference.
 
 ## Ordering between slices (順序関係)
 
@@ -78,14 +73,14 @@ five branches open at once. That has two consequences:
 
 - Do not parallelise `slice/1`. One person, done carefully. The object-model
   decision in `PLAN.md` is made here and everything inherits it.
-- Do not start `slice/2` in parallel with `slice/1` hoping to save time. It will
-  be rewritten when the object model settles.
+- Do not start `slice/2` alongside it hoping to save time. It will be rewritten
+  when the object model settles.
 
 **After `slice/1`, five branches are genuinely independent:** 2, 5, 6, 7 and 8
 touch disjoint packages and can be worked and merged in any order.
 
 `slice/9` is the only one with two parents — it needs text (3) and images (6),
-plus the raster backend decision that `PLAN.md` says to take before starting.
+plus the raster backend decision `PLAN.md` says to take before starting.
 
 ## Parallel tracks (相互関係なし)
 
@@ -98,53 +93,6 @@ plus the raster backend decision that `PLAN.md` says to take before starting.
 depend on it — metadata comes back as a raw stream that `xmpbox` parses
 separately. It is the one piece of this project with no ordering constraint at
 all, so it is the right thing to hand to a second person on day one.
-
-## Setup, one time
-
-`upstream` is not configured yet — only `origin` (the fork). Add it:
-
-```bash
-git remote add upstream https://github.com/apache/pdfbox.git
-```
-
-## Syncing upstream
-
-Cadence: whenever upstream cuts a release, or monthly, whichever is sooner.
-
-```bash
-git fetch upstream
-git checkout trunk && git merge --ff-only upstream/trunk
-git checkout migration-base && git merge trunk
-```
-
-The merge should be clean everywhere except `AGENTS.md`, the one upstream file
-this fork modifies. Resolve that one by keeping the upstream changes and
-re-applying the fork's additions — the "Go port" section, the `go/` sub-module
-entry, the fork's branch rows, and the Go build commands.
-
-A conflict in **any other file** means something has written non-upstream
-commits to `trunk`. Fix that rather than resolving the conflict.
-
-### Then check for semantic drift
-
-This is the step that matters, and the reason the port mirrors the Java package
-layout at all. Ask which *already-ported* Java packages changed:
-
-```bash
-git diff --stat <last-synced-sha>..trunk -- pdfbox/src/main/java/org/apache/pdfbox/cos
-```
-
-Run it for each package whose row in [`STATUS.md`](STATUS.md) is not
-`not started`; [`mapping/packages.tsv`](mapping/packages.tsv) gives the Java
-path for each Go package. Anything with changes needs the Go side re-read
-against the new Java before the sync is called done.
-
-Record the synced commit in the merge message so the next sync knows where to
-diff from:
-
-```
-merge upstream trunk @ <sha> — checked cos, pdfparser, pdfio for drift
-```
 
 ## Slice lifecycle
 
@@ -173,8 +121,6 @@ against the 40-document corpus is recorded in the merge message.
 
 ## What is not decided here
 
-Whether `migration-base` eventually becomes the default branch, or the Go port
-moves to a repository of its own. Both stay open until the port does something
-useful; splitting the repo would end the ability to diff against `trunk`, which
-is currently the main reason for the layout choices in
-[`conventions/prior-art.md`](conventions/prior-art.md).
+Whether `migration-base` eventually becomes the default branch, and whether the
+Java tree is eventually deleted once the port no longer needs it as a reference.
+Both stay open until the port does something useful.

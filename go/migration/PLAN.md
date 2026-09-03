@@ -95,8 +95,19 @@ transliteration in its first commit and deleted it ten weeks later, having built
 a different object model alongside it from day three. It kept PDFBox's
 *algorithms* and discarded PDFBox's *object model*. `COSBase` — an abstract
 class plus a visitor over a mutable reference-identity graph — is the single
-worst fit for Go in the whole codebase. Options and trade-offs are in
-[`conventions/prior-art.md`](conventions/prior-art.md). Choose explicitly.
+worst fit for Go in the whole codebase.
+
+This is now a live question rather than a settled one. The package layout in
+[`mapping/packages.tsv`](mapping/packages.tsv) mirrors the Java tree, and the
+reason given for that was locating upstream fixes. **This repository does not
+track Apache PDFBox** — the Java is a frozen snapshot and there is no upstream
+relationship (see [`BRANCHING.md`](BRANCHING.md)) — so that reason is gone and
+the mirrored layout is carrying cost with no remaining benefit.
+
+Options and trade-offs are in
+[`conventions/prior-art.md`](conventions/prior-art.md). Settle it before
+`slice/1`: it is cheap now and expensive once 24 files of object model and
+everything above them depend on the answer.
 
 ## Slice 2 — walk content streams
 

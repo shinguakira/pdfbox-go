@@ -57,16 +57,19 @@ When evaluating code or reporting issues, note which branch is in scope.
 Security fixes are applied to both `3.0` and `2.0`. New features target
 `trunk` and `3.0`.
 
-Branches added by this fork:
+**The table above describes the Apache project. It does not describe this
+repository.** This repository holds a one-time snapshot of the Java source and
+has no ongoing relationship with Apache PDFBox — see "Go port" below.
 
-| Branch | Status | Contents |
-|--------|--------|----------|
-| `migration-base` | Go port mainline | `trunk` plus everything under `go/` |
-| `slice/*`, `track/*` | Go port work in progress | one capability slice each |
+Branches here:
 
-`trunk` in this fork is a pure upstream mirror and must stay that way — it is
-what the port is diffed against. Never commit Go code, or anything else local,
-to `trunk`. See [go/migration/BRANCHING.md](go/migration/BRANCHING.md).
+| Branch | Contents |
+|--------|----------|
+| `trunk` | The frozen Java snapshot the port started from |
+| `migration-base` | Port mainline — `trunk` plus everything under `go/` |
+| `slice/*`, `track/*` | Go port work in progress, one capability slice each |
+
+See [go/migration/BRANCHING.md](go/migration/BRANCHING.md).
 
 ## Sub-modules
 
@@ -90,11 +93,20 @@ Added by this fork, outside the Maven build:
 `go/` holds an in-progress Go port of PDFBox. It is a separate Go module and
 does not participate in the Maven build.
 
+**This repository has no relationship with Apache PDFBox going forward.** Never
+open a pull request against `apache/pdfbox` or prepare a change for
+contribution upstream, and never pull, fetch, merge or rebase from it. The Java
+tree here is a **frozen one-time snapshot**, kept as a reference to port from
+and check against. Apache's later work is out of scope. This is a deliberate
+decision — do not propose syncing, contributing back, or "staying in step with
+upstream."
+
 **Rules that apply to any agent working in this repository:**
 
-- **The Java tree is upstream and read-only for port work.** A task about the
-  Go port never justifies editing a `.java` file, a `pom.xml`, or a test
-  resource. If the port needs a Java change to work, that is a bug in the port.
+- **The Java tree is read-only.** A task about the Go port never justifies
+  editing a `.java` file, a `pom.xml`, or a test resource. The Java is the
+  reference the Go is checked against, and a reference that gets edited stops
+  being one. If the port seems to need a Java change, that is a bug in the port.
 - **The Java source and its tests are the specification.** The Go code is
   checked against them, not against your reading of ISO 32000. Where PDFBox
   contradicts the specification, PDFBox wins — the behaviour is usually

@@ -33,7 +33,7 @@ Three things this is not:
 | File | What it is |
 | --- | --- |
 | [`PLAN.md`](PLAN.md) | The porting plan — capability slices, what each needs, and in what order |
-| [`BRANCHING.md`](BRANCHING.md) | Migration flow, branch roles, slice dependency graph, and the upstream sync procedure |
+| [`BRANCHING.md`](BRANCHING.md) | Migration flow, branch roles, slice dependency graph. Carries the scope rule: no upstream sync, no PRs to Apache |
 | [`mapping/modules.md`](mapping/modules.md) | What each of PDFBox's twelve Maven modules does, and how they depend on each other |
 | [`STATUS.md`](STATUS.md) | Per-package progress, ported tests, and the deviations from Java recorded so far |
 | [`conventions/tdd.md`](conventions/tdd.md) | **Test-driven porting — the Java test is ported before the Go implementation exists.** The rule the port runs on |
@@ -95,7 +95,8 @@ we did not expect" into a pinned assertion.
 
 ## Refreshing the inventory
 
-After pulling upstream Java changes:
+The Java tree is frozen, so this only needs re-running when the mapping in
+`packages.tsv` changes or a Go package is added:
 
 ```bash
 pwsh go/migration/scripts/inventory.ps1
