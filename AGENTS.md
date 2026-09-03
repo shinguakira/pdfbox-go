@@ -121,6 +121,12 @@ upstream."
   or "tidy" a deviation comment without checking that file.
 - **Do not report Go/Java behavioural differences as security findings** without
   first checking `STATUS.md` — the intentional ones are recorded there.
+- **Finish the slice.** When working a `slice/*` or `track/*` branch, port every
+  file in that branch's scope before stopping. Do not pause partway to report
+  progress as if it were a result, and do not ask whether to continue — the
+  scope is written in [go/migration/PLAN.md](go/migration/PLAN.md) and
+  continuing is the default. If one item is genuinely blocked, port everything
+  else in the slice first and then say plainly what was left and why.
 
 Orientation for the port lives in
 [go/migration/README.md](go/migration/README.md): the plan, the branch strategy,
