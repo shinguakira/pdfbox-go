@@ -236,3 +236,33 @@ func TestDecodeParamsFor(t *testing.T) {
 		}
 	})
 }
+
+// TestFlateDecodeCorrupt pins the damage tolerance in
+// FlateFilterDecoderStream.fetch: a DataFormatException is caught and logged,
+// not thrown, and whatever inflated before it is handed back. Without that a
+// damaged PDF loses everything after the first bad bit rather than everything
+// after the damage.
+func TestFlateDecodeCorrupt(t *testing.T) {
+	original := bytes.Repeat([]byte("the quick brown fox. "), 200)
+
+	var encoded bytes.Buffer
+	if err := (Flate{}).Encode(&encoded, bytes.NewReader(original), cos.NewDictionary()); err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+
+	// Corrupt the middle of the compressed data, so inflate fails with a data
+	// error rather than running out of input.
+	corrupt := encoded.Bytes()
+	corrupt[len(corrupt)/2] ^= 0xFF
+
+	var decoded bytes.Buffer
+	if _, err := (Flate{}).Decode(&decoded, bytes.NewReader(corrupt), cos.NewDictionary(), 0); err != nil {
+		t.Fatalf("Decode returned %v; Java logs the corruption and returns what decoded", err)
+	}
+	if decoded.Len() == 0 {
+		t.Fatal("a corrupt stream yielded nothing; the bytes decoded before the damage must survive")
+	}
+	if !bytes.HasPrefix(original, decoded.Bytes()) {
+		t.Fatal("the partial output is not a prefix of the original data")
+	}
+}

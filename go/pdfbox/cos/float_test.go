@@ -209,3 +209,30 @@ func TestFloatStubOperatorMinMaxValues(t *testing.T) {
 		t.Errorf("FloatValue() = %v, want -32768", got)
 	}
 }
+
+// TestFloatIntValueSaturates pins Java's (int) and (long) narrowing casts on a
+// float, which clamp rather than wrap: a value above the target range becomes
+// MAX_VALUE and one below becomes MIN_VALUE. Go leaves an out-of-range float
+// conversion undefined, so the clamping has to be written explicitly.
+func TestFloatIntValueSaturates(t *testing.T) {
+	cases := []struct {
+		in       float32
+		wantInt  int
+		wantLong int64
+	}{
+		{0, 0, 0},
+		{1.9, 1, 1}, // truncates toward zero
+		{-1.9, -1, -1},
+		{math.MaxFloat32, math.MaxInt32, math.MaxInt64},
+		{-math.MaxFloat32, math.MinInt32, math.MinInt64},
+	}
+	for _, c := range cases {
+		f := NewFloat(c.in)
+		if got := f.IntValue(); got != c.wantInt {
+			t.Errorf("NewFloat(%v).IntValue() = %d, want %d", c.in, got, c.wantInt)
+		}
+		if got := f.LongValue(); got != c.wantLong {
+			t.Errorf("NewFloat(%v).LongValue() = %d, want %d", c.in, got, c.wantLong)
+		}
+	}
+}

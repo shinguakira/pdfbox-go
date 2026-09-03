@@ -267,3 +267,19 @@ func TestResolverReset(t *testing.T) {
 		t.Errorf("XrefTable() = %v after Reset, want nil", got)
 	}
 }
+
+// TestResolverResolvedTypeDefaultsToTable pins the XrefTrailerObj constructor,
+// which sets xrefType = XRefType.TABLE. When startxref points nowhere the
+// resolved object keeps that default rather than reporting no type at all.
+func TestResolverResolvedTypeDefaultsToTable(t *testing.T) {
+	r := NewXrefTrailerResolver()
+	r.NextXrefObj(100, XRefTypeStream)
+	r.SetXRef(key(t, 1), 10)
+	r.SetTrailer(cos.NewDictionary())
+
+	r.SetStartxref(99999) // nowhere, so the type is not copied from a section
+
+	if got := r.XrefType(); got != XRefTypeTable {
+		t.Errorf("XrefType() = %v, want Table — the resolved object defaults to it", got)
+	}
+}

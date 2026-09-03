@@ -289,3 +289,44 @@ func (v *dispatchRecorder) VisitNull(*cos.Null) error           { return v.rec("
 func (v *dispatchRecorder) VisitObject(*cos.Object) error       { return v.rec("object") }
 func (v *dispatchRecorder) VisitStream(*cos.Stream) error       { return v.rec("stream") }
 func (v *dispatchRecorder) VisitStringObj(*cos.StringObj) error { return v.rec("string") }
+
+// TestStreamLengthRejectedWhileWriting pins COSStream.getLength, which throws
+// IllegalStateException while a writer is open:
+//
+//	"There is an open OutputStream associated with this COSStream. It must be
+//	 closed before querying the length of this COSStream."
+//
+// The length is only recorded on close, so answering before then would hand
+// back a stale value.
+func TestStreamLengthRejectedWhileWriting(t *testing.T) {
+	s := newTestStream()
+	defer s.Close()
+
+	// before any writer, the length is readable
+	if _, err := s.Length(); err != nil {
+		t.Fatalf("Length on a fresh stream: %v", err)
+	}
+
+	w, err := s.CreateWriter()
+	if err != nil {
+		t.Fatalf("CreateWriter: %v", err)
+	}
+	if _, err := w.Write([]byte(streamTestInput)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if _, err := s.Length(); !errors.Is(err, cos.ErrStreamWriting) {
+		t.Errorf("Length while writing returned %v, want ErrStreamWriting", err)
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	got, err := s.Length()
+	if err != nil {
+		t.Fatalf("Length after Close: %v", err)
+	}
+	if got != int64(len(streamTestInput)) {
+		t.Errorf("Length() = %d, want %d", got, len(streamTestInput))
+	}
+}

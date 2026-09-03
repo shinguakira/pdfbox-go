@@ -2,6 +2,7 @@ package cos
 
 import (
 	"bytes"
+	"math"
 	"strconv"
 	"testing"
 )
@@ -122,5 +123,55 @@ func TestIntegerIsValid(t *testing.T) {
 	}
 	if n.(*Integer).IsValid() {
 		t.Error("an out-of-range integer reports IsValid() = true")
+	}
+}
+
+// TestIntegerIntValueTruncatesTo32Bits pins Java's (int) narrowing cast, which
+// drops everything above bit 31. Go's int(int64) is a no-op on a 64-bit
+// platform, so the truncation has to be written explicitly.
+func TestIntegerIntValueTruncatesTo32Bits(t *testing.T) {
+	cases := []struct {
+		in   int64
+		want int
+	}{
+		{0, 0},
+		{42, 42},
+		{-1, -1},
+		{math.MaxInt32, math.MaxInt32},
+		{math.MinInt32, math.MinInt32},
+		// above 32 bits the high word is dropped
+		{1 << 32, 0},
+		{1<<32 + 5, 5},
+		{math.MaxInt32 + 1, math.MinInt32},
+		{math.MaxInt64, -1},
+	}
+	for _, c := range cases {
+		if got := GetInteger(c.in).IntValue(); got != c.want {
+			t.Errorf("GetInteger(%d).IntValue() = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+// TestIntegerEqualsIsTruncating pins JAVA-BUGS entry 1: because equals compares
+// intValue(), two values differing only above bit 31 compare equal. The port
+// reproduces the defect rather than correcting it, so this asserts the wrong
+// answer on purpose.
+func TestIntegerEqualsIsTruncating(t *testing.T) {
+	if !GetInteger(0).Equals(GetInteger(1 << 32)) {
+		t.Error("0 and 1<<32 compare unequal; Java's equals truncates to 32 bits and finds them equal")
+	}
+	if !GetInteger(5).Equals(GetInteger(1<<32 + 5)) {
+		t.Error("5 and 1<<32+5 compare unequal; the truncation must make them equal")
+	}
+	// values that differ inside 32 bits are still distinct
+	if GetInteger(5).Equals(GetInteger(6)) {
+		t.Error("5 and 6 compare equal")
+	}
+}
+
+// TestIntegerLongValueIsNotTruncated checks that only IntValue narrows.
+func TestIntegerLongValueIsNotTruncated(t *testing.T) {
+	if got := GetInteger(1 << 32).LongValue(); got != 1<<32 {
+		t.Errorf("LongValue() = %d, want %d", got, int64(1)<<32)
 	}
 }

@@ -1,6 +1,11 @@
 package cos
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/shinguakira/pdfbox-go/go/pdfio"
+)
 
 // Ported from pdfbox/src/test/java/org/apache/pdfbox/cos/COSDocumentTest.java,
 // plus tests written from COSDocument.java for the behaviour that file does not
@@ -221,4 +226,49 @@ func TestDocumentAccept(t *testing.T) {
 
 func TestDocumentBaseContract(t *testing.T) {
 	assertBaseContract(t, NewDocument(nil))
+}
+
+// rescanParser adds a cross-reference entry the first time it is asked to
+// dereference anything, standing in for the brute force parser kicking in on a
+// damaged file part-way through a scan.
+type rescanParser struct {
+	doc   *Document
+	added bool
+}
+
+func (p *rescanParser) DereferenceObject(obj *Object) (Base, error) {
+	if !p.added {
+		p.added = true
+		late, _ := NewObjectKey(99, 0)
+		p.doc.AddXRefTable(map[*ObjectKey]int64{late: 500})
+		lateDict := NewDictionary()
+		lateDict.SetItem(Type, Page)
+		p.doc.ObjectFromPool(late).baseObject = lateDict
+	}
+	return NullObject, nil
+}
+
+func (p *rescanParser) CreateRandomAccessReadView(start, length int64) (pdfio.RandomAccessRead, error) {
+	return nil, errors.New("not implemented in the stub")
+}
+
+// TestDocumentObjectsByTypeRescans pins the second pass in getObjectsByType:
+// dereferencing one of the initial keys can trigger damaged-file recovery that
+// adds more entries, and Java scans those in the same call rather than leaving
+// them for a later one. Page discovery would otherwise silently miss recovered
+// objects.
+func TestDocumentObjectsByTypeRescans(t *testing.T) {
+	parser := &rescanParser{}
+	d := NewDocument(parser)
+	parser.doc = d
+
+	// one key that resolves to nothing, but whose dereference adds another
+	seed, _ := NewObjectKey(1, 0)
+	d.AddXRefTable(map[*ObjectKey]int64{seed: 10})
+
+	got := d.ObjectsByType(Page)
+	if len(got) != 1 {
+		t.Fatalf("ObjectsByType(Page) returned %d objects, want 1 — the key added "+
+			"during the scan must be picked up in the same call", len(got))
+	}
 }
