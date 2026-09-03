@@ -3,6 +3,7 @@ package cos
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"unicode/utf16"
 )
 
@@ -85,11 +86,15 @@ func NewStringObjHex(text string, forceHex bool) *StringObj {
 // Port of COSString.parseHex. Leading and trailing whitespace is skipped, and
 // an odd number of digits is padded with a trailing zero nibble.
 //
-// Java also has a FORCE_PARSING mode, set by a system property, that replaces a
-// malformed digit with '?' instead of failing. That is a global switch read
-// from JVM configuration, which has no place in a Go library; the port always
-// fails. Nothing in PDFBox sets it, and the Java source marks the replacement
-// with a todo asking what Acrobat actually does.
+// ForceParsing replaces a malformed hex digit with '?' instead of failing.
+//
+// Port of the COSString.FORCE_PARSING flag, which Java reads once from the
+// org.apache.pdfbox.forceParsing system property. Go has no system properties,
+// so it is a package variable with the same default (false). The Java source
+// marks the substitution with a todo asking what Acrobat actually does; that is
+// carried over as-is rather than resolved here.
+var ForceParsing = false
+
 func ParseHexString(hex string) (*StringObj, error) {
 	end := len(hex)
 	for end > 0 && isPDFWhitespaceByte(hex[end-1]) {
@@ -110,17 +115,28 @@ func ParseHexString(hex string) (*StringObj, error) {
 	out := make([]byte, 0, (length+1)/2)
 	for i := 0; i < length; i += 2 {
 		hi, lo := hexValue(digits[i]), hexValue(digits[i+1])
-		if hi < 0 || lo < 0 {
+		value := 16*hi + lo
+		switch {
+		case hi >= 0 && lo >= 0:
+			out = append(out, byte(value))
+		case ForceParsing:
+			slog.Warn("cos: encountered a malformed hex string")
+			out = append(out, '?')
+		default:
 			return nil, fmt.Errorf("%w: %q", ErrInvalidHexString, hex)
 		}
-		out = append(out, byte(16*hi+lo))
 	}
 	if uneven {
 		hi := hexValue(digits[length])
-		if hi < 0 {
+		switch {
+		case hi >= 0:
+			out = append(out, byte(16*hi))
+		case ForceParsing:
+			slog.Warn("cos: encountered a malformed hex string")
+			out = append(out, '?')
+		default:
 			return nil, fmt.Errorf("%w: %q", ErrInvalidHexString, hex)
 		}
-		out = append(out, byte(16*hi))
 	}
 
 	return &StringObj{bytes: out}, nil

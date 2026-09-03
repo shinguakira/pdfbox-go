@@ -238,13 +238,11 @@ func (b *ReadBuffer) Read(p []byte) (int, error) {
 				return read, err
 			}
 		}
-		n := b.readFromChunk(p[read:])
-		// Java adds this result unconditionally, which would subtract on a -1;
-		// stopping instead keeps the returned count honest.
-		if n <= 0 {
-			break
-		}
-		read += n
+		// This looks wrong and is ported as written. readFromChunk returns -1
+		// when nothing is left, and Java adds that to the running total, so a
+		// read that ends this way reports one byte fewer than it produced.
+		// The loop condition keeps it from repeating, so the effect is bounded.
+		read += b.readFromChunk(p[read:])
 	}
 	return read, nil
 }

@@ -93,14 +93,15 @@ func (n *Name) Name() string {
 	return string(runes)
 }
 
-// Bytes returns a copy of the raw bytes of the name.
+// Bytes returns the raw bytes of the name.
 //
-// Port of getBytes(). Java returns the internal array directly; the port copies
-// so that a caller cannot mutate an interned name that others share.
+// Port of getBytes(), which returns the internal array directly. Names are
+// interned and shared, so a caller that writes to the returned slice corrupts
+// the name for every holder of it. That hazard exists in Java too — the byte
+// array it hands back is equally shared and mutable — and it is carried over
+// rather than closed, so that the two behave the same. Do not write to this.
 func (n *Name) Bytes() []byte {
-	out := make([]byte, len(n.nameBytes))
-	copy(out, n.nameBytes)
-	return out
+	return n.nameBytes
 }
 
 // IsEmpty reports whether the name is the empty string.

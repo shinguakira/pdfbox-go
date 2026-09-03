@@ -91,12 +91,13 @@ func (i *Integer) Accept(v Visitor) error { return v.VisitInteger(i) }
 
 // Equals reports whether two integers hold the same value.
 //
-// Java compares intValue(), which truncates to 32 bits, so two int64 values
-// differing only above bit 31 compare equal there. The port compares the full
-// int64. Java's behaviour looks like an oversight rather than intent, and
-// object numbers can exceed the int range.
+// This looks wrong and is ported as written. Java compares intValue(), which
+// truncates to 32 bits, so two values differing only above bit 31 compare
+// equal — 1<<32 equals 0 here. Comparing the full int64 would be correct, but
+// the Java is the reference and object identity in a PDF can already depend on
+// this.
 func (i *Integer) Equals(other *Integer) bool {
-	return other != nil && other.value == i.value
+	return other != nil && other.IntValue() == i.IntValue()
 }
 
 // String returns the Java toString form.

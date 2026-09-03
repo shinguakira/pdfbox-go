@@ -60,15 +60,25 @@ func (Flate) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary, index 
 	return result, nil
 }
 
-// Encode deflates the data.
+// CompressionLevel is the deflate level used when encoding.
 //
-// Java reads a compression level from the org.apache.pdfbox.filter.deflatelevel
-// system property, defaulting to Deflater.DEFAULT_COMPRESSION. A JVM system
-// property has no Go equivalent, so the port uses the default level; if this
-// ever needs to be configurable it belongs in a field on the filter rather than
-// in process-global state.
+// Port of Filter.getCompressionLevel, which Java reads from the
+// org.apache.pdfbox.filter.deflatelevel system property and clamps to -1..9,
+// defaulting to Deflater.DEFAULT_COMPRESSION. Go has no system properties, so
+// it is a package variable with the same default and the same range.
+var CompressionLevel = zlib.DefaultCompression
+
+// Encode deflates the data.
 func (Flate) Encode(w io.Writer, r io.Reader, parameters *cos.Dictionary) error {
-	zw := zlib.NewWriter(w)
+	level := CompressionLevel
+	if level < -1 || level > 9 {
+		// Java clamps out-of-range property values rather than failing.
+		level = zlib.DefaultCompression
+	}
+	zw, err := zlib.NewWriterLevel(w, level)
+	if err != nil {
+		return err
+	}
 	if _, err := io.Copy(zw, r); err != nil {
 		zw.Close()
 		return err

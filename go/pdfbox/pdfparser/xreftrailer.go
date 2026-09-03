@@ -268,9 +268,9 @@ func (r *XrefTrailerResolver) ContainedObjectNumbers(objectStreamNumber int) []i
 			out = append(out, entry.key.Number())
 		}
 	}
-	// Java returns a HashSet, whose order is unspecified; sorting makes the
-	// port deterministic, which matters for reproducible output.
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	// Java returns a HashSet, so the order is unspecified. Go map iteration is
+	// equally unspecified, which is the faithful equivalent; sorting here would
+	// give the port a guarantee the Java does not have.
 	return out
 }
 

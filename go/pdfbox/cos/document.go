@@ -45,7 +45,11 @@ type Document struct {
 	isXRefStream            bool
 	hasHybridXRef           bool
 	highestXRefObjectNumber int64
-	closed                  bool
+	// nilKeyEntry holds the offset of an entry whose key was nil. Java keeps
+	// such an entry in its map; the port cannot key the internal map by nil,
+	// so it is held separately and re-joined by XRefTable.
+	nilKeyEntry *int64
+	closed      bool
 }
 
 type xrefEntry struct {
@@ -212,13 +216,14 @@ func (d *Document) ObjectFromPool(key *ObjectKey) *Object {
 
 // AddXRefTable merges cross-reference entries into the document.
 //
-// A nil key is dropped. Java keeps it and relies on every reader of the table
-// checking for null — see PDFBOX-6132, which is the bug that arises when one
-// does not. A key that cannot be looked up or resolved carries no information,
-// so the port drops it at the boundary instead.
+// A nil key is kept, as Java keeps a null one, and every reader of the table
+// checks for it — PDFBOX-6132 is the bug that arises when one does not. It
+// would be tidier to drop it here, but that would change what XRefTable hands
+// back and the Java is the reference.
 func (d *Document) AddXRefTable(entries map[*ObjectKey]int64) {
 	for key, offset := range entries {
 		if key == nil {
+			d.nilKeyEntry = &offset
 			continue
 		}
 		hash := key.InternalHash()
@@ -236,6 +241,9 @@ func (d *Document) XRefTable() map[*ObjectKey]int64 {
 	out := make(map[*ObjectKey]int64, len(d.xrefTable))
 	for _, e := range d.xrefTable {
 		out[e.key] = e.offset
+	}
+	if d.nilKeyEntry != nil {
+		out[nil] = *d.nilKeyEntry
 	}
 	return out
 }

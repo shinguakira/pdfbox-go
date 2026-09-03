@@ -185,6 +185,47 @@ Follow the source in this repository, not any tutorial written against 2.0.
 
 More background in [`prior-art.md`](prior-art.md).
 
+## Never change the Java
+
+**The Java tree is strictly read-only.** No `.java` file, `pom.xml` or test
+resource is ever edited — not to ease a port, not to fix a bug found while
+reading it, not to silence a warning. The Java is the reference the Go is
+checked against, and a reference that gets edited stops being one.
+
+If the port appears to need a Java change, the port is wrong.
+
+## Do not fix Java bugs
+
+**Port the behaviour as written, including behaviour that is plainly wrong.**
+
+This is a migration, not a bug hunt. A bug faithfully carried over stays
+findable by diffing against the Java. A bug silently corrected during the port
+does not, and it makes the Go behave differently from the reference it exists to
+reproduce — which is the one thing this project cannot afford, since the Java is
+the only specification for most of what PDFBox does.
+
+Real PDFs and real callers depend on quirks. An arithmetic slip that truncates a
+value, a comparison that ignores a field, a loop that adds a sentinel to a
+running total: those are observable behaviour, and something downstream may
+already match them.
+
+When something looks like a Java bug:
+
+1. Port it exactly.
+2. Comment at that point that it looks wrong, and say what the correct
+   behaviour would be.
+3. Move on. Do not open the question in the code.
+
+The only thing to fix is a bug **introduced by the port itself** — something the
+Java cannot do. A Go initialisation-order mistake, a nil dereference where Java
+had a primitive, an infinite loop from a zero value Java constructors cannot
+produce: those are port defects, not ported behaviour, and they get fixed.
+
+The same applies to ported tests. A Java test helper that does not check what it
+claims to check gets ported as it is; the ported tests then verify exactly what
+the Java tests verify, no more. Strengthening it silently would mean the Go
+suite and the Java suite no longer test the same thing.
+
 ## Recording deviations
 
 Where the port deliberately differs from Java, say so in a comment at the point

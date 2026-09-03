@@ -203,9 +203,15 @@ func TestResolverContainedObjectNumbers(t *testing.T) {
 	r.SetTrailer(cos.NewDictionary())
 	r.SetStartxref(100)
 
+	// Java returns a HashSet, so the order is unspecified and the test must not
+	// depend on one.
 	got := r.ContainedObjectNumbers(9)
-	if len(got) != 2 || got[0] != 5 || got[1] != 6 {
-		t.Errorf("ContainedObjectNumbers(9) = %v, want [5 6]", got)
+	if len(got) != 2 {
+		t.Fatalf("ContainedObjectNumbers(9) = %v, want two entries", got)
+	}
+	seen := map[int64]bool{got[0]: true, got[1]: true}
+	if !seen[5] || !seen[6] {
+		t.Errorf("ContainedObjectNumbers(9) = %v, want objects 5 and 6", got)
 	}
 	if got := r.ContainedObjectNumbers(99); len(got) != 0 {
 		t.Errorf("ContainedObjectNumbers(99) = %v, want empty", got)
