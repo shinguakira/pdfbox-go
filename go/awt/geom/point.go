@@ -12,8 +12,8 @@ package geom
 
 import (
 	"math"
-	"strconv"
-	"strings"
+
+	"github.com/shinguakira/pdfbox-go/go/internal/javafmt"
 )
 
 // Point2D is a point in 2D space.
@@ -75,7 +75,7 @@ func (p *PointFloat) Distance(other Point2D) float64 {
 
 // String returns the Java toString form.
 func (p *PointFloat) String() string {
-	return "Point2D.Float[" + javaFloat32String(p.x) + ", " + javaFloat32String(p.y) + "]"
+	return "Point2D.Float[" + javafmt.Float32(p.x) + ", " + javafmt.Float32(p.y) + "]"
 }
 
 // PointDouble stores its coordinates as float64.
@@ -109,7 +109,7 @@ func (p *PointDouble) Distance(other Point2D) float64 {
 
 // String returns the Java toString form.
 func (p *PointDouble) String() string {
-	return "Point2D.Double[" + javaFloat64String(p.x) + ", " + javaFloat64String(p.y) + "]"
+	return "Point2D.Double[" + javafmt.Float64(p.x) + ", " + javafmt.Float64(p.y) + "]"
 }
 
 // DistanceSq returns the square of the distance between two points, which
@@ -125,23 +125,4 @@ func Distance(x1, y1, x2, y2 float64) float64 {
 	x1 -= x2
 	y1 -= y2
 	return math.Sqrt(x1*x1 + y1*y1)
-}
-
-// javaFloat32String renders a float the way Java's String.valueOf(float) does,
-// which always shows a fraction part.
-func javaFloat32String(value float32) string {
-	return withFractionPart(strconv.FormatFloat(float64(value), 'g', -1, 32))
-}
-
-// javaFloat64String renders a double the way Java's String.valueOf(double)
-// does.
-func javaFloat64String(value float64) string {
-	return withFractionPart(strconv.FormatFloat(value, 'g', -1, 64))
-}
-
-func withFractionPart(s string) string {
-	if strings.ContainsAny(s, ".eEnI") {
-		return s
-	}
-	return s + ".0"
 }
