@@ -70,6 +70,7 @@ func (v *recordingVisitor) VisitInteger(*Integer) error       { return v.record(
 func (v *recordingVisitor) VisitName(*Name) error             { return v.record("name") }
 func (v *recordingVisitor) VisitNull(*Null) error             { return v.record("null") }
 func (v *recordingVisitor) VisitObject(*Object) error         { return v.record("object") }
+func (v *recordingVisitor) VisitStream(*Stream) error         { return v.record("stream") }
 func (v *recordingVisitor) VisitStringObj(*StringObj) error   { return v.record("string") }
 
 func assertVisits(t *testing.T, b Base, want string) {

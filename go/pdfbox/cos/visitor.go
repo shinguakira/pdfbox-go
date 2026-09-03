@@ -21,5 +21,6 @@ type Visitor interface {
 	VisitName(obj *Name) error
 	VisitNull(obj *Null) error
 	VisitObject(obj *Object) error
+	VisitStream(obj *Stream) error
 	VisitStringObj(obj *StringObj) error
 }

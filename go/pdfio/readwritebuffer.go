@@ -71,12 +71,18 @@ func (b *ReadWriteBuffer) Write(p []byte) (int, error) {
 				n = space
 			}
 		}
-		if n > 0 {
-			copy(b.chunks[b.chunkIndex][b.chunkPointer:b.chunkPointer+n], p[offset:offset+n])
-			b.chunkPointer += n
-			b.pointer += int64(n)
-			offset += n
+		if n <= 0 {
+			// Expanding did not make room, which can only happen when the
+			// chunk size is not positive — a zero-value ReadWriteBuffer rather
+			// than one from a constructor. Java cannot reach this state, since
+			// its constructors always set a chunk size. Returning an error
+			// keeps a caller that does from looping here forever.
+			return offset, ErrZeroChunkSize
 		}
+		copy(b.chunks[b.chunkIndex][b.chunkPointer:b.chunkPointer+n], p[offset:offset+n])
+		b.chunkPointer += n
+		b.pointer += int64(n)
+		offset += n
 	}
 	if b.pointer > b.size {
 		b.size = b.pointer
