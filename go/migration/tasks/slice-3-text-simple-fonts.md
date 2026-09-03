@@ -92,9 +92,12 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
   - No Java test exists; extend the slice 2 test for `Tf`, `Tj`, `TJ`, `'`, `"`
     and for the glyph hooks
 
-- [ ] A7. `pdfbox/text` — port `PDFTextStripperByAreaTest` and `BidiTest`
+- [x] A7. `pdfbox/text` — port `PDFTextStripperByAreaTest` and `BidiTest`
   - Write from source for `TextPosition` and `TextPositionComparator` — Java
     tests them only through the stripper
+  - Neither Java test is portable: both open a PDF with `Loader`. The tests
+    written instead build the page in memory and run the same walk over it,
+    covering what each Java test covers plus the geometry of `TextPosition`.
 
 - [ ] A8. `pdfbox/text` — port `TestTextStripper`, the corpus harness
   - Table test over the 40 `.pdf` files in `pdfbox/src/test/resources/input/`
@@ -157,7 +160,7 @@ Written from the Java source, in dependency order.
   - `showText`, `showGlyph`, `showFontGlyph`, `showType3Glyph`,
     `applyTextAdjustment`, `getDefaultFont`, `processType3Stream`
 
-- [ ] B9. `pdfbox/text` — 6 files
+- [x] B9. `pdfbox/text` — 6 files
   - `TextPosition`, `TextPositionComparator`, `LegacyPDFStreamEngine`,
     `PDFTextStripper`, `PDFTextStripperByArea`, `PDFMarkedContentExtractor`
   - Note `PDFTextStripper` extends `LegacyPDFStreamEngine`, not the engine
