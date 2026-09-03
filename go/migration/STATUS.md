@@ -16,7 +16,7 @@ Last updated: 2026-09-03
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
-| 1 | `pdfbox/cos` | 24 | not started |
+| 1 | `pdfbox/cos` | 24 | in progress — 4 of 24 ported |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | not started |
 | 3 | `pdfbox/pdmodel` | 433 | not started |
 | 4 | `fontbox` | 143 | not started |
@@ -47,6 +47,45 @@ Last updated: 2026-09-03
 | `MemoryUsageSetting.java` | — | not started — only meaningful once `ScratchFile` exists |
 | `RandomAccessReadMemoryMappedFile.java` | — | not started — needs a decision on `golang.org/x/exp/mmap` vs `syscall` |
 | `NonSeekableRandomAccessReadInputStream.java` | — | not started |
+
+## Slice 1 — `pdfbox/cos`
+
+Branch `slice/1-open-document`. Ported test-first.
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `COSBase.java` | `base.go` | done — minus `getKey`/`setKey`, which need `ObjectKey` |
+| `ICOSVisitor.java` | `visitor.go` | partial — 2 of 11 methods, grows with each type |
+| `COSBoolean.java` | `boolean.go` | done |
+| `COSNull.java` | `null.go` | done |
+| `COSObjectKey.java` | — | next |
+| `COSName.java` | — | not started |
+| `COSInteger.java`, `COSFloat.java`, `COSNumber.java` | — | not started |
+| `COSString.java` | — | not started |
+| `COSArray.java`, `COSDictionary.java` | — | not started |
+| `COSStream.java`, `COSDocument.java`, `COSObject.java` | — | not started — need the io layer and filters |
+| the remaining 8 files | — | not started |
+
+### Ported tests — `cos`
+
+| Java test | Go test | Notes |
+| --- | --- | --- |
+| `TestCOSBase` | `base_test.go` | abstract in Java; becomes `assertBaseContract`, called per type |
+| `TestCOSBoolean` | `boolean_test.go` | complete except the COSWriter byte assertions |
+| — | `null_test.go` | Java has no `TestCOSNull`; written from `COSNull.java` per the tdd rule |
+
+### Deviations — `cos`
+
+- **`accept()` is tested through a recording visitor, not `COSWriter`.** The
+  Java tests drive a `COSWriter` and assert the emitted bytes. `COSWriter` is
+  `pdfwriter`, not ported. The port asserts the double dispatch plus a direct
+  `WritePDF` byte check. **The COSWriter assertions must be added when
+  `pdfwriter` lands** — until then the serialised form is only checked against
+  itself.
+- `assertBytesEqual` compares lengths properly. The Java `testByteArrays` helper
+  compares `byteArr1.length` against itself and so never checks lengths match.
+- `Visitor` and `Base` are deliberately smaller than the Java interfaces; both
+  say so in their doc comments, and both grow as types land.
 
 ### Method note — `pdfio` was not ported test-first
 
