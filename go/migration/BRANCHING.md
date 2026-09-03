@@ -8,9 +8,19 @@ how those slices are arranged in git.
 
 ## The one structural fact everything follows from
 
-**The Go port is purely additive.** It lives entirely under `go/`; it does not
-touch a single `.java`, `pom.xml` or resource file. So merging upstream Java
-changes and doing Go work are operations on disjoint sets of files.
+**The Go port is very nearly additive.** It lives under `go/` and does not touch
+a single `.java`, `pom.xml` or test resource. So merging upstream Java changes
+and doing Go work are, with one exception, operations on disjoint file sets.
+
+**The one exception is `AGENTS.md`** at the repository root. It is edited to
+tell agents that `go/` exists, that the Java tree is read-only for port work,
+and that porting is test-first — none of which is discoverable from a file
+inside `go/` by an agent that starts at the root. That is worth one conflict
+point.
+
+So: `AGENTS.md` is the only upstream file this fork modifies, and therefore the
+only file an upstream merge can conflict on. If a sync conflicts anywhere else,
+something has written local commits to `trunk`.
 
 The consequence: **git conflicts between upstream and the port are close to
 impossible.** What can go wrong is not textual, it is semantic — upstream
@@ -107,9 +117,13 @@ git checkout trunk && git merge --ff-only upstream/trunk
 git checkout migration-base && git merge trunk
 ```
 
-The merge should be clean — disjoint file sets. If git reports a conflict,
-something has written non-upstream commits to `trunk`; fix that rather than
-resolving the conflict.
+The merge should be clean everywhere except `AGENTS.md`, the one upstream file
+this fork modifies. Resolve that one by keeping the upstream changes and
+re-applying the fork's additions — the "Go port" section, the `go/` sub-module
+entry, the fork's branch rows, and the Go build commands.
+
+A conflict in **any other file** means something has written non-upstream
+commits to `trunk`. Fix that rather than resolving the conflict.
 
 ### Then check for semantic drift
 

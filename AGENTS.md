@@ -31,12 +31,19 @@ security assessment, or code review of this repository:
    reading this file will be inaccurate or out of scope.
 2. **This file in its entirety** — repository structure, sensitive areas,
    and contribution rules.
+3. **[go/migration/README.md](go/migration/README.md)** — required *only* if
+   the task touches `go/`. This fork carries a Go port of PDFBox alongside the
+   Java source; see "Go port" below.
 
 ## Project Overview
 
 Apache PDFBox is a Java library for working with PDF documents. It is used
 as a dependency (`pdfbox.jar`) in other Java projects and is accessed through
 its public Java API. The project also ships several command-line utilities.
+
+**This repository is a fork.** In addition to the upstream Java source it
+carries an in-progress Go port under `go/`. The Java tree is unmodified
+upstream code and is the reference the port is checked against.
 
 ## Branches
 
@@ -50,6 +57,17 @@ When evaluating code or reporting issues, note which branch is in scope.
 Security fixes are applied to both `3.0` and `2.0`. New features target
 `trunk` and `3.0`.
 
+Branches added by this fork:
+
+| Branch | Status | Contents |
+|--------|--------|----------|
+| `migration-base` | Go port mainline | `trunk` plus everything under `go/` |
+| `slice/*`, `track/*` | Go port work in progress | one capability slice each |
+
+`trunk` in this fork is a pure upstream mirror and must stay that way — it is
+what the port is diffed against. Never commit Go code, or anything else local,
+to `trunk`. See [go/migration/BRANCHING.md](go/migration/BRANCHING.md).
+
 ## Sub-modules
 
 All branches share the same multi-module Maven structure:
@@ -62,6 +80,42 @@ All branches share the same multi-module Maven structure:
 - `debugger/` / `debugger-app/` — PDF debugger application
 - `examples/` — Standalone usage examples
 - `benchmark/` — JMH benchmarks
+
+Added by this fork, outside the Maven build:
+
+- `go/` — Go port of the library. Not a Maven module; `mvn` does not see it
+
+## Go port
+
+`go/` holds an in-progress Go port of PDFBox. It is a separate Go module and
+does not participate in the Maven build.
+
+**Rules that apply to any agent working in this repository:**
+
+- **The Java tree is upstream and read-only for port work.** A task about the
+  Go port never justifies editing a `.java` file, a `pom.xml`, or a test
+  resource. If the port needs a Java change to work, that is a bug in the port.
+- **The Java source and its tests are the specification.** The Go code is
+  checked against them, not against your reading of ISO 32000. Where PDFBox
+  contradicts the specification, PDFBox wins — the behaviour is usually
+  deliberate and encodes a real-world producer quirk.
+- **Porting is test-first.** The Java test is ported before the Go
+  implementation exists, and assertion values are copied verbatim from the Java
+  rather than recomputed. See
+  [go/migration/conventions/tdd.md](go/migration/conventions/tdd.md). Do not
+  write a Go test whose expected values were read off the Go implementation.
+- **Deliberate deviations from Java behaviour are commented where they occur**
+  and listed in [go/migration/STATUS.md](go/migration/STATUS.md). Do not remove
+  or "tidy" a deviation comment without checking that file.
+- **Do not report Go/Java behavioural differences as security findings** without
+  first checking `STATUS.md` — the intentional ones are recorded there.
+
+Orientation for the port lives in
+[go/migration/README.md](go/migration/README.md): the plan, the branch strategy,
+the Java-to-Go conventions, and the package mapping.
+
+Status: early. Only the `pdfio` package (the Go port of the `io` module) is
+implemented. Everything else is planned but absent.
 
 ## Building
 
@@ -84,6 +138,20 @@ mvn -pl pdfbox test
 ```
 
 Minimum Java version depends on the branch — see the table above.
+
+### Building the Go port
+
+Independent of Maven, and requires no JDK. Go 1.26 or later:
+
+```
+cd go && go build ./...
+```
+
+```
+cd go && gofmt -l . && go vet ./... && go test ./...
+```
+
+All three must be clean before any Go change is considered done.
 
 ## Sensitive Areas
 
