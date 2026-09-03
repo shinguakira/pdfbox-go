@@ -317,3 +317,45 @@ func TestDictionaryKeyForValue(t *testing.T) {
 		t.Error("ContainsValue(Page) = false")
 	}
 }
+
+// TestContainsValueUnwrapsTheArgumentNotTheEntries pins that containsValue and
+// getKeyForValue look in opposite directions, which is easy to collapse into
+// one method and wrong to: containsValue unwraps an indirect reference passed
+// in, getKeyForValue unwraps the ones stored.
+func TestContainsValueUnwrapsTheArgumentNotTheEntries(t *testing.T) {
+	target := NewDictionary()
+	ref := NewObject(target)
+
+	direct := NewDictionary()
+	direct.SetItem(A, target)
+	if !direct.ContainsValue(target) {
+		t.Error("a directly held value is not contained")
+	}
+	if !direct.ContainsValue(ref) {
+		t.Error("a reference to a directly held value is not contained")
+	}
+
+	indirect := NewDictionary()
+	indirect.SetItem(A, ref)
+	if indirect.ContainsValue(ref) != true {
+		t.Error("the very reference held is not contained")
+	}
+	if indirect.ContainsValue(target) {
+		t.Error("a value held only behind a reference is contained")
+	}
+	// getKeyForValue does look through the reference, unlike containsValue.
+	if got := indirect.KeyForValue(target); got != A {
+		t.Errorf("KeyForValue = %v, want /A — it resolves the entry", got)
+	}
+}
+
+// TestKeyForValueSkipsUnresolvedReferences pins the guard Java puts in front of
+// getObject: an entry that refers to nothing must not match.
+func TestKeyForValueSkipsUnresolvedReferences(t *testing.T) {
+	d := NewDictionary()
+	d.SetItem(A, NewObjectLazy(nil, nil))
+
+	if got := d.KeyForValue(nil); got != nil {
+		t.Errorf("KeyForValue(nil) = %v, want nil", got)
+	}
+}

@@ -132,23 +132,44 @@ func (d *Dictionary) ContainsKey(key *Name) bool {
 	return ok
 }
 
-// ContainsValue reports whether any entry holds value, resolving indirect
-// references.
+// ContainsValue reports whether any entry holds value.
+//
+// Port of containsValue, which is deliberately not KeyForValue in disguise: it
+// unwraps an indirect reference given as the argument, where KeyForValue
+// unwraps the indirect references stored in the dictionary. So a dictionary
+// holding a reference to x does not contain x by this test, and PDResources.add
+// carries an extra search of its own because of it.
 func (d *Dictionary) ContainsValue(value Base) bool {
-	return d.KeyForValue(value) != nil
+	if d.containsRawValue(value) {
+		return true
+	}
+	if ref, ok := value.(*Object); ok {
+		return d.containsRawValue(ref.Object())
+	}
+	return false
+}
+
+// containsRawValue reports whether any entry equals value as it stands.
+func (d *Dictionary) containsRawValue(value Base) bool {
+	for _, item := range d.items {
+		if cosEqual(item, value) {
+			return true
+		}
+	}
+	return false
 }
 
 // KeyForValue returns the first key whose entry holds value, or nil.
 //
 // Port of getKeyForValue. It matches against the raw entry and, for an indirect
-// reference, against what it resolves to.
+// reference that resolves to something, against what it resolves to.
 func (d *Dictionary) KeyForValue(value Base) *Name {
 	for _, k := range d.keys {
 		item := d.items[k]
 		if cosEqual(item, value) {
 			return k
 		}
-		if ref, ok := item.(*Object); ok && cosEqual(ref.Object(), value) {
+		if ref, ok := item.(*Object); ok && !ref.IsObjectNull() && cosEqual(ref.Object(), value) {
 			return k
 		}
 	}
