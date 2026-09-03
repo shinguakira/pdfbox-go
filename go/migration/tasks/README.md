@@ -116,16 +116,31 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdfbox/rendering` | 10 | slice 9 |
 | `pdfbox/text` | 6 | slice 3 |
 | `pdfbox/tools`, `tools/imageio` | 26 | **nothing** — see the gaps below |
-| `pdfbox/util` | 9 | see below |
+| `pdfbox/util` | 9 | slice 2 (2), slice 3 (2), slice 6 (1), slice 7 (2), slice 8 (1), `tools` (1) — see below |
 | `pdfbox/util/filetypedetector` | 3 | slice 6 |
 | `xmpbox/*` | 74 | `track/xmpbox` |
 
-`pdfbox/util` is nine unrelated helpers with no single home. `Matrix` and
-`Vector` landed in slice 2; `IterativeMergeSort` is slice 3, because
-`PDFTextStripper` falls back to it. The remaining six — `DateConverter`,
-`Hex`, `NumberFormatUtil`, `StringUtil`, `Version`, `XMLUtil` — go to whichever
-branch first needs each, and each has a Java test (`TestDateUtil`,
-`TestHexUtil`, `TestNumberFormatUtil`, `StringUtilTest`) to port with it.
+`pdfbox/util` is nine unrelated helpers with no single home, so each goes to the
+branch that first needs it. Found by grepping for each import:
+
+| Helper | Used by | Branch | Java test |
+| --- | --- | --- | --- |
+| `Matrix`, `Vector` | the graphics state | slice 2 — **done** | `MatrixTest` |
+| `IterativeMergeSort` | `PDFTextStripper`, when its comparator is not transitive | slice 3 | `TestSort` |
+| `DateConverter` | `COSDictionary` dates, `FDFAnnotation` | slice 3 with `PDDocumentInformation` if the loader lands there, otherwise slice 8 | `TestDateUtil` |
+| `Hex` | `COSName`, `COSString`, `ASCIIHexFilter`, `COSWriter`, `ToUnicodeWriter`, `FDFAnnotationStamp` | slice 6, with `ASCIIHexFilter` | `TestHexUtil` |
+| `NumberFormatUtil` | `PDAbstractContentStream` | slice 7 | `TestNumberFormatUtil` |
+| `StringUtil` | `PDAbstractContentStream` | slice 7 | `StringUtilTest` |
+| `XMLUtil` | `Loader`, `FDFField`, `FDFAnnotationStamp` | slice 8, with `fdf` | — |
+| `Version` | `tools` only | unassigned, with `tools` | — |
+
+`Hex` is a special case: `cos.ParseHexString` already exists in the port, so
+slice 1 folded part of it away. Check what is left of the Java class before
+porting it whole.
+
+`COSDictionary`'s date accessors are the other half of `DateConverter`.
+`STATUS.md` records them as the "minus dates" in the slice 1 `cos` row; they
+land with whichever branch takes `DateConverter`.
 
 ## The five phases
 
