@@ -1,0 +1,101 @@
+# Java package -> Go package (relative to go/), one per line, tab separated.
+#
+# Hand maintained. migration/scripts/inventory.ps1 reads this file to attribute
+# Java source to Go packages, and reports any Java package missing from it.
+#
+# Naming rules (see ../conventions/java-to-go.md):
+#   - the org.apache prefix is dropped
+#   - the fontbox and xmpbox modules keep their own trees
+#   - org.apache.pdfbox.<x> flattens to pdfbox/<x>
+#   - a package whose last segment collides with a standard library package is
+#     renamed; the only such rename so far is io -> pdfio
+#   - documentinterchange and documentnavigation lose the redundant middle
+#     segment their Java names carry
+#
+# java_package	go_package
+
+org.apache.pdfbox.io	pdfio
+
+org.apache.fontbox	fontbox
+org.apache.fontbox.afm	fontbox/afm
+org.apache.fontbox.cff	fontbox/cff
+org.apache.fontbox.cmap	fontbox/cmap
+org.apache.fontbox.encoding	fontbox/encoding
+org.apache.fontbox.pfb	fontbox/pfb
+org.apache.fontbox.ttf	fontbox/ttf
+org.apache.fontbox.ttf.gsub	fontbox/ttf/gsub
+org.apache.fontbox.ttf.model	fontbox/ttf/model
+org.apache.fontbox.ttf.table.common	fontbox/ttf/table/common
+org.apache.fontbox.ttf.table.gsub	fontbox/ttf/table/gsub
+org.apache.fontbox.type1	fontbox/type1
+org.apache.fontbox.util	fontbox/util
+org.apache.fontbox.util.autodetect	fontbox/util/autodetect
+
+org.apache.xmpbox	xmpbox
+org.apache.xmpbox.schema	xmpbox/schema
+org.apache.xmpbox.type	xmpbox/xmptype
+org.apache.xmpbox.xml	xmpbox/xml
+
+org.apache.pdfbox	pdfbox
+org.apache.pdfbox.contentstream	pdfbox/contentstream
+org.apache.pdfbox.contentstream.operator	pdfbox/contentstream/operator
+org.apache.pdfbox.contentstream.operator.color	pdfbox/contentstream/operator/color
+org.apache.pdfbox.contentstream.operator.graphics	pdfbox/contentstream/operator/graphics
+org.apache.pdfbox.contentstream.operator.markedcontent	pdfbox/contentstream/operator/markedcontent
+org.apache.pdfbox.contentstream.operator.state	pdfbox/contentstream/operator/state
+org.apache.pdfbox.contentstream.operator.text	pdfbox/contentstream/operator/text
+org.apache.pdfbox.cos	pdfbox/cos
+org.apache.pdfbox.filter	pdfbox/filter
+org.apache.pdfbox.multipdf	pdfbox/multipdf
+org.apache.pdfbox.pdfparser	pdfbox/pdfparser
+org.apache.pdfbox.pdfparser.xref	pdfbox/pdfparser/xref
+org.apache.pdfbox.pdfwriter	pdfbox/pdfwriter
+org.apache.pdfbox.pdfwriter.compress	pdfbox/pdfwriter/compress
+org.apache.pdfbox.pdmodel	pdfbox/pdmodel
+org.apache.pdfbox.pdmodel.common	pdfbox/pdmodel/common
+org.apache.pdfbox.pdmodel.common.filespecification	pdfbox/pdmodel/common/filespecification
+org.apache.pdfbox.pdmodel.common.function	pdfbox/pdmodel/common/function
+org.apache.pdfbox.pdmodel.common.function.type4	pdfbox/pdmodel/common/function/type4
+org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure	pdfbox/pdmodel/interchange/logicalstructure
+org.apache.pdfbox.pdmodel.documentinterchange.markedcontent	pdfbox/pdmodel/interchange/markedcontent
+org.apache.pdfbox.pdmodel.documentinterchange.prepress	pdfbox/pdmodel/interchange/prepress
+org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf	pdfbox/pdmodel/interchange/taggedpdf
+org.apache.pdfbox.pdmodel.encryption	pdfbox/pdmodel/encryption
+org.apache.pdfbox.pdmodel.fdf	pdfbox/pdmodel/fdf
+org.apache.pdfbox.pdmodel.fixup	pdfbox/pdmodel/fixup
+org.apache.pdfbox.pdmodel.fixup.processor	pdfbox/pdmodel/fixup/processor
+org.apache.pdfbox.pdmodel.font	pdfbox/pdmodel/font
+org.apache.pdfbox.pdmodel.font.encoding	pdfbox/pdmodel/font/encoding
+org.apache.pdfbox.pdmodel.graphics	pdfbox/pdmodel/graphics
+org.apache.pdfbox.pdmodel.graphics.blend	pdfbox/pdmodel/graphics/blend
+org.apache.pdfbox.pdmodel.graphics.color	pdfbox/pdmodel/graphics/color
+org.apache.pdfbox.pdmodel.graphics.form	pdfbox/pdmodel/graphics/form
+org.apache.pdfbox.pdmodel.graphics.image	pdfbox/pdmodel/graphics/image
+org.apache.pdfbox.pdmodel.graphics.optionalcontent	pdfbox/pdmodel/graphics/optionalcontent
+org.apache.pdfbox.pdmodel.graphics.pattern	pdfbox/pdmodel/graphics/pattern
+org.apache.pdfbox.pdmodel.graphics.shading	pdfbox/pdmodel/graphics/shading
+org.apache.pdfbox.pdmodel.graphics.state	pdfbox/pdmodel/graphics/state
+org.apache.pdfbox.pdmodel.interactive	pdfbox/pdmodel/interactive
+org.apache.pdfbox.pdmodel.interactive.action	pdfbox/pdmodel/interactive/action
+org.apache.pdfbox.pdmodel.interactive.annotation	pdfbox/pdmodel/interactive/annotation
+org.apache.pdfbox.pdmodel.interactive.annotation.handlers	pdfbox/pdmodel/interactive/annotation/handlers
+org.apache.pdfbox.pdmodel.interactive.digitalsignature	pdfbox/pdmodel/interactive/digitalsignature
+org.apache.pdfbox.pdmodel.interactive.digitalsignature.visible	pdfbox/pdmodel/interactive/digitalsignature/visible
+org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination	pdfbox/pdmodel/interactive/navigation/destination
+org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline	pdfbox/pdmodel/interactive/navigation/outline
+org.apache.pdfbox.pdmodel.interactive.form	pdfbox/pdmodel/interactive/form
+org.apache.pdfbox.pdmodel.interactive.measurement	pdfbox/pdmodel/interactive/measurement
+org.apache.pdfbox.pdmodel.interactive.pagenavigation	pdfbox/pdmodel/interactive/pagenavigation
+org.apache.pdfbox.pdmodel.interactive.viewerpreferences	pdfbox/pdmodel/interactive/viewerpreferences
+org.apache.pdfbox.printing	pdfbox/printing
+org.apache.pdfbox.rendering	pdfbox/rendering
+org.apache.pdfbox.text	pdfbox/text
+org.apache.pdfbox.util	pdfbox/util
+org.apache.pdfbox.util.filetypedetector	pdfbox/util/filetypedetector
+
+org.apache.pdfbox.tools	cmd/pdfbox
+org.apache.pdfbox.tools.imageio	pdfbox/imageio
+
+org.apache.pdfbox.glyphlayout.awt	pdfbox/glyphlayout/awt
+org.apache.pdfbox.glyphlayout.fop	pdfbox/glyphlayout/fop
+org.apache.pdfbox.glyphlayout.examples	-
