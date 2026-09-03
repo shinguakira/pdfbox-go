@@ -90,3 +90,7 @@ func (r RenderingMode) IsClip() bool {
 func (r RenderingMode) String() string {
 	return renderingModeNames[r]
 }
+
+// RenderingModeCount is how many text rendering modes there are, standing in
+// for Java's RenderingMode.values().length.
+const RenderingModeCount = len(renderingModeValues)
