@@ -105,8 +105,12 @@ func ParseHexString(hex string) (*StringObj, error) {
 		start++
 	}
 
-	digits := hex[start:end]
-	length := len(digits)
+	// JAVA-BUGS entry 11: start is computed and then never used. Java indexes
+	// the original string from zero, so only the *length* of the leading
+	// whitespace is honoured and the spaces themselves are read as hex digits.
+	// Ported as written; do not slice hex[start:end] here.
+	_ = start
+	length := end - start
 	uneven := length%2 != 0
 	if uneven {
 		length--
@@ -114,7 +118,7 @@ func ParseHexString(hex string) (*StringObj, error) {
 
 	out := make([]byte, 0, (length+1)/2)
 	for i := 0; i < length; i += 2 {
-		hi, lo := hexValue(digits[i]), hexValue(digits[i+1])
+		hi, lo := hexValue(hex[i]), hexValue(hex[i+1])
 		value := 16*hi + lo
 		switch {
 		case hi >= 0 && lo >= 0:
@@ -127,7 +131,7 @@ func ParseHexString(hex string) (*StringObj, error) {
 		}
 	}
 	if uneven {
-		hi := hexValue(digits[length])
+		hi := hexValue(hex[length])
 		switch {
 		case hi >= 0:
 			out = append(out, byte(16*hi))

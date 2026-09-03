@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"testing"
 )
 
@@ -131,4 +132,26 @@ func TestMemoryStreamCache(t *testing.T) {
 		t.Fatalf("Write: %v", err)
 	}
 	wantLength(t, buf, 3)
+}
+
+// hugeSource reports a length no int can hold, so that the clamp Java applies
+// can be exercised without allocating anything.
+type hugeSource struct{ RandomAccessRead }
+
+func (hugeSource) Length() (int64, error)   { return 1 << 40, nil }
+func (hugeSource) Position() (int64, error) { return 0, nil }
+
+// TestReaderAvailableClamps pins that Available saturates rather than
+// truncating. Java is Math.min(input.length() - position, Integer.MAX_VALUE),
+// and the package-level Available already clamps; this one did not.
+func TestReaderAvailableClamps(t *testing.T) {
+	r := NewReader(hugeSource{NewReadBufferBytes(nil)})
+
+	got, err := r.Available()
+	if err != nil {
+		t.Fatalf("Available: %v", err)
+	}
+	if got != math.MaxInt32 {
+		t.Errorf("Available = %d, want MaxInt32", got)
+	}
 }

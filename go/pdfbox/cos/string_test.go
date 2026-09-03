@@ -2,6 +2,7 @@ package cos
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -255,13 +256,34 @@ func TestStringObjParseHexOddLength(t *testing.T) {
 	assertBytesEqual(t, []byte{0x41, 0xF0}, s.Bytes())
 }
 
+// TestStringObjParseHexWhitespace pins JAVA-BUGS entry 11. Java computes an
+// offset past the leading whitespace and then indexes from zero anyway, so only
+// trailing whitespace is really skipped; leading whitespace is read as hex
+// digits and rejected. The port carries that.
 func TestStringObjParseHexWhitespace(t *testing.T) {
-	// Leading and trailing whitespace is skipped.
-	s, err := ParseHexString("  4142  ")
+	// Trailing whitespace is skipped, because it is dropped by shortening the
+	// run rather than by moving the start.
+	s, err := ParseHexString("4142  ")
 	if err != nil {
 		t.Fatalf("ParseHexString: %v", err)
 	}
 	assertBytesEqual(t, []byte{0x41, 0x42}, s.Bytes())
+
+	// Leading whitespace is not. The unused offset shortens the run to four
+	// characters, and the loop then reads the two spaces as a hex pair.
+	if _, err := ParseHexString("  4142  "); !errors.Is(err, ErrInvalidHexString) {
+		t.Errorf("ParseHexString err = %v, want ErrInvalidHexString — see JAVA-BUGS entry 11", err)
+	}
+
+	// Under force parsing the same input yields the substitution character for
+	// the pair it could not read, rather than an error.
+	ForceParsing = true
+	defer func() { ForceParsing = false }()
+	forced, err := ParseHexString("  4142  ")
+	if err != nil {
+		t.Fatalf("ParseHexString under force parsing: %v", err)
+	}
+	assertBytesEqual(t, []byte{'?', 0x41}, forced.Bytes())
 }
 
 func TestStringObjString(t *testing.T) {

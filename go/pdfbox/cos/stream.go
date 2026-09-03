@@ -449,3 +449,37 @@ func (w *streamWriter) encodeBuffered() error {
 	_, err := io.Copy(w.dst, current)
 	return err
 }
+
+// CreateView returns a random access read over the decoded stream data.
+//
+// Port of createView. An unfiltered stream parsed from a file is read through a
+// second view onto that file rather than copied into memory; anything else is
+// read into a buffer.
+func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
+	codecs, err := s.codecList()
+	if err != nil {
+		return nil, err
+	}
+	if len(codecs) == 0 {
+		if s.randomAccess == nil && s.readView != nil {
+			length, err := s.readView.Length()
+			if err != nil {
+				return nil, err
+			}
+			// Java builds a second view around this one rather than asking it
+			// for one: a view refuses CreateView, here as in Java, so calling
+			// it would fail for every unfiltered stream read from a file.
+			return pdfio.NewReadView(s.readView, 0, length), nil
+		}
+		raw, err := s.CreateRawReader()
+		if err != nil {
+			return nil, err
+		}
+		return pdfio.NewReadBufferFromReader(raw)
+	}
+	decoded, err := s.CreateReader()
+	if err != nil {
+		return nil, err
+	}
+	return pdfio.NewReadBufferFromReader(decoded)
+}

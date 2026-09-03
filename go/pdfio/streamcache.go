@@ -4,8 +4,9 @@ package pdfio
 // streams of a PDF.
 //
 // Port of org.apache.pdfbox.io.RandomAccessStreamCache. Buffers returned by
-// CreateBuffer should be closed by the caller; any left open are closed when
-// the cache itself is closed.
+// CreateBuffer should be closed by the caller; an implementation may also close
+// any it still owns when the cache itself is closed, though the memory-backed
+// one has nothing to release and does not.
 type StreamCache interface {
 	// CreateBuffer returns a fresh read-write buffer.
 	CreateBuffer() (RandomAccess, error)

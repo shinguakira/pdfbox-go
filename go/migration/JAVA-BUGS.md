@@ -253,3 +253,131 @@ what is on disk, rather than an error or a faithful literal.
 **Confidence** medium. It only triggers on truncated input, where any answer is
 somewhat arbitrary, but the inconsistency with the adjacent branch looks
 unintended.
+
+---
+
+## 9. A malformed inline image leaves `inlineImageDepth` stuck at 1
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java`,
+`parseNextToken`, case `'B'`
+
+```java
+if (nextToken instanceof Operator)
+{
+    Operator imageData = (Operator) nextToken;
+    ...
+    beginImageOP.setImageData(imageData.getImageData());
+    inlineImageDepth--;          // only here
+}
+else
+{
+    LOG.warn("nextToken {} at position {}, expected {}?!", ...);
+    // no decrement
+}
+```
+
+**What it does** `inlineImageDepth++` runs for every `BI`, but the matching
+decrement sits inside the branch that found an `ID` operator. When the inline
+image dictionary ends any other way — end of input, or a token that is neither a
+`COSName` nor an `Operator` — the counter stays at 1. Every later `BI` in the
+same content stream then trips the PDFBOX-6038 guard and throws
+`Nested 'BI' operator not allowed`, even though nothing is nested.
+
+**What correct would be** decrementing unconditionally once the `BI` handling is
+over, or tracking the depth with try/finally, so that one broken image does not
+poison the images after it.
+
+**Why it matters** one malformed inline image turns every subsequent inline
+image in the same stream into a hard parse failure. The PDFBOX-6038 guard was
+added to stop runaway recursion; here it fires on a document that has none.
+
+**Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
+`parseBeginInlineImage` — the decrement is inside the same `if`.
+
+**Confidence** high that the code does this; it is plain from the placement of
+the decrement. Medium that it is unintended rather than a deliberate "give up on
+this stream" stance, since the `else` branch only warns and carries on.
+
+---
+
+## 10. A truncated inline image loses its last two bytes
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java`,
+`parseNextToken`, case `'I'`
+
+```java
+int lastByte = source.read();
+int currentByte = source.read();
+while( !(lastByte == 'E' && currentByte == 'I' && ...) && !isEOF())
+{
+    imageData.write( lastByte );
+    lastByte = currentByte;
+    currentByte = source.read();
+}
+```
+
+**What it does** the two bytes held in `lastByte` and `currentByte` are written
+only on the next iteration. When the source runs out — an inline image with no
+closing `EI`, or an `EI` at the very end with no whitespace behind it, so
+`hasNextSpaceOrReturn` fails — `isEOF()` ends the loop and both are dropped.
+
+**What correct would be** flushing the two pending bytes when the loop ends at
+end of input rather than at an `EI`.
+
+**Why it matters** it silently shortens the image data of a truncated file
+instead of reporting that the image never terminated.
+
+**Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
+`parseInlineImageData`.
+
+**Confidence** medium. The loss is provable from the loop shape, but every
+answer on a truncated stream is somewhat arbitrary and this may be a deliberate
+"stop at whatever we have" choice.
+
+---
+
+## 11. `COSString.parseHex` computes a whitespace offset and never uses it
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/cos/COSString.java`,
+`parseHex`
+
+```java
+int start = 0;
+while (start < end && Character.isWhitespace(hex.charAt(start)))
+{
+    start++;
+}
+
+int length = end - start;
+...
+for (int i = 0; i < length; i += 2)
+{
+    int value = 16 * Hex.getHexValue(hex.charAt(i)) + Hex.getHexValue(hex.charAt(i + 1));
+```
+
+**What it does** the loop indexes `hex` from zero, not from `start`, so the
+leading-whitespace offset is computed and then thrown away. Only the *length* of
+the leading whitespace is honoured, by shortening the run. For `"  4142  "` the
+loop reads `hex.charAt(0)` and `hex.charAt(1)` — two spaces — and
+`Hex.getHexValue` returns a negative for each, so `parseHex` throws
+`Invalid hex string` unless `FORCE_PARSING` is set, in which case it emits `?`.
+The comment above the block says "skip leading and trailing whitespace"; trailing
+whitespace is skipped, leading whitespace is not.
+
+**What correct would be** indexing from `start`: `hex.charAt(start + i)` and
+`hex.charAt(start + i + 1)`, and likewise `hex.charAt(start + length)` in the
+uneven-length branch.
+
+**Why it matters** a hex string written `< 4142 >` is legal — the PDF
+specification allows whitespace inside the angle brackets — and PDFBox rejects
+it. The parser never sees this, because `parseCOSHexString` strips whitespace
+as it scans and hands `parseHex` a clean run of digits, but every other caller
+passes the string through as it stands.
+
+**Where the Go carries it** `go/pdfbox/cos/string.go`, `ParseHexString`.
+The port originally sliced `hex[start:end]` and indexed the slice, which
+corrected the bug. That was reverted: the offset is computed and unused here
+too, and `string_test.go` pins the throwing behaviour.
+
+**Confidence** high. The offset is plainly computed and plainly not used, and
+the comment above it states an intent the code does not carry out.

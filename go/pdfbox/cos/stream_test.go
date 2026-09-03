@@ -8,6 +8,7 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
+	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
 // Ported from pdfbox/src/test/java/org/apache/pdfbox/cos/TestCOSStream.java.
@@ -328,5 +329,123 @@ func TestStreamLengthRejectedWhileWriting(t *testing.T) {
 	}
 	if got != int64(len(streamTestInput)) {
 		t.Errorf("Length() = %d, want %d", got, len(streamTestInput))
+	}
+}
+
+// TestStreamCreateView covers createView, which the page content stream is read
+// through. There is no Java test for it.
+func TestStreamCreateView(t *testing.T) {
+	input := []byte(streamTestInput)
+
+	for _, c := range []struct {
+		name    string
+		filters cos.Base
+	}{
+		{"unfiltered", nil},
+		{"flate", cos.FlateDecode},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := createStream(t, input, c.filters)
+			defer s.Close()
+
+			view, err := s.CreateView()
+			if err != nil {
+				t.Fatalf("CreateView: %v", err)
+			}
+			defer view.Close()
+
+			got, err := io.ReadAll(pdfio.NewReader(view))
+			if err != nil {
+				t.Fatalf("ReadAll: %v", err)
+			}
+			if !bytes.Equal(input, got) {
+				t.Errorf("view holds %q, want %q", got, input)
+			}
+
+			// The view is a random access read, so it can be rewound and read
+			// again — that is what it is for.
+			if err := pdfio.SeekTo(view, 0); err != nil {
+				t.Fatalf("SeekTo: %v", err)
+			}
+			again, err := io.ReadAll(pdfio.NewReader(view))
+			if err != nil {
+				t.Fatalf("ReadAll: %v", err)
+			}
+			if !bytes.Equal(input, again) {
+				t.Errorf("second read holds %q, want %q", again, input)
+			}
+		})
+	}
+}
+
+// TestStreamCreateViewOfParsedStream pins that an unfiltered stream read from a
+// file is given a second view onto that file rather than copied into memory.
+func TestStreamCreateViewOfParsedStream(t *testing.T) {
+	input := []byte(streamTestInput)
+	source := pdfio.NewReadBufferBytes(input)
+
+	s, err := cos.NewStreamFromView(nil, source, filter.Provider{})
+	if err != nil {
+		t.Fatalf("NewStreamFromView: %v", err)
+	}
+	defer s.Close()
+
+	view, err := s.CreateView()
+	if err != nil {
+		t.Fatalf("CreateView: %v", err)
+	}
+	got, err := io.ReadAll(pdfio.NewReader(view))
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !bytes.Equal(input, got) {
+		t.Errorf("view holds %q, want %q", got, input)
+	}
+
+	// Closing the view leaves the stream readable, which is what makes it a
+	// view rather than the stream's own cursor.
+	if err := view.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := s.CreateView(); err != nil {
+		t.Errorf("a second CreateView failed: %v", err)
+	}
+}
+
+// TestStreamCreateViewOverAReadView covers the case the port originally got
+// wrong. A stream parsed from a file holds a *pdfio.ReadView, and Java builds a
+// second view around it rather than asking it for one — ReadView.CreateView is
+// documented to refuse, in Go as in Java. Calling it instead made every
+// unfiltered stream read from a file fail, which PDPage then reported as a
+// malformed content stream.
+func TestStreamCreateViewOverAReadView(t *testing.T) {
+	input := []byte(streamTestInput)
+	file := pdfio.NewReadBufferBytes(append([]byte("header"), input...))
+
+	// This is what the parser hands COSStream: a view onto the file.
+	parsed, err := file.CreateView(6, int64(len(input)))
+	if err != nil {
+		t.Fatalf("CreateView: %v", err)
+	}
+	if _, ok := parsed.(*pdfio.ReadView); !ok {
+		t.Fatalf("the parser view is %T, want *pdfio.ReadView", parsed)
+	}
+
+	s, err := cos.NewStreamFromView(nil, parsed, filter.Provider{})
+	if err != nil {
+		t.Fatalf("NewStreamFromView: %v", err)
+	}
+	defer s.Close()
+
+	view, err := s.CreateView()
+	if err != nil {
+		t.Fatalf("CreateView over a parsed stream: %v", err)
+	}
+	got, err := io.ReadAll(pdfio.NewReader(view))
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !bytes.Equal(input, got) {
+		t.Errorf("view holds %q, want %q", got, input)
 	}
 }
