@@ -6,10 +6,6 @@ package cos
 // rooted hierarchy; the port splits it into this interface for the contract and
 // the embedded object struct below for the state, per
 // migration/conventions/java-to-go.md.
-//
-// Not yet ported: getKey and setKey, which carry the COSObjectKey of an
-// indirect object. They arrive with ObjectKey. TestCOSBase does not exercise
-// them, so nothing here is untested for their absence.
 type Base interface {
 	// Accept is the visitor double dispatch. Port of accept(ICOSVisitor).
 	Accept(v Visitor) error
@@ -25,6 +21,12 @@ type Base interface {
 
 	// SetDirect sets that flag.
 	SetDirect(direct bool)
+
+	// Key returns the object key when this is an indirect object, else nil.
+	Key() *ObjectKey
+
+	// SetKey sets the object key.
+	SetKey(key *ObjectKey)
 }
 
 // object carries the state COSBase holds for every COS value. Concrete types
@@ -35,6 +37,7 @@ type Base interface {
 // Each concrete type implements COSObject itself, one line each.
 type object struct {
 	direct bool
+	key    *ObjectKey
 }
 
 // IsDirect reports whether the object is written inline.
@@ -42,3 +45,9 @@ func (o *object) IsDirect() bool { return o.direct }
 
 // SetDirect marks the object as written inline rather than indirectly.
 func (o *object) SetDirect(direct bool) { o.direct = direct }
+
+// Key returns the key of an indirect object, or nil.
+func (o *object) Key() *ObjectKey { return o.key }
+
+// SetKey sets the key of an indirect object.
+func (o *object) SetKey(key *ObjectKey) { o.key = key }
