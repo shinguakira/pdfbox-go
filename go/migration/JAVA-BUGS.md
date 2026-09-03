@@ -481,3 +481,61 @@ files -- the two behave identically.
 **Confidence** high. `ready()` is documented as "Tells whether this stream is
 ready to be read", and using it as a loop condition in place of a null check on
 `readLine` is a long-standing known misuse.
+
+---
+
+## 14. `PDFontDescriptor.getPanose` dereferences a missing `/Panose` entry
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontDescriptor.java`,
+`getPanose`.
+
+```java
+public PDPanose getPanose()
+{
+    COSDictionary style = dic.getCOSDictionary(COSName.STYLE);
+    if (style != null)
+    {
+        COSString panose = (COSString)style.getDictionaryObject(COSName.PANOSE);
+        byte[] bytes = panose.getBytes();
+        if (bytes.length >= PDPanose.LENGTH)
+        {
+            return new PDPanose(bytes);
+        }
+    }
+    return null;
+}
+```
+
+**What it does** the method null-checks `/Style` and then does not null-check
+what it reads out of it. A font descriptor carrying a `/Style` dictionary with
+no `/Panose` entry -- or one whose `/Panose` is anything other than a string --
+makes `getDictionaryObject` return null, or the cast fail, and the method throws
+`NullPointerException` or `ClassCastException` out of a getter declared to
+return null when it has nothing.
+
+**What correct would be** the same null check the method already applies one
+line up:
+
+```java
+COSBase base = style.getDictionaryObject(COSName.PANOSE);
+if (base instanceof COSString)
+{
+    byte[] bytes = ((COSString) base).getBytes();
+    ...
+}
+```
+
+**Why it matters** `/Style` is optional and `/Panose` is the only entry the
+specification defines inside it, so in practice the two travel together -- but
+nothing enforces that, and a font descriptor is read straight out of a file that
+may say anything. The specification (ISO 32000-1 table 124) marks `/Panose`
+required *within* `/Style`, which is exactly the kind of "required" a malformed
+file ignores. Every other getter on this class returns a default for a missing
+entry.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/pdfontdescriptor.go`,
+`Panose`. The type assertion is written without the comma-ok form, so it panics
+where Java throws.
+
+**Confidence** high. The null check on the line above shows the author knew the
+dictionary could be absent; the entry inside it is read without one.

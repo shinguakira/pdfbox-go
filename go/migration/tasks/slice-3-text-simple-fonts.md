@@ -181,11 +181,11 @@ Written from the Java source, in dependency order.
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — the slice 3 section, and the slice 2
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md` — the slice 3 section, and the slice 2
       rows this slice closes
 - [ ] C6. Report the corpus score as *N of 40*
 
