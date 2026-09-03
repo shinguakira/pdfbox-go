@@ -17,10 +17,11 @@ Last updated: 2026-09-03
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 11 of 18 |
-| 3 | `pdfbox/pdmodel` | 433 | not started |
-| 4 | `fontbox` | 143 | not started |
-| 5 | `contentstream`, `text` | 85 | not started |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 12 of 18 |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — the slice 2 subset: page, page tree, resources, rectangle, graphics state, colour |
+| 4 | `fontbox` | 143 | in progress — `BoundingBox` only, pulled in by `PDRectangle` |
+| 5 | `contentstream`, `text` | 85 | in progress — the engine, the dispatch, and the operators needing no font |
+| — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
 | 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision |
 | 7 | `cmd/pdfbox` | 26 | not started |
 | — | `xmpbox` | 74 | not started |
@@ -195,7 +196,7 @@ bug-prone, so it is ported line for line and every recovery path is kept.
 | `COSParser.java` | — | **next — 2,021 lines, the core** |
 | `XrefParser.java` | — | not started — 695 lines |
 | `BruteForceParser.java` | — | not started — 857 lines, the damaged-file recovery path |
-| `PDFStreamParser.java` | — | not started — 497 lines |
+| `PDFStreamParser.java` | `streamtokenparser.go` | done in slice 2 — named `StreamTokenParser`, because `StreamParser` is already COSParser's stream half |
 | `PDFXRefStream.java` | — | not started |
 | `PDFXrefStreamParser.java` | — | not started |
 | `PDFParser.java` | — | not started — the entry point |
@@ -268,3 +269,129 @@ Each of these carries a comment at the point of difference in the Go source.
   still holding an evicted page keeps reading valid bytes.
 - `BufferedFile.IsEOF` compares offset against length instead of `peek() == -1`.
 - End of input is `io.EOF` throughout, not a `-1` return.
+
+## Slice 2 — walk content streams
+
+Branch `slice/2-content-streams`. The slice dumps the operator sequence of a
+page and interprets nothing, so everything that draws or measures is left for
+the slices that bring fonts, XObjects and a rasteriser.
+
+### `awt/geom` — the JDK, not PDFBox
+
+Go has no standard-library geometry, and `Matrix`, the graphics state and the
+text machinery are all written against `java.awt.geom`. PLAN.md's slice 9
+already settles on porting the geometry and leaving rasterisation behind an
+interface; this is where that starts. Only what PDFBox calls is here.
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `java.awt.geom.Point2D` | `point.go` | done — the abstract base as an interface, plus the Float and Double forms |
+| `java.awt.geom.AffineTransform` | `affinetransform.go` | done — minus the state/type cache, which only lets the JDK skip terms it knows are zero |
+| `java.awt.geom.PathIterator` | `shape.go` | done |
+| `java.awt.Shape` | `shape.go` | partial — `contains` and `intersects` are absent; nothing in PDFBox calls them on a path, and they need the curve-crossing machinery in `sun.awt.geom` |
+| `java.awt.geom.Path2D` | `path.go` | done — one type holding `float64`, rounding on the way in when it is a Float path |
+| `java.awt.geom.Rectangle2D` | `rectangle.go` | done — one type; PDFBox only ever uses the Double form |
+| `java.awt.Rectangle` | `rectangle.go` | done — the integer bounds only |
+| `java.awt.geom.Area` | — | **not started** — constructive area geometry, needed only to combine clipping paths, which is the renderer's job |
+
+### `pdfbox/util`, `fontbox/util`, `internal/javafmt`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `pdfbox/util/Matrix.java` | `pdfbox/util/matrix.go` | done — `MatrixTest` ported |
+| `pdfbox/util/Vector.java` | `pdfbox/util/vector.go` | done |
+| `fontbox/util/BoundingBox.java` | `fontbox/util/boundingbox.go` | done — pulled in by `PDRectangle` |
+| — | `internal/javafmt` | new — Java float rendering, which `geom`, `util` and `common` all need |
+
+### `pdfbox/pdmodel`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `common/COSObjectable.java` | `common/pdrectangle.go` | done |
+| `common/PDRectangle.java` | `common/pdrectangle.go` | done |
+| `common/PDImmutableRectangle.java` | `common/pdrectangle.go` | done — as a flag, since Go has no subclassing; `PDImmutableRectangleTest` ported |
+| `common/PDDictionaryWrapper.java` | `common/pddictionarywrapper.go` | done |
+| `common/PDTypedDictionaryWrapper.java` | `common/pdtypeddictionarywrapper.go` | done |
+| `common/PDStream.java` | — | not started — needs `COSArrayList`, `COSDictionaryMap`, `PDMetadata` and a file specification |
+| `common/COSArrayList.java` | — | not started — its Java test needs annotations |
+| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing; every typed getter waits on the type it returns |
+| `ResourceCache.java` | — | not started — every method is typed on a font, colour space, shading, pattern or XObject |
+| `PDPage.java` | `pdpage.go` | partial — boxes, rotation, resources, contents; annotations, thread beads, transitions, actions, viewports, metadata and the `PDStream` methods are absent |
+| `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
+| `MissingResourceException.java` | `errors.go` | done |
+| `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started |
+
+`PDPage.getContentsForStreamParsing` is the general path for now. Its fast path
+decodes a single flate stream as it is read, which needs
+`FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`, neither
+of which is ported.
+
+### `pdfbox/pdmodel/graphics`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `PDLineDashPattern.java` | `graphics/pdlinedashpattern.go` | done |
+| `blend/BlendMode.java` | `graphics/blend/blendmode.go` | done — blend functions included |
+| `blend/BlendComposite.java`, `SoftMask.java` | — | not started — rendering |
+| `color/PDColor.java` | `graphics/color/pdcolor.go` | done |
+| `color/PDColorSpace.java` | `graphics/color/colorspace.go` | partial — as an interface; the static `create` methods and the two `BufferedImage` methods are absent |
+| `color/PDDeviceColorSpace.java` | `graphics/color/colorspace.go` | done |
+| `color/PDDeviceGray.java` | `graphics/color/devicegray.go` | done — minus `toRGBImage` |
+| the other 20 colour spaces | — | not started |
+| `state/RenderingIntent.java` | `graphics/state/renderingintent.go` | done — `RenderingIntentTest` ported |
+| `state/RenderingMode.java` | `graphics/state/renderingmode.go` | done |
+| `state/PDTextState.java` | `graphics/state/pdtextstate.go` | done — minus the font, which needs `PDFont` |
+| `state/PDGraphicsState.java` | `graphics/state/pdgraphicsstate.go` | partial — minus the soft mask, `getCurrentClippingPath` and the Area form of `intersectClippingPath`, and the two Java composites |
+| `state/PDSoftMask.java` | — | not started — needs a transparency group and a function |
+| `state/PDExtendedGraphicsState.java` | — | not started — reads fonts, soft masks and dash patterns out of a dictionary |
+
+### `pdfbox/contentstream`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `PDContentStream.java` | `contentstream.go` | done — the default method becomes an interface plus a package function |
+| `PDFStreamEngine.java` | `streamengine.go` | partial — the walk, the dispatch, the graphics stack and the accessors; everything that draws or measures is absent |
+| `PDFGraphicsStreamEngine.java` | — | not started — the path operators hang off it |
+| `operator/Operator.java` | `operator/operator.go` | done |
+| `operator/OperatorName.java` | `operator/names.go` | done — 72 constants generated |
+| `operator/OperatorProcessor.java` | `streamengine.go` | done — **moved into `contentstream`**, see below |
+| `operator/MissingOperandException.java` | `operator/errors.go` | done |
+| `operator/state/EmptyGraphicsStackException.java` | `operator/errors.go` | done — **moved into `contentstream/operator`**, see below |
+| `operator/state/*` | `operator/state/state.go` | done, minus `SetGraphicsStateParameters` (gs) |
+| `operator/text/*` | `operator/text/text.go` | partial — minus `Tf`, `Tj`, `TJ`, `'` and `"`, all of which need `PDFont` |
+| `operator/markedcontent/*` | `operator/markedcontent/markedcontent.go` | partial — minus `DrawObject`, and minus resolving a property list named in the resources |
+| `operator/color/*`, `operator/graphics/*` | — | not started — colour spaces and the graphics engine |
+
+Two classes move package, both for the same reason: Java allows a package cycle
+and Go does not. `OperatorProcessor` holds the engine and the engine holds
+processors, so the interface lives with the engine in `contentstream`.
+`EmptyGraphicsStackException` is raised by an operator in
+`contentstream.operator.state` and caught by the engine, so the sentinel lives
+in `contentstream/operator`, which both sides already import.
+
+### Deviations — slice 2
+
+- **The overridable methods of `PDFStreamEngine` are an interface, not
+  embedding.** Go's embedding gives no virtual dispatch, so a subclass calling
+  `SetOverrides(itself)` is what stands in for Java's dynamic dispatch from the
+  superclass into the subclass. This is the pattern
+  [`conventions/java-to-go.md`](conventions/java-to-go.md) prescribes.
+- **`shouldProcessColorOperators` is always true.** The two cases that clear it
+  are an uncoloured tiling pattern and a Type 3 char proc beginning with `d1`,
+  and neither type is ported.
+- **`java.util.zip.DataFormatException` becomes a check for the Go flate and
+  zlib errors** in `operatorException`. The Go flate filter logs and returns
+  what inflated rather than failing, so the branch may be unreachable.
+- **The operator processors are one file per package**, where Java gives each a
+  file of its own. Each is a few lines, and the package is the unit that
+  matters.
+
+### Port defect found while porting slice 2, fixed
+
+`COSDictionary.containsValue` had been written as `getKeyForValue` in disguise.
+The two look in opposite directions: `containsValue` unwraps an indirect
+reference given as the *argument*, `getKeyForValue` unwraps the references
+*stored* in the dictionary. Collapsing them made a dictionary holding a
+reference to `x` report that it contained `x`, which would have made the
+PDFBOX-4509 search in `PDResources.add` dead code rather than the fix it is.
+`getKeyForValue` also gained the guard Java puts in front of `getObject`.
