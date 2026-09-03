@@ -312,10 +312,11 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `common/PDImmutableRectangle.java` | `common/pdrectangle.go` | done — as a flag, since Go has no subclassing; `PDImmutableRectangleTest` ported |
 | `common/PDDictionaryWrapper.java` | `common/pddictionarywrapper.go` | done |
 | `common/PDTypedDictionaryWrapper.java` | `common/pdtypeddictionarywrapper.go` | done |
-| `common/PDStream.java` | — | not started — needs `COSArrayList`, `COSDictionaryMap`, `PDMetadata` and a file specification |
+| `common/PDStream.java` | `common/pdstream.go` | partial — the reading path the fonts need; the writing constructors, the decode parameters, the file specification and the metadata still need `COSArrayList`, `COSDictionaryMap`, `PDMetadata` and a file specification |
 | `common/COSArrayList.java` | — | not started — its Java test needs annotations |
-| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing; every typed getter waits on the type it returns |
-| `ResourceCache.java` | — | not started — every method is typed on a font, colour space, shading, pattern or XObject |
+| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing and `getFont` with its direct cache; `getColorSpace`, `getExtGState`, `getShading`, `getPattern`, `getProperties` and `getXObject` still wait on the type each returns |
+| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | partial — the font and font descriptor members; the colour space, graphics state, shading, pattern, property list and XObject members wait on their types. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package |
+| `DefaultResourceCache.java` | `resourcecache.go` | partial — the font and font descriptor halves, including the stable-cache bookkeeping. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
 | `PDPage.java` | `pdpage.go` | partial — boxes, rotation, resources, contents; annotations, thread beads, transitions, actions, viewports, metadata and the `PDStream` methods are absent |
 | `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
 | `MissingResourceException.java` | `errors.go` | done |
@@ -340,7 +341,7 @@ of which is ported.
 | the other 20 colour spaces | — | not started |
 | `state/RenderingIntent.java` | `graphics/state/renderingintent.go` | done — `RenderingIntentTest` ported |
 | `state/RenderingMode.java` | `graphics/state/renderingmode.go` | done |
-| `state/PDTextState.java` | `graphics/state/pdtextstate.go` | done — minus the font, which needs `PDFont` |
+| `state/PDTextState.java` | `graphics/state/pdtextstate.go` | done |
 | `state/PDGraphicsState.java` | `graphics/state/pdgraphicsstate.go` | partial — minus the soft mask, `getCurrentClippingPath` and the Area form of `intersectClippingPath`, and the two Java composites |
 | `state/PDSoftMask.java` | — | not started — needs a transparency group and a function |
 | `state/PDExtendedGraphicsState.java` | — | not started — reads fonts, soft masks and dash patterns out of a dictionary |

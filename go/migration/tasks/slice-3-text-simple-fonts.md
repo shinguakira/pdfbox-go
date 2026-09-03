@@ -143,7 +143,7 @@ Written from the Java source, in dependency order.
   - Leave `PDType0Font`, `PDCIDFont*`, `PDType1CFont`, `PDMMType1Font`,
     the `FontMapper` chain and every `*Embedder` to slices 4 and 7
 
-- [ ] B6. Close the holes slice 2 recorded in `migration/STATUS.md`
+- [x] B6. Close the holes slice 2 recorded in `migration/STATUS.md`
   - `PDResources.GetFont` and the direct font cache
   - `ResourceCache`
   - the font field of `PDTextState`

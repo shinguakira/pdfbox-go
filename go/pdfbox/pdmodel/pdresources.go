@@ -11,26 +11,34 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 )
 
 // PDResources is a set of resources available at the page/pages/stream level.
 //
 // Port of org.apache.pdfbox.pdmodel.PDResources.
 //
-// The typed getters — getFont, getColorSpace, getExtGState, getShading,
-// getPattern, getProperties and getXObject — are not here yet, nor is the
-// ResourceCache they read through or the directFontCache behind getFont. Each
-// needs a type this port has not reached; they arrive with those types. See
+// getFont and the cache it reads through are here; getColorSpace, getExtGState,
+// getShading, getPattern, getProperties and getXObject are not, because each
+// needs a type this port has not reached. They arrive with those types. See
 // migration/STATUS.md.
 type PDResources struct {
 	resources *cos.Dictionary
+	cache     ResourceCache
+
+	// directFontCache holds the fonts of resources written out directly rather
+	// than as an indirect object, which the shared cache cannot key on.
+	directFontCache map[*cos.Name]font.PDFont
 }
 
 var _ common.COSObjectable = (*PDResources)(nil)
 
 // NewPDResources returns an empty set of resources, for embedding.
 func NewPDResources() *PDResources {
-	return &PDResources{resources: cos.NewDictionary()}
+	return &PDResources{
+		resources:       cos.NewDictionary(),
+		directFontCache: map[*cos.Name]font.PDFont{},
+	}
 }
 
 // NewPDResourcesOf returns the resources held by the given dictionary, for
@@ -42,7 +50,23 @@ func NewPDResourcesOf(resourceDictionary *cos.Dictionary) *PDResources {
 	if resourceDictionary == nil {
 		panic("pdmodel: resourceDictionary is null")
 	}
-	return &PDResources{resources: resourceDictionary}
+	return &PDResources{
+		resources:       resourceDictionary,
+		directFontCache: map[*cos.Name]font.PDFont{},
+	}
+}
+
+// NewPDResourcesOfCache returns the resources held by the given dictionary,
+// read through the given cache.
+func NewPDResourcesOfCache(resourceDictionary *cos.Dictionary, resourceCache ResourceCache) *PDResources {
+	if resourceDictionary == nil {
+		panic("pdmodel: resourceDictionary is null")
+	}
+	return &PDResources{
+		resources:       resourceDictionary,
+		cache:           resourceCache,
+		directFontCache: map[*cos.Name]font.PDFont{},
+	}
 }
 
 // COSObject returns the underlying dictionary.
@@ -184,3 +208,46 @@ func (r *PDResources) put(kind, name *cos.Name, object common.COSObjectable) {
 	}
 	dict.SetItem(name, object.COSObject())
 }
+
+// GetFont returns the font resource with the given name, or nil where the
+// resources have none.
+//
+// Port of org.apache.pdfbox.pdmodel.PDResources.getFont. Java holds the direct
+// cache through SoftReferences so the collector may drop an entry; Go has none,
+// and the port holds them outright.
+func (r *PDResources) GetFont(name *cos.Name) (font.PDFont, error) {
+	indirect := r.getIndirect(cos.Font, name)
+	if r.cache != nil && indirect != nil {
+		if cached := r.cache.GetFont(indirect); cached != nil {
+			return cached, nil
+		}
+	} else if indirect == nil {
+		if cached, ok := r.directFontCache[name]; ok && cached != nil {
+			return cached, nil
+		}
+	}
+
+	var f font.PDFont
+	base := r.get(cos.Font, name)
+	if dict, ok := base.(*cos.Dictionary); ok {
+		var err error
+		f, err = font.CreateFont(dict, r.cache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if r.cache != nil && indirect != nil {
+		r.cache.PutFont(indirect, f)
+	} else if indirect == nil {
+		if r.directFontCache == nil {
+			r.directFontCache = map[*cos.Name]font.PDFont{}
+		}
+		r.directFontCache[name] = f
+	}
+	return f, nil
+}
+
+// Cache returns the cache the resources are read through, or nil where they are
+// read without one.
+func (r *PDResources) Cache() ResourceCache { return r.cache }

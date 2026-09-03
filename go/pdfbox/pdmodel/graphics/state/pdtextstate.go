@@ -1,14 +1,15 @@
 package state
 
+import (
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+)
+
 // PDTextState holds the current state of the text parameters when executing a
 // content stream.
 //
 // Port of org.apache.pdfbox.pdmodel.graphics.state.PDTextState.
-//
-// The font and its accessors are not here. PDFont is a slice of the port that
-// has not been reached, and nothing in a content stream walk can resolve one
-// yet; the field arrives with the type. See migration/STATUS.md.
 type PDTextState struct {
+	font              font.PDFont
 	characterSpacing  float32
 	wordSpacing       float32
 	horizontalScaling float32
@@ -85,3 +86,9 @@ func (s *PDTextState) Clone() *PDTextState {
 	clone := *s
 	return &clone
 }
+
+// Font returns the font the text is set in, or nil where none has been set.
+func (s *PDTextState) Font() font.PDFont { return s.font }
+
+// SetFont sets the font the text is set in.
+func (s *PDTextState) SetFont(value font.PDFont) { s.font = value }
