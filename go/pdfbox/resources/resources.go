@@ -14,6 +14,7 @@ import (
 )
 
 //go:embed glyphlist/glyphlist.txt glyphlist/zapfdingbats.txt glyphlist/additional.txt
+//go:embed afm
 var files embed.FS
 
 // Open returns the named resource, the name being the path below

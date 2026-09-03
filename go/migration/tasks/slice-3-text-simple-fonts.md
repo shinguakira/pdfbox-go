@@ -79,11 +79,14 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
     preferring a name a standard encoding carries, is covered directly in
     `glyphlist_test.go`.
 
-- [ ] A5. `pdmodel/font` — port `PDFontTest`
+- [x] A5. `pdmodel/font` — port `PDFontTest`
   - Write from source for `PDFontDescriptor`, `PDFontFactory`, `Standard14Fonts`
     — Java has no test for these
   - Skip `CIDCharSetMatchTest`, `PDCIDFontType0SubstituteTest` — slice 4
   - Skip `TestFontEmbedding`, `TestToUnicodeWriter` — slice 7, they write PDFs
+  - Only `testPDFox4318` of `PDFontTest` is ported. Every other test in that
+    class builds a `PDDocument`, saves it, loads it back, or runs the text
+    stripper. The rest of the file is written from source, per the line above.
 
 - [ ] A6. `contentstream` — extend `streamengine_test.go`
   - No Java test exists; extend the slice 2 test for `Tf`, `Tj`, `TJ`, `'`, `"`
@@ -133,7 +136,7 @@ Written from the Java source, in dependency order.
     `MacOSRomanEncoding`, `MacExpertEncoding`, `SymbolEncoding`,
     `ZapfDingbatsEncoding`, `Type1Encoding`
 
-- [ ] B5. `pdmodel/font` — the simple font path
+- [x] B5. `pdmodel/font` — the simple font path
   - `PDFontLike`, `PDFont`, `PDSimpleFont`, `PDFontDescriptor`, `PDFontFactory`
   - `Standard14Fonts`, `PDType1Font`, `PDTrueTypeFont`, `PDType3Font`,
     `PDType3CharProc`, `PDVectorFont`, `UniUtil`
