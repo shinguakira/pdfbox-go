@@ -63,6 +63,7 @@ func (v *recordingVisitor) record(name string) error {
 }
 
 func (v *recordingVisitor) VisitBoolean(*Boolean) error { return v.record("boolean") }
+func (v *recordingVisitor) VisitName(*Name) error       { return v.record("name") }
 func (v *recordingVisitor) VisitNull(*Null) error       { return v.record("null") }
 
 func assertVisits(t *testing.T, b Base, want string) {
