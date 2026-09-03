@@ -52,12 +52,14 @@ Last updated: 2026-09-03
 
 Branch `slice/1-open-document`. Ported test-first.
 
-15 of 24 files ported.
+19 of 24 files ported — everything slice 1 needs. Of the remaining five, four
+are the incremental-save machinery deferred to slice 7 and one is folded into
+`stream.go`.
 
 | Java source | Go source | Status |
 | --- | --- | --- |
 | `COSBase.java` | `base.go` | done |
-| `ICOSVisitor.java` | `visitor.go` | partial — 8 of 11 methods; grows with each type |
+| `ICOSVisitor.java` | `visitor.go` | done — all 11 methods |
 | `ICOSParser.java` | `object.go` | done |
 | `COSBoolean.java` | `boolean.go` | done |
 | `COSNull.java` | `null.go` | done |
