@@ -55,6 +55,7 @@ func pageWith(t *testing.T, content string) *pdmodel.PDPage {
 type recorder struct {
 	*contentstream.PDFStreamEngine
 	seen       []string
+	glyphs     []glyph
 	textEvents []string
 	marks      []string
 

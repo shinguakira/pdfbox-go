@@ -88,7 +88,7 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
     class builds a `PDDocument`, saves it, loads it back, or runs the text
     stripper. The rest of the file is written from source, per the line above.
 
-- [ ] A6. `contentstream` — extend `streamengine_test.go`
+- [x] A6. `contentstream` — extend `streamengine_test.go`
   - No Java test exists; extend the slice 2 test for `Tf`, `Tj`, `TJ`, `'`, `"`
     and for the glyph hooks
 
@@ -149,11 +149,11 @@ Written from the Java source, in dependency order.
   - the font field of `PDTextState`
   - update the STATUS.md rows that call these deferred
 
-- [ ] B7. `contentstream/operator/text` — the 5 remaining processors
+- [x] B7. `contentstream/operator/text` — the 5 remaining processors
   - `SetFontAndSize`, `ShowText`, `ShowTextAdjusted`, `ShowTextLine`,
     `ShowTextLineAndSpace`
 
-- [ ] B8. `contentstream/PDFStreamEngine` — the text path
+- [x] B8. `contentstream/PDFStreamEngine` — the text path
   - `showText`, `showGlyph`, `showFontGlyph`, `showType3Glyph`,
     `applyTextAdjustment`, `getDefaultFont`, `processType3Stream`
 

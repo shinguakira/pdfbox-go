@@ -32,6 +32,11 @@ func AddAll(context *contentstream.PDFStreamEngine) {
 	context.AddOperator(NewSetTextRenderingMode(context))
 	context.AddOperator(NewSetTextRise(context))
 	context.AddOperator(NewSetWordSpacing(context))
+	context.AddOperator(NewSetFontAndSize(context))
+	context.AddOperator(NewShowText(context))
+	context.AddOperator(NewShowTextAdjusted(context))
+	context.AddOperator(NewShowTextLine(context))
+	context.AddOperator(NewShowTextLineAndSpace(context))
 }
 
 // BeginText is BT: begin a text object.
@@ -336,4 +341,164 @@ func (p *SetTextRenderingMode) Process(op *operator.Operator, arguments []cos.Ba
 	}
 	p.Context().GraphicsState().TextState().SetRenderingMode(state.RenderingModeFromInt(val))
 	return nil
+}
+
+// SetFontAndSize is Tf: set the font and the size it is set at.
+type SetFontAndSize struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewSetFontAndSize returns the Tf processor.
+func NewSetFontAndSize(context *contentstream.PDFStreamEngine) *SetFontAndSize {
+	return &SetFontAndSize{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *SetFontAndSize) Name() string { return operator.SetFontAndSize }
+
+// Process sets the font and its size.
+func (p *SetFontAndSize) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) < 2 {
+		return operator.MissingOperand(op, arguments)
+	}
+	base0 := arguments[0]
+	base1 := arguments[1]
+	fontName, ok := base0.(*cos.Name)
+	if !ok {
+		return nil
+	}
+	size, ok := base1.(cos.Number)
+	if !ok {
+		return nil
+	}
+	fontSize := size.FloatValue()
+
+	context := p.Context()
+	textState := context.GraphicsState().TextState()
+	textState.SetFontSize(fontSize)
+
+	// Get the font after the size has been set in case there is an exception
+	// so that PDFBox will use a default font
+	f, err := context.Resources().GetFont(fontName)
+	if err != nil {
+		return err
+	}
+	// a font that is not in the resources is left nil, which showText replaces
+	// with the default font
+	textState.SetFont(f)
+	return nil
+}
+
+// ShowText is Tj: draw a string.
+type ShowText struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewShowText returns the Tj processor.
+func NewShowText(context *contentstream.PDFStreamEngine) *ShowText {
+	return &ShowText{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *ShowText) Name() string { return operator.ShowText }
+
+// Process draws the string.
+func (p *ShowText) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) == 0 {
+		// ignore ( )Tj
+		return nil
+	}
+	str, ok := arguments[0].(*cos.StringObj)
+	if !ok {
+		// ignore
+		return nil
+	}
+	context := p.Context()
+	if context.TextMatrix() == nil {
+		// ignore: outside of BT...ET
+		return nil
+	}
+	return context.ShowTextString(str.Bytes())
+}
+
+// ShowTextAdjusted is TJ: draw an array of strings, moving the pen by the
+// numbers between them.
+type ShowTextAdjusted struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewShowTextAdjusted returns the TJ processor.
+func NewShowTextAdjusted(context *contentstream.PDFStreamEngine) *ShowTextAdjusted {
+	return &ShowTextAdjusted{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *ShowTextAdjusted) Name() string { return operator.ShowTextAdjusted }
+
+// Process draws the strings of the array.
+func (p *ShowTextAdjusted) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) == 0 {
+		return nil
+	}
+	array, ok := arguments[0].(*cos.Array)
+	if !ok {
+		return nil
+	}
+	context := p.Context()
+	if context.TextMatrix() == nil {
+		// ignore: outside of BT...ET
+		return nil
+	}
+	return context.ShowTextStrings(array)
+}
+
+// ShowTextLine is ': move to the next line and draw a string.
+type ShowTextLine struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewShowTextLine returns the ' processor.
+func NewShowTextLine(context *contentstream.PDFStreamEngine) *ShowTextLine {
+	return &ShowTextLine{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *ShowTextLine) Name() string { return operator.ShowTextLine }
+
+// Process moves to the next line and draws the string.
+func (p *ShowTextLine) Process(op *operator.Operator, arguments []cos.Base) error {
+	context := p.Context()
+	if err := context.ProcessOperatorNamed(operator.NextLine, nil); err != nil {
+		return err
+	}
+	return context.ProcessOperatorNamed(operator.ShowText, arguments)
+}
+
+// ShowTextLineAndSpace is ": set the word and character spacing, move to the
+// next line and draw a string.
+type ShowTextLineAndSpace struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewShowTextLineAndSpace returns the " processor.
+func NewShowTextLineAndSpace(context *contentstream.PDFStreamEngine) *ShowTextLineAndSpace {
+	return &ShowTextLineAndSpace{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *ShowTextLineAndSpace) Name() string { return operator.ShowTextLineAndSpace }
+
+// Process sets the two spacings, then defers to the ' operator.
+func (p *ShowTextLineAndSpace) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) < 3 {
+		return operator.MissingOperand(op, arguments)
+	}
+	context := p.Context()
+	if err := context.ProcessOperatorNamed(operator.SetWordSpacing, arguments[0:1]); err != nil {
+		return err
+	}
+	if err := context.ProcessOperatorNamed(operator.SetCharSpacing, arguments[1:2]); err != nil {
+		return err
+	}
+	return context.ProcessOperatorNamed(operator.ShowTextLine, arguments[2:3])
 }

@@ -142,6 +142,8 @@ const (
 	ShowTextAdjusted = "TJ"
 	// SHOW_TEXT_LINE
 	ShowTextLine = "'"
+	// SHOW_TEXT_LINE_AND_SPACE
+	ShowTextLineAndSpace = "\""
 	// TYPE3_D0
 	Type3D0 = "d0"
 	// TYPE3_D1
