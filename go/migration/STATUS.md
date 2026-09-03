@@ -16,7 +16,7 @@ Last updated: 2026-09-03
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
-| 1 | `pdfbox/cos` | 24 | in progress — 4 of 24 ported |
+| 1 | `pdfbox/cos` | 24 | in progress — 15 of 24; 4 deferred to slice 7, 4 blocked on filter |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | not started |
 | 3 | `pdfbox/pdmodel` | 433 | not started |
 | 4 | `fontbox` | 143 | not started |
@@ -52,19 +52,34 @@ Last updated: 2026-09-03
 
 Branch `slice/1-open-document`. Ported test-first.
 
+15 of 24 files ported.
+
 | Java source | Go source | Status |
 | --- | --- | --- |
-| `COSBase.java` | `base.go` | done — minus `getKey`/`setKey`, which need `ObjectKey` |
-| `ICOSVisitor.java` | `visitor.go` | partial — 2 of 11 methods, grows with each type |
+| `COSBase.java` | `base.go` | done |
+| `ICOSVisitor.java` | `visitor.go` | partial — 8 of 11 methods; grows with each type |
+| `ICOSParser.java` | `object.go` | done |
 | `COSBoolean.java` | `boolean.go` | done |
 | `COSNull.java` | `null.go` | done |
-| `COSObjectKey.java` | — | next |
-| `COSName.java` | — | not started |
-| `COSInteger.java`, `COSFloat.java`, `COSNumber.java` | — | not started |
-| `COSString.java` | — | not started |
-| `COSArray.java`, `COSDictionary.java` | — | not started |
-| `COSStream.java`, `COSDocument.java`, `COSObject.java` | — | not started — need the io layer and filters |
-| the remaining 8 files | — | not started |
+| `COSObjectKey.java` | `objectkey.go` | done |
+| `COSName.java` | `name.go`, `names.go` | done — 587 constants generated |
+| `COSNumber.java` | `number.go` | done |
+| `COSInteger.java` | `integer.go` | done |
+| `COSFloat.java` | `float.go` | done |
+| `COSString.java` | `string.go` | done |
+| `PDFDocEncoding.java` | `pdfdocencoding.go` | done |
+| `COSObject.java` | `object.go` | done — minus the update state |
+| `COSArray.java` | `array.go` | done — minus the update state and the `COSObjectable` overloads |
+| `COSDictionary.java` | `dictionary.go` | done — minus dates, `getCOSStream`, the `COSObjectable` overloads and the update state |
+| `UnmodifiableCOSDictionary.java` | `unmodifiable.go` | done — as a read-only interface, see below |
+| `COSStream.java` | — | blocked on `pdfbox/filter` |
+| `COSInputStream.java` | — | blocked on `pdfbox/filter` |
+| `COSOutputStream.java` | — | blocked on `pdfbox/filter` |
+| `COSDocument.java` | — | blocked on `COSStream` |
+| `COSDocumentState.java` | — | deferred to slice 7 — incremental save |
+| `COSUpdateInfo.java` | — | deferred to slice 7 — incremental save |
+| `COSUpdateState.java` | — | deferred to slice 7 — incremental save |
+| `COSIncrement.java` | — | deferred to slice 7 — incremental save |
 
 ### Ported tests — `cos`
 
@@ -72,20 +87,53 @@ Branch `slice/1-open-document`. Ported test-first.
 | --- | --- | --- |
 | `TestCOSBase` | `base_test.go` | abstract in Java; becomes `assertBaseContract`, called per type |
 | `TestCOSBoolean` | `boolean_test.go` | complete except the COSWriter byte assertions |
-| — | `null_test.go` | Java has no `TestCOSNull`; written from `COSNull.java` per the tdd rule |
+| `COSObjectKeyTest` | `objectkey_test.go` | `testPDFBox5742` not ported — needs parser, writer, multipdf and a renderer |
+| `TestCOSName` | `name_test.go` | all three Java tests drive documents; their real assertions (`/m#E4nnlich`, `/m#00nnlich`, PDFBOX-4076) are asserted against `WritePDF` directly |
+| `TestCOSNumber` | `number_test.go` | complete |
+| `TestCOSInteger` | `integer_test.go` | complete |
+| `TestCOSFloat` | `float_test.go` | complete |
+| `TestCOSString` | `string_test.go` | COSWriter serialisation assertions replaced by checks on `Bytes`, `ToHexString` and `ForceHexForm` |
+| `PDFDocEncodingTest` | `pdfdocencoding_test.go` | complete, including PDFBOX-3864 |
+| `TestCOSArray` | `array_test.go` | complete |
+| `COSDictionaryTest` | `dictionary_test.go` | `testCOSDictionaryNotEqualsCOSStream` needs `COSStream`; the identity semantics it guards are covered |
+| `UnmodifiableCOSDictionaryTest` | `unmodifiable_test.go` | every assertion is a compile error in Go, so nothing is left to assert at run time |
+| — | `null_test.go`, `object_test.go` | Java has no test for these; written from the source per the tdd rule |
 
 ### Deviations — `cos`
 
-- **`accept()` is tested through a recording visitor, not `COSWriter`.** The
-  Java tests drive a `COSWriter` and assert the emitted bytes. `COSWriter` is
-  `pdfwriter`, not ported. The port asserts the double dispatch plus a direct
-  `WritePDF` byte check. **The COSWriter assertions must be added when
-  `pdfwriter` lands** — until then the serialised form is only checked against
-  itself.
+**Open debt — must be closed when `pdfwriter` lands.** The Java `accept()` tests
+drive a `COSWriter` and assert the emitted bytes. `COSWriter` is not ported, so
+the port asserts the visitor double dispatch plus a direct `WritePDF` byte
+check. **Until then the serialised form is only checked against itself.** This
+applies to `boolean_test.go`, `integer_test.go`, `float_test.go` and
+`string_test.go`.
+
+Deliberate differences, each commented at the point it occurs:
+
+- `Name` is interned through `weak.Pointer` and `runtime.AddCleanup`, the
+  equivalents of Java's `WeakReference` plus `Cleaner`. Interning makes `==`
+  equivalent to content equality and lets a `*Name` be a Go map key, which is
+  what `Dictionary` needs.
+- `Dictionary` keeps key insertion order in a slice, because Java's
+  `LinkedHashMap` has it and Go maps do not. A dictionary is written back in the
+  order it was read.
+- `Dictionary` keys everything on `*Name`. Java declares a `String` and a
+  `COSName` overload of nearly every accessor; Go has no overloading, and
+  interned names make the pointer form cheap.
+- `AsReadOnly` returns an interface with no mutating methods, so a write is a
+  compile error. Java returns a `COSDictionary` that throws at run time.
+- `Integer.Equals` compares the full `int64`. Java compares `intValue()`, which
+  truncates to 32 bits.
+- `ParseHexString` always fails on malformed hex. Java has a `FORCE_PARSING`
+  mode, read from a JVM system property, that substitutes `'?'` instead.
+- `cosEqual` dispatches to the `Equals` method of the types that define one.
+  Java relies on every class overriding `equals`; Go has no single such hook,
+  and every container comparison goes through this one function.
 - `assertBytesEqual` compares lengths properly. The Java `testByteArrays` helper
-  compares `byteArr1.length` against itself and so never checks lengths match.
-- `Visitor` and `Base` are deliberately smaller than the Java interfaces; both
-  say so in their doc comments, and both grow as types land.
+  compares `byteArr1.length` against itself and so never checks them.
+- `Visitor` and the ported types are deliberately smaller than the Java
+  originals where a dependency is not ported yet; each says so in its doc
+  comment.
 
 ### Method note — `pdfio` was not ported test-first
 
