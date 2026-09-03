@@ -16,7 +16,7 @@ Last updated: 2026-09-03
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
-| 1 | `pdfbox/cos` | 24 | in progress — 18 of 24; 4 deferred to slice 7, `COSDocument` next |
+| 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | `filter` in progress — Flate, Predictor, Identity ported for slice 1 |
 | 3 | `pdfbox/pdmodel` | 433 | not started |
 | 4 | `fontbox` | 143 | not started |
@@ -75,7 +75,7 @@ Branch `slice/1-open-document`. Ported test-first.
 | `COSStream.java` | `stream.go` | done — minus the update state; **written before its test**, see the method note |
 | `COSInputStream.java` | — | not ported — `Stream.CreateReader` returns a plain `io.Reader`; the class exists in Java only to carry a `DecodeResult` |
 | `COSOutputStream.java` | — | not ported — folded into `streamWriter` in `stream.go` |
-| `COSDocument.java` | — | next |
+| `COSDocument.java` | `document.go` | done — minus the document state |
 | `COSDocumentState.java` | — | deferred to slice 7 — incremental save |
 | `COSUpdateInfo.java` | — | deferred to slice 7 — incremental save |
 | `COSUpdateState.java` | — | deferred to slice 7 — incremental save |

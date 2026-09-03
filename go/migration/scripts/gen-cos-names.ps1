@@ -58,7 +58,16 @@ $identOverrides['True']   = 'TrueName'   # True is the boolean value
 $identOverrides['False']  = 'FalseName'  # False is the boolean value
 $identOverrides['Null']   = 'NullName'   # Null is the type
 $identOverrides['String'] = 'StringName' # String is a method name on every type here
-$identOverrides['Base']   = 'BaseName'   # Base is the interface
+$identOverrides['Base']       = 'BaseName'       # Base is the interface
+$identOverrides['Document']   = 'DocumentName'   # Document is the type
+$identOverrides['Array']      = 'ArrayName'      # Array is the type
+$identOverrides['Dictionary'] = 'DictionaryName' # Dictionary is the type
+$identOverrides['Object']     = 'ObjectName'     # Object is the type
+$identOverrides['Stream']     = 'StreamName'     # Stream is the type
+$identOverrides['Integer']    = 'IntegerName'    # Integer is the type
+$identOverrides['Float']      = 'FloatName'      # Float is the type
+$identOverrides['Boolean']    = 'BooleanName'    # Boolean is the type
+$identOverrides['Number']     = 'NumberName'     # Number is the interface
 
 $lines = Get-Content -LiteralPath $javaFile
 $entries = [System.Collections.Generic.List[object]]::new()

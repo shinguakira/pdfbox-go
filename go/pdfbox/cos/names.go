@@ -176,7 +176,7 @@ var (
 	DocChecksum           = GetPDFName("DocChecksum")
 	DocMDP                = GetPDFName("DocMDP")
 	DocTimeStamp          = GetPDFName("DocTimeStamp")
-	Document              = GetPDFName("Document")
+	DocumentName          = GetPDFName("Document") // java COSName.DOCUMENT
 	Domain                = GetPDFName("Domain")
 	DOS                   = GetPDFName("DOS")
 	DP                    = GetPDFName("DP")

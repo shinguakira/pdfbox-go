@@ -16,6 +16,7 @@ type Visitor interface {
 	VisitArray(obj *Array) error
 	VisitBoolean(obj *Boolean) error
 	VisitDictionary(obj *Dictionary) error
+	VisitDocument(obj *Document) error
 	VisitFloat(obj *Float) error
 	VisitInteger(obj *Integer) error
 	VisitName(obj *Name) error

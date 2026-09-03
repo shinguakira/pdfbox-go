@@ -65,6 +65,7 @@ func (v *recordingVisitor) record(name string) error {
 func (v *recordingVisitor) VisitArray(*Array) error           { return v.record("array") }
 func (v *recordingVisitor) VisitBoolean(*Boolean) error       { return v.record("boolean") }
 func (v *recordingVisitor) VisitDictionary(*Dictionary) error { return v.record("dictionary") }
+func (v *recordingVisitor) VisitDocument(*Document) error     { return v.record("document") }
 func (v *recordingVisitor) VisitFloat(*Float) error           { return v.record("float") }
 func (v *recordingVisitor) VisitInteger(*Integer) error       { return v.record("integer") }
 func (v *recordingVisitor) VisitName(*Name) error             { return v.record("name") }

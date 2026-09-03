@@ -281,6 +281,7 @@ func (v *dispatchRecorder) VisitBoolean(*cos.Boolean) error { return v.rec("bool
 func (v *dispatchRecorder) VisitDictionary(*cos.Dictionary) error {
 	return v.rec("dictionary")
 }
+func (v *dispatchRecorder) VisitDocument(*cos.Document) error   { return v.rec("document") }
 func (v *dispatchRecorder) VisitFloat(*cos.Float) error         { return v.rec("float") }
 func (v *dispatchRecorder) VisitInteger(*cos.Integer) error     { return v.rec("integer") }
 func (v *dispatchRecorder) VisitName(*cos.Name) error           { return v.rec("name") }
