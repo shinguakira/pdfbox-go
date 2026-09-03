@@ -253,3 +253,83 @@ what is on disk, rather than an error or a faithful literal.
 **Confidence** medium. It only triggers on truncated input, where any answer is
 somewhat arbitrary, but the inconsistency with the adjacent branch looks
 unintended.
+
+---
+
+## 9. A malformed inline image leaves `inlineImageDepth` stuck at 1
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java`,
+`parseNextToken`, case `'B'`
+
+```java
+if (nextToken instanceof Operator)
+{
+    Operator imageData = (Operator) nextToken;
+    ...
+    beginImageOP.setImageData(imageData.getImageData());
+    inlineImageDepth--;          // only here
+}
+else
+{
+    LOG.warn("nextToken {} at position {}, expected {}?!", ...);
+    // no decrement
+}
+```
+
+**What it does** `inlineImageDepth++` runs for every `BI`, but the matching
+decrement sits inside the branch that found an `ID` operator. When the inline
+image dictionary ends any other way — end of input, or a token that is neither a
+`COSName` nor an `Operator` — the counter stays at 1. Every later `BI` in the
+same content stream then trips the PDFBOX-6038 guard and throws
+`Nested 'BI' operator not allowed`, even though nothing is nested.
+
+**What correct would be** decrementing unconditionally once the `BI` handling is
+over, or tracking the depth with try/finally, so that one broken image does not
+poison the images after it.
+
+**Why it matters** one malformed inline image turns every subsequent inline
+image in the same stream into a hard parse failure. The PDFBOX-6038 guard was
+added to stop runaway recursion; here it fires on a document that has none.
+
+**Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
+`parseBeginInlineImage` — the decrement is inside the same `if`.
+
+**Confidence** high that the code does this; it is plain from the placement of
+the decrement. Medium that it is unintended rather than a deliberate "give up on
+this stream" stance, since the `else` branch only warns and carries on.
+
+---
+
+## 10. A truncated inline image loses its last two bytes
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java`,
+`parseNextToken`, case `'I'`
+
+```java
+int lastByte = source.read();
+int currentByte = source.read();
+while( !(lastByte == 'E' && currentByte == 'I' && ...) && !isEOF())
+{
+    imageData.write( lastByte );
+    lastByte = currentByte;
+    currentByte = source.read();
+}
+```
+
+**What it does** the two bytes held in `lastByte` and `currentByte` are written
+only on the next iteration. When the source runs out — an inline image with no
+closing `EI`, or an `EI` at the very end with no whitespace behind it, so
+`hasNextSpaceOrReturn` fails — `isEOF()` ends the loop and both are dropped.
+
+**What correct would be** flushing the two pending bytes when the loop ends at
+end of input rather than at an `EI`.
+
+**Why it matters** it silently shortens the image data of a truncated file
+instead of reporting that the image never terminated.
+
+**Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
+`parseInlineImageData`.
+
+**Confidence** medium. The loss is provable from the loop shape, but every
+answer on a truncated stream is somewhat arbitrary and this may be a deliberate
+"stop at whatever we have" choice.
