@@ -378,3 +378,152 @@ func (s *RandomAccessReadDataStream) ReadBytes(numberOfBytes int) ([]byte, error
 	}
 	return data, nil
 }
+
+// --- the composite reads as package functions, so that they work against any
+// DataStream rather than only the in-memory one. Java puts them on the abstract
+// class, which Go embedding cannot reproduce for an interface.
+
+func readFixed(s DataStream) (float32, error) {
+	whole, err := readSignedShort(s)
+	if err != nil {
+		return 0, err
+	}
+	fraction, err := readUnsignedShort(s)
+	if err != nil {
+		return 0, err
+	}
+	return float32(whole) + float32(fraction)/65536, nil
+}
+
+func readSignedByte(s DataStream) (int, error) {
+	signedByte, err := s.Read()
+	if err != nil {
+		return 0, err
+	}
+	if signedByte <= 127 {
+		return signedByte, nil
+	}
+	return signedByte - 256, nil
+}
+
+func readUnsignedByte(s DataStream) (int, error) {
+	unsignedByte, err := s.Read()
+	if err != nil {
+		return 0, err
+	}
+	if unsignedByte == -1 {
+		return 0, fmt.Errorf("ttf: premature EOF: %w", io.ErrUnexpectedEOF)
+	}
+	return unsignedByte, nil
+}
+
+func readUnsignedInt(s DataStream) (int64, error) {
+	values := make([]int, 4)
+	for i := range values {
+		b, err := s.Read()
+		if err != nil {
+			return 0, err
+		}
+		values[i] = b
+	}
+	if values[3] < 0 {
+		return 0, fmt.Errorf("ttf: EOF at %d, b1: %d, b2: %d, b3: %d, b4: %d: %w",
+			s.CurrentPosition(), values[0], values[1], values[2], values[3], io.ErrUnexpectedEOF)
+	}
+	return int64(values[0])<<24 + int64(values[1])<<16 + int64(values[2])<<8 + int64(values[3]), nil
+}
+
+func readUnsignedShort(s DataStream) (int, error) {
+	b1, err := s.Read()
+	if err != nil {
+		return 0, err
+	}
+	b2, err := s.Read()
+	if err != nil {
+		return 0, err
+	}
+	if (b1 | b2) < 0 {
+		return 0, fmt.Errorf("ttf: EOF at %d, b1: %d, b2: %d: %w",
+			s.CurrentPosition(), b1, b2, io.ErrUnexpectedEOF)
+	}
+	return b1<<8 + b2, nil
+}
+
+func readSignedShort(s DataStream) (int16, error) {
+	value, err := readUnsignedShort(s)
+	if err != nil {
+		return 0, err
+	}
+	return int16(value), nil
+}
+
+func readUnsignedShortArray(s DataStream, length int) ([]int, error) {
+	array := make([]int, length)
+	for i := range array {
+		value, err := readUnsignedShort(s)
+		if err != nil {
+			return nil, err
+		}
+		array[i] = value
+	}
+	return array, nil
+}
+
+func readInternationalDate(s DataStream) (time.Time, error) {
+	secondsSince1904, err := s.ReadLong()
+	if err != nil {
+		return time.Time{}, err
+	}
+	return ttfEpoch.Add(time.Duration(secondsSince1904) * time.Second), nil
+}
+
+func readBytes(s DataStream, numberOfBytes int) ([]byte, error) {
+	data := make([]byte, numberOfBytes)
+	totalAmountRead := 0
+	for totalAmountRead < numberOfBytes {
+		amountRead, err := s.ReadInto(data, totalAmountRead, numberOfBytes-totalAmountRead)
+		if err != nil {
+			return nil, err
+		}
+		if amountRead == -1 {
+			break
+		}
+		totalAmountRead += amountRead
+	}
+	if totalAmountRead != numberOfBytes {
+		return nil, fmt.Errorf("ttf: unexpected end of TTF stream reached: %w", io.ErrUnexpectedEOF)
+	}
+	return data, nil
+}
+
+func readString(s DataStream, length int) (string, error) {
+	data, err := readBytes(s, length)
+	if err != nil {
+		return "", err
+	}
+	runes := make([]rune, len(data))
+	for i, b := range data {
+		runes[i] = rune(b)
+	}
+	return string(runes), nil
+}
+
+func readTag(s DataStream) (string, error) {
+	data, err := readBytes(s, 4)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func readUnsignedByteArray(s DataStream, length int) ([]int, error) {
+	array := make([]int, length)
+	for i := range array {
+		value, err := readUnsignedByte(s)
+		if err != nil {
+			return nil, err
+		}
+		array[i] = value
+	}
+	return array, nil
+}
