@@ -45,7 +45,7 @@ type PDGraphicsState struct {
 	lineJoin                    int
 	miterLimit                  float32
 	lineDashPattern             *graphics.PDLineDashPattern
-	renderingIntent             RenderingIntent
+	renderingIntent             *RenderingIntent
 	strokeAdjustment            bool
 	blendMode                   *blend.BlendMode
 	alphaConstant               float64
@@ -201,11 +201,19 @@ func (s *PDGraphicsState) SetLineDashPattern(value *graphics.PDLineDashPattern) 
 	s.lineDashPattern = value
 }
 
-// RenderingIntent returns the rendering intent.
-func (s *PDGraphicsState) RenderingIntent() RenderingIntent { return s.renderingIntent }
+// RenderingIntent returns the rendering intent, or nil where the stream has not
+// set one.
+//
+// The Java field is null until an operator or an extended graphics state fills
+// it in, and a consumer applies its own default for that. A bare Go enum would
+// read as its zero value instead, which is AbsoluteColorimetric — an intent the
+// file never asked for.
+func (s *PDGraphicsState) RenderingIntent() *RenderingIntent { return s.renderingIntent }
 
 // SetRenderingIntent sets the rendering intent.
-func (s *PDGraphicsState) SetRenderingIntent(value RenderingIntent) { s.renderingIntent = value }
+func (s *PDGraphicsState) SetRenderingIntent(value RenderingIntent) {
+	s.renderingIntent = &value
+}
 
 // StrokingColor returns the stroking colour.
 func (s *PDGraphicsState) StrokingColor() *color.PDColor { return s.strokingColor }

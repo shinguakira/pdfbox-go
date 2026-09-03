@@ -1,6 +1,9 @@
 package pdfio
 
-import "io"
+import (
+	"io"
+	"math"
+)
 
 // Reader adapts a RandomAccessRead to a plain io.Reader that keeps its own
 // position, so several readers can walk one source independently.
@@ -32,6 +35,11 @@ func (r *Reader) Available() (int, error) {
 	remaining := length - r.position
 	if remaining <= 0 {
 		return 0, nil
+	}
+	// Java is Math.min(input.length() - position, Integer.MAX_VALUE), so a
+	// source larger than an int saturates rather than wrapping.
+	if remaining > math.MaxInt32 {
+		return math.MaxInt32, nil
 	}
 	return int(remaining), nil
 }

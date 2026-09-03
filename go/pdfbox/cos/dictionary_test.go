@@ -359,3 +359,38 @@ func TestKeyForValueSkipsUnresolvedReferences(t *testing.T) {
 		t.Errorf("KeyForValue(nil) = %v, want nil", got)
 	}
 }
+
+// TestSetStringKeepsEmpty pins that an empty string is a value, not an
+// absence. Java removes an entry only for a null argument; Go has no null
+// string, so a caller wanting Java's null calls RemoveItem.
+func TestSetStringKeepsEmpty(t *testing.T) {
+	d := NewDictionary()
+	d.SetString(A, "x")
+	d.SetString(A, "")
+
+	if !d.ContainsKey(A) {
+		t.Fatal("setting an empty string removed the entry")
+	}
+	s, ok := d.GetItem(A).(*StringObj)
+	if !ok {
+		t.Fatalf("entry = %T, want *StringObj", d.GetItem(A))
+	}
+	if got := s.Value(); got != "" {
+		t.Errorf("entry = %q, want the empty string", got)
+	}
+}
+
+// TestSetEmbeddedStringKeepsEmpty pins the same for the embedded form, which
+// also has to create the sub-dictionary an empty value now belongs in.
+func TestSetEmbeddedStringKeepsEmpty(t *testing.T) {
+	d := NewDictionary()
+	d.SetEmbeddedString(Kids, A, "")
+
+	sub := d.GetCOSDictionary(Kids)
+	if sub == nil {
+		t.Fatal("the sub-dictionary was not created for an empty value")
+	}
+	if got := sub.GetString(A, "missing"); got != "" {
+		t.Errorf("embedded entry = %q, want the empty string", got)
+	}
+}

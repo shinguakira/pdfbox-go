@@ -185,7 +185,7 @@ func TestEngineGraphicsStateOperators(t *testing.T) {
 	if got := gs.Flatness(); got != 1 {
 		t.Errorf("Flatness = %v, want 1", got)
 	}
-	if got := gs.RenderingIntent(); got != graphicsstate.Perceptual {
+	if got := gs.RenderingIntent(); got == nil || *got != graphicsstate.Perceptual {
 		t.Errorf("RenderingIntent = %v, want PERCEPTUAL", got)
 	}
 	if got := gs.LineDashPattern().DashArray(); len(got) != 2 || got[0] != 2 || got[1] != 3 {

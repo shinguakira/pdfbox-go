@@ -226,15 +226,12 @@ func (d *Dictionary) SetName(key *Name, value string) {
 	d.SetItem(key, GetPDFName(value))
 }
 
-// SetString stores a string, removing the entry when the text is empty.
+// SetString stores a string.
 //
-// Java stores null for a null argument; Go has no null string, so the empty
-// string takes that role.
+// Java removes the entry for a null argument. Go has no null string, and an
+// empty one is a value rather than an absence — a caller wanting Java's null
+// calls RemoveItem.
 func (d *Dictionary) SetString(key *Name, value string) {
-	if value == "" {
-		d.RemoveItem(key)
-		return
-	}
 	d.SetItem(key, NewStringObj(value))
 }
 
@@ -264,12 +261,12 @@ func (d *Dictionary) SetEmbeddedInt(embedded, key *Name, value int) {
 }
 
 // SetEmbeddedString stores a string in a sub-dictionary, creating it if needed.
+//
+// Java skips creating the sub-dictionary only for a null value, which Go has no
+// way to express here; every string, empty or not, creates it.
 func (d *Dictionary) SetEmbeddedString(embedded, key *Name, value string) {
 	sub := d.GetCOSDictionary(embedded)
 	if sub == nil {
-		if value == "" {
-			return
-		}
 		sub = NewDictionary()
 		d.SetItem(embedded, sub)
 	}

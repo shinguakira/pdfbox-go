@@ -75,7 +75,9 @@ func (p *PDLineDashPattern) Phase() int { return p.phase }
 
 // DashArray returns the dash array, never nil.
 func (p *PDLineDashPattern) DashArray() []float32 {
-	return append([]float32(nil), p.array...)
+	out := make([]float32, len(p.array))
+	copy(out, p.array)
+	return out
 }
 
 // String returns the Java toString form.

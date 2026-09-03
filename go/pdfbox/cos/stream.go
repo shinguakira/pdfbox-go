@@ -466,7 +466,10 @@ func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
 			if err != nil {
 				return nil, err
 			}
-			return s.readView.CreateView(0, length)
+			// Java builds a second view around this one rather than asking it
+			// for one: a view refuses CreateView, here as in Java, so calling
+			// it would fail for every unfiltered stream read from a file.
+			return pdfio.NewReadView(s.readView, 0, length), nil
 		}
 		raw, err := s.CreateRawReader()
 		if err != nil {

@@ -416,3 +416,59 @@ func TestArrayGetObjectDereferences(t *testing.T) {
 		t.Errorf("GetObject(1) = %v, want nil for the null object", got)
 	}
 }
+
+// TestArrayNumericConversionsDereference pins that the numeric conversions
+// resolve an indirect reference before reading it. Java calls getObject(i),
+// not get(i); reading the raw entry yields a *Object, which is not a Number,
+// and the value silently becomes zero.
+func TestArrayNumericConversionsDereference(t *testing.T) {
+	a := NewArray()
+	a.Add(NewFloat(1.5))
+	a.Add(NewObject(NewFloat(2.5)))
+	a.Add(NewObject(GetInteger(3)))
+	a.Add(NewObject(NewDictionary()))
+
+	floats := a.ToFloatArray()
+	want := []float32{1.5, 2.5, 3, 0}
+	if len(floats) != len(want) {
+		t.Fatalf("ToFloatArray = %v, want %v", floats, want)
+	}
+	for i := range want {
+		if floats[i] != want[i] {
+			t.Errorf("ToFloatArray()[%d] = %v, want %v", i, floats[i], want[i])
+		}
+	}
+
+	floatList := a.ToNumberFloatList()
+	if floatList[1] == nil || *floatList[1] != 2.5 {
+		t.Errorf("ToNumberFloatList()[1] = %v, want 2.5", floatList[1])
+	}
+	if floatList[3] != nil {
+		t.Errorf("ToNumberFloatList()[3] = %v, want nil for a non-number", floatList[3])
+	}
+
+	intList := a.ToNumberIntegerList()
+	if intList[2] == nil || *intList[2] != 3 {
+		t.Errorf("ToNumberIntegerList()[2] = %v, want 3", intList[2])
+	}
+	if intList[3] != nil {
+		t.Errorf("ToNumberIntegerList()[3] = %v, want nil for a non-number", intList[3])
+	}
+}
+
+// TestArraySetStringKeepsEmpty pins that an empty string is a value, not an
+// absence. Java removes an entry only for a null argument; Go has no null
+// string, so a caller wanting Java's null calls Set(index, nil) directly.
+func TestArraySetStringKeepsEmpty(t *testing.T) {
+	a := NewArray()
+	a.Add(NewStringObj("x"))
+	a.SetString(0, "")
+
+	s, ok := a.Get(0).(*StringObj)
+	if !ok {
+		t.Fatalf("entry 0 = %T, want *StringObj", a.Get(0))
+	}
+	if got := s.Value(); got != "" {
+		t.Errorf("entry 0 = %q, want the empty string", got)
+	}
+}

@@ -112,7 +112,9 @@ func (c *PDColor) Components() []float32 {
 		// colorspace of the pattern color isn't known, so just clone
 		// null colorspace can happen with empty annotation color
 		// see PDFBOX-3351-538928-p4.pdf
-		return append([]float32(nil), c.components...)
+		out := make([]float32, len(c.components))
+		copy(out, c.components)
+		return out
 	}
 	// PDFBOX-4279: a copy of the colour space's length, in case the array is
 	// too small — the extra components come back as zero rather than missing.

@@ -148,15 +148,12 @@ func (a *Array) SetName(index int, name string) {
 	a.Set(index, GetPDFName(name))
 }
 
-// SetString stores a string at index, or nil when the text is empty.
+// SetString stores a string at index.
 //
-// Port of setString(int, String), which stores null for a null argument. Go has
-// no null string, so the empty string is the equivalent.
+// Port of setString(int, String). Java stores null for a null argument; Go has
+// no null string, and an empty one is a value rather than an absence — a caller
+// wanting Java's null calls Set(index, nil).
 func (a *Array) SetString(index int, text string) {
-	if text == "" {
-		a.Set(index, nil)
-		return
-	}
 	a.Set(index, NewStringObj(text))
 }
 
@@ -307,10 +304,14 @@ func (a *Array) ToList() []Base {
 
 // ToFloatArray returns the numeric entries as floats. A nil or non-numeric
 // entry becomes 0, as it does in Java.
+//
+// An indirect reference is resolved first: Java reads through getObject, and
+// reading the raw entry instead would find a reference rather than a number and
+// silently yield zero.
 func (a *Array) ToFloatArray() []float32 {
 	out := make([]float32, len(a.objects))
-	for i, item := range a.objects {
-		if n, ok := item.(Number); ok {
+	for i := range a.objects {
+		if n, ok := a.GetObject(i).(Number); ok {
 			out[i] = n.FloatValue()
 		}
 	}
@@ -355,8 +356,8 @@ func (a *Array) ToStringStringList() []*string {
 // is not a number.
 func (a *Array) ToNumberFloatList() []*float32 {
 	out := make([]*float32, len(a.objects))
-	for i, item := range a.objects {
-		if n, ok := item.(Number); ok {
+	for i := range a.objects {
+		if n, ok := a.GetObject(i).(Number); ok {
 			v := n.FloatValue()
 			out[i] = &v
 		}
@@ -368,8 +369,8 @@ func (a *Array) ToNumberFloatList() []*float32 {
 // is not a number.
 func (a *Array) ToNumberIntegerList() []*int {
 	out := make([]*int, len(a.objects))
-	for i, item := range a.objects {
-		if n, ok := item.(Number); ok {
+	for i := range a.objects {
+		if n, ok := a.GetObject(i).(Number); ok {
 			v := n.IntValue()
 			out[i] = &v
 		}

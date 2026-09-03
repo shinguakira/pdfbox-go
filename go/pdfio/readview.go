@@ -141,10 +141,13 @@ func (v *ReadView) Close() error {
 		return nil
 	}
 	v.closed = true
-	if v.closeInput && v.source != nil {
-		return v.source.Close()
-	}
+	// Java drops the reference whether or not it owned the source, so the view
+	// lets go of it either way.
+	source := v.source
 	v.source = nil
+	if v.closeInput && source != nil {
+		return source.Close()
+	}
 	return nil
 }
 

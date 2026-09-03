@@ -411,3 +411,41 @@ func TestStreamCreateViewOfParsedStream(t *testing.T) {
 		t.Errorf("a second CreateView failed: %v", err)
 	}
 }
+
+// TestStreamCreateViewOverAReadView covers the case the port originally got
+// wrong. A stream parsed from a file holds a *pdfio.ReadView, and Java builds a
+// second view around it rather than asking it for one — ReadView.CreateView is
+// documented to refuse, in Go as in Java. Calling it instead made every
+// unfiltered stream read from a file fail, which PDPage then reported as a
+// malformed content stream.
+func TestStreamCreateViewOverAReadView(t *testing.T) {
+	input := []byte(streamTestInput)
+	file := pdfio.NewReadBufferBytes(append([]byte("header"), input...))
+
+	// This is what the parser hands COSStream: a view onto the file.
+	parsed, err := file.CreateView(6, int64(len(input)))
+	if err != nil {
+		t.Fatalf("CreateView: %v", err)
+	}
+	if _, ok := parsed.(*pdfio.ReadView); !ok {
+		t.Fatalf("the parser view is %T, want *pdfio.ReadView", parsed)
+	}
+
+	s, err := cos.NewStreamFromView(nil, parsed, filter.Provider{})
+	if err != nil {
+		t.Fatalf("NewStreamFromView: %v", err)
+	}
+	defer s.Close()
+
+	view, err := s.CreateView()
+	if err != nil {
+		t.Fatalf("CreateView over a parsed stream: %v", err)
+	}
+	got, err := io.ReadAll(pdfio.NewReader(view))
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !bytes.Equal(input, got) {
+		t.Errorf("view holds %q, want %q", got, input)
+	}
+}

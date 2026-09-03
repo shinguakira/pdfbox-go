@@ -395,3 +395,48 @@ reference given as the *argument*, `getKeyForValue` unwraps the references
 reference to `x` report that it contained `x`, which would have made the
 PDFBOX-4509 search in `PDResources.add` dead code rather than the fix it is.
 `getKeyForValue` also gained the guard Java puts in front of `getObject`.
+
+### Port defects found in the slice 2 review, fixed
+
+Nine, all found by review rather than by the ported tests. Each carries a test
+that fails without the fix.
+
+- **`COSStream.createView` asked a view for a view.** Java builds a second
+  `RandomAccessReadView` around the one it holds; the port called
+  `CreateView` on it, which a view refuses — in Go as in Java. Every unfiltered
+  stream read from a file failed, and `PDPage.ContentsForRandomAccess` reported
+  it as a malformed content stream and substituted a newline. **Page content was
+  being silently dropped.** The test that covered `createView` had built its
+  stream over a `ReadBuffer`, so it never took the path.
+- **`COSArray.toFloatArray` and the two numeric list conversions read the raw
+  entry.** Java reads through `getObject`, which resolves an indirect
+  reference. An indirect number yielded zero, so an indirect `/MediaBox` gave a
+  zero-sized page.
+- **`setString("")` removed the entry.** Java removes only for a null
+  argument, and an empty string is a valid COS string. Go has no null string,
+  so the port had used `""` for it; a caller wanting Java's null now calls
+  `RemoveItem`, or `Set(index, nil)` on an array. `setEmbeddedString` had the
+  same conflation.
+- **`PDGraphicsState.renderingIntent` read as `AbsoluteColorimetric` from
+  birth.** The Java field is null until `ri` or an extended graphics state sets
+  it. It is a `*RenderingIntent` now, so "not specified" and "specified as
+  absolute" are distinguishable again.
+- **`Reader.Available` did not clamp.** Java is
+  `Math.min(length - position, Integer.MAX_VALUE)`. The package-level
+  `Available` already clamped; this one did not.
+- **`ReadView.Close` kept its source when it owned it.** Java drops the
+  reference either way, outside the ownership check.
+- **`PDColor.Components` and `PDLineDashPattern.DashArray` returned nil when
+  empty.** Both are documented as never nil, and Java's `clone()` of an empty
+  array is not null. `append([]float32(nil))` with nothing to append is.
+- **The `StreamCache` doc promised more than any implementation gives.** The
+  memory-backed cache closes nothing, and neither does Java's. Comment only.
+
+### Java bug carried over, after being fixed by mistake
+
+`COSString.parseHex` skips trailing whitespace and, because it computes a start
+offset and then indexes from zero anyway, does not skip leading whitespace — it
+rejects it as invalid hex. The port had sliced `hex[start:end]`, correcting it.
+Reverted, recorded as [`JAVA-BUGS.md`](JAVA-BUGS.md) entry 11, and pinned by
+`string_test.go`, which now asserts the error and the force-parsing
+substitution.

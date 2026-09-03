@@ -333,3 +333,51 @@ instead of reporting that the image never terminated.
 **Confidence** medium. The loss is provable from the loop shape, but every
 answer on a truncated stream is somewhat arbitrary and this may be a deliberate
 "stop at whatever we have" choice.
+
+---
+
+## 11. `COSString.parseHex` computes a whitespace offset and never uses it
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/cos/COSString.java`,
+`parseHex`
+
+```java
+int start = 0;
+while (start < end && Character.isWhitespace(hex.charAt(start)))
+{
+    start++;
+}
+
+int length = end - start;
+...
+for (int i = 0; i < length; i += 2)
+{
+    int value = 16 * Hex.getHexValue(hex.charAt(i)) + Hex.getHexValue(hex.charAt(i + 1));
+```
+
+**What it does** the loop indexes `hex` from zero, not from `start`, so the
+leading-whitespace offset is computed and then thrown away. Only the *length* of
+the leading whitespace is honoured, by shortening the run. For `"  4142  "` the
+loop reads `hex.charAt(0)` and `hex.charAt(1)` — two spaces — and
+`Hex.getHexValue` returns a negative for each, so `parseHex` throws
+`Invalid hex string` unless `FORCE_PARSING` is set, in which case it emits `?`.
+The comment above the block says "skip leading and trailing whitespace"; trailing
+whitespace is skipped, leading whitespace is not.
+
+**What correct would be** indexing from `start`: `hex.charAt(start + i)` and
+`hex.charAt(start + i + 1)`, and likewise `hex.charAt(start + length)` in the
+uneven-length branch.
+
+**Why it matters** a hex string written `< 4142 >` is legal — the PDF
+specification allows whitespace inside the angle brackets — and PDFBox rejects
+it. The parser never sees this, because `parseCOSHexString` strips whitespace
+as it scans and hands `parseHex` a clean run of digits, but every other caller
+passes the string through as it stands.
+
+**Where the Go carries it** `go/pdfbox/cos/string.go`, `ParseHexString`.
+The port originally sliced `hex[start:end]` and indexed the slice, which
+corrected the bug. That was reverted: the offset is computed and unused here
+too, and `string_test.go` pins the throwing behaviour.
+
+**Confidence** high. The offset is plainly computed and plainly not used, and
+the comment above it states an intent the code does not carry out.

@@ -187,3 +187,28 @@ func TestReadViewCreateView(t *testing.T) {
 		t.Fatalf("CreateView error = %v, want ErrViewNotSupported", err)
 	}
 }
+
+// TestReadViewCloseDropsTheSource pins that closing a view lets go of what it
+// was reading, whether or not it owned it. Java sets randomAccessRead = null
+// outside the ownership check; the port returned early and kept the reference.
+func TestReadViewCloseDropsTheSource(t *testing.T) {
+	for _, owned := range []bool{false, true} {
+		source := NewReadBufferBytes([]byte("0123456789"))
+		var v *ReadView
+		if owned {
+			v = NewReadViewOwned(source, 2, 4)
+		} else {
+			v = NewReadView(source, 2, 4)
+		}
+
+		if err := v.Close(); err != nil {
+			t.Fatalf("Close (owned=%v): %v", owned, err)
+		}
+		if v.source != nil {
+			t.Errorf("owned=%v: the view still holds its source after Close", owned)
+		}
+		if source.IsClosed() != owned {
+			t.Errorf("owned=%v: source closed = %v, want %v", owned, source.IsClosed(), owned)
+		}
+	}
+}

@@ -93,3 +93,14 @@ func TestPDLineDashPatternString(t *testing.T) {
 		t.Errorf("String = %q, want %q", got, want)
 	}
 }
+
+// TestPDLineDashPatternDashArrayNeverNil pins the doc contract. Java returns
+// array.clone(), and cloning an empty array gives a non-null empty array.
+func TestPDLineDashPatternDashArrayNeverNil(t *testing.T) {
+	if got := NewPDLineDashPattern().DashArray(); got == nil {
+		t.Error("DashArray() of the solid pattern is nil, want an empty slice")
+	}
+	if got := NewPDLineDashPatternOf(cos.NewArray(), 0).DashArray(); got == nil {
+		t.Error("DashArray() of an empty dash array is nil, want an empty slice")
+	}
+}

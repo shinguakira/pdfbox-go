@@ -189,3 +189,16 @@ func TestPDDeviceGrayToRGB(t *testing.T) {
 		t.Errorf("ToRGB = %v, want [0.25 0.25 0.25]", got)
 	}
 }
+
+// TestPDColorComponentsNeverNil pins the doc contract. Java returns
+// components.clone(), and cloning an empty array gives a non-null empty array;
+// appending to a nil slice with nothing to append gives nil.
+func TestPDColorComponentsNeverNil(t *testing.T) {
+	pattern := NewPDColorOfPattern(cos.GetPDFName("P0"), nil)
+	if got := pattern.Components(); got == nil {
+		t.Error("Components() of a pattern colour is nil, want an empty slice")
+	}
+	if got := NewPDColorOfComponents(nil, nil).Components(); got == nil {
+		t.Error("Components() with no colour space is nil, want an empty slice")
+	}
+}

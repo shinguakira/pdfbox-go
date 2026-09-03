@@ -185,7 +185,7 @@ func TestPDGraphicsStateSetters(t *testing.T) {
 		s.NonStrokeAlphaConstant() != 0.25 || !s.IsAlphaSource() ||
 		s.BlendMode() != blend.Multiply || !s.IsOverprint() || !s.IsNonStrokingOverprint() ||
 		s.OverprintMode() != 1 || s.Flatness() != 0.5 || s.Smoothness() != 0.75 ||
-		s.RenderingIntent() != Perceptual {
+		s.RenderingIntent() == nil || *s.RenderingIntent() != Perceptual {
 		t.Error("a setter did not take")
 	}
 }
@@ -198,5 +198,32 @@ func TestPDGraphicsStateColors(t *testing.T) {
 	s.SetNonStrokingColor(white)
 	if s.StrokingColor() != white || s.NonStrokingColor() != white {
 		t.Error("the colours did not take")
+	}
+}
+
+// TestPDGraphicsStateRenderingIntentUnspecified pins that a state which has not
+// seen ri reports no intent at all. The Java field is null until an operator or
+// an extended graphics state sets it, so a consumer can tell "not specified"
+// from "specified as absolute"; a bare Go enum reads as its zero value, which
+// is AbsoluteColorimetric.
+func TestPDGraphicsStateRenderingIntentUnspecified(t *testing.T) {
+	s := NewPDGraphicsState(common.NewPDRectangleOf(0, 0, 1, 1))
+	if got := s.RenderingIntent(); got != nil {
+		t.Errorf("RenderingIntent = %v, want nil on a state that has not seen ri", *got)
+	}
+
+	s.SetRenderingIntent(Perceptual)
+	if got := s.RenderingIntent(); got == nil || *got != Perceptual {
+		t.Errorf("RenderingIntent = %v, want PERCEPTUAL", got)
+	}
+
+	// A clone keeps it, and does not share the pointer.
+	clone := s.Clone()
+	if got := clone.RenderingIntent(); got == nil || *got != Perceptual {
+		t.Errorf("the clone lost the rendering intent: %v", got)
+	}
+	clone.SetRenderingIntent(Saturation)
+	if got := s.RenderingIntent(); *got != Perceptual {
+		t.Errorf("the original changed to %v", *got)
 	}
 }
