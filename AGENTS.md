@@ -144,6 +144,17 @@ upstream."
   code to fix is a bug introduced *by the port itself* — something Java cannot
   do, such as a Go-specific initialisation-order or nil-handling mistake.
 
+- **Record every Java bug you find in
+  [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md).** Not fixing one is
+  not the same as forgetting it. Add the entry while you are porting that code —
+  the moment you are reading the Java closely enough to notice is the only
+  moment it is cheap to write down. Each entry says where the bug is, what the
+  Java does, what correct would be, where the Go carries it, and how confident
+  you are; "looks wrong to me" and "provably wrong" are different claims and
+  must not be filed as if they were the same. **Do not report any of it
+  upstream** — this repository has no relationship with Apache PDFBox, and the
+  security rules below forbid filing findings to any public tracker.
+
 Orientation for the port lives in
 [go/migration/README.md](go/migration/README.md): the plan, the branch strategy,
 the Java-to-Go conventions, and the package mapping.

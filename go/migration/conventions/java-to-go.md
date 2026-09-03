@@ -214,7 +214,10 @@ When something looks like a Java bug:
 1. Port it exactly.
 2. Comment at that point that it looks wrong, and say what the correct
    behaviour would be.
-3. Move on. Do not open the question in the code.
+3. Add an entry to [`../JAVA-BUGS.md`](../JAVA-BUGS.md) — not fixing a bug is
+   not the same as forgetting it, and the moment you are reading the Java
+   closely enough to notice is the only moment it is cheap to write down.
+4. Move on. Do not open the question in the code.
 
 The only thing to fix is a bug **introduced by the port itself** — something the
 Java cannot do. A Go initialisation-order mistake, a nil dereference where Java

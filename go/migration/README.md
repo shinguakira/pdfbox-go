@@ -38,6 +38,7 @@ Three things this is not:
 | [`STATUS.md`](STATUS.md) | Per-package progress, ported tests, and the deviations from Java recorded so far |
 | [`conventions/tdd.md`](conventions/tdd.md) | **Test-driven porting — the Java test is ported before the Go implementation exists.** The rule the port runs on |
 | [`conventions/java-to-go.md`](conventions/java-to-go.md) | How Java constructs are translated. Read this before porting anything |
+| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded, never fixed — the port reproduces every one |
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
