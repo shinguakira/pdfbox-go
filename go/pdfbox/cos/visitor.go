@@ -13,6 +13,7 @@ package cos
 // intended signal — a visitor that has not been taught about a new COS type is
 // incomplete.
 type Visitor interface {
+	VisitArray(obj *Array) error
 	VisitBoolean(obj *Boolean) error
 	VisitFloat(obj *Float) error
 	VisitInteger(obj *Integer) error
