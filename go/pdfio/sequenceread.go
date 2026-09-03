@@ -117,41 +117,63 @@ func (s *SequenceRead) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	limit := int64(len(p))
-	if available := s.totalLength - s.position; limit > available {
-		limit = available
+	maxAvail := int64(len(p))
+	if available := s.totalLength - s.position; maxAvail > available {
+		maxAvail = available
 	}
-	if limit <= 0 {
+	if maxAvail <= 0 {
 		return 0, io.EOF
 	}
-	read := 0
-	for int64(read) < limit {
-		r, err := s.currentReader()
+
+	// This loop reproduces a defect in the Java, recorded as entry 3 in
+	// migration/JAVA-BUGS.md. readOrMinusOne stands in for Java's read(), which
+	// returns -1 at the end of a source, and that -1 is added to the running
+	// total — so a read that ends this way reports fewer bytes than it produced
+	// and, on the next pass, writes back over bytes it already delivered. The
+	// loop condition bounds it: bytesRead can never fall below -1.
+	r, err := s.currentReader()
+	if err != nil {
+		return 0, err
+	}
+	bytesRead, err := readOrMinusOne(r, p[:maxAvail])
+	if err != nil {
+		return 0, err
+	}
+
+	for bytesRead > -1 && int64(bytesRead) < maxAvail {
+		r, err = s.currentReader()
 		if err != nil {
-			return read, err
+			return 0, err
 		}
-		n, err := r.Read(p[read:limit])
-		if n > 0 {
-			read += n
-			s.position += int64(n)
-			continue
+		n, err := readOrMinusOne(r, p[bytesRead:maxAvail])
+		if err != nil {
+			return 0, err
 		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return read, err
-		}
-		// The current source is exhausted; stop if it was also the last one.
-		if s.currentIndex >= len(s.readers)-1 {
-			break
-		}
-		s.currentIndex++
-		if err := SeekTo(s.readers[s.currentIndex], 0); err != nil {
-			return read, err
-		}
+		bytesRead += n
 	}
-	if read == 0 {
+
+	if bytesRead < 0 {
 		return 0, io.EOF
 	}
-	return read, nil
+	s.position += int64(bytesRead)
+	return bytesRead, nil
+}
+
+// readOrMinusOne reads into p, reporting -1 at the end of the source the way
+// Java's InputStream.read does. The lexer and the sequence loop above are both
+// written against that convention.
+func readOrMinusOne(r RandomAccessRead, p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	n, err := r.Read(p)
+	if n > 0 {
+		return n, nil
+	}
+	if err == nil || errors.Is(err, io.EOF) {
+		return -1, nil
+	}
+	return 0, err
 }
 
 // Position returns the offset within the concatenation.

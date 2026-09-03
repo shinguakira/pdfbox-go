@@ -24,4 +24,10 @@ var (
 	// ErrViewNotSupported is returned by CreateView on sources that cannot
 	// produce an independent cursor over themselves.
 	ErrViewNotSupported = errors.New("pdfio: createView is not supported by this source")
+
+	// ErrZeroChunkSize is returned by a write to a ReadWriteBuffer that was
+	// built as a zero value rather than through a constructor, so it has no
+	// chunk size and can never make room. Java has no equivalent state,
+	// because every COSStream buffer comes from a constructor.
+	ErrZeroChunkSize = errors.New("pdfio: buffer has no chunk size; use NewReadWriteBuffer")
 )

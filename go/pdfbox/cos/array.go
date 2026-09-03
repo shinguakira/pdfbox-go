@@ -1,0 +1,458 @@
+package cos
+
+import "strings"
+
+// Array is an array of COS objects.
+//
+// Port of org.apache.pdfbox.cos.COSArray. Entries may be nil, which is what the
+// Java list holds for an absent element, and may be an *Object standing for an
+// indirect reference — see Get versus GetObject.
+//
+// Not yet ported: the COSUpdateState Java tracks for incremental saves, and the
+// COSObjectable-taking overloads, which need pdmodel. See migration/STATUS.md.
+type Array struct {
+	object
+	objects []Base
+}
+
+var _ Base = (*Array)(nil)
+
+// NewArray returns an empty array.
+func NewArray() *Array {
+	return &Array{}
+}
+
+// NewArrayOf returns an array holding the given objects. The slice is copied.
+//
+// Port of COSArray(List). Java throws NullPointerException for a null list; a
+// nil slice here yields an empty array, which is what a Go caller means by it.
+func NewArrayOf(objects []Base) *Array {
+	a := &Array{objects: make([]Base, len(objects))}
+	copy(a.objects, objects)
+	return a
+}
+
+// ArrayOfFloats returns an array of floats.
+//
+// Port of the static COSArray.of(float...).
+func ArrayOfFloats(values []float32) *Array {
+	a := &Array{objects: make([]Base, 0, len(values))}
+	for _, v := range values {
+		a.objects = append(a.objects, NewFloat(v))
+	}
+	return a
+}
+
+// ArrayOfIntegers returns an array of integers.
+//
+// Port of the static COSArray.ofCOSIntegers.
+func ArrayOfIntegers(values []int) *Array {
+	a := &Array{objects: make([]Base, 0, len(values))}
+	for _, v := range values {
+		a.objects = append(a.objects, GetInteger(int64(v)))
+	}
+	return a
+}
+
+// ArrayOfNames returns an array of names.
+//
+// Port of the static COSArray.ofCOSNames.
+func ArrayOfNames(values []string) *Array {
+	a := &Array{objects: make([]Base, 0, len(values))}
+	for _, v := range values {
+		a.objects = append(a.objects, GetPDFName(v))
+	}
+	return a
+}
+
+// ArrayOfStrings returns an array of strings.
+//
+// Port of the static COSArray.ofCOSStrings.
+func ArrayOfStrings(values []string) *Array {
+	a := &Array{objects: make([]Base, 0, len(values))}
+	for _, v := range values {
+		a.objects = append(a.objects, NewStringObj(v))
+	}
+	return a
+}
+
+// Size returns the number of entries.
+func (a *Array) Size() int { return len(a.objects) }
+
+// IsEmpty reports whether the array has no entries.
+func (a *Array) IsEmpty() bool { return len(a.objects) == 0 }
+
+// Add appends an object.
+func (a *Array) Add(object Base) {
+	a.objects = append(a.objects, object)
+}
+
+// AddAt inserts an object at the given index.
+func (a *Array) AddAt(i int, object Base) {
+	a.objects = append(a.objects, nil)
+	copy(a.objects[i+1:], a.objects[i:])
+	a.objects[i] = object
+}
+
+// AddAll appends every object in the slice.
+func (a *Array) AddAll(objects []Base) {
+	a.objects = append(a.objects, objects...)
+}
+
+// AddArray appends every entry of another array.
+func (a *Array) AddArray(other *Array) {
+	if other == nil {
+		return
+	}
+	a.objects = append(a.objects, other.objects...)
+}
+
+// Clear removes every entry.
+func (a *Array) Clear() {
+	a.objects = a.objects[:0]
+}
+
+// Get returns the raw entry at index, which may be nil or an indirect
+// reference. Use GetObject to resolve references.
+func (a *Array) Get(index int) Base {
+	return a.objects[index]
+}
+
+// GetObject returns the entry at index, resolving an indirect reference and
+// mapping the null object to nil.
+//
+// Port of getObject(int).
+func (a *Array) GetObject(index int) Base {
+	obj := a.objects[index]
+	if ref, ok := obj.(*Object); ok {
+		obj = ref.Object()
+	}
+	if _, isNull := obj.(*Null); isNull {
+		return nil
+	}
+	return obj
+}
+
+// Set replaces the entry at index.
+func (a *Array) Set(index int, object Base) {
+	a.objects[index] = object
+}
+
+// SetInt stores an integer at index.
+func (a *Array) SetInt(index, value int) {
+	a.Set(index, GetInteger(int64(value)))
+}
+
+// SetName stores a name at index.
+func (a *Array) SetName(index int, name string) {
+	a.Set(index, GetPDFName(name))
+}
+
+// SetString stores a string at index, or nil when the text is empty.
+//
+// Port of setString(int, String), which stores null for a null argument. Go has
+// no null string, so the empty string is the equivalent.
+func (a *Array) SetString(index int, text string) {
+	if text == "" {
+		a.Set(index, nil)
+		return
+	}
+	a.Set(index, NewStringObj(text))
+}
+
+// GetInt returns the integer at index, or -1 when it is not a number.
+//
+// Port of getInt(int), which defaults to -1.
+func (a *Array) GetInt(index int) int {
+	return a.GetIntDefault(index, -1)
+}
+
+// GetIntDefault returns the integer at index, or defaultValue when the entry is
+// out of range or is not a number.
+func (a *Array) GetIntDefault(index, defaultValue int) int {
+	if index >= a.Size() {
+		return defaultValue
+	}
+	if n, ok := a.objects[index].(Number); ok {
+		return n.IntValue()
+	}
+	return defaultValue
+}
+
+// GetName returns the name at index, or defaultValue when the entry is out of
+// range or is not a name.
+func (a *Array) GetName(index int, defaultValue string) string {
+	if index >= a.Size() {
+		return defaultValue
+	}
+	if n, ok := a.objects[index].(*Name); ok {
+		return n.Name()
+	}
+	return defaultValue
+}
+
+// GetString returns the string at index, or defaultValue when the entry is out
+// of range or is not a string.
+func (a *Array) GetString(index int, defaultValue string) string {
+	if index >= a.Size() {
+		return defaultValue
+	}
+	if s, ok := a.objects[index].(*StringObj); ok {
+		return s.Value()
+	}
+	return defaultValue
+}
+
+// RemoveAt removes and returns the entry at index.
+func (a *Array) RemoveAt(index int) Base {
+	removed := a.objects[index]
+	a.objects = append(a.objects[:index], a.objects[index+1:]...)
+	return removed
+}
+
+// Remove removes the first entry equal to object, reporting whether one was
+// found. It compares raw entries only.
+//
+// Port of remove(COSBase).
+func (a *Array) Remove(object Base) bool {
+	for i, item := range a.objects {
+		if cosEqual(item, object) {
+			a.RemoveAt(i)
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveObject removes the first entry equal to object, resolving indirect
+// references while looking.
+//
+// Port of removeObject(COSBase).
+func (a *Array) RemoveObject(object Base) bool {
+	if i := a.IndexOfObject(object); i >= 0 {
+		a.RemoveAt(i)
+		return true
+	}
+	return false
+}
+
+// RemoveAll removes every entry equal to one in the slice.
+func (a *Array) RemoveAll(objects []Base) {
+	kept := a.objects[:0]
+	for _, item := range a.objects {
+		if !containsBase(objects, item) {
+			kept = append(kept, item)
+		}
+	}
+	a.objects = kept
+}
+
+// RetainAll removes every entry not equal to one in the slice.
+func (a *Array) RetainAll(objects []Base) {
+	kept := a.objects[:0]
+	for _, item := range a.objects {
+		if containsBase(objects, item) {
+			kept = append(kept, item)
+		}
+	}
+	a.objects = kept
+}
+
+// IndexOf returns the index of the first entry equal to object, or -1.
+// It compares raw entries and does not resolve indirect references.
+func (a *Array) IndexOf(object Base) int {
+	for i, item := range a.objects {
+		if cosEqual(item, object) {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexOfObject returns the index of the first entry equal to object,
+// resolving indirect references while looking.
+func (a *Array) IndexOfObject(object Base) int {
+	for i, item := range a.objects {
+		if cosEqual(item, object) {
+			return i
+		}
+		if ref, ok := item.(*Object); ok {
+			if resolved := ref.Object(); resolved != nil && cosEqual(resolved, object) {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// GrowToSize pads the array with nil entries until it holds size of them.
+func (a *Array) GrowToSize(size int) {
+	a.GrowToSizeWith(size, nil)
+}
+
+// GrowToSizeWith pads the array with the given object until it holds size
+// entries. An array already that long is left alone.
+func (a *Array) GrowToSizeWith(size int, object Base) {
+	for a.Size() < size {
+		a.Add(object)
+	}
+}
+
+// ToList returns a copy of the entries.
+func (a *Array) ToList() []Base {
+	out := make([]Base, len(a.objects))
+	copy(out, a.objects)
+	return out
+}
+
+// ToFloatArray returns the numeric entries as floats. A nil or non-numeric
+// entry becomes 0, as it does in Java.
+func (a *Array) ToFloatArray() []float32 {
+	out := make([]float32, len(a.objects))
+	for i, item := range a.objects {
+		if n, ok := item.(Number); ok {
+			out[i] = n.FloatValue()
+		}
+	}
+	return out
+}
+
+// SetFloatArray replaces the contents with the given floats.
+func (a *Array) SetFloatArray(values []float32) {
+	a.Clear()
+	for _, v := range values {
+		a.Add(NewFloat(v))
+	}
+}
+
+// ToNameStringList returns the entries as name strings. An entry that is not a
+// name yields nil, which is what the Java list holds for it.
+func (a *Array) ToNameStringList() []*string {
+	out := make([]*string, len(a.objects))
+	for i, item := range a.objects {
+		if n, ok := item.(*Name); ok {
+			s := n.Name()
+			out[i] = &s
+		}
+	}
+	return out
+}
+
+// ToStringStringList returns the entries as string values, with nil for an
+// entry that is not a string.
+func (a *Array) ToStringStringList() []*string {
+	out := make([]*string, len(a.objects))
+	for i, item := range a.objects {
+		if s, ok := item.(*StringObj); ok {
+			v := s.Value()
+			out[i] = &v
+		}
+	}
+	return out
+}
+
+// ToNumberFloatList returns the entries as floats, with nil for an entry that
+// is not a number.
+func (a *Array) ToNumberFloatList() []*float32 {
+	out := make([]*float32, len(a.objects))
+	for i, item := range a.objects {
+		if n, ok := item.(Number); ok {
+			v := n.FloatValue()
+			out[i] = &v
+		}
+	}
+	return out
+}
+
+// ToNumberIntegerList returns the entries as ints, with nil for an entry that
+// is not a number.
+func (a *Array) ToNumberIntegerList() []*int {
+	out := make([]*int, len(a.objects))
+	for i, item := range a.objects {
+		if n, ok := item.(Number); ok {
+			v := n.IntValue()
+			out[i] = &v
+		}
+	}
+	return out
+}
+
+// All returns an iterator over the raw entries, for use with range.
+//
+// Port of the Iterable<COSBase> the Java class implements.
+func (a *Array) All(yield func(Base) bool) {
+	for _, item := range a.objects {
+		if !yield(item) {
+			return
+		}
+	}
+}
+
+// COSObject returns the receiver.
+func (a *Array) COSObject() Base { return a }
+
+// Accept dispatches to the visitor.
+func (a *Array) Accept(v Visitor) error { return v.VisitArray(a) }
+
+// String returns the Java toString form.
+func (a *Array) String() string {
+	var sb strings.Builder
+	sb.WriteString("COSArray{")
+	for i, item := range a.objects {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		if item == nil {
+			sb.WriteString("null")
+			continue
+		}
+		sb.WriteString(baseString(item))
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+// cosEqual compares two COS values by content where the type defines equality,
+// and by identity otherwise.
+//
+// Java relies on each class overriding equals. Go has no such single hook, so
+// this dispatches to the Equals method of the types that have one.
+func cosEqual(a, b Base) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	switch x := a.(type) {
+	case *Name:
+		y, ok := b.(*Name)
+		return ok && x.Equals(y)
+	case *Integer:
+		y, ok := b.(*Integer)
+		return ok && x.Equals(y)
+	case *Float:
+		y, ok := b.(*Float)
+		return ok && x.Equals(y)
+	case *StringObj:
+		y, ok := b.(*StringObj)
+		return ok && x.Equals(y)
+	default:
+		return a == b
+	}
+}
+
+func containsBase(objects []Base, target Base) bool {
+	for _, o := range objects {
+		if cosEqual(o, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// baseString renders a value for String, using its own String method when it
+// has one.
+func baseString(b Base) string {
+	if s, ok := b.(interface{ String() string }); ok {
+		return s.String()
+	}
+	return "?"
+}

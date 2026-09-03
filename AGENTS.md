@@ -103,10 +103,14 @@ upstream."
 
 **Rules that apply to any agent working in this repository:**
 
-- **The Java tree is read-only.** A task about the Go port never justifies
-  editing a `.java` file, a `pom.xml`, or a test resource. The Java is the
-  reference the Go is checked against, and a reference that gets edited stops
-  being one. If the port seems to need a Java change, that is a bug in the port.
+- **NEVER change the Java code. The Java tree is strictly read-only.** No agent
+  may edit, reformat, refactor, delete, or "fix" a `.java` file, a `pom.xml`, a
+  test resource, or anything else under the Maven module directories — not to
+  make a port easier, not to fix a bug found while reading it, not to silence a
+  warning, not for any reason. The Java is the reference the Go is checked
+  against, and a reference that gets edited stops being one. If the port seems
+  to need a Java change, that is a bug in the port. This holds even when the
+  user asks about a Java bug: report it, do not touch it.
 - **The Java source and its tests are the specification.** The Go code is
   checked against them, not against your reading of ISO 32000. Where PDFBox
   contradicts the specification, PDFBox wins — the behaviour is usually
@@ -121,6 +125,35 @@ upstream."
   or "tidy" a deviation comment without checking that file.
 - **Do not report Go/Java behavioural differences as security findings** without
   first checking `STATUS.md` — the intentional ones are recorded there.
+- **Do not stop while work remains. Only the user stops the migration.** When
+  working a `slice/*` or `track/*` branch, port every file in that branch's
+  scope. Do not pause partway to report progress as if it were a result, do not
+  ask whether to continue, and do not end a turn with a list of what is left to
+  do. "Remaining work" is not an acceptable end state — the scope is written in
+  [go/migration/PLAN.md](go/migration/PLAN.md) and finishing it is the default.
+  The user will interrupt if they want the work stopped; that is their call to
+  make and not one to invite.
+
+- **Do not fix bugs that exist in the Java. This is a migration, not a bug
+  hunt.** Port the behaviour as written, including behaviour that is plainly
+  wrong. A bug faithfully carried over can be found later by diffing against the
+  Java; a bug silently corrected during the port cannot, and it makes the Go
+  behave differently from the reference it is supposed to reproduce. Callers and
+  real PDFs depend on quirks. If something looks like a Java bug, port it,
+  comment that it looks wrong at the point it occurs, and move on. The only
+  code to fix is a bug introduced *by the port itself* — something Java cannot
+  do, such as a Go-specific initialisation-order or nil-handling mistake.
+
+- **Record every Java bug you find in
+  [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md).** Not fixing one is
+  not the same as forgetting it. Add the entry while you are porting that code —
+  the moment you are reading the Java closely enough to notice is the only
+  moment it is cheap to write down. Each entry says where the bug is, what the
+  Java does, what correct would be, where the Go carries it, and how confident
+  you are; "looks wrong to me" and "provably wrong" are different claims and
+  must not be filed as if they were the same. **Do not report any of it
+  upstream** — this repository has no relationship with Apache PDFBox, and the
+  security rules below forbid filing findings to any public tracker.
 
 Orientation for the port lives in
 [go/migration/README.md](go/migration/README.md): the plan, the branch strategy,

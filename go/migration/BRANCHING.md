@@ -94,6 +94,27 @@ depend on it — metadata comes back as a raw stream that `xmpbox` parses
 separately. It is the one piece of this project with no ordering constraint at
 all, so it is the right thing to hand to a second person on day one.
 
+## CAUTION — finish the slice
+
+**A slice branch is worked until every file in its scope is ported. Do not
+stop partway.**
+
+- Do **not** stop at a natural-looking pause and report progress as if it were a
+  result. Four files of twenty-four is not a milestone; it is an unfinished
+  branch.
+- Do **not** ask whether to continue. The scope is written in
+  [`PLAN.md`](PLAN.md). Continuing is the default and needs no confirmation.
+- Do **not** treat a partially ported package as deliverable. `STATUS.md`
+  records partial state so it stays visible, not so it can be handed over.
+
+If one item in the scope is genuinely blocked — it needs a package from a later
+slice, or a decision only the user can make — then port **everything else in the
+slice first**, and say plainly at the end what was left and why. Narrowing the
+slice is not a decision to take quietly.
+
+The slice ends when its demo in `PLAN.md` runs on a real PDF. Until then the
+work is not finished, regardless of how much of it passes.
+
 ## Slice lifecycle
 
 ```bash
