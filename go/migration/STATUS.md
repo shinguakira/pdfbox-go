@@ -16,8 +16,8 @@ Last updated: 2026-09-03
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
-| 1 | `pdfbox/cos` | 24 | in progress — 15 of 24; 4 deferred to slice 7, 4 blocked on filter |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | not started |
+| 1 | `pdfbox/cos` | 24 | in progress — 18 of 24; 4 deferred to slice 7, `COSDocument` next |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | `filter` in progress — Flate, Predictor, Identity ported for slice 1 |
 | 3 | `pdfbox/pdmodel` | 433 | not started |
 | 4 | `fontbox` | 143 | not started |
 | 5 | `contentstream`, `text` | 85 | not started |
@@ -72,10 +72,10 @@ Branch `slice/1-open-document`. Ported test-first.
 | `COSArray.java` | `array.go` | done — minus the update state and the `COSObjectable` overloads |
 | `COSDictionary.java` | `dictionary.go` | done — minus dates, `getCOSStream`, the `COSObjectable` overloads and the update state |
 | `UnmodifiableCOSDictionary.java` | `unmodifiable.go` | done — as a read-only interface, see below |
-| `COSStream.java` | — | blocked on `pdfbox/filter` |
-| `COSInputStream.java` | — | blocked on `pdfbox/filter` |
-| `COSOutputStream.java` | — | blocked on `pdfbox/filter` |
-| `COSDocument.java` | — | blocked on `COSStream` |
+| `COSStream.java` | `stream.go` | done — minus the update state; **written before its test**, see the method note |
+| `COSInputStream.java` | — | not ported — `Stream.CreateReader` returns a plain `io.Reader`; the class exists in Java only to carry a `DecodeResult` |
+| `COSOutputStream.java` | — | not ported — folded into `streamWriter` in `stream.go` |
+| `COSDocument.java` | — | next |
 | `COSDocumentState.java` | — | deferred to slice 7 — incremental save |
 | `COSUpdateInfo.java` | — | deferred to slice 7 — incremental save |
 | `COSUpdateState.java` | — | deferred to slice 7 — incremental save |
@@ -134,6 +134,37 @@ Deliberate differences, each commented at the point it occurs:
 - `Visitor` and the ported types are deliberately smaller than the Java
   originals where a dependency is not ported yet; each says so in its doc
   comment.
+
+## Slice 1 — `pdfbox/filter`
+
+Only the filters slice 1 needs. The rest arrive in slice 6.
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `Filter.java` | `filter.go` | done — minus the `DecodeOptions` overload, which carries image subsampling |
+| `FilterFactory.java` | `filter.go`, `provider.go` | done — as `ByName` plus a `Provider` type rather than a singleton |
+| `Predictor.java` | `predictor.go` | done |
+| `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done |
+| `IdentityFilter.java` | `filter.go` | done |
+| `DecodeResult.java` | `filter.go` | partial — the JPX colour space and soft mask fields arrive with that filter |
+| `DecodeOptions.java` | — | not started — image subsampling only |
+| the other 15 filters | — | slice 6 |
+
+| Java test | Go test | Notes |
+| --- | --- | --- |
+| `PredictorTest` | `predictor_test.go` | complete |
+| `TestFilters` | `flate_test.go` | the round-trip generator is ported; `testPDFBOX4517` needs a loader, `testPDFBOX1977` needs LZW, `testRLE` needs RunLength |
+
+### Method note — `cos/stream.go` was not ported test-first
+
+`stream.go` was written before `stream_test.go`, which breaks the rule in
+[`conventions/tdd.md`](conventions/tdd.md). The test was then ported from
+`TestCOSStream` rather than written against the Go, so the assertions are still
+Java-derived — but the ordering was wrong, and the point of the rule is that
+the ordering is what protects against confirming a mistranslation.
+
+This is the second such lapse, after `pdfio`. Both are recorded rather than
+quietly fixed.
 
 ### Method note — `pdfio` was not ported test-first
 
