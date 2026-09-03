@@ -24,11 +24,27 @@ change it to suit one branch — change the copy.
 | `slice/9-*` | [`slice-9-rendering.md`](slice-9-rendering.md) | needs 3 and 6, and a decision |
 | `track/xmpbox` | [`track-xmpbox.md`](track-xmpbox.md) | open — depends on nothing |
 | `track/scratchfile` | [`track-scratchfile.md`](track-scratchfile.md) | open — needs only slice 0 |
+| **no branch** | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | **gap** — see below |
+| **no branch, no slice** | [`tools-unassigned.md`](tools-unassigned.md) | **gap** — see below |
 
 The branch names above are the pattern `slice/N-name` from
 [`../BRANCHING.md`](../BRANCHING.md). Only `slice/1-open-document` and
 `slice/2-content-streams` have literal names so far, because those branches
 exist. **The rest are not decided — do not invent one.**
+
+## Two gaps in the plan
+
+Both need a decision from the user. Neither is closed here, because closing one
+means adding a branch to the plan.
+
+- **`pdfbox-layout-*`.** [`../PLAN.md`](../PLAN.md) gives it a "Parallel track"
+  section; [`../BRANCHING.md`](../BRANCHING.md)'s track table lists only
+  `track/xmpbox` and `track/scratchfile`. The plan names the work and the branch
+  document gives it no branch.
+- **`tools`.** [`../PLAN.md`](../PLAN.md) counts it in scope at 26 files and
+  deliberately keeps it out of the out-of-scope list — then never mentions it
+  again. No slice, no track, no branch. [`../STATUS.md`](../STATUS.md) carries
+  it as "phase 7 `cmd/pdfbox`", which the plan does not say.
 
 ## The five phases
 
