@@ -34,8 +34,18 @@ D — adversarial review · E — user feedback
 | `pdfbox/rendering` | 10 | 3 |
 | `pdfbox/printing` | 4 | 1 |
 | `pdmodel/graphics/shading` | 37 | 0 |
-| `pdmodel/graphics/color` — the 20 slice 2 left | ~20 | — |
+| `pdmodel/graphics/color` — the 20 slice 2 left | ~20 of 23 | — |
+| `pdmodel/graphics/pattern` | 3 | — |
+| `pdmodel/graphics/form` | 3 | — |
+| `pdmodel/graphics/state` — what slice 2 left | 2 of 6 | — |
+| `pdmodel/common/function` and `function/type4` | 17 | — |
+| `contentstream/operator/color` | 13 | — |
+| `contentstream/operator/graphics` | 23 | — |
 | `java.awt.geom.Area` and the raster backend | — | — |
+
+`pdmodel/common/function` is easy to miss. Shadings, soft masks and the
+separation and DeviceN colour spaces all evaluate PDF functions, and `type4`
+is a small PostScript calculator interpreter — 11 of those 17 files.
 
 Java2D does the drawing in PDFBox. Go has nothing equivalent. `PLAN.md` names
 three options and defaults to the third: port the geometry, defer the raster
@@ -63,15 +73,24 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
       options. Write the decision down before B1.
 - [ ] B1. `awt/geom.Area` — constructive area geometry. Slice 2 recorded this
       as the one thing blocking `PDGraphicsState.getCurrentClippingPath`.
-- [ ] B2. `pdmodel/graphics/color` — the 20 colour spaces slice 2 left, and
+- [ ] B2. `pdmodel/common/function` and `function/type4` — 17 files
+  - Everything below evaluates these. `type4` is a PostScript calculator
+    interpreter in its own right.
+- [ ] B3. `pdmodel/graphics/color` — the 20 colour spaces slice 2 left, and
       `PDColorSpace.create`
-- [ ] B3. `pdmodel/graphics/state` — `PDSoftMask`,
+- [ ] B4. `pdmodel/graphics/state` — `PDSoftMask`,
       `PDExtendedGraphicsState`, the two Java composites, `BlendComposite`
-- [ ] B4. `contentstream` — `PDFGraphicsStreamEngine` and the path operators,
-      `operator/graphics/*`, `operator/color/*`
-- [ ] B5. `pdmodel/graphics/shading` — 37 files, seven shading types
-- [ ] B6. `pdfbox/rendering` — `PDFRenderer`, `PageDrawer`, and the rest
-- [ ] B7. `pdfbox/printing`
+- [ ] B5. `pdmodel/graphics/form` — `PDFormXObject`, `PDTransparencyGroup`,
+      `PDTransparencyGroupAttributes`, and `pdmodel/graphics/pattern` —
+      `PDAbstractPattern`, `PDTilingPattern`, `PDShadingPattern`
+  - These are what let `PDFStreamEngine` process a form, a transparency group
+    and a tiling pattern. Slice 2 recorded all three as absent, and with them
+    `shouldProcessColorOperators` ever being false.
+- [ ] B6. `contentstream` — `PDFGraphicsStreamEngine`, `operator/graphics` (23
+      files, the path operators and `DrawObject`), `operator/color` (13 files)
+- [ ] B7. `pdmodel/graphics/shading` — 37 files, seven shading types
+- [ ] B8. `pdfbox/rendering` — `PDFRenderer`, `PageDrawer`, and the rest
+- [ ] B9. `pdfbox/printing`
 
 ---
 
@@ -112,5 +131,5 @@ See [`TEMPLATE.md`](TEMPLATE.md) for E1–E4.
 
 # Blocked
 
-- [ ] B0. The raster backend decision blocks everything from B4 onward.
+- [ ] B0. The raster backend decision blocks everything from B6 onward.
       `PLAN.md` says to take it before starting, not during.

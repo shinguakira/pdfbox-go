@@ -86,6 +86,10 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
 
 Written from the Java source, in dependency order.
 
+- [ ] B0. `fontbox` root — 2 files
+  - `FontBoxFont`, `EncodedFont`. `PDFont` is written against `FontBoxFont`, so
+    nothing below compiles without it.
+
 - [ ] B1. `fontbox/afm` — 8 files
   - `AFMParser`, `FontMetrics`, `CharMetric`, `KernPair`, `TrackKern`,
     `Ligature`, `Composite`, `CompositePart`
@@ -137,6 +141,17 @@ Written from the Java source, in dependency order.
     `PDFTextStripper`, `PDFTextStripperByArea`, `PDFMarkedContentExtractor`
   - Note `PDFTextStripper` extends `LegacyPDFStreamEngine`, not the engine
     directly
+
+- [ ] B10. `pdfbox/util/IterativeMergeSort` — 1 file
+  - `PDFTextStripper` falls back to it when `TextPositionComparator` turns out
+    not to be transitive and the JDK sort throws. Port `TestSort` with it.
+
+- [ ] B11. **Only if the loader decision below said yes** — `pdfbox/Loader`,
+      `pdfparser/PDFParser`, `XrefParser`, `BruteForceParser`,
+      `PDFObjectStreamParser`, `PDFXrefStreamParser`, and `PDDocument`,
+      `PDDocumentCatalog`, `PDDocumentInformation`
+  - This is the whole file-opening path. It is not small, and it is not this
+    slice's subject. See Blocked.
 
 ---
 

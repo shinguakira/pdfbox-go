@@ -32,6 +32,11 @@ D — adversarial review · E — user feedback
 | --- | ---: | ---: |
 | `pdmodel/interactive` — 8 subpackages | 144 | 35 |
 | `pdmodel/documentinterchange` | 24 | — |
+| `pdmodel/fdf` | 31 | — |
+| `pdfparser/FDFParser` | 1 | — |
+| `pdmodel/fixup` and `fixup/processor` | 8 | — |
+| `pdmodel/graphics/optionalcontent` | 3 | — |
+| `pdmodel/common` — what slice 2 left | ~10 of 16 | 1 |
 
 The largest slice by file count. `PLAN.md` notes each subtree is independent of
 the others, so the eight subpackages of `interactive` can be taken one at a
@@ -75,7 +80,15 @@ implementation, then move on. Do not open all eight at once.
 - [ ] B7. `interactive/measurement`, `interactive/viewerpreferences`
 - [ ] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
       prepress
-- [ ] B9. Close the `PDPage` holes slice 2 left: annotations, thread beads,
+- [ ] B9. `pdmodel/graphics/optionalcontent` — 3 files
+  - `PDPropertyList` lives here, and `PDResources.getProperties` returns it.
+    Slice 2 recorded that lookup as absent, and BDC and DP in
+    `operator/markedcontent` cannot resolve a named property list without it.
+- [ ] B10. `pdmodel/fdf` — 31 files, and `pdfparser/FDFParser`
+  - Forms Data Format: the import and export half of AcroForms
+- [ ] B11. `pdmodel/fixup` and `fixup/processor` — 8 files
+  - The document fixups AcroForm reading applies before it trusts a file
+- [ ] B12. Close the `PDPage` holes slice 2 left: annotations, thread beads,
       transitions, additional actions, viewports, metadata
 
 ---

@@ -35,7 +35,13 @@ The bulk of `fontbox`, and the CID half of the font model.
 | `fontbox/cff` | 26 | 6 |
 | `fontbox/type1` | 6 | 1 |
 | `fontbox/cmap` | 5 | 5 |
+| `fontbox/pfb` | 1 | — |
 | `fontbox/ttf` — what slice 3 left | ~29 of 44 | 4 |
+| `fontbox/ttf/gsub` | 13 | — |
+| `fontbox/ttf/model` | 5 | — |
+| `fontbox/ttf/table/common` | 12 | — |
+| `fontbox/ttf/table/gsub` | 9 | — |
+| `fontbox/util/autodetect` | 7 | — |
 | `pdmodel/font` — the CID and Type0 half | ~15 of 39 | 2 |
 
 ---
@@ -57,10 +63,17 @@ The bulk of `fontbox`, and the CID half of the font model.
 # Phase B — Port the implementation
 
 - [ ] B1. `fontbox/cmap` — the CMap parser and the predefined CMaps
-- [ ] B2. `fontbox/type1` — the Type 1 font parser
+- [ ] B2. `fontbox/type1` — the Type 1 font parser, and `fontbox/pfb` — the
+      PFB container it arrives in
 - [ ] B3. `fontbox/cff` — CFF and Type 2 charstrings, 26 files
-- [ ] B4. `fontbox/ttf` — GSUB (`gsub/`, 13 files), OpenType, collections,
-      the vertical and kerning tables, `TTFSubsetter`
+- [ ] B4. `fontbox/ttf` — the rest of it
+  - GSUB: `gsub/` 13 files, `model/` 5, `table/common/` 12, `table/gsub/` 9 —
+    39 files, more than the 13 the `gsub` directory alone suggests
+  - OpenType (`OTFParser`, `OpenTypeFont`, `OpenTypeScript`, `CFFTable`),
+    collections (`TrueTypeCollection`, `TTCDataStream`), the vertical and
+    kerning tables, `TTFSubsetter`, `GlyphRenderer`,
+    `SubstitutingCmapLookup`, `RandomAccessReadUnbufferedDataStream`,
+    `DigitalSignatureTable`, `FontHeaders`
 - [ ] B5. `pdmodel/font` — `PDType0Font`, `PDCIDFont`, `PDCIDFontType0`,
       `PDCIDFontType2`, `CIDSystemInfo`, `PDCIDSystemInfo`, `CMapManager`,
       `PDType1CFont`, `PDMMType1Font`
@@ -68,6 +81,9 @@ The bulk of `fontbox`, and the CID half of the font model.
       `FontMapperImpl`, `FontMappers`, `FontMapping`, `CIDFontMapping`,
       `FontProvider`, `FileSystemFontProvider`, `FontCache`, `FontInfo`,
       `FontFormat`
+  - and `fontbox/util/autodetect` — 7 files, the per-platform font directory
+    finders `FileSystemFontProvider` scans. Windows, Mac and Unix each have
+    their own; the Go equivalent is a substitution, not a transliteration.
 - [ ] B7. `pdmodel/font/encoding` — anything slice 3 left
 
 ---

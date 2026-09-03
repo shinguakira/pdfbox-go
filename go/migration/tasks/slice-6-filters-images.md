@@ -32,6 +32,12 @@ D — adversarial review · E — user feedback
 | --- | ---: | ---: |
 | `pdfbox/filter` — what slice 1 left | ~19 of 23 | 2 |
 | `pdmodel/graphics/image` | 9 | 7 |
+| `pdmodel/graphics` root — `PDXObject`, `PDPostScriptXObject` | 2 of 4 | — |
+| `pdfbox/util/filetypedetector` | 3 | — |
+
+`PDXObject` is the base class of both the image XObject here and the form
+XObject in slice 9. It belongs to whichever of the two lands first; if slice 9
+goes first, drop it from here.
 
 Slice 1 ported `Filter`, `FilterFactory`, `Predictor`, `FlateFilter`,
 `IdentityFilter`. Everything else in that package is here.
@@ -65,8 +71,11 @@ relying on it.
 - [ ] B6. `JBIG2Filter` — decide whether it is ported or left declared and
       unsupported, as Java does when the optional jar is missing
 - [ ] B7. `DecodeOptions` — image subsampling, which slice 1 left out
-- [ ] B8. `pdmodel/graphics/image` — `PDImageXObject`, `PDInlineImage`,
+- [ ] B8. `pdmodel/graphics` root — `PDXObject`, `PDPostScriptXObject`
+- [ ] B9. `pdmodel/graphics/image` — `PDImageXObject`, `PDInlineImage`,
       `PDImage`, `SampledImageReader` and the rest of the 9
+- [ ] B10. `pdfbox/util/filetypedetector` — 3 files, sniffing an image's type
+      from its bytes
 
 ---
 

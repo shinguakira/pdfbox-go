@@ -32,6 +32,7 @@ D — adversarial review · E — user feedback
 | Java package | Files | Java tests |
 | --- | ---: | ---: |
 | `pdfbox/pdfwriter` | 3 | 5 |
+| `pdfbox/pdfwriter/compress` | 4 | — |
 | `pdfbox/multipdf` | 6 | 7 |
 | `pdfbox/cos` — the update state slice 1 deferred | 4 | — |
 | `pdfparser/PDFXRefStream` | 1 | — |
@@ -61,8 +62,9 @@ slice; they are the incremental-save machinery.
 - [ ] B1. `cos` — the update state: `COSUpdateInfo`, `COSUpdateState`,
       `COSDocumentState`, `COSIncrement`, and the fields the slice 1 types
       left out
-- [ ] B2. `pdfbox/pdfwriter` — `COSWriter`, `COSStandardOutputStream`,
-      `COSWriterCompressionPool`
+- [ ] B2. `pdfbox/pdfwriter` — `COSWriter`, `COSStandardOutputStream`, and the
+      4 files of `pdfwriter/compress`, which hold the object-stream
+      compression pool
 - [ ] B3. `pdfparser/PDFXRefStream` — writing the cross-reference stream
 - [ ] B4. `pdfbox/multipdf` — `PDFMergerUtility`, `Splitter`, `PageExtractor`,
       `LayerUtility`, `Overlay`

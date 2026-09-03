@@ -46,6 +46,87 @@ means adding a branch to the plan.
   again. No slice, no track, no branch. [`../STATUS.md`](../STATUS.md) carries
   it as "phase 7 `cmd/pdfbox`", which the plan does not say.
 
+## Coverage
+
+Every Java package in scope, and the branch that claims it. Regenerate the left
+column with:
+
+```
+find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
+     tools/src/main pdfbox-layout-*/src/main -name '*.java' \
+  | sed 's|/[^/]*\.java$||' | sed 's|^[a-z-]*/src/main/java/||' \
+  | sort | uniq -c | sort -k2
+```
+
+| Java package | Files | Claimed by |
+| --- | ---: | --- |
+| `org/apache/fontbox` | 2 | slice 3 |
+| `fontbox/afm` | 8 | slice 3 |
+| `fontbox/cff` | 26 | slice 4 |
+| `fontbox/cmap` | 5 | slice 4 |
+| `fontbox/encoding` | 4 | slice 3 |
+| `fontbox/pfb` | 1 | slice 4 |
+| `fontbox/ttf` | 44 | slice 3 (~15), slice 4 (rest) |
+| `fontbox/ttf/gsub` | 13 | slice 4 |
+| `fontbox/ttf/model` | 5 | slice 4 |
+| `fontbox/ttf/table/common` | 12 | slice 4 |
+| `fontbox/ttf/table/gsub` | 9 | slice 4 |
+| `fontbox/type1` | 6 | slice 4 |
+| `fontbox/util` | 1 | slice 2 — done |
+| `fontbox/util/autodetect` | 7 | slice 4 |
+| `org/apache/pdfbox` — `Loader` | 1 | slice 3, conditionally — see its Blocked |
+| `pdfbox/contentstream` | 3 | slice 2 — done; slice 9 for the graphics engine |
+| `contentstream/operator` | 5 | slice 2 — done |
+| `contentstream/operator/color` | 13 | slice 9 |
+| `contentstream/operator/graphics` | 23 | slice 9 |
+| `contentstream/operator/markedcontent` | 6 | slice 2 — done bar `DrawObject` |
+| `contentstream/operator/state` | 13 | slice 2 — done bar `gs` |
+| `contentstream/operator/text` | 16 | slice 2 (11), slice 3 (5) |
+| `pdfbox/cos` | 24 | slice 1 — done; slice 7 for the 4 update-state files |
+| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) |
+| `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` — **no branch** |
+| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) |
+| `pdfbox/multipdf` | 6 | slice 7 |
+| `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 conditionally, slice 8 for `FDFParser` |
+| `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
+| `pdfbox/pdfwriter` | 3 | slice 7 |
+| `pdfbox/pdfwriter/compress` | 4 | slice 7 |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7 |
+| `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
+| `pdmodel/common/filespecification` | 4 | slice 8 |
+| `pdmodel/common/function` | 6 | slice 9 |
+| `pdmodel/common/function/type4` | 11 | slice 9 |
+| `pdmodel/documentinterchange/*` | 24 | slice 8 |
+| `pdmodel/encryption` | 19 | slice 5 |
+| `pdmodel/fdf` | 31 | slice 8 |
+| `pdmodel/fixup`, `fixup/processor` | 8 | slice 8 |
+| `pdmodel/font` | 39 | slice 3 (~12), slice 4 (rest) |
+| `pdmodel/font/encoding` | 12 | slice 3 |
+| `pdmodel/graphics` | 4 | slice 2 (1), slice 6 (2), slice 9 (`PDFontSetting`) |
+| `pdmodel/graphics/blend` | 2 | slice 2 (1), slice 9 (1) |
+| `pdmodel/graphics/color` | 23 | slice 2 (3), slice 9 (rest) |
+| `pdmodel/graphics/form` | 3 | slice 9 |
+| `pdmodel/graphics/image` | 9 | slice 6 |
+| `pdmodel/graphics/optionalcontent` | 3 | slice 8 |
+| `pdmodel/graphics/pattern` | 3 | slice 9 |
+| `pdmodel/graphics/shading` | 37 | slice 9 |
+| `pdmodel/graphics/state` | 6 | slice 2 (4), slice 9 (2) |
+| `pdmodel/interactive/*` | 144 | slice 8 |
+| `pdfbox/printing` | 4 | slice 9 |
+| `pdfbox/rendering` | 10 | slice 9 |
+| `pdfbox/text` | 6 | slice 3 |
+| `pdfbox/tools`, `tools/imageio` | 26 | **nothing** — see the gaps below |
+| `pdfbox/util` | 9 | see below |
+| `pdfbox/util/filetypedetector` | 3 | slice 6 |
+| `xmpbox/*` | 74 | `track/xmpbox` |
+
+`pdfbox/util` is nine unrelated helpers with no single home. `Matrix` and
+`Vector` landed in slice 2; `IterativeMergeSort` is slice 3, because
+`PDFTextStripper` falls back to it. The remaining six — `DateConverter`,
+`Hex`, `NumberFormatUtil`, `StringUtil`, `Version`, `XMLUtil` — go to whichever
+branch first needs each, and each has a Java test (`TestDateUtil`,
+`TestHexUtil`, `TestNumberFormatUtil`, `StringUtilTest`) to port with it.
+
 ## The five phases
 
 **A — write the test.** Port the Java test to Go. Assertion values are copied
