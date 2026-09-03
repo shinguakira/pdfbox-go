@@ -17,7 +17,7 @@ Last updated: 2026-09-03
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | `filter` in progress — Flate, Predictor, Identity ported for slice 1 |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 8 of 18 |
 | 3 | `pdfbox/pdmodel` | 433 | not started |
 | 4 | `fontbox` | 143 | not started |
 | 5 | `contentstream`, `text` | 85 | not started |
@@ -156,6 +156,37 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | --- | --- | --- |
 | `PredictorTest` | `predictor_test.go` | complete |
 | `TestFilters` | `flate_test.go` | the round-trip generator is ported; `testPDFBOX4517` needs a loader, `testPDFBOX1977` needs LZW, `testRLE` needs RunLength |
+
+## Slice 1 — `pdfbox/pdfparser`
+
+8 of 18 files ported. This is the package `AGENTS.md` flags as historically
+bug-prone, so it is ported line for line and every recovery path is kept.
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `BaseParser.java` | `base.go` | done — the lexer |
+| `XrefTrailerResolver.java` | `xreftrailer.go` | done |
+| `xref/XReferenceType.java` | `xref/xref.go` | done |
+| `xref/XReferenceEntry.java` | `xref/xref.go` | done |
+| `xref/AbstractXReference.java` | `xref/xref.go` | done |
+| `xref/FreeXReference.java` | `xref/xref.go` | done |
+| `xref/NormalXReference.java` | `xref/xref.go` | done |
+| `xref/ObjectStreamXReference.java` | `xref/xref.go` | done |
+| `COSParser.java` | — | **next — 2,021 lines, the core** |
+| `XrefParser.java` | — | not started — 695 lines |
+| `BruteForceParser.java` | — | not started — 857 lines, the damaged-file recovery path |
+| `PDFStreamParser.java` | — | not started — 497 lines |
+| `PDFXRefStream.java` | — | not started |
+| `PDFXrefStreamParser.java` | — | not started |
+| `PDFParser.java` | — | not started — the entry point |
+| `PDFObjectStreamParser.java` | — | not started |
+| `EndstreamFilterStream.java` | — | not started |
+| `FDFParser.java` | — | not started — FDF, not needed for slice 1 |
+
+None of the Java files in this package have tests; the parsers are exercised
+only through whole documents. Every test here is therefore written from the
+source per the tdd rule, and the recovery paths named in the Java comments —
+PDFBOX-3506, PDFBOX-276, brother_scan_cover.pdf — are pinned individually.
 
 ### Method note — `cos/stream.go` was not ported test-first
 
