@@ -283,18 +283,47 @@ func (d *Document) ObjectsByType(typ *Name) []*Object {
 // ObjectsByType2 returns every pooled object whose dictionary has either of the
 // given types.
 //
-// Port of getObjectsByType(COSName, COSName). Java takes a snapshot of the key
-// set, scans it, then scans again for anything the brute-force parser added
-// while it was running. Iterating a Go map while the pool grows underneath is
-// undefined, so the port snapshots the keys once and scans that; a key added
-// during the scan is picked up by the next call, which is what the Java second
-// pass amounts to.
+// Port of getObjectsByType(COSName, COSName). Dereferencing one of the initial
+// keys can trigger the brute force parser on a damaged file, which adds more
+// entries to the table while the scan is running. Java takes a second snapshot
+// afterwards and scans whatever is new in the same call, so that page discovery
+// does not silently miss the recovered objects; the port does the same.
+//
+// The keys are snapshotted rather than ranged over directly, because the pool
+// and the table both grow during the scan and iterating a Go map while it is
+// written to is undefined.
 func (d *Document) ObjectsByType2(type1, type2 *Name) []*Object {
-	keys := make([]*ObjectKey, 0, len(d.xrefTable))
-	for _, e := range d.xrefTable {
+	scanned := make(map[int64]bool, len(d.xrefTable))
+	out := d.scanForType(d.snapshotKeys(scanned), type1, type2, scanned)
+
+	// Anything added while that ran is scanned too. This repeats rather than
+	// running exactly twice, because recovery triggered by the second pass can
+	// add more again; the scanned set guarantees it terminates.
+	for {
+		additional := d.snapshotKeys(scanned)
+		if len(additional) == 0 {
+			return out
+		}
+		out = append(out, d.scanForType(additional, type1, type2, scanned)...)
+	}
+}
+
+// snapshotKeys returns the table keys not already in scanned, marking them.
+func (d *Document) snapshotKeys(scanned map[int64]bool) []*ObjectKey {
+	var keys []*ObjectKey
+	for hash, e := range d.xrefTable {
+		if scanned[hash] {
+			continue
+		}
+		scanned[hash] = true
 		keys = append(keys, e.key)
 	}
+	return keys
+}
 
+// scanForType returns the pooled objects among keys whose dictionary carries
+// either type.
+func (d *Document) scanForType(keys []*ObjectKey, type1, type2 *Name, scanned map[int64]bool) []*Object {
 	var out []*Object
 	for _, key := range keys {
 		obj := d.ObjectFromPool(key)

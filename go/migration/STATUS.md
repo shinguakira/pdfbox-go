@@ -17,7 +17,7 @@ Last updated: 2026-09-03
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 8 of 18 |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 11 of 18 |
 | 3 | `pdfbox/pdmodel` | 433 | not started |
 | 4 | `fontbox` | 143 | not started |
 | 5 | `contentstream`, `text` | 85 | not started |
@@ -124,18 +124,38 @@ Deliberate differences, each commented at the point it occurs:
   interned names make the pointer form cheap.
 - `AsReadOnly` returns an interface with no mutating methods, so a write is a
   compile error. Java returns a `COSDictionary` that throws at run time.
-- `Integer.Equals` compares the full `int64`. Java compares `intValue()`, which
-  truncates to 32 bits.
-- `ParseHexString` always fails on malformed hex. Java has a `FORCE_PARSING`
-  mode, read from a JVM system property, that substitutes `'?'` instead.
 - `cosEqual` dispatches to the `Equals` method of the types that define one.
   Java relies on every class overriding `equals`; Go has no single such hook,
   and every container comparison goes through this one function.
-- `assertBytesEqual` compares lengths properly. The Java `testByteArrays` helper
-  compares `byteArr1.length` against itself and so never checks them.
 - `Visitor` and the ported types are deliberately smaller than the Java
   originals where a dependency is not ported yet; each says so in its doc
   comment.
+
+Behaviour that is **not** a deviation, listed because it looks like one:
+`Integer.Equals` truncates to 32 bits, `ParseHexString` honours a `ForceParsing`
+flag, `assertBytesEqual` does not check lengths, and `Name.Bytes` returns the
+internal slice. All four match the Java, and the first three are recorded in
+[`JAVA-BUGS.md`](JAVA-BUGS.md) as defects carried over deliberately.
+
+### Port defects found in review, fixed
+
+Five places where the Go did something the Java does not. All were caught by
+review rather than by the ported tests, which is worth noting: the tests were
+written from the Java and still missed these, because each one turns on a
+detail of how Go differs from Java rather than on what PDFBox does.
+
+- `Integer.IntValue` did not truncate to 32 bits — Go's `int(int64)` is a no-op
+  where Java's `(int)` narrows. This also meant `Equals` was **not** reproducing
+  JAVA-BUGS entry 1 despite a comment claiming it did.
+- `Float.IntValue` and `LongValue` did not saturate. Java clamps an out-of-range
+  float to `MAX_VALUE`/`MIN_VALUE`; Go leaves the conversion undefined.
+- `Flate.Decode` propagated a corrupt-input error, so `Stream.CreateReader`
+  returned no reader and the decoded prefix was unreachable. Java catches,
+  logs and returns what inflated — the damage tolerance the filter exists for.
+- `Stream.Length` answered while a writer was open, returning a stale value.
+  Java throws there; the Go now returns `ErrStreamWriting`.
+- `XrefTrailerResolver` resolved to no type when startxref pointed nowhere. The
+  Java constructor defaults it to `TABLE`.
 
 ## Slice 1 — `pdfbox/filter`
 

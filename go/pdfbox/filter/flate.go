@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/zlib"
-	"errors"
 	"io"
+	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 )
@@ -50,12 +50,17 @@ func (Flate) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary, index 
 	var raw bytes.Buffer
 	_, inflateErr := io.Copy(&raw, inflated)
 
-	predictErr := decodePredictor(w, bytes.NewReader(raw.Bytes()), params)
-	if predictErr != nil {
-		return result, predictErr
+	if inflateErr != nil {
+		// FlateFilterDecoderStream catches the DataFormatException, logs it and
+		// returns whatever inflated — its comment reads "don't throw an
+		// exception, use the already read data or an empty stream". A damaged
+		// PDF has to stay readable up to the damage, so the error is reported
+		// and not propagated.
+		slog.Warn("filter: premature end of flate stream", "err", inflateErr)
 	}
-	if inflateErr != nil && !errors.Is(inflateErr, io.ErrUnexpectedEOF) {
-		return result, inflateErr
+
+	if err := decodePredictor(w, bytes.NewReader(raw.Bytes()), params); err != nil {
+		return result, err
 	}
 	return result, nil
 }

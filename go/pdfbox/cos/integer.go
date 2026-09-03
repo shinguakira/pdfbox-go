@@ -72,8 +72,12 @@ func GetInteger(value int64) *Integer {
 // FloatValue returns the value as a float32.
 func (i *Integer) FloatValue() float32 { return float32(i.value) }
 
-// IntValue returns the value truncated to an int, as Java's (int) cast does.
-func (i *Integer) IntValue() int { return int(i.value) }
+// IntValue returns the value narrowed to 32 bits.
+//
+// Port of intValue(), which is `(int) value`. Java's narrowing cast discards
+// everything above bit 31; Go's int(int64) does not, because int is 64 bits on
+// every platform this builds for, so the truncation has to be written out.
+func (i *Integer) IntValue() int { return int(int32(i.value)) }
 
 // LongValue returns the value.
 func (i *Integer) LongValue() int64 { return i.value }

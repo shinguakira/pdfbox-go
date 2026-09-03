@@ -321,8 +321,15 @@ func (s *Stream) codecFor(name *Name) (StreamCodec, error) {
 }
 
 // Length returns the /Length entry, the number of stored bytes.
-func (s *Stream) Length() int64 {
-	return s.GetLongDefault(Length, 0)
+//
+// Port of getLength, which throws IllegalStateException while a writer is open:
+// the length is only recorded when that writer is closed, so answering before
+// then would hand back a stale value.
+func (s *Stream) Length() (int64, error) {
+	if s.isWriting {
+		return 0, ErrStreamWriting
+	}
+	return s.GetLongDefault(Length, 0), nil
 }
 
 // HasData reports whether the stream holds any data.

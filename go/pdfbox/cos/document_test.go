@@ -243,7 +243,12 @@ func (p *rescanParser) DereferenceObject(obj *Object) (Base, error) {
 		p.doc.AddXRefTable(map[*ObjectKey]int64{late: 500})
 		lateDict := NewDictionary()
 		lateDict.SetItem(Type, Page)
-		p.doc.ObjectFromPool(late).baseObject = lateDict
+		// Mark it resolved as well as seeding the value: the pooled proxy still
+		// holds this parser, so an unresolved one would come straight back here
+		// and overwrite what was just set.
+		recovered := p.doc.ObjectFromPool(late)
+		recovered.baseObject = lateDict
+		recovered.isDereferenced = true
 	}
 	return NullObject, nil
 }

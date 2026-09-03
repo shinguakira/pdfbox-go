@@ -201,7 +201,7 @@ func TestStreamLengthIsRecordedOnClose(t *testing.T) {
 	s := createStream(t, input, nil)
 	defer s.Close()
 
-	if got := s.Length(); got != int64(len(input)) {
+	if got, _ := s.Length(); got != int64(len(input)) {
 		t.Errorf("Length() = %d, want %d", got, len(input))
 	}
 }

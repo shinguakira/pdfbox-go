@@ -133,8 +133,8 @@ func TestParseCOSStreamMissingLength(t *testing.T) {
 
 	// The data is ASCII, so PDFBOX-2120 keeps the trailing newline as part of
 	// the stream rather than trimming it.
-	if got, want := stream.Length(), int64(len(data)+1); got != want {
-		t.Errorf("recorded /Length = %d, want %d", got, want)
+	if got, _ := stream.Length(); got != int64(len(data)+1) {
+		t.Errorf("recorded /Length = %d, want %d", got, len(data)+1)
 	}
 }
 
@@ -155,9 +155,9 @@ func TestParseCOSStreamWrongLength(t *testing.T) {
 	defer stream.Close()
 
 	// ASCII data keeps its trailing newline; see PDFBOX-2120.
-	if got, want := stream.Length(), int64(len(data)+1); got != want {
+	if got, _ := stream.Length(); got != int64(len(data)+1) {
 		t.Errorf("recorded /Length = %d, want %d — the wrong value must be replaced",
-			got, want)
+			got, len(data)+1)
 	}
 }
 
@@ -178,8 +178,8 @@ func TestParseCOSStreamEndsWithEndobj(t *testing.T) {
 
 	// The data is ASCII, so PDFBOX-2120 keeps the trailing newline as part of
 	// the stream rather than trimming it.
-	if got, want := stream.Length(), int64(len(data)+1); got != want {
-		t.Errorf("recorded /Length = %d, want %d", got, want)
+	if got, _ := stream.Length(); got != int64(len(data)+1) {
+		t.Errorf("recorded /Length = %d, want %d", got, len(data)+1)
 	}
 }
 
@@ -211,8 +211,8 @@ func TestReadUntilEndStreamLargeData(t *testing.T) {
 
 	// The data is ASCII, so PDFBOX-2120 keeps the trailing newline as part of
 	// the stream rather than trimming it.
-	if got, want := stream.Length(), int64(len(data)+1); got != want {
-		t.Errorf("recorded /Length = %d, want %d", got, want)
+	if got, _ := stream.Length(); got != int64(len(data)+1) {
+		t.Errorf("recorded /Length = %d, want %d", got, len(data)+1)
 	}
 
 	r, _ := stream.CreateRawReader()

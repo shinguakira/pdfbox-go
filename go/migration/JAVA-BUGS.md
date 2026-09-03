@@ -45,7 +45,10 @@ compare **equal**.
 **Why it matters** `equals` is what `COSArray.indexOf`, `removeObject` and every
 dictionary comparison route through. Object numbers can exceed the `int` range.
 
-**Where the Go carries it** `go/pdfbox/cos/integer.go`, `Integer.Equals`.
+**Where the Go carries it** `go/pdfbox/cos/integer.go`, `Integer.Equals`, via
+`Integer.IntValue`, which narrows through int32 so that Go reproduces Java's
+(int) cast. An earlier draft did not narrow, so the defect was not in fact
+reproduced; caught in review.
 
 **Confidence** high. The truncation is unambiguous and there is no comment
 suggesting it is deliberate.

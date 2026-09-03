@@ -49,8 +49,14 @@ type xrefTableEntry struct {
 	offset int64
 }
 
+// newXrefTrailerObj matches the Java constructor, which sets the type to TABLE.
+// The resolved object keeps that default when startxref points nowhere and no
+// section type can be copied.
 func newXrefTrailerObj() *xrefTrailerObj {
-	return &xrefTrailerObj{xrefTable: make(map[int64]*xrefTableEntry)}
+	return &xrefTrailerObj{
+		xrefType:  XRefTypeTable,
+		xrefTable: make(map[int64]*xrefTableEntry),
+	}
 }
 
 // XrefTrailerResolver collects the cross-reference sections of a file and

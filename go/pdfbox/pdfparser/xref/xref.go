@@ -82,8 +82,14 @@ func (b base) FirstColumnValue() int64 { return int64(b.typ.NumericValue()) }
 
 // Compare orders entries by the object they reference.
 //
-// Port of AbstractXReference.compareTo. An entry with no key sorts first and a
-// nil entry sorts last, which is what the Java null handling amounts to.
+// Port of AbstractXReference.compareTo, which handles two null cases: an entry
+// whose own key is nil returns -1, and a nil or keyless argument returns 1. In
+// ascending order both put the keyless entry first.
+//
+// Java's compareTo is an instance method, so its receiver can never be null —
+// calling it on one throws. The a == nil branch here has no Java counterpart
+// and is defensive only; it sorts a nil receiver first, consistent with the
+// keyless case.
 func Compare(a, b Entry) int {
 	if a == nil || a.ReferencedKey() == nil {
 		return -1

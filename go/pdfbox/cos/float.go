@@ -125,11 +125,38 @@ func coerceFloat(value float32) float32 {
 // FloatValue returns the value.
 func (f *Float) FloatValue() float32 { return f.value }
 
-// IntValue returns the value truncated toward zero, as Java's (int) cast does.
-func (f *Float) IntValue() int { return int(f.value) }
+// IntValue returns the value truncated toward zero and clamped to 32 bits.
+//
+// Port of intValue(), which is `(int) value`. A Java narrowing cast from a
+// floating point type saturates: a value too large becomes Integer.MAX_VALUE,
+// too small becomes Integer.MIN_VALUE, and NaN becomes zero. Go leaves an
+// out-of-range float conversion undefined, so the clamping is written out.
+func (f *Float) IntValue() int {
+	switch {
+	case math.IsNaN(float64(f.value)):
+		return 0
+	case float64(f.value) >= math.MaxInt32:
+		return math.MaxInt32
+	case float64(f.value) <= math.MinInt32:
+		return math.MinInt32
+	}
+	return int(int32(f.value))
+}
 
-// LongValue returns the value truncated toward zero.
-func (f *Float) LongValue() int64 { return int64(f.value) }
+// LongValue returns the value truncated toward zero and clamped to 64 bits.
+//
+// Port of longValue(), which is `(long) value`, and saturates the same way.
+func (f *Float) LongValue() int64 {
+	switch {
+	case math.IsNaN(float64(f.value)):
+		return 0
+	case float64(f.value) >= math.MaxInt64:
+		return math.MaxInt64
+	case float64(f.value) <= math.MinInt64:
+		return math.MinInt64
+	}
+	return int64(f.value)
+}
 
 // COSObject returns the receiver.
 func (f *Float) COSObject() Base { return f }
