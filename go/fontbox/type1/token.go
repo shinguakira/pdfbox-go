@@ -104,13 +104,24 @@ func (t *token) IntValue() int {
 	return floatToInt(t.FloatValue())
 }
 
+// numberFormatError is what a token whose text is not a number panics with.
+//
+// Java throws NumberFormatException, which is unchecked and so travels
+// straight out of the caller; Type1Parser.parse is the one place that catches
+// it, and it recovers on this type.
+type numberFormatError struct {
+	text string
+}
+
+func (e *numberFormatError) Error() string {
+	return fmt.Sprintf("For input string: %q", e.text)
+}
+
 // FloatValue returns the token's text as a float.
 func (t *token) FloatValue() float32 {
 	value, err := strconv.ParseFloat(t.text, 32)
 	if err != nil {
-		// Java's Float.parseFloat throws NumberFormatException, which is
-		// unchecked and so travels straight out of the caller.
-		panic(fmt.Sprintf("type1: For input string: %q", t.text))
+		panic(&numberFormatError{text: t.text})
 	}
 	return float32(value)
 }
