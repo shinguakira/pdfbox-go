@@ -394,3 +394,37 @@ func TestSetEmbeddedStringKeepsEmpty(t *testing.T) {
 		t.Errorf("embedded entry = %q, want the empty string", got)
 	}
 }
+
+// TestDictionaryAddAllIsARawPut pins what Java's addAll does, which is
+// items.putAll(dict.items) and nothing else: no indirect wrapping, and no
+// update state. Routing it through SetItem, which does both, would make an
+// incremental save write dictionaries Java leaves alone and would turn a
+// copied entry into a reference.
+func TestDictionaryAddAllIsARawPut(t *testing.T) {
+	// a document that has finished parsing, so its dictionaries accept updates
+	doc := NewDocument(nil)
+	doc.DocumentState().SetParsing(false)
+	target := NewDictionary()
+	target.UpdateState().SetOriginDocumentState(doc.DocumentState())
+	target.SetNeedToBeUpdated(false)
+
+	// an entry SetItem would wrap: a dictionary that is not direct and has a key
+	key, err := NewObjectKey(7, 0)
+	if err != nil {
+		t.Fatalf("NewObjectKey: %v", err)
+	}
+	nested := NewDictionary()
+	nested.SetKey(key)
+
+	source := NewDictionary()
+	source.putItem(Type, nested)
+
+	target.AddAll(source)
+
+	if got := target.GetItem(Type); got != Base(nested) {
+		t.Errorf("AddAll stored %T, want the dictionary itself", got)
+	}
+	if target.IsNeedToBeUpdated() {
+		t.Error("AddAll marked the receiver as needing an update; Java's addAll does not")
+	}
+}

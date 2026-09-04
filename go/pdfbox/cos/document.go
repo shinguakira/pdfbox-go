@@ -126,10 +126,13 @@ func (d *Document) SetVersion(version float32) { d.version = version }
 // Trailer returns the trailer dictionary.
 func (d *Document) Trailer() *Dictionary { return d.trailer }
 
-// SetTrailer records the trailer dictionary.
+// SetTrailer records the trailer dictionary and links it to the document's
+// state, which is what makes a later change to it count as an update for an
+// incremental save.
 //
-// // MIT added, maybe this should not be supported as trailer is a persistence
-// construct.
+// Java's javadoc here carries an editorial note from the original author —
+// "maybe this should not be supported as trailer is a persistence construct" —
+// which is a doubt about the method's existence, not about what it does.
 func (d *Document) SetTrailer(trailer *Dictionary) {
 	d.trailer = trailer
 	trailer.UpdateState().SetOriginDocumentState(d.DocumentState())

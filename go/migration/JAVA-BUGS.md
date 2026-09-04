@@ -1349,3 +1349,65 @@ names this entry.
 method, not measured against a Java run, because there is no Maven in this
 environment to build PDFBox with. Every ported test of this class passes with
 the Java values.
+
+---
+
+## 34. `PageExtractor.extract` throws where its own javadoc promises a blank document
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PageExtractor.java`,
+`extract`, together with `Splitter.setEndPage`.
+
+**What it does**
+
+```java
+public PDDocument extract() throws IOException
+{
+    if (endPage - startPage + 1 <= 0)
+    {
+        return new PDDocument();
+    }
+    Splitter splitter = new Splitter();
+    splitter.setStartPage(Math.max(startPage, 1));
+    splitter.setEndPage(Math.min(endPage, sourceDocument.getNumberOfPages()));
+    ...
+}
+```
+
+and its javadoc says
+
+> If startPage is greater than endPage or greater than the number of pages in
+> the source document, a blank document will be returned.
+
+The guard covers only the first half of that sentence. A start page beyond the
+end of the document with an end page beyond it too — say pages 30 to 40 of a 28
+page file — passes the guard, because `40 - 30 + 1` is 11. Then `setStartPage`
+is given 30 and `setEndPage` is given `min(40, 28)`, which is 28, and
+
+```java
+if (end < startPage)
+{
+    throw new IllegalArgumentException("End page is smaller than startPage");
+}
+```
+
+fires. The blank document is never returned.
+
+**What correct would be** clamping the start page against the page count in the
+same guard, so that `startPage > getNumberOfPages()` also returns a blank
+document — or reordering `setEndPage` before `setStartPage`, which would remove
+the cross-check but is not what the javadoc promises either.
+
+**Why it matters** the javadoc is the contract callers read, and it says the
+out-of-range case is handled. It is not: the caller gets an unchecked exception
+from two frames down, in a class it never named.
+
+**Where the Go carries it** `go/pdfbox/multipdf/pageextractor.go`, `Extract`,
+which has the same guard and the same order of the two setters, and
+`splitter.go`, whose `SetEndPage` panics with the same message —
+`IllegalArgumentException` is unchecked, so the port panics.
+`TestExtractBeyondTheDocumentPanics` in `pageextractor_test.go` pins it and
+names this entry.
+
+**Confidence** high. Read from the two methods and confirmed by the port
+panicking with `End page is smaller than startPage` for pages 30 to 40 of the
+28 page `cweb.pdf`, which is the document `PageExtractorTest` uses.

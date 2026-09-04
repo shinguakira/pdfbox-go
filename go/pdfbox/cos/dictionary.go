@@ -254,12 +254,21 @@ func (d *Dictionary) All(yield func(*Name, Base) bool) {
 }
 
 // AddAll copies every entry of other into this dictionary.
+//
+// Port of addAll(COSDictionary), which is `items.putAll(dict.items)` and
+// nothing else. It deliberately does not go through setItem: the raw entries
+// are copied, so a value is not turned into an indirect reference and neither
+// dictionary is marked as needing an update. The copy constructor is this
+// method, so `new COSDictionary(other)` copies raw too.
+//
+// A nil other is Java's null, which throws NullPointerException; the port
+// returns, which is what slice 1 chose for every such argument.
 func (d *Dictionary) AddAll(other *Dictionary) {
 	if other == nil {
 		return
 	}
 	for _, k := range other.keys {
-		d.SetItem(k, other.items[k])
+		d.putItem(k, other.items[k])
 	}
 }
 

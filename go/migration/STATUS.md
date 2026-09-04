@@ -1917,3 +1917,51 @@ method.
 - `ToUnicodeWriter` is package-private and final in Java, so the port keeps it
   unexported. Nothing calls it yet: its caller is the font embedding path, which
   slice 3 left out.
+
+### Port defects found in the slice 7 feedback, fixed
+
+**`COSDictionary.addAll` was routed through `setItem`.** Java's `addAll` is
+`items.putAll(dict.items)` and nothing else. The port had it copying entries
+through `SetItem`, which was harmless until this slice gave `SetItem` two jobs
+it did not have before: wrapping a keyed, non-direct value into a `COSObject`,
+and calling `getUpdateState().update(value)`. Both then leaked into every
+`addAll`, so a copied entry became an indirect reference and the receiving
+dictionary was marked as needing an incremental write. `COSDictionary`'s copy
+constructor is `addAll`, so `new COSDictionary(page.getCOSObject())` in
+`importPage` was affected too. `AddAll` now uses the raw insertion helper.
+`TestDictionaryAddAllIsARawPut` asserts both halves and fails on either.
+
+**The trailer `/ID` digest hashed UTF-8.** Java feeds it
+`Long.toString(idTime).getBytes(ISO_8859_1)` and
+`cosBase.toString().getBytes(ISO_8859_1)`; the port converted the Go strings
+directly, which is UTF-8. Identical for ASCII metadata and different for
+anything else, so a document with a non-ASCII `/Title` came out with an `/ID`
+the reference would not produce — visible whenever `setDocumentId` is used to
+make the output deterministic. `encodeISO88591` in `coswriter.go` now does what
+the charset does, including the `?` an unmappable character becomes. Java has no
+shared helper for this and neither does the port; `encryption` has its own copy
+with the same body. `TestDocumentIDDigestUsesISO88591` computes the expected
+digest from the Java rule, not from the port.
+
+**`Document.SetTrailer`'s doc comment.** Java's javadoc carries an editorial
+note from the original author, and the port had transcribed it with its leading
+`//` intact, producing a doubled comment marker and a line that reads as
+nonsense in the Go documentation. The comment now says what the method does —
+it links the trailer to the document state, which is what makes a later change
+count as an update — and attributes the note.
+
+### Reviewed and declined — slice 7
+
+**`PageExtractor.Extract` panics for a start page beyond the document.**
+Reported as contradicting the doc comment, which promises a blank document. It
+does contradict it — in the Java. `extract`'s guard covers `startPage >
+endPage` and not `startPage > getNumberOfPages()`, so pages 30 to 40 of a 28
+page file reach `setEndPage(28)` with `startPage` already 30, and
+`IllegalArgumentException` is thrown two frames down. The port panics, which is
+what an unchecked exception becomes. Recorded as JAVA-BUGS 34 and pinned by
+`TestExtractBeyondTheDocumentPanics`, which asserts the panic and its message.
+
+The same report also worried about indexing `splitted[0]` when nothing is
+extracted. That cannot happen: reaching the index means both setters accepted
+their arguments, so `1 <= startPage <= endPage <= numberOfPages`, and
+`processPages` therefore makes at least one destination document.

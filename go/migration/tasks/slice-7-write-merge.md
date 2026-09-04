@@ -178,21 +178,28 @@ And for this branch in particular:
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting — 4 items: 2 port
+      defects (`COSDictionary.addAll` routed through `setItem`, the trailer /ID
+      digest hashing UTF-8), 1 documentation defect (`SetTrailer`), 1 Java
+      difference (`PageExtractor.Extract` panicking past the last page), which
+      is JAVA-BUGS 34
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first —
+      `TestDictionaryAddAllIsARawPut` and `TestDocumentIDDigestUsesISO88591`
+      both failed before their fix; `TestExtractBeyondTheDocumentPanics` pins
+      the Java bug that stays
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 ---

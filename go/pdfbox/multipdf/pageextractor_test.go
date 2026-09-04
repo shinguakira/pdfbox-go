@@ -71,3 +71,32 @@ func TestExtract(t *testing.T) {
 	assertPages(0, result)
 	closeDoc(result)
 }
+
+// TestExtractBeyondTheDocumentPanics pins JAVA BUG 34. PageExtractor.extract
+// promises, in its own javadoc, that "if startPage is greater than endPage or
+// greater than the number of pages in the source document, a blank document
+// will be returned". It does not: the clamped end page comes out below the
+// start page, and Splitter.setEndPage throws IllegalArgumentException. The port
+// panics, which is what an unchecked exception becomes.
+func TestExtractBeyondTheDocumentPanics(t *testing.T) {
+	sourcePdf, err := pdfbox.LoadPDF(inputFixture + "cweb.pdf")
+	if err != nil {
+		t.Fatalf("LoadPDF: %v", err)
+	}
+	defer closeDoc(sourcePdf)
+	pages := sourcePdf.NumberOfPages()
+
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Errorf("extracting pages %d to %d of a %d page document returned instead of"+
+				" panicking", pages+2, pages+12, pages)
+			return
+		}
+		if got, want := recovered, "End page is smaller than startPage"; got != want {
+			t.Errorf("panicked with %v, want %q", got, want)
+		}
+	}()
+	//nolint:errcheck // the panic is the assertion
+	multipdf.NewPageExtractorOfRange(sourcePdf, pages+2, pages+12).Extract()
+}

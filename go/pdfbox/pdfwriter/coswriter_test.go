@@ -14,12 +14,16 @@ package pdfwriter_test
 //     tests do not reach the network.
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"testing"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/multipdf"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter/compress"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 )
 
@@ -81,4 +85,71 @@ func TestPDFBox5485(t *testing.T) {
 	if err := pdfPages.Save(io.Discard); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
+}
+
+// TestDocumentIDDigestUsesISO88591 pins the encoding the trailer /ID digest
+// feeds on. Java writes
+//
+//	sha256.update(Long.toString(idTime).getBytes(StandardCharsets.ISO_8859_1));
+//	... sha256.update(cosBase.toString().getBytes(StandardCharsets.ISO_8859_1));
+//
+// so a document whose /Info holds anything outside ASCII hashes different bytes
+// than a UTF-8 conversion would, and gets a different /ID. The expected digest
+// here is computed from that rule, not read off the port.
+func TestDocumentIDDigestUsesISO88591(t *testing.T) {
+	doc := pdmodel.NewPDDocument()
+	defer doc.Close()
+	doc.AddPage(pdmodel.NewPDPage())
+	idTime := int64(123456789)
+	doc.SetDocumentId(&idTime)
+
+	// e acute is in Latin-1 and survives; the snowman is not and becomes '?',
+	// which is what Java's ISO-8859-1 encoder substitutes for an unmappable
+	// character.
+	title := "café ☃"
+	doc.DocumentInformation().Dictionary().SetItem(cos.Title, cos.NewStringObj(title))
+
+	var out bytes.Buffer
+	if err := doc.SaveOfParameters(&out, compress.NoCompression); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	back, err := pdfbox.LoadPDFBytes(out.Bytes())
+	if err != nil {
+		t.Fatalf("reloading: %v", err)
+	}
+	defer back.Close()
+
+	idArray := back.Document().Trailer().GetCOSArray(cos.ID)
+	if idArray == nil || idArray.Size() != 2 {
+		t.Fatalf("the trailer has no two element /ID: %v", idArray)
+	}
+	first, ok := idArray.GetObject(0).(*cos.StringObj)
+	if !ok {
+		t.Fatalf("/ID[0] is %T, want a string", idArray.GetObject(0))
+	}
+
+	digest := sha256.New()
+	digest.Write(testISO88591("123456789"))
+	// COSString.toString() is "COSString{" + value + "}"
+	digest.Write(testISO88591("COSString{" + title + "}"))
+	want := digest.Sum(nil)
+
+	if got := first.Bytes(); !bytes.Equal(got, want) {
+		t.Errorf("/ID[0] = %x, want %x", got, want)
+	}
+}
+
+// testISO88591 is String.getBytes(StandardCharsets.ISO_8859_1): every code
+// point up to 0xFF is its own byte, and anything above it is the encoder's
+// replacement, '?'.
+func testISO88591(s string) []byte {
+	out := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r > 0xFF {
+			out = append(out, '?')
+		} else {
+			out = append(out, byte(r))
+		}
+	}
+	return out
 }

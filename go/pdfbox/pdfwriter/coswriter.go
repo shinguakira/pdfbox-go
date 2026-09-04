@@ -1430,11 +1430,11 @@ func (w *COSWriter) WriteSigned(doc PDDocumentLike, signInterface SignatureInter
 
 		// algorithm says to use time/path/size/values in doc to generate the id.
 		// we don't have path or size, so do the best we can
-		digest.Write([]byte(strconv.FormatInt(idTime, 10)))
+		digest.Write(encodeISO88591(strconv.FormatInt(idTime, 10)))
 
 		if info := trailer.GetCOSDictionary(cos.Info); info != nil {
 			for _, cosBase := range info.Values() {
-				digest.Write([]byte(baseString(cosBase)))
+				digest.Write(encodeISO88591(baseString(cosBase)))
 			}
 		}
 		// reuse origin documentID if available as first value
@@ -1468,4 +1468,25 @@ func baseString(base cos.Base) string {
 		return s.String()
 	}
 	return fmt.Sprintf("%v", base)
+}
+
+// encodeISO88591 is String.getBytes(StandardCharsets.ISO_8859_1): every code
+// point up to 0xFF is its own byte, and anything above it is the encoder's
+// replacement, '?'.
+//
+// The trailer /ID digest is fed through it because Java names that charset at
+// both call sites, so a document whose /Info holds anything outside ASCII would
+// otherwise hash different bytes and come out with a different /ID. Java has no
+// shared helper for this either; encryption has its own copy, for the same
+// reason and with the same body.
+func encodeISO88591(s string) []byte {
+	out := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r > 0xFF {
+			out = append(out, '?')
+		} else {
+			out = append(out, byte(r))
+		}
+	}
+	return out
 }
