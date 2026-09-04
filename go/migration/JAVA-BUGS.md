@@ -1487,3 +1487,35 @@ comment above it naming this entry.
 constants, and `PDWindowsLaunchParams` has no other use of either key beyond
 `getDirectory` and `setDirectory`, which is what makes the collision real rather
 than harmless.
+
+---
+
+## 37. `PDMarkInfo.setSuspect` ignores its argument
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDMarkInfo.java`:
+
+```java
+public void setSuspect( boolean suspect )
+{
+    dictionary.setBoolean( "Suspects", false );
+}
+```
+
+**What correct would be** `dictionary.setBoolean("Suspects", suspect)`. The
+three setters beside it --- `setMarked`, `setUserProperties` --- all pass their
+argument through, which is what makes this one stand out as a slip rather than a
+decision.
+
+**Why it matters** `/Suspects` can never be set to true through PDFBox.
+PDF 32000-1:2008 Table 321 gives it as the flag that says the tagged-PDF
+structure may not conform to the standard, so a producer that has reason to
+raise it cannot. Reading is unaffected: `isSuspect` returns whatever the file
+holds.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdmarkinfo.go`,
+`SetSuspect`, with the comment above it naming this entry.
+
+**Confidence** high. The parameter is unused and the literal is written in its
+place; there is no reading of the method under which it is correct.
