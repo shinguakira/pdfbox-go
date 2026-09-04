@@ -2,12 +2,16 @@ package font
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/type1"
 	fontutil "github.com/shinguakira/pdfbox-go/go/fontbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font/encoding"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
@@ -29,17 +33,17 @@ var altNames = map[string]string{
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDType1Font.
 //
-// Two things this slice does not carry: the embedded PFB font program, which
-// needs fontbox/type1, and the substitute the system supplies for a font that
-// is not embedded, which needs the font mapper chain. Both are slice 4, so
-// genericFont is nil here and every path that reads a glyph outline or a width
-// out of the font program fails rather than guessing. The widths of a standard
-// 14 font come from its AFM, which is what this slice is built round. See
-// migration/STATUS.md.
+// The embedded PFB font program is read here. What is still missing is the
+// substitute the system supplies for a font that is not embedded, which needs
+// the font mapper chain (B6); until that lands genericFont is nil for such a
+// font and every path that reads a glyph outline or a width out of the font
+// program fails rather than guessing. The widths of a standard 14 font come
+// from its AFM. See migration/STATUS.md.
 type PDType1Font struct {
 	pdSimpleFont
 
 	genericFont         fontbox.FontBoxFont
+	type1font           *type1.Type1Font
 	isEmbedded          bool
 	isDamaged           bool
 	fontMatrixTransform *geom.AffineTransform
@@ -103,28 +107,45 @@ func NewPDType1FontFromDictionary(fontDictionary *cos.Dictionary, resourceCache 
 	f.initFromDictionary(resourceCache)
 
 	fd := f.FontDescriptor()
+	var t1 *type1.Type1Font
 	fontIsDamaged := false
 	if fd != nil {
 		// a Type1 font may contain a Type1C font
 		if fontFile3 := fd.FontFile3(); fontFile3 != nil {
-			// /FontFile3 for Type1 font not supported
-			_ = fontFile3
+			slog.Warn("/FontFile3 for Type1 font not supported")
 		}
+
 		// or it may contain a PFB
-		//
-		// Reading it needs fontbox/type1, which slice 4 ports; until then an
-		// embedded Type 1 font is read as damaged, which is how Java treats one
-		// it cannot parse. See migration/STATUS.md.
 		if fontFile := fd.FontFile(); fontFile != nil {
-			fontIsDamaged = true
+			var err error
+			t1, err = f.readType1FontProgram(fontFile)
+			if err != nil {
+				var damaged *type1.DamagedFontException
+				if errors.As(err, &damaged) {
+					slog.Warn("Can't read damaged embedded Type1 font",
+						"font", fd.FontName(), "err", err)
+				} else {
+					slog.Error("Can't read the embedded Type1 font",
+						"font", fd.FontName(), "err", err)
+				}
+				fontIsDamaged = true
+			}
 		}
 	}
-	f.isEmbedded = false
+	f.isEmbedded = t1 != nil
 	f.isDamaged = fontIsDamaged
+	f.type1font = t1
 
-	// Java finds a generic font to render with here, through the font mapper;
-	// that is slice 4.
-	f.genericFont = nil
+	// find a generic font to use for rendering, could be a .pfb, but might be
+	// a .ttf
+	//
+	// Java asks the font mapper for a substitute where the font is not
+	// embedded; that is B6, so an unembedded font still has none here.
+	if t1 != nil {
+		f.genericFont = t1
+	} else {
+		f.genericFont = nil
+	}
 
 	if err := f.readEncoding(); err != nil {
 		return nil, err
@@ -149,14 +170,24 @@ func (f *PDType1Font) Height(code int) (float32, error) {
 		// todo: isn't this the y-advance, not the height?
 		return afmStandard14.CharacterHeight(afmName), nil
 	}
-	// Java measures the glyph outline of the substitute font, which this slice
-	// does not have.
-	return 0, errNoFontProgram
+	name, err := f.CodeToName(code)
+	if err != nil {
+		return 0, err
+	}
+	if f.genericFont == nil {
+		return 0, errNoFontProgram
+	}
+	// todo: should be scaled by font matrix
+	path, err := f.genericFont.GetPath(name)
+	if err != nil {
+		return 0, err
+	}
+	return float32(path.Bounds().Height), nil
 }
 
-// errNoFontProgram is what every path that needs the font program returns while
-// the font mapper and the Type 1 parser are unported.
-var errNoFontProgram = fmt.Errorf("font: no font program: the Type 1 parser and the font mapper are not ported yet")
+// errNoFontProgram is what every path that needs the font program returns for
+// a font that is not embedded, while the font mapper is unported.
+var errNoFontProgram = fmt.Errorf("font: no font program: the font is not embedded and the font mapper is not ported yet")
 
 // encodeCodePoint returns the bytes that draw the given code point.
 func (f *PDType1Font) encodeCodePoint(unicode int) ([]byte, error) {
@@ -448,3 +479,110 @@ func (f *PDType1Font) FontMatrix() *util.Matrix {
 
 // IsDamaged reports whether the font program could not be read.
 func (f *PDType1Font) IsDamaged() bool { return f.isDamaged }
+
+// pfbStartMarker is the byte a whole PFB file begins with.
+const pfbStartMarker = 0x80
+
+// readType1FontProgram reads the embedded PFB out of the /FontFile stream.
+//
+// Port of the /FontFile branch of the Java constructor, which is long enough to
+// stand on its own here.
+func (f *PDType1Font) readType1FontProgram(fontFile *common.PDStream) (*type1.Type1Font, error) {
+	stream := fontFile.Stream()
+	length1 := stream.GetInt(cos.Length1)
+	length2 := stream.GetInt(cos.Length2)
+
+	// repair Length1 and Length2 if necessary
+	bytes, err := fontFile.ToByteArray()
+	if err != nil {
+		return nil, err
+	}
+	if len(bytes) == 0 {
+		return nil, errors.New("Font data unavailable")
+	}
+	length1 = f.repairLength1(bytes, length1)
+	length2 = f.repairLength2(bytes, length1, length2)
+
+	if int(bytes[0])&0xff == pfbStartMarker {
+		// some bad files embed the entire PFB, see PDFBOX-2607
+		return type1.CreateWithPFBBytes(bytes)
+	}
+	// the PFB embedded as two segments back-to-back
+	if length1 < 0 || length1 > length1+length2 {
+		return nil, fmt.Errorf(
+			"Invalid length data, actual length: %d, /Length1: %d, /Length2: %d",
+			len(bytes), length1, length2)
+	}
+	if length1 > len(bytes) || length1+length2 > len(bytes) {
+		// Java's Arrays.copyOfRange pads past the end rather than failing; the
+		// repair above keeps both lengths inside the data, so this is only the
+		// belt to Go's slice bounds.
+		return nil, fmt.Errorf(
+			"Invalid length data, actual length: %d, /Length1: %d, /Length2: %d",
+			len(bytes), length1, length2)
+	}
+	segment1 := bytes[0:length1]
+	segment2 := bytes[length1 : length1+length2]
+
+	// empty streams are simply ignored
+	if length1 > 0 && length2 > 0 {
+		return type1.CreateWithSegments(segment1, segment2)
+	}
+	return nil, nil
+}
+
+// repairLength1 repairs an invalid Length1, which causes the binary segment of
+// the font to be truncated, see PDFBOX-2350, PDFBOX-3677.
+func (f *PDType1Font) repairLength1(bytes []byte, length1 int) int {
+	// scan backwards from the end of the first segment to find 'exec'
+	offset := max(0, length1-4)
+	if offset <= 0 || offset > len(bytes)-4 {
+		offset = len(bytes) - 4
+	}
+
+	offset = findBinaryOffsetAfterExec(bytes, offset)
+	if offset == 0 && length1 > 0 {
+		// 2nd try with brute force
+		offset = findBinaryOffsetAfterExec(bytes, len(bytes)-4)
+	}
+
+	if length1-offset != 0 && offset > 0 {
+		slog.Warn("Ignored invalid Length1 for Type 1 font",
+			"Length1", length1, "font", f.Name())
+		return offset
+	}
+
+	return length1
+}
+
+func findBinaryOffsetAfterExec(bytes []byte, startOffset int) int {
+	offset := startOffset
+	for offset > 0 {
+		if bytes[offset+0] == 'e' && bytes[offset+1] == 'x' &&
+			bytes[offset+2] == 'e' && bytes[offset+3] == 'c' {
+			offset += 4
+			// skip additional CR LF space characters
+			for offset < len(bytes) &&
+				(bytes[offset] == '\r' || bytes[offset] == '\n' ||
+					bytes[offset] == ' ' || bytes[offset] == '\t') {
+				offset++
+			}
+			break
+		}
+		offset--
+	}
+	return offset
+}
+
+// repairLength2 repairs an invalid Length2, see PDFBOX-3475. A negative
+// /Length2 brings an IllegalArgumentException in Arrays.copyOfRange(), a huge
+// value eats up memory because of padding.
+func (f *PDType1Font) repairLength2(bytes []byte, length1, length2 int) int {
+	// repair Length2 if necessary
+	if length2 < 0 || length2 > len(bytes)-length1 {
+		slog.Warn("Ignored invalid Length2 for Type 1 font",
+			"Length2", length2, "font", f.Name())
+		return len(bytes) - length1
+	}
+	return length2
+}

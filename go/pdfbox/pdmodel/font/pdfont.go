@@ -3,14 +3,18 @@ package font
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox/afm"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/cmap"
 	fontutil "github.com/shinguakira/pdfbox-go/go/fontbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font/encoding"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
+	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
 // PDFontLike is what everything that behaves like a font offers, whether it is
@@ -144,6 +148,12 @@ type PDFont interface {
 	base() *pdFont
 }
 
+// type0Font is what PDType0Font answers to, standing for Java's
+// `this instanceof PDType0Font` in toUnicode.
+type type0Font interface {
+	isType0()
+}
+
 // defaultFontMatrix is the transform a font uses unless it says otherwise.
 var defaultFontMatrix = util.NewMatrixOf(0.001, 0, 0, 0.001, 0, 0)
 
@@ -158,6 +168,7 @@ type pdFont struct {
 
 	afmStandard14    *afm.FontMetrics
 	fontDescriptor   *PDFontDescriptor
+	toUnicodeCMap    *cmap.CMap
 	widths           []*float32
 	widthsRead       bool
 	avgFontWidth     float32
@@ -215,9 +226,45 @@ func (f *pdFont) initFromDictionary(resourceCache ResourceCache) {
 	// standard 14 fonts use an AFM
 	f.afmStandard14 = GetAFM(f.self.Name()) // may be nil (it usually is)
 	f.fontDescriptor = f.loadFontDescriptor(resourceCache)
-	// The ToUnicode CMap is read by a later slice, which ports fontbox/cmap;
-	// see migration/STATUS.md. Until then ToUnicode falls through to whatever
-	// each font works out from its encoding.
+	f.toUnicodeCMap = f.loadUnicodeCmap()
+}
+
+// loadUnicodeCmap reads the /ToUnicode CMap, or nil where the font has none or
+// it could not be read.
+func (f *pdFont) loadUnicodeCmap() *cmap.CMap {
+	toUnicode := f.dict.GetDictionaryObject(cos.ToUnicode)
+	if toUnicode == nil {
+		return nil
+	}
+	cmapValue, err := f.readCMap(toUnicode)
+	if err != nil {
+		slog.Error("Could not read ToUnicode CMap in font", "font", f.self.Name(), "err", err)
+		return cmapValue
+	}
+	if cmapValue == nil || cmapValue.HasUnicodeMappings() {
+		return cmapValue
+	}
+	slog.Warn("Invalid ToUnicode CMap in font", "font", f.self.Name())
+	cmapName := cmapValue.Name()
+	ordering := cmapValue.Ordering()
+	encodingName := f.dict.GetCOSName(cos.Encoding)
+	if !strings.Contains(cmapName, "Identity") &&
+		!strings.Contains(ordering, "Identity") &&
+		encodingName != cos.IdentityH && encodingName != cos.IdentityV {
+		return cmapValue
+	}
+	encodingDict := f.dict.GetCOSDictionary(cos.Encoding)
+	if encodingDict != nil && encodingDict.ContainsKey(cos.Differences) {
+		return cmapValue
+	}
+	// assume that if encoding is identity, then the reverse is also true
+	identity, err := GetPredefinedCMap(cos.IdentityH.Name())
+	if err != nil {
+		slog.Error("Could not read ToUnicode CMap in font", "font", f.self.Name(), "err", err)
+		return cmapValue
+	}
+	slog.Warn("Using predefined identity CMap instead")
+	return identity
 }
 
 // loadFontDescriptor reads the font descriptor, through the cache where there
@@ -404,11 +451,40 @@ func (f *pdFont) ToUnicodeWithGlyphList(code int, customGlyphList *encoding.Glyp
 
 // ToUnicode returns what the given character code stands for, or the empty
 // string where the font cannot say.
-//
-// The ToUnicode CMap path is not ported: it needs fontbox/cmap, which a later
-// slice brings. Without it this always falls through, which is the same as a
-// font that carries no /ToUnicode entry; see migration/STATUS.md.
 func (f *pdFont) ToUnicode(code int) (string, error) {
+	// if the font dictionary containsName a ToUnicode CMap, use that CMap
+	if f.toUnicodeCMap != nil {
+		if strings.HasPrefix(f.toUnicodeCMap.Name(), "Identity-") &&
+			(f.dict.GetCOSName(cos.ToUnicode) != nil || !f.toUnicodeCMap.HasUnicodeMappings()) {
+			// handle the undocumented case of using Identity-H/V as a ToUnicode
+			// CMap, this isn't actually valid as the Identity-x CMaps are
+			// code->CID maps, not code->Unicode maps. See
+			// sample_fonts_solidconvertor.pdf for an example.
+			// PDFBOX-3123: do this only if the /ToUnicode entry is a name
+			// PDFBOX-4322: identity streams are OK too
+			//
+			// Java casts the code to a char, so anything past 0xFFFF wraps into
+			// the basic plane and a value in the surrogate range comes out as an
+			// unpaired half.
+			return string(rune(uint16(code))), nil
+		}
+		if _, isType0 := f.self.(type0Font); code < 256 && !isType0 {
+			encodingName := f.dict.GetCOSName(cos.Encoding)
+			if encodingName != nil && !strings.HasPrefix(encodingName.Name(), "Identity") {
+				// due to the conversion to an int it is no longer possible to
+				// determine if the code is based on a one or two byte value. We
+				// should consider to refactor that part of the code.
+				// However, simple fonts with a predefined encoding are using one
+				// byte codes so that we can limit the CMap mappings to one byte
+				// codes by passing the origin length
+				unicode, _ := f.toUnicodeCMap.ToUnicodeLength(code, 1)
+				return unicode, nil
+			}
+		}
+		unicode, _ := f.toUnicodeCMap.ToUnicode(code)
+		return unicode, nil
+	}
+
 	// if no value has been produced, there is no way to obtain Unicode for the
 	// character. this behaviour can be overridden in the concrete fonts, but
 	// this method *must* return nothing here
@@ -499,12 +575,23 @@ func (f *pdFont) String() string {
 	return fmt.Sprintf("%T %s", f.self, f.self.Name())
 }
 
-// readCMap would read a CMap from the given object.
-//
-// Not ported: it needs fontbox/cmap, which a later slice brings. See
-// migration/STATUS.md.
-func (f *pdFont) readCMap(base cos.Base) error {
-	return fmt.Errorf("font: CMaps are not ported yet")
+// readCMap reads a CMap from the given object, which is either the name of a
+// predefined CMap or a stream holding an embedded one.
+func (f *pdFont) readCMap(base cos.Base) (*cmap.CMap, error) {
+	if name, ok := base.(*cos.Name); ok {
+		// predefined CMap
+		return GetPredefinedCMap(name.Name())
+	}
+	if stream, ok := base.(*cos.Stream); ok {
+		// embedded CMap
+		input, err := stream.CreateView()
+		if err != nil {
+			return nil, err
+		}
+		defer pdfio.CloseQuietly(input)
+		return ParseCMap(input)
+	}
+	return nil, errExpectedNameOrStream
 }
 
 // buildFontDescriptor builds a font descriptor out of AFM metrics, which is how

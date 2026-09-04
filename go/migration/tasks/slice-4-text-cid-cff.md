@@ -67,8 +67,8 @@ The bulk of `fontbox`, and the CID half of the font model.
 # Phase A — Write the tests
 
 - [x] A1. `fontbox/cmap` — port all 5 Java tests
-- [ ] A2. `fontbox/type1` — port the 1 Java test
-- [ ] A3. `fontbox/cff` — port all 6 Java tests
+- [x] A2. `fontbox/type1` — port the 1 Java test
+- [x] A3. `fontbox/cff` — port all 6 Java tests
 - [ ] A4. `fontbox/ttf` — port `GlyphSubstitutionTableTest`,
       `GlyphSubstitutionTableLiberationFontTest`, `TTFSubsetterTest`,
       `TrueTypeFontCollectionTest`
@@ -81,9 +81,9 @@ The bulk of `fontbox`, and the CID half of the font model.
 # Phase B — Port the implementation
 
 - [x] B1. `fontbox/cmap` — the CMap parser and the predefined CMaps
-- [ ] B2. `fontbox/type1` — the Type 1 font parser, and `fontbox/pfb` — the
+- [x] B2. `fontbox/type1` — the Type 1 font parser, and `fontbox/pfb` — the
       PFB container it arrives in
-- [ ] B3. `fontbox/cff` — CFF and Type 2 charstrings, 26 files
+- [x] B3. `fontbox/cff` — CFF and Type 2 charstrings, 26 files
 - [ ] B4. `fontbox/ttf` — the rest of it
   - GSUB: `gsub/` 13 files, `model/` 5, `table/common/` 12, `table/gsub/` 9 —
     39 files, more than the 13 the `gsub` directory alone suggests
