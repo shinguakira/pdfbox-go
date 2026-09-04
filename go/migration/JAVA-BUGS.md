@@ -596,3 +596,38 @@ Java's `String` becomes once it is written out. `feedback_test.go`,
 
 **Confidence** high. The same method reads the code point for the mirroring
 test and appends the code unit, one line apart.
+
+## 16. `CMap.useCmap` builds a one-byte code with `% 0xFF` instead of `& 0xFF`
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/cmap/CMap.java`, `useCmap`.
+
+**What it does** the `usecmap` operator copies one CMap's mappings into
+another. The forward maps are copied wholesale; the inverted map,
+`unicodeToByteCodes`, is rebuilt from the keys, and for the one-byte table the
+key is turned back into a byte with
+
+```java
+cmap.charToUnicodeOneByte.forEach((k, v) ->
+        unicodeToByteCodes.put(v, new byte[]{(byte) (k % 0xFF)}));
+```
+
+`k` is a one-byte code, so it runs 0 to 255. `k % 0xFF` is `k % 255`, which
+maps 255 to 0 and leaves every other value alone. The two-byte and the three /
+four byte branches directly below both use `& 0xFF` on every byte, so the
+one-byte line is the odd one out.
+
+**What correct would be** `(byte) (k & 0xFF)`, or simply `(byte) (int) k` — the
+key is already a single byte's worth.
+
+**Why it matters** after a `usecmap`, `getCodesFromUnicode` for whatever the
+inherited CMap mapped from code 0xFF hands back code 0x00. The caller is
+`PDType0Font.encode`, which is how text is written into a content stream, so a
+document built on such a CMap gets the wrong byte written for that one
+character. It needs an inherited one-byte CMap with a mapping at 0xFF to show,
+which is why it has gone unnoticed.
+
+**Where the Go carries it** `go/fontbox/cmap/cmap.go`, `useCmap`, with the
+`% 0xFF` written out and a comment pointing here.
+
+**Confidence** high. The two branches beside it mask with `& 0xFF`, and `%` on
+a value that is already a byte cannot be deliberate.
