@@ -261,3 +261,35 @@ func (t *CFFTable) ReadHeaders(ttf *TrueTypeFont, data DataStream, outHeaders *F
 	defer pdfio.CloseQuietly(subReader)
 	return cff.NewCFFParser().ParseFirstSubFontROS(subReader, outHeaders)
 }
+
+// SubstitutingCmapLookup is a cmap lookup that performs substitution via the
+// 'GSUB' table.
+//
+// Port of org.apache.fontbox.ttf.SubstitutingCmapLookup.
+type SubstitutingCmapLookup struct {
+	cmap            *CmapSubtable
+	gsub            *GlyphSubstitutionTable
+	enabledFeatures []string
+}
+
+var _ CmapLookup = (*SubstitutingCmapLookup)(nil)
+
+// NewSubstitutingCmapLookup returns a lookup that substitutes through the given
+// GSUB table.
+func NewSubstitutingCmapLookup(cmap *CmapSubtable, gsub *GlyphSubstitutionTable,
+	enabledFeatures []string) *SubstitutingCmapLookup {
+	return &SubstitutingCmapLookup{cmap: cmap, gsub: gsub, enabledFeatures: enabledFeatures}
+}
+
+// GetGlyphID returns the glyph for the given code point, after substitution.
+func (l *SubstitutingCmapLookup) GetGlyphID(characterCode int) int {
+	gid := l.cmap.GetGlyphID(characterCode)
+	scriptTags := GetScriptTags(characterCode)
+	return l.gsub.GetSubstitution(gid, scriptTags, l.enabledFeatures)
+}
+
+// GetCharCodes returns the code points that map to the given glyph, before
+// substitution.
+func (l *SubstitutingCmapLookup) GetCharCodes(gid int) []int {
+	return l.cmap.GetCharCodes(l.gsub.GetUnsubstitution(gid))
+}

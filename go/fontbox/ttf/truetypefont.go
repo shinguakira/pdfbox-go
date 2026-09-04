@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +35,9 @@ type TrueTypeFont struct {
 	// isOpenType says whether the font was read by an OTFParser, which is what
 	// Java answers with `instanceof OpenTypeFont`.
 	isOpenType bool
+
+	// enabledGsubFeatures is the GSUB features the caller has turned on.
+	enabledGsubFeatures []string
 
 	version        float32
 	numberOfGlyphs int
@@ -381,16 +385,53 @@ func parseUniName(name string) int {
 	return -1
 }
 
-// UnicodeCmapLookup returns the Unicode subtable of the cmap table.
+// UnicodeCmapLookupStrict returns the best Unicode cmap from the font, which
+// is Java's no-argument getUnicodeCmapLookup.
+func (f *TrueTypeFont) UnicodeCmapLookupStrict() (CmapLookup, error) {
+	return f.UnicodeCmapLookup(true)
+}
+
+// UnicodeCmapLookup returns the Unicode subtable of the cmap table, which
+// performs glyph substitution where any GSUB feature is enabled.
 //
 // Where isStrict is false and the font has no Unicode subtable at all, the
 // result is a nil subtable, which is what Java returns; calling through it
 // panics, as dereferencing Java's null does.
 func (f *TrueTypeFont) UnicodeCmapLookup(isStrict bool) (CmapLookup, error) {
-	// Java wraps the subtable in a SubstitutingCmapLookup where GSUB features
-	// are enabled; the GSUB table is read by a later slice, and no feature can
-	// be enabled until it is. See migration/STATUS.md.
-	return f.unicodeCmapImpl(isStrict)
+	cmap, err := f.unicodeCmapImpl(isStrict)
+	if err != nil {
+		return nil, err
+	}
+	if len(f.enabledGsubFeatures) != 0 {
+		table, err := f.GSUB()
+		if err != nil {
+			return nil, err
+		}
+		if table != nil {
+			return NewSubstitutingCmapLookup(cmap, table,
+				slices.Clone(f.enabledGsubFeatures)), nil
+		}
+	}
+	return cmap, nil
+}
+
+// EnableGsubFeature turns on the named GSUB feature.
+func (f *TrueTypeFont) EnableGsubFeature(featureTag string) {
+	f.enabledGsubFeatures = append(f.enabledGsubFeatures, featureTag)
+}
+
+// DisableGsubFeature turns off the named GSUB feature.
+func (f *TrueTypeFont) DisableGsubFeature(featureTag string) {
+	if index := slices.Index(f.enabledGsubFeatures, featureTag); index >= 0 {
+		f.enabledGsubFeatures = slices.Delete(f.enabledGsubFeatures, index, index+1)
+	}
+}
+
+// EnableVerticalSubstitutions turns on the two features a vertically set font
+// needs.
+func (f *TrueTypeFont) EnableVerticalSubstitutions() {
+	f.EnableGsubFeature("vrt2")
+	f.EnableGsubFeature("vert")
 }
 
 // unicodeCmapImpl picks the best Unicode subtable the font carries.
