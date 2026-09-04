@@ -65,8 +65,13 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 
 # Phase A — Write the tests
 
-- [x] A1. Port `TestSymmetricKeyEncryption` — RC4 and AES, 40/128/256 bit
-- [x] A2. Port `TestPublicKeyEncryption` — certificate-based
+- [ ] A1. Port `TestSymmetricKeyEncryption` — RC4 and AES, 40/128/256 bit
+  - **1 of its 7 tests ported** (`testPermissions`). Four encrypt and save a
+    document and cannot run until the writer of slice 7; two read PDFs from
+    `target/pdfs`, which this repository does not carry.
+- [ ] A2. Port `TestPublicKeyEncryption` — certificate-based
+  - **4 of its 7 tests ported**, the four that only read. The other three
+    encrypt and save and cannot run until the writer of slice 7.
 - [x] A3. Write from source for the 19 classes the two tests do not reach
   - Name which ones those are before writing, so the gap is visible
 
@@ -79,9 +84,12 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 - [x] B2. Standard security — password
   - `StandardSecurityHandler`, `StandardProtectionPolicy`, `StandardDecryptionMaterial`,
     `AccessPermission`
-- [x] B3. Public key security — certificate
+- [ ] B3. Public key security — certificate
   - `PublicKeySecurityHandler`, `PublicKeyProtectionPolicy`,
     `PublicKeyDecryptionMaterial`, `PublicKeyRecipient`
+  - **The reading half is ported; the encrypting half is not.**
+    `PublicKeySecurityHandler.prepareDocumentForEncryption` returns an error
+    rather than building the CMS enveloped data Java builds.
 - [x] B4. The crypt filters and the rest of the package
 - [x] B5. Wire decryption into the parser — an encrypted document must open
 
@@ -177,6 +185,11 @@ And for this branch in particular:
 
 # Blocked
 
-- [x] `TestSymmetricKeyEncryption` writes encrypted PDFs as well as reading
+- [ ] `TestSymmetricKeyEncryption` writes encrypted PDFs as well as reading
       them. The writer lands in slice 7. Decide whether this branch ports only
       the reading half, or waits.
+  - **Decided: the reading half.** That decision does not close this item —
+    10 of the 14 tests across the two Java classes, and
+    `PublicKeySecurityHandler.prepareDocumentForEncryption`, are still
+    unported and belong to this branch's scope. They stay open until slice 7
+    makes them runnable.
