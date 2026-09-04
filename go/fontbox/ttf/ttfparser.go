@@ -7,9 +7,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
-// The tags of the tables the reading path does not read. They keep their place
-// in the directory as an UnknownTable, so that a later slice can add the reads
-// without the file having to be walked again; see migration/STATUS.md.
+// The tags of the remaining tables.
 const (
 	CFFTag               = "CFF "
 	DigitalSignatureTag  = "DSIG"
@@ -25,6 +23,12 @@ const (
 // Port of org.apache.fontbox.ttf.TTFParser.
 type Parser struct {
 	isEmbedded bool
+
+	// isOTF and readTableHook are what OTFParser overrides. Java overrides
+	// newFont and readTable; Go embedding has no virtual dispatch, so the two
+	// travel as fields the OTF constructor sets.
+	isOTF         bool
+	readTableHook func(tag string) tableBase
 }
 
 // NewParser returns a parser for a stand-alone font file, which must carry
@@ -92,6 +96,7 @@ func (p *Parser) ParseStream(raf DataStream) (*TrueTypeFont, error) {
 // createFontWithTables reads the table directory.
 func (p *Parser) createFontWithTables(raf DataStream) (*TrueTypeFont, error) {
 	font := p.newFont(raf)
+	font.isOpenType = p.isOTF
 	r := newReader(raf)
 	font.SetVersion(r.fixed())
 	numberOfTables := r.unsignedShort()
@@ -118,6 +123,10 @@ func (p *Parser) createFontWithTables(raf DataStream) (*TrueTypeFont, error) {
 }
 
 // newFont returns the font the directory is read into.
+//
+// Java has OTFParser override this to build an OpenTypeFont; the port wraps the
+// font the parse produces instead, which comes to the same thing because
+// OpenTypeFont carries no state of its own.
 func (p *Parser) newFont(raf DataStream) *TrueTypeFont {
 	return NewTrueTypeFont(raf)
 }
@@ -133,11 +142,12 @@ func (p *Parser) parseTables(font *TrueTypeFont) error {
 		}
 	}
 
-	// An OpenType font with CFF outlines is read by a later slice; here a CFF
-	// table is only ever the reason a font is rejected.
 	_, hasCFF := font.tables[CFFTag]
-	isOTF := false
+	isOTF := p.isOTF
 	isPostScript := hasCFF
+	if isOTF {
+		isPostScript = (&OpenTypeFont{TrueTypeFont: font}).IsPostScript()
+	}
 
 	head, err := font.Header()
 	if err != nil {
@@ -262,6 +272,18 @@ func (p *Parser) newTable(tag string) tableBase {
 		return NewOS2WindowsMetricsTable()
 	case PostScriptTag:
 		return &PostScriptTable{}
+	case DigitalSignatureTag:
+		return &DigitalSignatureTable{}
+	case KerningTag:
+		return &KerningTable{}
+	case VerticalHeaderTag:
+		return &VerticalHeaderTable{}
+	case VerticalMetricsTag:
+		return &VerticalMetricsTable{}
+	case VerticalOriginTag:
+		return &VerticalOriginTable{}
+	case GlyphSubstitutionTag:
+		return &GlyphSubstitutionTable{}
 	default:
 		return p.readTable(tag)
 	}
@@ -270,6 +292,117 @@ func (p *Parser) newTable(tag string) tableBase {
 // readTable returns the table a subclass of the parser would read, which for
 // this one is always a table it keeps but does not read.
 func (p *Parser) readTable(tag string) tableBase {
+	if p.readTableHook != nil {
+		return p.readTableHook(tag)
+	}
 	// PDFBOX-5344: the parser of an OpenType font overrides this
 	return &UnknownTable{}
+}
+
+// allowCFF reports whether the parser accepts a font with CFF outlines.
+//
+// Nothing in the Java calls it; OTFParser overrides it and both are ported so
+// that the pair stays visible.
+func (p *Parser) allowCFF() bool { return false }
+
+// ParseTableHeaders reads the headers of the font the given source holds, which
+// it closes.
+//
+// Port of the public TTFParser.parseTableHeaders(RandomAccessRead).
+func (p *Parser) ParseTableHeaders(randomAccessRead pdfio.RandomAccessRead) (*FontHeaders, error) {
+	dataStream, err := newUnbufferedDataStream(randomAccessRead)
+	if err != nil {
+		randomAccessRead.Close()
+		return nil, err
+	}
+	// dataStream closes randomAccessRead
+	defer dataStream.Close()
+	return p.parseTableHeaders(dataStream)
+}
+
+// parseTableHeaders parses all table headers and checks if all needed tables
+// are present, which is based on parseTables.
+//
+// This method can be optimized further by skipping unused portions inside each
+// individual table parser.
+//
+// Port of org.apache.fontbox.ttf.TTFParser.parseTableHeaders.
+func (p *Parser) parseTableHeaders(raf DataStream) (*FontHeaders, error) {
+	outHeaders := NewFontHeaders()
+	font, err := p.createFontWithTables(raf)
+	if err != nil {
+		return nil, err
+	}
+	defer font.Close()
+
+	if err := font.readTableHeaders(NamingTag, outHeaders); err != nil {
+		return nil, err
+	}
+	if err := font.readTableHeaders(HeaderTag, outHeaders); err != nil {
+		return nil, err
+	}
+
+	// only these 5 are used
+	//   sFamilyClass = os2WindowsMetricsTable.getFamilyClass();
+	//   usWeightClass = os2WindowsMetricsTable.getWeightClass();
+	//   ulCodePageRange1 = (int) os2WindowsMetricsTable.getCodePageRange1();
+	//   ulCodePageRange2 = (int) os2WindowsMetricsTable.getCodePageRange2();
+	//   panose = os2WindowsMetricsTable.getPanose();
+	os2Windows, err := font.OS2Windows()
+	if err != nil {
+		return nil, err
+	}
+	outHeaders.setOs2Windows(os2Windows)
+
+	isOTFAndPostScript := false
+	otf := font.AsOpenType()
+	_, hasCFF := font.tables[CFFTag]
+	switch {
+	case otf != nil && otf.IsPostScript():
+		if !otf.IsSupportedOTF() {
+			outHeaders.SetError("OpenType fonts using CFF2 outlines are not supported")
+			return outHeaders, nil
+		}
+		isOTFAndPostScript = true
+		if err := font.readTableHeaders(CFFTag, outHeaders); err != nil {
+			return nil, err
+		}
+	case otf == nil && hasCFF:
+		outHeaders.SetError("True Type fonts using CFF outlines are not supported")
+		return outHeaders, nil
+	default:
+		if gcid := font.TableMap()["gcid"]; gcid != nil && gcid.base().Length() >= bytesGCID {
+			bytes, err := font.TableNBytes(gcid, bytesGCID)
+			if err != nil {
+				return nil, err
+			}
+			outHeaders.setNonOtfGcid142(bytes)
+		}
+	}
+	outHeaders.setIsOTFAndPostScript(isOTFAndPostScript)
+
+	// list taken from parseTables(), detect them, but don't spend time parsing
+	mandatoryTables := []string{HeaderTag, HorizontalHeaderTag, MaximumProfileTag}
+	if !p.isEmbedded {
+		// in an embedded font this table is optional
+		mandatoryTables = append(mandatoryTables, PostScriptTag)
+	}
+	if !isOTFAndPostScript {
+		mandatoryTables = append(mandatoryTables, IndexToLocationTag, GlyphTag)
+	}
+	if !p.isEmbedded {
+		mandatoryTables = append(mandatoryTables, NamingTag)
+	}
+	mandatoryTables = append(mandatoryTables, HorizontalMetricsTag)
+	if !p.isEmbedded {
+		mandatoryTables = append(mandatoryTables, CmapTag)
+	}
+
+	for _, tag := range mandatoryTables {
+		if _, ok := font.tables[tag]; !ok {
+			outHeaders.SetError("'" + tag + "' table is mandatory")
+			return outHeaders, nil
+		}
+	}
+	return outHeaders, nil
 }

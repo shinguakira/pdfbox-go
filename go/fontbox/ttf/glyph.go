@@ -5,6 +5,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
@@ -229,6 +230,11 @@ func (g *GlyphData) NumberOfContours() int16 { return g.numberOfContours }
 
 // Description returns the outline itself.
 func (g *GlyphData) Description() GlyphDescription { return g.glyphDescription }
+
+// Path returns the path of the glyph.
+func (g *GlyphData) Path() *geom.Path2D {
+	return newGlyphRenderer(g.glyphDescription).Path()
+}
 
 // XMaximum returns the right edge of the outline.
 func (g *GlyphData) XMaximum() int16 { return g.xMax }

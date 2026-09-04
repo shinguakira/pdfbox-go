@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf/model"
 	"github.com/shinguakira/pdfbox-go/go/fontbox/util"
 )
 
@@ -26,6 +28,17 @@ import (
 // a lock, and the port keeps one for the same reason: reading a table moves the
 // shared cursor and puts it back.
 type TrueTypeFont struct {
+	// hasPostScriptTag says whether the version identifies this font as a
+	// PostScript one, which only an OpenTypeFont reads.
+	hasPostScriptTag bool
+
+	// isOpenType says whether the font was read by an OTFParser, which is what
+	// Java answers with `instanceof OpenTypeFont`.
+	isOpenType bool
+
+	// enabledGsubFeatures is the GSUB features the caller has turned on.
+	enabledGsubFeatures []string
+
 	version        float32
 	numberOfGlyphs int
 	unitsPerEm     int
@@ -55,7 +68,14 @@ func (f *TrueTypeFont) Close() error { return f.data.Close() }
 func (f *TrueTypeFont) Version() float32 { return f.version }
 
 // SetVersion sets the version of the font.
-func (f *TrueTypeFont) SetVersion(version float32) { f.version = version }
+//
+// Java splits this: OpenTypeFont.setVersion works out hasPostScriptTag and then
+// calls super. The port keeps the flag here and computes it always, since
+// nothing but an OpenTypeFont ever reads it.
+func (f *TrueTypeFont) SetVersion(version float32) {
+	f.hasPostScriptTag = float32Bits(version) == ottoVersion // OTTO
+	f.version = version
+}
 
 // AddTable adds a table to the directory.
 func (f *TrueTypeFont) AddTable(table tableBase) {
@@ -365,16 +385,53 @@ func parseUniName(name string) int {
 	return -1
 }
 
-// UnicodeCmapLookup returns the Unicode subtable of the cmap table.
+// UnicodeCmapLookupStrict returns the best Unicode cmap from the font, which
+// is Java's no-argument getUnicodeCmapLookup.
+func (f *TrueTypeFont) UnicodeCmapLookupStrict() (CmapLookup, error) {
+	return f.UnicodeCmapLookup(true)
+}
+
+// UnicodeCmapLookup returns the Unicode subtable of the cmap table, which
+// performs glyph substitution where any GSUB feature is enabled.
 //
 // Where isStrict is false and the font has no Unicode subtable at all, the
 // result is a nil subtable, which is what Java returns; calling through it
 // panics, as dereferencing Java's null does.
 func (f *TrueTypeFont) UnicodeCmapLookup(isStrict bool) (CmapLookup, error) {
-	// Java wraps the subtable in a SubstitutingCmapLookup where GSUB features
-	// are enabled; the GSUB table is read by a later slice, and no feature can
-	// be enabled until it is. See migration/STATUS.md.
-	return f.unicodeCmapImpl(isStrict)
+	cmap, err := f.unicodeCmapImpl(isStrict)
+	if err != nil {
+		return nil, err
+	}
+	if len(f.enabledGsubFeatures) != 0 {
+		table, err := f.GSUB()
+		if err != nil {
+			return nil, err
+		}
+		if table != nil {
+			return NewSubstitutingCmapLookup(cmap, table,
+				slices.Clone(f.enabledGsubFeatures)), nil
+		}
+	}
+	return cmap, nil
+}
+
+// EnableGsubFeature turns on the named GSUB feature.
+func (f *TrueTypeFont) EnableGsubFeature(featureTag string) {
+	f.enabledGsubFeatures = append(f.enabledGsubFeatures, featureTag)
+}
+
+// DisableGsubFeature turns off the named GSUB feature.
+func (f *TrueTypeFont) DisableGsubFeature(featureTag string) {
+	if index := slices.Index(f.enabledGsubFeatures, featureTag); index >= 0 {
+		f.enabledGsubFeatures = slices.Delete(f.enabledGsubFeatures, index, index+1)
+	}
+}
+
+// EnableVerticalSubstitutions turns on the two features a vertically set font
+// needs.
+func (f *TrueTypeFont) EnableVerticalSubstitutions() {
+	f.EnableGsubFeature("vrt2")
+	f.EnableGsubFeature("vert")
 }
 
 // unicodeCmapImpl picks the best Unicode subtable the font carries.
@@ -426,11 +483,26 @@ func (f *TrueTypeFont) unicodeCmapImpl(isStrict bool) (*CmapSubtable, error) {
 }
 
 // GetPath returns the outline of the named glyph.
-//
-// Rendering a glyph to a path is left to a later slice, which ports
-// GlyphRenderer; see migration/STATUS.md.
 func (f *TrueTypeFont) GetPath(name string) (*geom.Path2D, error) {
-	return nil, fmt.Errorf("ttf: glyph outlines are not ported yet")
+	gid, err := f.NameToGID(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// some glyphs have no outlines (e.g. space, table, newline)
+	glyphTable, err := f.Glyph()
+	if err != nil {
+		return nil, err
+	}
+	glyph, err := glyphTable.GetGlyph(gid)
+	if err != nil {
+		return nil, err
+	}
+	if glyph == nil {
+		return geom.NewPathFloat(), nil
+	}
+	// must scaled by caller using FontMatrix
+	return glyph.Path(), nil
 }
 
 // GetWidth returns how far the pen moves after the named glyph.
@@ -503,3 +575,91 @@ func (f *TrueTypeFont) String() string {
 var (
 	_ fontbox.FontBoxFont = (*TrueTypeFont)(nil)
 )
+
+// VerticalHeader returns the vhea table, or nil where the font has none.
+func (f *TrueTypeFont) VerticalHeader() (*VerticalHeaderTable, error) {
+	return tableAs[*VerticalHeaderTable](f, VerticalHeaderTag)
+}
+
+// VerticalMetrics returns the vmtx table, or nil.
+func (f *TrueTypeFont) VerticalMetrics() (*VerticalMetricsTable, error) {
+	return tableAs[*VerticalMetricsTable](f, VerticalMetricsTag)
+}
+
+// VerticalOrigin returns the VORG table, or nil.
+func (f *TrueTypeFont) VerticalOrigin() (*VerticalOriginTable, error) {
+	return tableAs[*VerticalOriginTable](f, VerticalOriginTag)
+}
+
+// Kerning returns the kern table, or nil.
+func (f *TrueTypeFont) Kerning() (*KerningTable, error) {
+	return tableAs[*KerningTable](f, KerningTag)
+}
+
+// DigitalSignature returns the DSIG table, or nil.
+func (f *TrueTypeFont) DigitalSignature() (*DigitalSignatureTable, error) {
+	return tableAs[*DigitalSignatureTable](f, DigitalSignatureTag)
+}
+
+// readTableHeaders reads just the header fields of the named table, where it is
+// present and knows how to read them.
+func (f *TrueTypeFont) readTableHeaders(tag string, outHeaders *FontHeaders) error {
+	table, ok := f.tables[tag]
+	if !ok {
+		return nil
+	}
+	reader, ok := table.(HeaderReader)
+	if !ok {
+		return nil
+	}
+	// save current position
+	currentPosition := f.data.CurrentPosition()
+	if err := f.data.SeekTo(table.base().Offset()); err != nil {
+		return err
+	}
+	if err := reader.ReadHeaders(f, f.data, outHeaders); err != nil {
+		return err
+	}
+	// restore current position
+	return f.data.SeekTo(currentPosition)
+}
+
+// TableNBytes returns the first limit bytes of the given table.
+func (f *TrueTypeFont) TableNBytes(table tableBase, limit int) ([]byte, error) {
+	entry := table.base()
+	// save current position
+	currentPosition := f.data.CurrentPosition()
+	if err := f.data.SeekTo(entry.Offset()); err != nil {
+		return nil, err
+	}
+
+	// read all data
+	bytes := make([]byte, min(limit, int(entry.Length())))
+	if _, err := f.data.ReadInto(bytes, 0, len(bytes)); err != nil {
+		return nil, err
+	}
+
+	// restore current position
+	if err := f.data.SeekTo(currentPosition); err != nil {
+		return nil, err
+	}
+	return bytes, nil
+}
+
+// GSUB returns the GSUB table, or nil where the font has none.
+func (f *TrueTypeFont) GSUB() (*GlyphSubstitutionTable, error) {
+	return tableAs[*GlyphSubstitutionTable](f, GlyphSubstitutionTag)
+}
+
+// GsubData returns the substitution data of the font, or model.NoDataFound
+// where it has none.
+func (f *TrueTypeFont) GsubData() (model.GsubData, error) {
+	gsub, err := f.GSUB()
+	if err != nil {
+		return nil, err
+	}
+	if gsub == nil {
+		return model.NoDataFound, nil
+	}
+	return gsub.GsubData(), nil
+}

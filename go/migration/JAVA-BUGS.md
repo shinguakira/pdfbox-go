@@ -596,3 +596,352 @@ Java's `String` becomes once it is written out. `feedback_test.go`,
 
 **Confidence** high. The same method reads the code point for the mirroring
 test and appends the code unit, one line apart.
+
+## 16. `CMap.useCmap` builds a one-byte code with `% 0xFF` instead of `& 0xFF`
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/cmap/CMap.java`, `useCmap`.
+
+**What it does** the `usecmap` operator copies one CMap's mappings into
+another. The forward maps are copied wholesale; the inverted map,
+`unicodeToByteCodes`, is rebuilt from the keys, and for the one-byte table the
+key is turned back into a byte with
+
+```java
+cmap.charToUnicodeOneByte.forEach((k, v) ->
+        unicodeToByteCodes.put(v, new byte[]{(byte) (k % 0xFF)}));
+```
+
+`k` is a one-byte code, so it runs 0 to 255. `k % 0xFF` is `k % 255`, which
+maps 255 to 0 and leaves every other value alone. The two-byte and the three /
+four byte branches directly below both use `& 0xFF` on every byte, so the
+one-byte line is the odd one out.
+
+**What correct would be** `(byte) (k & 0xFF)`, or simply `(byte) (int) k` — the
+key is already a single byte's worth.
+
+**Why it matters** after a `usecmap`, `getCodesFromUnicode` for whatever the
+inherited CMap mapped from code 0xFF hands back code 0x00. The caller is
+`PDType0Font.encode`, which is how text is written into a content stream, so a
+document built on such a CMap gets the wrong byte written for that one
+character. It needs an inherited one-byte CMap with a mapping at 0xFF to show,
+which is why it has gone unnoticed.
+
+**Where the Go carries it** `go/fontbox/cmap/cmap.go`, `useCmap`, with the
+`% 0xFF` written out and a comment pointing here.
+
+**Confidence** high. The two branches beside it mask with `& 0xFF`, and `%` on
+a value that is already a byte cannot be deliberate.
+
+## 17. `CFFParser.concatenateMatrix` multiplies one cell by the wrong matrix
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/cff/CFFParser.java`,
+`concatenateMatrix`.
+
+**What it does** a CID-keyed CFF font may carry a FontMatrix in its Font DICT
+as well as in the Top DICT, and PDFBOX-3579 needs the two multiplied together.
+The six cells are written out by hand:
+
+```java
+matrixDest.set(0, a1 * a2 + b1 * c2);
+matrixDest.set(1, a1 * b2 + b1 * d1);
+matrixDest.set(2, c1 * a2 + d1 * c2);
+matrixDest.set(3, c1 * b2 + d1 * d2);
+matrixDest.set(4, x1 * a2 + y1 * c2 + x2);
+matrixDest.set(5, x1 * b2 + y1 * d2 + y2);
+```
+
+Row 1 ends `b1 * d1`. Every other cell pairs a value from the destination
+matrix with one from the matrix being concatenated; this one pairs `b1` and
+`d1`, both from the destination. The matrix product wants `b1 * d2`.
+
+**What correct would be** `matrixDest.set(1, a1 * b2 + b1 * d2);`.
+
+**Why it matters** cell 1 is the y shear. For the overwhelmingly common case
+where both matrices are diagonal -- `b1` is 0 -- the term vanishes and the bug
+is invisible, which is why it has gone unnoticed. A CID-keyed CFF font whose
+Font DICT and Top DICT both carry a sheared or rotated FontMatrix gets the
+wrong shear, and every glyph of it is drawn skewed.
+
+**Where the Go carries it** `go/fontbox/cff/cffparser.go`, `concatenateMatrix`,
+with `b1*d1` written out and a comment pointing here.
+
+**Confidence** high. The five cells around it are a textbook 3x2 matrix
+product and this one is not.
+
+## 18. `PDType1CFont.getStringWidth` advances one UTF-16 unit at a time
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java`,
+`getStringWidth`.
+
+**What it does** it measures a string by walking it:
+
+```java
+for (int i = 0; i < string.length(); i++)
+{
+    int codePoint = string.codePointAt(i);
+    String name = getGlyphList().codePointToName(codePoint);
+    ...
+    width += cffFont.getType1CharString(name).getWidth();
+}
+```
+
+`String.length()` counts UTF-16 code units and `codePointAt` reads a whole
+character, so a character outside the basic plane is read at its first unit and
+then again at its second. The second read lands on the low surrogate, which is
+not part of a pair from where it starts, and `codePointAt` gives back that bare
+unit — a code point in D800–DFFF.
+
+`PDFont.encode`, six hundred lines away, does the same walk correctly:
+
+```java
+for (int offset = 0; offset < text.length(); )
+{
+    int codePoint = text.codePointAt(offset);
+    ...
+    offset += Character.charCount(codePoint);
+}
+```
+
+**What correct would be** the `charCount` advance `PDFont.encode` uses.
+
+**Why it matters** the character is measured twice, and the second measurement
+is of a lone surrogate. `codePointToName` has no name for one, so the width
+comes out as the width of whatever `.notdef`-ish name it produces, or — much
+more likely — the `hasGlyph` check just above fails and the whole call throws
+`IllegalArgumentException`. Measuring any string with an emoji or a
+supplementary-plane character in a Type 1C font is therefore either wrong or
+fatal. It needs a Type 1C font that actually has such a glyph to show, which is
+why it has gone unnoticed.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/pdtype1cfont.go`,
+`StringWidth`, which walks `utf16Units` one at a time with `codePointAt`, both
+written out beside it.
+
+**Confidence** high. The correct walk is in the same package, in the method
+this one exists to complement.
+
+## 19. `FileSystemFontProvider.writeFontInfo` sign-extends a Panose byte before hex
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
+`writeFontInfo`.
+
+**What it does** it writes the ten Panose bytes into the on-disk font cache as
+two hex digits each:
+
+```java
+byte[] bytes = fontInfo.panose.getBytes();
+for (int i = 0; i < 10; i ++)
+{
+    String str = Integer.toHexString(bytes[i]);
+    if (str.length() == 1)
+    {
+        writer.write('0');
+    }
+    writer.write(str);
+}
+```
+
+`bytes[i]` is a signed `byte`, and `Integer.toHexString` takes an `int`, so the
+byte is widened with sign extension first. A value of 0x00–0x7F comes out as one
+or two digits and is padded to two; a value of 0x80–0xFF becomes a negative
+`int` and comes out as **eight** digits — 0x8A prints as `ffffff8a`.
+
+The reader on the other side assumes exactly two digits per value:
+
+```java
+String str = parts[8].substring(i * 2, i * 2 + 2);
+```
+
+**What correct would be** `Integer.toHexString(bytes[i] & 0xFF)`, which is the
+mask the reader already applies coming back (`panose[i] = (byte)(b & 0xff)`).
+
+**Why it matters** one Panose byte of 0x80 or more shifts every later byte of
+the field by six characters, so the ten values read back are garbage — and the
+Panose comparison in `FontMapperImpl.getFontMatches` is the *most reliable*
+signal it has for picking a substitute, per its own comment. The field is not
+long enough to throw, because the field is longer than the twenty characters the
+reader slices, so the damage is silent. The ten standard Panose digits are all
+in 0–15, which is why it survives: it needs a font whose "OS/2" table carries an
+out-of-range Panose value, and those exist but are not common.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
+`writeFontInfo`, which converts through `int8` before `toHexString` so that the
+same eight digits come out.
+
+**Confidence** high. The reader's own `& 0xff` says what the writer meant.
+
+## 20. `FileSystemFontProvider.addTrueTypeFontImpl` ANDs the two halves of a CID supplement
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
+`addTrueTypeFontImpl`, reading the "gcid" table of an Apple AAT font.
+
+**What it does**
+
+```java
+int supplementVersion = bytes[140] << 8 & (bytes[141] & 0xFF);
+```
+
+**What correct would be** `bytes[140] << 8 | (bytes[141] & 0xFF)` — the two
+bytes of a big-endian 16-bit number are ORed together, not ANDed.
+
+**Why it matters** `bytes[140] << 8` has a zero low byte by construction, and
+`bytes[141] & 0xFF` has nothing but a low byte, so the AND is always 0. Every
+AAT font read this way gets supplement 0 in its `CIDSystemInfo`, whatever the
+table says. Nothing in PDFBox compares supplements — `isCharSetMatch` looks at
+registry and ordering only — so the wrong value never changes a substitution,
+but it is written into the on-disk cache and handed to anyone reading
+`FontInfo.getCIDSystemInfo()`.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
+`addTrueTypeFontImpl`, which writes the same `&` with a comment.
+
+**Confidence** high. `&` between disjoint byte lanes cannot be what was meant.
+
+## 21. `FileSystemFontProvider.createFSIgnored` builds an entry with a null parent
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
+`createFSIgnored`.
+
+**What it does** it builds the `FSFontInfo` that stands for a font file the
+scan could not read:
+
+```java
+return new FSFontInfo(file, format, postScriptName, null, 0, 0, 0, 0, 0, null, null, hash, file.lastModified());
+```
+
+Counting the parameters against the constructor, the tenth `null` is `panose`
+and the eleventh is `parent` — the `FileSystemFontProvider` the entry belongs
+to. Every other call site passes `this`.
+
+`FSFontInfo.getFont()` opens with `parent.cache.getFont(this)`, so calling it on
+one of these entries throws `NullPointerException`.
+
+**What correct would be** `this` for the parent, as the other two call sites
+pass.
+
+**Why it matters** these entries go into `fontInfoList` under the names
+`*skipexception*`, `*skipnoname*` and `*skippipeinname*`, and from there into
+`FontMapperImpl.fontInfoByName`. `findFont` looks a name up and calls
+`info.getFont()` on whatever it finds, so a PDF whose `/BaseFont` is literally
+`*skipexception*` takes down the font lookup. `getFontMatches`, the other caller
+of `getFont()`, filters these out first, because an ignored entry has no
+CIDSystemInfo and no code page bits, so the fuzzy path is safe. The name has to
+be crafted to reach it, which is why it has gone unnoticed.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
+`createFSIgnored`, which passes nil for the parent with a comment; the Go panics
+on the nil dereference where Java throws.
+
+**Confidence** high. The parameter list is unambiguous and the other two call
+sites pass `this`.
+
+## 22. `KerningTable.read` can never take its version 1 branch
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/ttf/KerningTable.java`,
+`read`.
+
+**What it does** it reads the table version, then switches on it:
+
+```java
+int version = data.readUnsignedShort();
+if (version != 0)
+{
+    version = (version << 16) | data.readUnsignedShort();
+}
+int numSubtables = 0;
+switch (version)
+{
+    case 0:
+        numSubtables = data.readUnsignedShort();
+        break;
+    case 1:
+        numSubtables = (int) data.readUnsignedInt();
+        break;
+    default:
+        LOG.debug("Skipped kerning table due to an unsupported kerning table version: {}",
+                version);
+        break;
+}
+```
+
+The two 'kern' formats differ in their header: the Microsoft one begins with a
+uint16 version of 0 followed by a uint16 count, and the Apple one with a 16.16
+fixed version of 0x00010000 followed by a uint32 count. The read above is built
+to tell them apart, and the first half works: a zero first word leaves the
+version 0, a non-zero one is shifted up by sixteen and OR'd with the next word,
+which turns Apple's `00 01 00 00` into 0x00010000.
+
+Then `case 1` asks for the *decimal* 1. By that point the version is either 0 or
+at least 0x10000 — `version << 16` with a non-zero `version` cannot be less than
+65536 — so nothing reaches it.
+
+**What correct would be** `case 0x10000`.
+
+**Why it matters** every Apple-format 'kern' table is skipped with "unsupported
+kerning table version: 65536", so a font that carries only that format has no
+kerning at all. `KerningTable.getHorizontalKerningSubtable` then returns null
+and the caller falls back to no kerning, which is silent.
+
+**Where the Go carries it** `go/fontbox/ttf/kerning.go`, which switches on `1`
+with a comment saying so. The port also narrows the count to a signed 32-bit
+int, as Java's cast does, so that the two would behave the same if the branch
+were ever reached — without the narrowing a Go `int` stays positive and the
+count is used to size an allocation.
+
+**Confidence** high. It is provable from the two lines above it that the case
+label cannot match.
+
+## 23. `CMapStrings.getMapping` reads a zero-length code as the two-byte code 0
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/cmap/CMapStrings.java`,
+`getMapping`, reached from `CMapParser.createStringFromBytes`.
+
+**What it does**
+
+```java
+public static String getMapping(byte[] bytes)
+{
+    if (bytes.length > 2)
+    {
+        return null;
+    }
+    return bytes.length == 1 ? oneByteMappings.get(CMap.toInt(bytes))
+            : twoByteMappings.get(CMap.toInt(bytes));
+}
+```
+
+The ternary has two arms for three cases. A zero-length array is not length 1,
+so it takes the two-byte arm; `CMap.toInt` of no bytes is 0, and
+`twoByteMappings.get(0)` is the one-character string U+0000. An empty
+destination in a `bfchar` or `bfrange` — written `<>` — therefore maps to a NUL
+rather than to the empty string.
+
+The caller makes the inconsistency plain:
+
+```java
+private static String createStringFromBytes(byte[] bytes)
+{
+    if (bytes.length <= 2)
+    {
+        return CMapStrings.getMapping(bytes);
+    }
+    return new String(bytes, StandardCharsets.UTF_16BE);
+}
+```
+
+The same empty array down the other arm would decode as UTF-16BE to the empty
+string.
+
+**What correct would be** an empty string for an empty code, which is what the
+UTF-16BE arm gives and what the two-byte table is not being asked about.
+
+**Why it matters** a CMap with an empty destination maps its code to U+0000
+instead of to nothing, so the extracted text carries a NUL. It needs a
+hand-written CMap to reach — no producer writes `<>` on purpose — which is why
+it has gone unnoticed.
+
+**Where the Go carries it** `go/fontbox/cmap/cmapstrings.go`, `GetMapping`,
+which falls through to the two-byte table for a zero-length code exactly as Java
+does, with a comment saying why the length-0 case is not special-cased.
+
+**Confidence** high. The two arms of the caller disagree about the same input.
