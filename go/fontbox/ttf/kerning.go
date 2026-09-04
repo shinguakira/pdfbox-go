@@ -31,7 +31,14 @@ func (t *KerningTable) Read(ttf *TrueTypeFont, data DataStream) error {
 	case 0:
 		numSubtables = r.unsignedShort()
 	case 1:
-		numSubtables = int(r.unsignedInt())
+		// Java narrows the unsigned count to a signed 32-bit int, so a count
+		// with bit 31 set goes negative and the check below skips it; a Go int
+		// is 64 bits and would keep it positive and allocate on it.
+		//
+		// JAVA-BUGS entry 22: this case cannot be reached. version is zero or
+		// at least 0x10000 by the time the switch sees it, so an Apple
+		// version 1.0 'kern' table falls through to the default and is skipped.
+		numSubtables = int(int32(r.unsignedInt()))
 	default:
 		slog.Debug("Skipped kerning table due to an unsupported kerning table version",
 			"version", version)

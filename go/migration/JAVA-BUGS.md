@@ -834,3 +834,114 @@ on the nil dereference where Java throws.
 
 **Confidence** high. The parameter list is unambiguous and the other two call
 sites pass `this`.
+
+## 22. `KerningTable.read` can never take its version 1 branch
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/ttf/KerningTable.java`,
+`read`.
+
+**What it does** it reads the table version, then switches on it:
+
+```java
+int version = data.readUnsignedShort();
+if (version != 0)
+{
+    version = (version << 16) | data.readUnsignedShort();
+}
+int numSubtables = 0;
+switch (version)
+{
+    case 0:
+        numSubtables = data.readUnsignedShort();
+        break;
+    case 1:
+        numSubtables = (int) data.readUnsignedInt();
+        break;
+    default:
+        LOG.debug("Skipped kerning table due to an unsupported kerning table version: {}",
+                version);
+        break;
+}
+```
+
+The two 'kern' formats differ in their header: the Microsoft one begins with a
+uint16 version of 0 followed by a uint16 count, and the Apple one with a 16.16
+fixed version of 0x00010000 followed by a uint32 count. The read above is built
+to tell them apart, and the first half works: a zero first word leaves the
+version 0, a non-zero one is shifted up by sixteen and OR'd with the next word,
+which turns Apple's `00 01 00 00` into 0x00010000.
+
+Then `case 1` asks for the *decimal* 1. By that point the version is either 0 or
+at least 0x10000 — `version << 16` with a non-zero `version` cannot be less than
+65536 — so nothing reaches it.
+
+**What correct would be** `case 0x10000`.
+
+**Why it matters** every Apple-format 'kern' table is skipped with "unsupported
+kerning table version: 65536", so a font that carries only that format has no
+kerning at all. `KerningTable.getHorizontalKerningSubtable` then returns null
+and the caller falls back to no kerning, which is silent.
+
+**Where the Go carries it** `go/fontbox/ttf/kerning.go`, which switches on `1`
+with a comment saying so. The port also narrows the count to a signed 32-bit
+int, as Java's cast does, so that the two would behave the same if the branch
+were ever reached — without the narrowing a Go `int` stays positive and the
+count is used to size an allocation.
+
+**Confidence** high. It is provable from the two lines above it that the case
+label cannot match.
+
+## 23. `CMapStrings.getMapping` reads a zero-length code as the two-byte code 0
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/cmap/CMapStrings.java`,
+`getMapping`, reached from `CMapParser.createStringFromBytes`.
+
+**What it does**
+
+```java
+public static String getMapping(byte[] bytes)
+{
+    if (bytes.length > 2)
+    {
+        return null;
+    }
+    return bytes.length == 1 ? oneByteMappings.get(CMap.toInt(bytes))
+            : twoByteMappings.get(CMap.toInt(bytes));
+}
+```
+
+The ternary has two arms for three cases. A zero-length array is not length 1,
+so it takes the two-byte arm; `CMap.toInt` of no bytes is 0, and
+`twoByteMappings.get(0)` is the one-character string U+0000. An empty
+destination in a `bfchar` or `bfrange` — written `<>` — therefore maps to a NUL
+rather than to the empty string.
+
+The caller makes the inconsistency plain:
+
+```java
+private static String createStringFromBytes(byte[] bytes)
+{
+    if (bytes.length <= 2)
+    {
+        return CMapStrings.getMapping(bytes);
+    }
+    return new String(bytes, StandardCharsets.UTF_16BE);
+}
+```
+
+The same empty array down the other arm would decode as UTF-16BE to the empty
+string.
+
+**What correct would be** an empty string for an empty code, which is what the
+UTF-16BE arm gives and what the two-byte table is not being asked about.
+
+**Why it matters** a CMap with an empty destination maps its code to U+0000
+instead of to nothing, so the extracted text carries a NUL. It needs a
+hand-written CMap to reach — no producer writes `<>` on purpose — which is why
+it has gone unnoticed.
+
+**Where the Go carries it** `go/fontbox/cmap/cmapstrings.go`, `GetMapping`,
+which falls through to the two-byte table for a zero-length code exactly as Java
+does, with a comment saying why the length-0 case is not special-cased.
+
+**Confidence** high. The two arms of the caller disagree about the same input.

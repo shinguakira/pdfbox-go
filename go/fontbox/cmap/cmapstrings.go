@@ -58,6 +58,11 @@ func decodeLatin1(data []byte) string {
 // string where the code is longer than two bytes and nothing is cached.
 //
 // Java returns null there, and its callers null-check.
+//
+// JAVA-BUGS entry 23: Java's ternary has two arms for three cases, so a
+// zero-length code falls into the two-byte arm and comes back as U+0000 rather
+// than as the empty string its caller's other arm would give it. Ported as
+// written; do not special-case the empty code here.
 func GetMapping(bytes []byte) (string, bool) {
 	if len(bytes) > 2 {
 		return "", false
@@ -100,11 +105,17 @@ func ToInt(data []byte) int {
 }
 
 // ToIntLen reads the first dataLen bytes of a code as a big-endian integer.
+//
+// Java accumulates in an int, which is 32 bits, so a four-byte code whose first
+// byte is 0x80 or more comes out negative; a Go int is 64 bits and would keep
+// it positive. The width is observable: CMap.toUnicode(int) tests the code
+// against 256, 0xFFFF and 0xFFFFFF to decide how many bytes it had, and a
+// negative code takes the two-byte branch. The port narrows to match.
 func ToIntLen(data []byte, dataLen int) int {
-	code := 0
+	var code int32
 	for i := 0; i < dataLen; i++ {
 		code <<= 8
-		code |= int(data[i]) & 0xFF
+		code |= int32(data[i]) & 0xFF
 	}
-	return code
+	return int(code)
 }

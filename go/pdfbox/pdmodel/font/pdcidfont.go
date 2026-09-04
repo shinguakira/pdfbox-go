@@ -260,57 +260,39 @@ func (f *pdCIDFont) readVerticalDisplacements() {
 	if w2Array == nil {
 		return
 	}
-	// Java casts each entry to COSNumber and throws ClassCastException on
-	// anything else, which is unchecked; the port stops reading instead of
-	// taking down the whole page, and says so.
-	numberAt := func(index int) (cos.Number, bool) {
-		if index >= w2Array.Size() {
-			return nil, false
-		}
-		number, ok := w2Array.GetObject(index).(cos.Number)
-		return number, ok
+	// Java casts every entry with (COSNumber) and indexes past the end without
+	// checking, so a malformed /W2 array throws ClassCastException or
+	// IndexOutOfBoundsException out of the font's constructor. Both are
+	// unchecked; the port lets the equivalent panic out, which is what a failed
+	// type assertion and an out-of-range index already do.
+	numberAt := func(index int) cos.Number {
+		return w2Array.GetObject(index).(cos.Number)
 	}
 	for i := 0; i < w2Array.Size(); i++ {
-		c, ok := numberAt(i)
-		if !ok {
-			slog.Warn("Expected a number in the W2 array, stopped reading it")
-			return
-		}
+		c := numberAt(i)
 		i++
 		next := w2Array.GetObject(i)
 		if array, ok := next.(*cos.Array); ok {
 			for j := 0; j < array.Size(); j++ {
 				cid := c.IntValue() + j/3
-				w1y, ok1 := array.GetObject(j).(cos.Number)
+				w1y := array.GetObject(j).(cos.Number)
 				j++
-				v1x, ok2 := array.GetObject(j).(cos.Number)
+				v1x := array.GetObject(j).(cos.Number)
 				j++
-				v1y, ok3 := array.GetObject(j).(cos.Number)
-				if !ok1 || !ok2 || !ok3 {
-					slog.Warn("Expected a number in the W2 array, stopped reading it")
-					return
-				}
+				v1y := array.GetObject(j).(cos.Number)
 				f.verticalDisplacementY[cid] = w1y.FloatValue()
 				f.positionVectors[cid] = util.NewVector(v1x.FloatValue(), v1y.FloatValue())
 			}
 			continue
 		}
-		last, ok := next.(cos.Number)
-		if !ok {
-			slog.Warn("Expected a number in the W2 array, stopped reading it")
-			return
-		}
+		last := next.(cos.Number)
 		first := c.IntValue()
 		i++
-		w1y, ok1 := numberAt(i)
+		w1y := numberAt(i)
 		i++
-		v1x, ok2 := numberAt(i)
+		v1x := numberAt(i)
 		i++
-		v1y, ok3 := numberAt(i)
-		if !ok1 || !ok2 || !ok3 {
-			slog.Warn("Expected a number in the W2 array, stopped reading it")
-			return
-		}
+		v1y := numberAt(i)
 		f.displacementRanges = append(f.displacementRanges, verticalDisplacementRange{
 			rangeStart:          first,
 			rangeEnd:            last.IntValue(),

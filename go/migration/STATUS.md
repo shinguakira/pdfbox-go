@@ -1018,3 +1018,53 @@ The floor is guaranteed rather than incidental: `getTrueTypeFont`,
 `getFontBoxFont` and `getCIDFont` all end at `lastResortFont`, which is compiled
 into the binary. None of the three can return nil, and no document can fail for
 want of a font on the machine.
+
+### Port defects found in the slice 4 feedback, fixed
+
+Six review comments, of which three were port defects, one was a missing piece
+of scope, and two were Java behaviour the port already reproduced.
+
+- **`CMap.toInt` accumulated at 64 bits.** Java's accumulator is an `int`, so a
+  four-byte code whose first byte is 0x80 or more comes out negative; a Go `int`
+  kept it positive. The width is observable, not cosmetic: `toUnicode(int)`
+  tests the code against 256, 0xFFFF and 0xFFFFFF to work out how many bytes it
+  had, and a negative code takes the two-byte branch — so Java misses a mapping
+  it stored under that same negative key, while the port found it.
+  `cmap/feedback_test.go` pins both the arithmetic and the lookup it decides.
+- **`PDCIDFont.readVerticalDisplacements` swallowed a malformed `/W2`.** Java
+  casts every entry with `(COSNumber)` and indexes past the end without
+  checking, so a bad array throws out of the font's constructor. The port had
+  softened that to a warning and a partial read, which left the font with some
+  of its vertical metrics filled in and the rest defaulted — a deviation that
+  was commented at the site but not recorded here, and not one the port was
+  entitled to make. The casts are back; a failed type assertion and an
+  out-of-range index panic where Java throws.
+- **`KerningTable.read` did not narrow its version 1 subtable count.** Java
+  casts the unsigned count to a signed 32-bit `int`, so a count with bit 31 set
+  goes negative and the `> 0` check skips it; the Go kept it positive and would
+  have sized an allocation on it. The branch turns out to be unreachable —
+  recorded as [`JAVA-BUGS.md`](JAVA-BUGS.md) entry 22 — so no test can reach it
+  either, but the cast is written out so the two lines say the same thing.
+- **`PDFontFactory.createFont` was missing the Type 0 `/Subtype` repair.** It
+  had been deferred while `PDType0Font` was unported and the deferral was never
+  lifted, so the header comment had gone stale — which is what the review
+  noticed. `fixType0Subtype`, `getFontTypeFromFont`, `getFontHeader`,
+  `getFontDescriptor`, `getDescendantFont`, the six header sniffers and the
+  `FontType` inner class are now ported: a Type 0 font whose descendant's
+  `/Subtype` disagrees with the embedded font program has both the subtype and
+  the `/FontFile2` ↔ `/FontFile3` entry corrected, as Java does. The two log
+  lines the port had dropped — the wrong `/Type` and the invalid `/Subtype` —
+  are back with it.
+
+### Reviewed and declined — slice 4
+
+- **`CMapStrings.getMapping` reads a zero-length code as the two-byte code 0.**
+  Reported as a divergence from UTF-16BE semantics. It is not a divergence: Java
+  does exactly this, because its ternary has two arms for three cases. Carried
+  as written, recorded as [`JAVA-BUGS.md`](JAVA-BUGS.md) entry 23, and commented
+  at the site so it is not "fixed" later.
+- **`createDescendantFont` names the `/Type` in its error, not the `/Subtype`
+  that failed to match.** Java does that too — `"Invalid font type: " + type`,
+  where `type` is the dictionary's `/Type`. The port now concatenates the
+  `COSName` rather than its name, as Java does, so the message reads
+  `Invalid font type: COSName{Font}` on both sides.
