@@ -551,3 +551,16 @@ func dictionaryEntriesString(d *Dictionary, objs []Base) string {
 	sb.WriteString("}")
 	return sb.String()
 }
+
+// GetCOSStream returns the entry under key as a stream, or nil where it is not
+// one.
+//
+// Port of getCOSStream(COSName), which slice 1 left out because it names
+// COSStream and the two files are in one package only by convention; slice 6
+// needs it for the /Mask and /SMask of an image.
+func (d *Dictionary) GetCOSStream(key *Name) *Stream {
+	if stream, ok := d.GetDictionaryObject(key).(*Stream); ok {
+		return stream
+	}
+	return nil
+}

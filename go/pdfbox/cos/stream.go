@@ -483,3 +483,42 @@ func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
 	}
 	return pdfio.NewReadBufferFromReader(decoded)
 }
+
+// CreateReaderStopping returns a reader over the stream data, applying only the
+// first count filters of the stream's filter array.
+//
+// Java has no such method on COSStream: PDStream.createInputStream(List<String>)
+// builds the filter list itself and calls the static Filter.decode. The port
+// puts it here instead, because pdmodel/common cannot import pdfbox/filter --
+// that package imports cos, and cos is where the codec provider a stream was
+// built with lives.
+func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
+	raw, err := s.CreateRawReader()
+	if err != nil {
+		return nil, err
+	}
+
+	codecs, err := s.codecList()
+	if err != nil {
+		return nil, err
+	}
+	if count > len(codecs) {
+		count = len(codecs)
+	}
+	if count <= 0 {
+		return raw, nil
+	}
+
+	current := raw
+	for i := 0; i < count; i++ {
+		decoded := pdfio.NewReadWriteBuffer()
+		if err := codecs[i].Decode(decoded, current, &s.Dictionary, i); err != nil {
+			return nil, fmt.Errorf("cos: decoding filter %d: %w", i, err)
+		}
+		if err := pdfio.SeekTo(decoded, 0); err != nil {
+			return nil, err
+		}
+		current = pdfio.NewReader(decoded)
+	}
+	return current, nil
+}
