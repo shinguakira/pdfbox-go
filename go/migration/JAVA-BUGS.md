@@ -631,3 +631,39 @@ which is why it has gone unnoticed.
 
 **Confidence** high. The two branches beside it mask with `& 0xFF`, and `%` on
 a value that is already a byte cannot be deliberate.
+
+## 17. `CFFParser.concatenateMatrix` multiplies one cell by the wrong matrix
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/cff/CFFParser.java`,
+`concatenateMatrix`.
+
+**What it does** a CID-keyed CFF font may carry a FontMatrix in its Font DICT
+as well as in the Top DICT, and PDFBOX-3579 needs the two multiplied together.
+The six cells are written out by hand:
+
+```java
+matrixDest.set(0, a1 * a2 + b1 * c2);
+matrixDest.set(1, a1 * b2 + b1 * d1);
+matrixDest.set(2, c1 * a2 + d1 * c2);
+matrixDest.set(3, c1 * b2 + d1 * d2);
+matrixDest.set(4, x1 * a2 + y1 * c2 + x2);
+matrixDest.set(5, x1 * b2 + y1 * d2 + y2);
+```
+
+Row 1 ends `b1 * d1`. Every other cell pairs a value from the destination
+matrix with one from the matrix being concatenated; this one pairs `b1` and
+`d1`, both from the destination. The matrix product wants `b1 * d2`.
+
+**What correct would be** `matrixDest.set(1, a1 * b2 + b1 * d2);`.
+
+**Why it matters** cell 1 is the y shear. For the overwhelmingly common case
+where both matrices are diagonal -- `b1` is 0 -- the term vanishes and the bug
+is invisible, which is why it has gone unnoticed. A CID-keyed CFF font whose
+Font DICT and Top DICT both carry a sheared or rotated FontMatrix gets the
+wrong shear, and every glyph of it is drawn skewed.
+
+**Where the Go carries it** `go/fontbox/cff/cffparser.go`, `concatenateMatrix`,
+with `b1*d1` written out and a comment pointing here.
+
+**Confidence** high. The five cells around it are a textbook 3x2 matrix
+product and this one is not.
