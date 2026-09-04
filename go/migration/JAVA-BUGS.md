@@ -1161,3 +1161,44 @@ It is not caught by the Java's own tests because they assert the behaviour:
 `type4_test.go` keeps the Java's expected values.
 
 **Confidence** high. The specification and the code disagree in one character.
+
+## 30. `ASCIIHexFilter` adds -1 for a digit that is not hexadecimal
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCIIHexFilter.java`.
+
+**What it does**
+
+```java
+if (REVERSE_HEX[firstByte] == -1)
+{
+    LOG.error("Invalid hex, int: {} char: {} (1st byte)", firstByte, (char) firstByte);
+}
+int value = REVERSE_HEX[firstByte] * 16;
+...
+if (REVERSE_HEX[secondByte] == -1)
+{
+    LOG.error("Invalid hex, int: {} char: {} (2nd byte)", secondByte, (char) secondByte);
+}
+value += REVERSE_HEX[secondByte];
+decoded.write(value);
+```
+
+The table holds -1 for every byte that is not a hexadecimal digit, and the
+filter logs that and then uses it. So `4Z` decodes to 4 × 16 + (-1) = 63, one
+less than the 64 a reader would expect from "the bad digit is a zero"; and an
+invalid *first* digit contributes -16, so `Z4` decodes to -12, which
+`decoded.write` narrows to 0xF4.
+
+**What correct would be** treating the entry as zero after logging, or
+refusing the stream. The specification says a conforming reader may ignore
+characters outside the alphabet, which is neither of these.
+
+**Why it matters** only for a malformed stream, which is exactly when a filter
+is asked to be predictable. One wrong digit shifts the byte around it rather
+than the byte itself, and the error is silent past the log.
+
+**Where the Go carries it** `go/pdfbox/filter/asciihex.go`, `Decode`, which
+multiplies and adds the table entry as Java does; `TestASCIIHexTolerance` in
+`fromsource_test.go` pins both cases with the arithmetic written out.
+
+**Confidence** high. The port's test was written expecting 64 and measured 63.

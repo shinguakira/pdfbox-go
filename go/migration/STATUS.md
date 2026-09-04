@@ -1304,3 +1304,186 @@ code does rather than repeating Java's promise.
 **The error message should name the handler.** `"The security handler name is
 already registered"` is Java's string, character for character. The port keeps
 Java's messages so that a caller matching on them sees the same text.
+
+## Slice 6 — the rest of the filters, and images
+
+Branch `slice/6-filters-images`. The slice reads the image formats a PDF can
+carry: the filters slice 1 left, the colour spaces those images are in, and the
+image XObjects and inline images themselves.
+
+### `pdfbox/filter` — all 23 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `Filter`, `FilterFactory` | `filter.go` | done — the factory is `ByName` and `allFilters`, the static `decode` is `Decode` |
+| `ASCIIHexFilter` | `asciihex.go` | done — carries JAVA-BUGS 30 |
+| `ASCII85Filter`, `ASCII85InputStream`, `ASCII85OutputStream` | `ascii85.go` | done — carries JAVA-BUGS 27 |
+| `RunLengthDecodeFilter` | `runlength.go` | done |
+| `LZWFilter` | `lzw.go`, `bitstream.go` | done — carries JAVA-BUGS 28 |
+| `CryptFilter` | `crypt.go` | done |
+| `CCITTFaxFilter`, `CCITTFaxDecoderStream`, `CCITTFaxEncoderStream` | `ccittfax.go`, `ccittfaxdecoderstream.go`, `ccittfaxencoderstream.go` | done |
+| `DCTFilter` | `dct.go` | done over `image/jpeg`; see below |
+| `JBIG2Filter`, `JPXFilter`, `MissingImageReaderException` | `imagereader.go` | declared, reporting the missing reader |
+| `DecodeOptions` | `decodeoptions.go` | done |
+| `TIFFExtension` | `tiffextension.go` | the constants the CCITT code uses |
+| `FlateFilter`, `FlateFilterDecoderStream`, `IdentityFilter`, `Predictor`, `DecodeResult` | slice 1 | already done |
+
+**JBIG2 and JPX are declared and unsupported**, which is what Java is on a
+build without jbig2-imageio and the JAI Image I/O Tools: `findImageReader`
+throws `MissingImageReaderException` before either filter decodes anything.
+Neither format has PDFBox code to port — both are handed to the plugin — and Go
+has no decoder for either. A document using one still opens; only that image is
+missing, as in Java.
+
+**DCT cannot be byte-identical to Java's**, and says so where it is:
+
+- `image/jpeg` has already applied the Adobe inversion a CMYK JPEG stores its
+  samples with, where Java writes the samples as stored and lets the image's
+  /Decode array invert them. The port takes that inversion back out, which is
+  exact — one subtraction per sample, for both the plain CMYK and the YCCK
+  arms, which was read out of `applyBlack` rather than assumed.
+- Two JPEG decoders do not agree to the last bit. The inverse DCT and the YCbCr
+  conversion are approximations and `image/jpeg`'s differ from the JRE's in the
+  last place on some samples.
+- `image/jpeg` refuses a four component JPEG with no Adobe APP14 marker;
+  Java's `getAdobeTransformByBruteForce` falls back to reading it as CMYK.
+
+### `pdfbox/util/filetypedetector` — all 3 files
+
+Done, with tests written from the source. One thing worth naming: Java searches
+the whole array it allocated rather than the part it filled, so a file shorter
+than the longest signature is searched with trailing zeroes after it — a three
+byte file `00 00 01` is detected as an ICO. The port pads to the same length so
+that it reads the same files the same way.
+
+### `pdmodel/common/function` — all 6 files, and all 11 of `type4`
+
+Ported because `PDSeparation` and `PDDeviceN` evaluate a tint transform and are
+useless without it. `TestOperators`, `TestParser` and `TestPDFunctionType4` are
+ported whole.
+
+The type 4 operand stack holds `int32`, `float32`, `bool` and
+`*InstructionSequence`, matching Java's four `instanceof` distinctions exactly:
+a dozen operators behave differently for an integer and a real, and collapsing
+them would change the arithmetic. `not` carries JAVA-BUGS 29.
+
+### `pdmodel/graphics/color` — 18 of 20 files
+
+Everything but **`PDPattern`**, which takes a `PDResources` and builds pattern
+dictionaries that only rendering reads, and **`PDJPXColorSpace`**, which only
+`JPXFilter` constructs. Both are slice 9's, and `create` reports them the way
+Java reports a colour space it cannot build.
+
+`awt/image` is new: a `Raster` standing for the part of `java.awt.image` PDFBox
+uses. Java has an interleaved raster and a banded one and PDFBox builds both;
+every banded one it builds has a single band, where the two layouts are the
+same, so the port stores interleaved throughout.
+
+**Two conversions are not faithful and cannot be:**
+
+- **`PDDeviceCMYK` converts naively.** Java converts through an ICC profile it
+  ships as a resource — CGATS001Compat-v2-micro, an open stand-in for the
+  "U.S. Web Coated (SWOP) v2" profile Acrobat uses — handed to
+  `java.awt.color.ICC_ColorSpace` and from there to LittleCMS. Go has no ICC
+  engine and PDFBox has no ICC code of its own to port: the whole conversion is
+  three lines that call out to the platform. So the port uses
+  R = (1-C)(1-K). **This is the largest gap in the slice**: it changes the
+  colours every CMYK image and every CMYK fill comes out as, not by rounding.
+- **`PDICCBased` always takes the /Alternate colour space.** That is the path
+  Java takes when the profile will not load, and the path its own
+  `org.apache.pdfbox.rendering.UseAlternateInsteadOfICCColorSpace` property
+  forces; the port takes it deliberately rather than on an error.
+
+`convXYZtoRGB` is written out rather than handed to the platform: the D50 to
+D65 Bradford adaptation folded into the sRGB primaries, then the sRGB transfer
+function, which is the standard definition of Java's `CS_CIEXYZ.toRGB`. It
+agrees with LittleCMS to within the rounding of the two, not bit for bit.
+
+### `pdmodel/graphics` and `pdmodel/graphics/image` — 2 of 4, and all 9
+
+`PDXObject` and `PDPostScriptXObject`; `PDFontSetting` and `PDLineDashPattern`
+are elsewhere. The form XObject branch of `createXObject` reports that slice 9
+owns it.
+
+The image package is complete: `PDImage`, `SampledImageReader`,
+`PDImageXObject`, `PDInlineImage`, `JPEGFactory`, `LosslessFactory`,
+`CCITTFactory`, `PNGConverter` and `CustomFactory`.
+
+**Three substitutions, each commented where it is:**
+
+- **Scaling.** Java scales a mask with an `AffineTransformOp`, bicubic for a
+  small image and bilinear for a large one. Go has no resampler in its standard
+  library at all, so the port writes bilinear where Java interpolates and
+  nearest neighbour where it does not. A scaled mask differs softly, in the
+  gradient of its edge.
+- **`getStencilImage` takes a colour, not a `Paint`.** A `Paint` may be a
+  gradient or a pattern, which are rendering objects, and slice 9 owns those.
+- **A truncated image keeps the rows that read.** Java reads bits through
+  `MemoryCacheImageInputStream`, whose `readBits` throws at the end of the
+  stream, and nothing catches it, so a truncated image throws out of
+  `getRGBImage`. The port returns zeroes and keeps what it had, which is the
+  tolerance the filters already have for a damaged stream.
+
+**And three gaps, which are absences rather than differences:**
+
+- **No TIFF decoder.** `PDImageXObject.createFromByteArray` reads a TIFF the
+  CCITT reader refuses by falling through to `ImageIO`, which decodes an LZW
+  TIFF. Go's standard library has none. `lzw.tif` loads in Java and does not
+  here; `TestCreateFromByteArrayLZWTiff` pins that so it stays visible.
+- **No BMP decoder**, for the same reason, on the same path.
+- **`JPEGFactory.createFromImage` ignores the DPI.** Java writes it by editing
+  the JFIF APP0 marker through the writer's metadata tree; Go's `image/jpeg`
+  gives no way to. Nothing in a PDF reads it — the image is scaled by the
+  content stream — and PDFBOX-6235 notes that a CMYK JPEG has no JFIF marker to
+  carry it either.
+
+### Two things slice 1 deferred, brought in because this slice needs them
+
+`COSDictionary.getCOSStream`, for the /Mask and /SMask of an image, and
+`PDStream.createInputStream(List<String>)`, which hands a caller the
+still-encoded JPEG or fax data.
+
+### A port defect in slice 1, found by this slice and fixed
+
+`COSDictionary.toString` delegates in Java to a `getDictionaryString` that
+carries a list of the objects it has already been through. The Go had no such
+guard, so a dictionary holding itself — PDFBOX-5315, which the colour space
+`create` path reports on — ran the stack out instead of printing a marker. The
+recursion test for that colour space is what found it.
+
+### Which Java tests are ported, and which are not
+
+| Java test | Ported |
+| --- | --- |
+| `TestFilters` | whole, except `testPDFBOX4517` |
+| `PredictorTest` | whole, by slice 1 |
+| `TestOperators`, `TestParser`, `TestPDFunctionType4` | whole |
+| `PDLabTest` | whole |
+| `PDICCBasedTest` | whole |
+| `PDIndexedTest` | the parameter checks, and the first half of the factory test |
+| `PDInlineImageTest` | the half that builds and checks the images |
+| `JPEGFactoryTest` | the `validate` half of five of the ten |
+| `PDDeviceCMYKTest` | no — both its tests load the ICC profile |
+| `CCITTFactoryTest`, `LosslessFactoryTest`, `PNGConverterTest`, `PDImageXObjectTest` | no |
+
+`testPDFBOX4517` reads `target/pdfs/PDFBOX-4517-cryptfilter.pdf`, which the Java
+build downloads and this repository does not carry — the same reason two of
+slice 5's tests are absent.
+
+The four image tests that are not ported all **save the document** and several
+render it back, which is slice 7 and slice 9. In their place the port tests the
+property each factory rests on, which needs neither: that what goes in comes
+back out. `LosslessFactory` round trips a synthetic gradient, a grey ramp and
+three checked-in PNGs pixel for pixel; `CCITTFactory` round trips a bitmap
+through the fax encoder and reads the checked-in Group 3 and Group 4 TIFFs;
+`PNGConverter` converts the checked-in truecolor and indexed PNGs and compares
+every pixel against the same file decoded by `image/png`, and declines exactly
+what Java declines.
+
+Those round trips are not weaker than the Java tests they stand in for. A wrong
+Paeth predictor would still deflate and still decode; the pixels would be wrong.
+
+### Corpus
+
+34 of 40 unsorted, 33 sorted — unchanged. The corpus measures text extraction,
+which this slice does not touch.

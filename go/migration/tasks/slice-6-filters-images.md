@@ -68,42 +68,56 @@ relying on it.
 
 # Phase A — Write the tests
 
-- [ ] A1. `pdfbox/filter` — port `TestFilters` in full
+- [x] A1. `pdfbox/filter` — port `TestFilters` in full
   - Slice 1 ported the round-trip generator only. `testPDFBOX1977` needs LZW
     and `testRLE` needs RunLength; both are in scope here.
-- [ ] A2. `pdfbox/filter` — port the second test in that package
+- [x] A2. `pdfbox/filter` — port the second test in that package
 - [ ] A3. `pdmodel/graphics/image` — port all 7 Java tests
-- [ ] A4. Write from source for any filter the Java tests do not reach
+
+      **Three of the seven, and not the other four.** `PDInlineImageTest` and
+      `JPEGFactoryTest` are ported as far as they go without a writer, and
+      `ValidateXImage.validate` is the helper both use. `CCITTFactoryTest`,
+      `LosslessFactoryTest`, `PNGConverterTest` and `PDImageXObjectTest` are
+      not: every one of their tests builds a document, adds the image and saves
+      it, and several then render the saved file back. That is slice 7 and
+      slice 9.
+
+      In their place the port tests the property each factory rests on, which
+      needs neither — that what goes in comes back out, pixel for pixel, over
+      the same checked-in files those tests use. See `migration/STATUS.md`.
+      This box stays open because the four Java tests are still unported, and
+      it is the slice 7 branch that can close it.
+- [x] A4. Write from source for any filter the Java tests do not reach
   - Name which ones before writing
 
 ---
 
 # Phase B — Port the implementation
 
-- [ ] B1. The ASCII filters — `ASCIIHexFilter`, `ASCII85Filter`
-- [ ] B2. `RunLengthDecodeFilter`
-- [ ] B3. `LZWFilter` — check `compress/lzw` against the PDF variant first;
+- [x] B1. The ASCII filters — `ASCIIHexFilter`, `ASCII85Filter`
+- [x] B2. `RunLengthDecodeFilter`
+- [x] B3. `LZWFilter` — check `compress/lzw` against the PDF variant first;
       PDF uses early change, which the stdlib may not
-- [ ] B4. `DCTFilter` — JPEG. Check CMYK and YCCK handling
-- [ ] B5. `CCITTFaxFilter` and its decoder — Group 3 and Group 4
-- [ ] B6. `JBIG2Filter` — decide whether it is ported or left declared and
+- [x] B4. `DCTFilter` — JPEG. Check CMYK and YCCK handling
+- [x] B5. `CCITTFaxFilter` and its decoder — Group 3 and Group 4
+- [x] B6. `JBIG2Filter` — decide whether it is ported or left declared and
       unsupported, as Java does when the optional jar is missing
-- [ ] B7. `DecodeOptions` — image subsampling, which slice 1 left out
-- [ ] B8. `pdmodel/graphics` root — `PDXObject`, `PDPostScriptXObject`
-- [ ] B9. `pdmodel/graphics/image` — `PDImageXObject`, `PDInlineImage`,
+- [x] B7. `DecodeOptions` — image subsampling, which slice 1 left out
+- [x] B8. `pdmodel/graphics` root — `PDXObject`, `PDPostScriptXObject`
+- [x] B9. `pdmodel/graphics/image` — `PDImageXObject`, `PDInlineImage`,
       `PDImage`, `SampledImageReader` and the rest of the 9
-- [ ] B10. `pdfbox/util/filetypedetector` — 3 files, sniffing an image's type
+- [x] B10. `pdfbox/util/filetypedetector` — 3 files, sniffing an image's type
       from its bytes
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
 
 ---
 
