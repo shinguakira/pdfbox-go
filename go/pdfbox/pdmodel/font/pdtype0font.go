@@ -8,6 +8,8 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox/cmap"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf/model"
 	fontutil "github.com/shinguakira/pdfbox-go/go/fontbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font/encoding"
@@ -21,8 +23,8 @@ import (
 // The embedding half of the Java class -- the load and loadVertical factories,
 // addToSubset, subset and the PDCIDFontType2Embedder behind them -- writes a
 // font into a document, which a later slice ports. GsubData and the cmap lookup
-// belong to that half and are nil here, as they are in Java for a font read out
-// of a PDF. See migration/STATUS.md.
+// belong to that half and keep the values Java gives them for a font read out
+// of a PDF: GsubData.NO_DATA_FOUND and null.
 type PDType0Font struct {
 	pdFont
 
@@ -30,6 +32,8 @@ type PDType0Font struct {
 	noUnicode        map[int]bool
 	cMap             *cmap.CMap
 	cMapUCS2         *cmap.CMap
+	gsubData         model.GsubData
+	cmapLookup       ttf.CmapLookup
 	isCMapPredefined bool
 	isDescendantCJK  bool
 }
@@ -47,8 +51,10 @@ func (f *PDType0Font) isType0() {}
 // descendant font is missing.
 func NewPDType0Font(fontDictionary *cos.Dictionary, resourceCache ResourceCache) (*PDType0Font, error) {
 	f := &PDType0Font{
-		pdFont:    newPDFontFromDictionary(fontDictionary),
-		noUnicode: map[int]bool{},
+		pdFont:     newPDFontFromDictionary(fontDictionary),
+		noUnicode:  map[int]bool{},
+		gsubData:   model.NoDataFound,
+		cmapLookup: nil,
 	}
 	f.pdFont.self = f
 	f.initFromDictionary(resourceCache)
@@ -403,10 +409,23 @@ func (f *PDType0Font) HasGlyphForCode(code int) (bool, error) {
 	return f.descendantFont.HasGlyph(code, f)
 }
 
+// GsubData returns the GSUB data if present.
+//
+// Java sets the field from the font program only in the embedding constructor;
+// the one that reads a font out of a PDF sets GsubData.NO_DATA_FOUND, which is
+// what this returns until the embedding half lands.
+func (f *PDType0Font) GsubData() model.GsubData { return f.gsubData }
+
 // EncodeGlyphID returns the encoded value for the given glyph ID.
 func (f *PDType0Font) EncodeGlyphID(glyphID int) []byte {
 	return f.descendantFont.EncodeGlyphID(glyphID)
 }
+
+// CmapLookup returns the CMap lookup table if present.
+//
+// Java sets the field from the font program only in the embedding constructor;
+// the one that reads a font out of a PDF leaves it null.
+func (f *PDType0Font) CmapLookup() ttf.CmapLookup { return f.cmapLookup }
 
 // ToUnicodeWithGlyphList returns what the given character code stands for.
 func (f *PDType0Font) ToUnicodeWithGlyphList(code int,

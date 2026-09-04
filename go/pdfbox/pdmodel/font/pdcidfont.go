@@ -1,7 +1,6 @@
 package font
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -518,8 +517,3 @@ func (i *PDCIDSystemInfo) COSObject() cos.Base { return i.dictionary }
 func (i *PDCIDSystemInfo) String() string {
 	return fmt.Sprintf("%s-%s-%d", i.Registry(), i.Ordering(), i.Supplement())
 }
-
-// errNoCIDFontProgram is what a path that needs a font program reports for a
-// CIDFont that is not embedded, while the font mapper is unported.
-var errNoCIDFontProgram = errors.New(
-	"font: no font program: the font is not embedded and the font mapper is not ported yet")

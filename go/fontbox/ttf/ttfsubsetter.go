@@ -793,6 +793,9 @@ func (s *TTFSubsetter) buildPostTable() ([]byte, error) {
 	names := map[string]int{}
 	var nameOrder []string
 	for _, gid := range s.glyphIds.all() {
+		// PostScriptTable.getName returns null for a gid past the end of the
+		// names array, and Java goes on to call getBytes on it; the port has
+		// the empty string there and writes a zero-length name instead.
 		name := post.GetName(gid)
 		macID, ok := GlyphIndex(name)
 		if ok {

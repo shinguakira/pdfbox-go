@@ -279,7 +279,10 @@ func (p *fileSystemFontProvider) createFSIgnored(file string, format FontFormat,
 			hash = computed
 		}
 	}
-	return newFSFontInfo(file, format, postScriptName, nil, 0, 0, 0, 0, 0, nil, p, hash,
+	// JAVA-BUGS entry 21: Java passes null for the parent here, so Font() on an
+	// ignored entry dereferences it. Ported as written; the Go panics where
+	// Java throws NullPointerException.
+	return newFSFontInfo(file, format, postScriptName, nil, 0, 0, 0, 0, 0, nil, nil, hash,
 		lastModified(file))
 }
 
@@ -739,6 +742,12 @@ func (p *fileSystemFontProvider) addTrueTypeFontImpl(fontHeaders *ttf.FontHeader
 		return
 	}
 	// read PostScript name, if any
+	//
+	// Java tests the name for null and takes the empty string as a name like
+	// any other; FontHeaders.getName is a Go string, so the two cases are one
+	// here. A font whose name record is present but empty is recorded as
+	// *skipnoname* rather than under the empty name, which no lookup reaches
+	// either way.
 	name := fontHeaders.Name()
 	if name == "" {
 		p.fontInfoList = append(p.fontInfoList,

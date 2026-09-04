@@ -520,27 +520,34 @@ func (f *pdFont) SpaceWidth() float32 {
 	}
 	// Java catches every exception here and falls back to 250; the port does
 	// the same with the errors that stand in for them.
-	//
-	// The /ToUnicode branch needs fontbox/cmap and is not ported; a font that
-	// carries one therefore takes the encoding branch, which is what Java does
-	// for a font that carries none.
-	//
-	// Java catches IllegalArgumentException and UnsupportedOperationException
-	// round this one call -- "Happens if space is not available in the font or
-	// if encoding isn't implemented". A Type 3 font's encode throws the second
-	// outright, so the recover is not an edge case: it is the ordinary path for
-	// every Type 3 font.
-	if width, err := f.stringWidthOfSpace(); err == nil {
-		// PDFBOX-5920: try with encoding, which gets the correct code
-		f.fontWidthOfSpace = width
-	}
-	if f.fontWidthOfSpace <= 0 {
-		width, err := f.self.Width(32)
-		if err != nil {
-			f.fontWidthOfSpace = 250
-			return f.fontWidthOfSpace
+	if f.toUnicodeCMap != nil && f.dict.ContainsKey(cos.ToUnicode) {
+		spaceMapping := f.toUnicodeCMap.SpaceMapping()
+		if spaceMapping > -1 {
+			width, err := f.self.Width(spaceMapping)
+			if err != nil {
+				f.fontWidthOfSpace = 250
+				return f.fontWidthOfSpace
+			}
+			f.fontWidthOfSpace = width
 		}
-		f.fontWidthOfSpace = width
+	} else {
+		// Java catches IllegalArgumentException and UnsupportedOperationException
+		// round this one call -- "Happens if space is not available in the font
+		// or if encoding isn't implemented". A Type 3 font's encode throws the
+		// second outright, so the recover is not an edge case: it is the
+		// ordinary path for every Type 3 font.
+		if width, err := f.stringWidthOfSpace(); err == nil {
+			// PDFBOX-5920: try with encoding, which gets the correct code
+			f.fontWidthOfSpace = width
+		}
+		if f.fontWidthOfSpace <= 0 {
+			width, err := f.self.Width(32)
+			if err != nil {
+				f.fontWidthOfSpace = 250
+				return f.fontWidthOfSpace
+			}
+			f.fontWidthOfSpace = width
+		}
 	}
 	// try to get it from the font itself
 	if f.fontWidthOfSpace <= 0 {

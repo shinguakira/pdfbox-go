@@ -796,3 +796,41 @@ but it is written into the on-disk cache and handed to anyone reading
 `addTrueTypeFontImpl`, which writes the same `&` with a comment.
 
 **Confidence** high. `&` between disjoint byte lanes cannot be what was meant.
+
+## 21. `FileSystemFontProvider.createFSIgnored` builds an entry with a null parent
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
+`createFSIgnored`.
+
+**What it does** it builds the `FSFontInfo` that stands for a font file the
+scan could not read:
+
+```java
+return new FSFontInfo(file, format, postScriptName, null, 0, 0, 0, 0, 0, null, null, hash, file.lastModified());
+```
+
+Counting the parameters against the constructor, the tenth `null` is `panose`
+and the eleventh is `parent` — the `FileSystemFontProvider` the entry belongs
+to. Every other call site passes `this`.
+
+`FSFontInfo.getFont()` opens with `parent.cache.getFont(this)`, so calling it on
+one of these entries throws `NullPointerException`.
+
+**What correct would be** `this` for the parent, as the other two call sites
+pass.
+
+**Why it matters** these entries go into `fontInfoList` under the names
+`*skipexception*`, `*skipnoname*` and `*skippipeinname*`, and from there into
+`FontMapperImpl.fontInfoByName`. `findFont` looks a name up and calls
+`info.getFont()` on whatever it finds, so a PDF whose `/BaseFont` is literally
+`*skipexception*` takes down the font lookup. `getFontMatches`, the other caller
+of `getFont()`, filters these out first, because an ignored entry has no
+CIDSystemInfo and no code page bits, so the fuzzy path is safe. The name has to
+be crafted to reach it, which is why it has gone unnoticed.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
+`createFSIgnored`, which passes nil for the parent with a comment; the Go panics
+on the nil dereference where Java throws.
+
+**Confidence** high. The parameter list is unambiguous and the other two call
+sites pass `this`.

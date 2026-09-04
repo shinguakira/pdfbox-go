@@ -275,11 +275,17 @@ func (f *PDCIDFontType2) CodeToGID(code int, parent *PDType0Font) (int, error) {
 		// omit the CID2GID mapping if the embedded font is replaced by an
 		// external font
 		name := f.BaseFont()
-		ttfName := ""
-		if f.ttf != nil {
-			ttfName, _ = f.ttf.Name()
+		// Java's && short-circuits, so getName -- which throws IOException --
+		// is only reached once the three cheap tests have passed.
+		sameFont := false
+		if f.cid2gid != nil && !f.isDamaged && name != "" {
+			ttfName, err := f.ttf.Name()
+			if err != nil {
+				return 0, err
+			}
+			sameFont = name == ttfName
 		}
-		if f.cid2gid != nil && !f.isDamaged && name != "" && name == ttfName {
+		if sameFont {
 			// Acrobat allows non-embedded GIDs - todo: can we find a test PDF
 			// for this?
 			// PDFBOX-5612: should happen only if it's really the same font
