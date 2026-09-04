@@ -17,12 +17,13 @@ Last updated: 2026-09-04
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 12 of 18 |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 17 of 18; `pdfwriter` not started |
 | 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset plus the simple font path, the encodings, the font descriptor and the resource cache |
 | 4 | `fontbox` | 143 | in progress — `afm`, `encoding`, the root interfaces, and 15 of 44 `ttf` files |
 | 5 | `contentstream`, `text` | 85 | in progress — the engine and every text operator; `text` has all 6 files, minus what needs a document |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
 | 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision |
+| — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points |
 | 7 | `cmd/pdfbox` | 26 | not started |
 | — | `xmpbox` | 74 | not started |
 
@@ -594,15 +595,76 @@ Two deliberate departures:
 normalisation and the bidi reordering the stripper needs and the Go standard
 library does not carry.
 
-### Not ported, and the reason
+### The loader — slice 1's unfinished half, ported here
 
-- **The loader.** `Loader`, `PDFParser`, `XrefParser`, `BruteForceParser`,
-  `PDFObjectStreamParser`, `PDFXrefStreamParser`, `PDDocument`,
-  `PDDocumentCatalog` and `PDDocumentInformation` are all absent. Without them
-  no PDF file can be opened, so the 40-document corpus of `TestTextStripper`
-  cannot be scored and every Java test in `pdmodel/font` and `pdfbox/text` bar
-  one is unportable. This was flagged as a blocked decision when the slice was
-  planned and is still open.
+`PLAN.md` slice 1 is "open a document" and lists `pdfbox/pdfparser` at 18 files.
+The branch was merged to `migration-base` at 12 of 18, with the rows above
+recording `COSParser` as "next" and `PDFParser` as "not started — the entry
+point". Nothing in the tree could open a `.pdf`; `go/cmd/` was empty. Slices 2
+and 3 did not notice, because both take a `PDPage` a caller hands them. Slice 3
+is the first slice whose acceptance criterion — score 40 real PDFs — cannot be
+met without a file, so the work was done here as a special case.
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `COSParser.java` (the file half) | `pdfparser/fileparser.go` | done — minus encryption |
+| `XrefParser.java` | `pdfparser/xrefparser.go` | done |
+| `PDFXrefStreamParser.java` | `pdfparser/xrefstreamparser.go` | done |
+| `PDFObjectStreamParser.java` | `pdfparser/objectstreamparser.go` | done |
+| `BruteForceParser.java` | `pdfparser/bruteforceparser.go` | done |
+| `PDFParser.java` | `pdfparser/pdfparser.go` | done — returns a `cos.Document`, and `Loader` wraps it |
+| `Loader.java` | `pdfbox/loader.go` | done — the reading entry points |
+| `PDDocument.java` | `pdmodel/pddocument.go` | partial — the reading path; signatures, form fields, importing a page and saving each need a package this port has not reached |
+| `PDDocumentCatalog.java` | `pdmodel/pddocument.go` | partial — the pages and the version; forms, outlines, names, threads, metadata and actions wait on their types |
+| `PDDocumentInformation.java` | `pdmodel/pddocument.go` | partial — minus the dates, which need the COS date parsing slice 1 left out |
+| `PDFXRefStream.java`, `EndstreamFilterStream.java`, `FDFParser.java` | — | not started — the first two are the writing path, the third is FDF |
+
+Four things worth naming:
+
+- **A cross-reference table is keyed on the packed object number and
+  generation**, which is what `COSObjectKey.equals` compares — the stream index
+  is left out. `XrefEntries` carries that, because a Go map on the key struct
+  would compare the stream index too and split entries Java merges.
+- **`cos.Document` gained `XRefOffset`, `PutXRefOffset` and `ClearXRefTable`,
+  and `XrefTrailerResolver` gained `ReplaceXrefTable`.** Java writes through the
+  live map its getter returns; the port's getters return copies, so each write
+  is a method.
+- **`PDPageTree` and `PDPage` now carry the `ResourceCache`.** Java passes a
+  `PDDocument` into the reading constructor, which is only there to reach that
+  cache. This closes the slice 1 hole recorded above.
+- **Encryption is not ported.** `pdmodel/encryption` is a package this port has
+  not reached, so an encrypted document is reported rather than decrypted.
+
+### The corpus — 16 of 40
+
+`TestTextStripper` walks the 40 PDFs of `pdfbox/src/test/resources/input` and
+compares against the expected text checked in beside each. The port scores
+rather than asserts, because a document needing something this slice does not
+carry cannot match and a failing assertion would say nothing new.
+
+**40 of 40 open. 16 of 40 match the expected text exactly.** The 24 that do not:
+
+| Cause | Files | Where it lands |
+| --- | ---: | --- |
+| Type 0 font | 12 | slice 4 — `PDType0Font` and the CID fonts |
+| Type 1C font | 3 | slice 4 — `fontbox/cff` |
+| ToUnicode CMap | 4 | slice 4 — `fontbox/cmap` |
+| Article beads | 2 | needs `PDThreadBead`; both are `PDFBOX-3110-poems-beads` |
+| Yields nothing, cause not yet established | 2 | `PDFBOX-3498-…` and `Liste732004001452_…` |
+| One line differs in spacing | 1 | `cweb.pdf` line 249 |
+
+The last three rows are the ones to look at first; the first three are the
+slice 4 work in the order it will pay off.
+
+### One more port defect the corpus found, fixed
+
+`PDFont.getSpaceWidth` wraps its `getStringWidth(" ")` call in a catch for
+`IllegalArgumentException` and `UnsupportedOperationException` — "Happens if
+space is not available in the font or if encoding isn't implemented". A Type 3
+font's `encode` throws the second outright, so that catch is the ordinary path
+for every Type 3 font rather than an edge case. The port had let the equivalent
+panic escape, which took down the whole page walk; `stringWidthOfSpace` now
+recovers it where Java catches.
 
 ### Port defects found in the slice 3 review, fixed
 
