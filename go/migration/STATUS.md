@@ -928,3 +928,93 @@ Sorted mode fails one more, `PDFBOX-3127-…VFont.pdf`, on a single missing spac
 The three form-XObject files draw all of their text inside a `Do`, which the
 content-stream engine does not descend into yet; that was confirmed by dumping
 their content streams, not inferred.
+
+### Port defects found in the slice 4 review, fixed
+
+Four, none of which a ported test caught. Each carries a test that fails
+without its fix, or a check written out beside it.
+
+- **`PDFont.getSpaceWidth` had lost its first branch.** Java measures the space
+  at the code the `/ToUnicode` CMap maps to U+0020 when the font carries one,
+  and takes the encoding branch only otherwise. The port always took the
+  encoding branch — a deliberate stand-in written while `fontbox/cmap` was
+  unported, and never put back once it landed. It decides the width the text
+  stripper compares gaps against, so it moves where words break.
+  `font/review_test.go` pins it with a font whose space mapping and code 32 have
+  different widths.
+- **`PDCIDFontType2.codeToGID` swallowed an error Java lets out.**
+  `name.equals(ttf.getName())` throws `IOException` and `codeToGID` declares it;
+  the port discarded it and compared against the empty string, so a font whose
+  name could not be read silently took the ToUnicode fallback instead of
+  reporting. Fixed behind the same short-circuit Java's `&&` gives it.
+- **`FileSystemFontProvider.createFSIgnored` had been quietly corrected.** Java
+  passes `null` for the parent provider, so `getFont()` on one of these entries
+  throws `NullPointerException`; the port passed the provider and would have
+  loaded the font. Reverted to the Java and recorded as
+  [`JAVA-BUGS.md`](JAVA-BUGS.md) entry 21.
+- **`PDType0Font` was missing `getGsubData` and `getCmapLookup`.** Both were
+  filed under the embedding half, but the reading constructor sets them too, to
+  `GsubData.NO_DATA_FOUND` and `null`. They are now there with those values, so
+  nothing in the class is deferred that does not have to be.
+
+### Five more Java tests ported, found by the review
+
+`GsubWorkerForDevanagariTest`, `GsubWorkerForGujaratiTest`,
+`GsubWorkerForTamilTest`, `GsubWorkerForAaltTest` and `GsubWorkerForSmcpTest`
+had been passed over without a recorded reason, and all five run here: three
+read fonts this repository carries, one reads `otf/FoglihtenNo07.otf`, and the
+last reads Calibri, which its own `assumeTrue` guards.
+
+They are the first coverage the shared reph worker has beyond Bengali, and the
+first of the type 3 alternate and type 2 multiple substitution paths.
+`GsubWorkerForAalt` and `GsubWorkerForSmcp` live in the Java *test* tree rather
+than the library — each is the Latin worker with one feature of its own, with
+`applyGsubFeature` copied rather than shared — so the Go test copies them the
+same way.
+
+The `@Disabled` cases are left out, as the Bengali port leaves its two out:
+Devanagari drops `rkrf`, `cjct`, `abvs` and `psts`, and Gujarati drops `psts`.
+
+### What the review checked
+
+- **Every Java class of the slice has a Go counterpart.** All 143 of `fontbox`;
+  34 of 39 in `pdmodel/font`, the five left being the slice 7 embedders.
+- **The substitutes table was diffed mechanically** against the Java rather than
+  read: thirteen entries, identical.
+- **`FontMapperImpl`'s scoring**, where a Java `int` division truncates before
+  it is scaled and a `float` distance widens after; the `PriorityQueue` heap and
+  `Double.compare` beneath it; `findFont`'s fall-through chain, including the
+  PDFBOX-5806 step that reassigns `postScriptName` and so changes the
+  `-Regular` attempt after it; `isCharSetMatch`'s bit masking.
+- **`FileSystemFontProvider`'s disk cache**, against the 215-font
+  `.pdfbox.cache` this machine's first run wrote: twelve pipe-separated fields,
+  the platform line separator, hex weight class, twenty Panose digits, absolute
+  path, CRC32, epoch millis — the format Java writes, so the two can read each
+  other's. `loadDiskCache`'s memo of the last file and hash, and the `continue`
+  that keeps a changed file pending, both match.
+- **`TTFSubsetter`'s arithmetic**: the table checksums, the four-byte alignment,
+  the `headSet` and `subSet` sizes the `hhea` and `hmtx` builders count, and the
+  compound-glyph walk that rewrites component GIDs.
+- **`CMap.useCmap`**, which carries JAVA-BUGS 16 and Java's `putIfAbsent`
+  sharing of the very map it was handed.
+- **`OS2WindowsMetricsTable`'s three EOF catches**, each of which sets a version
+  down and returns rather than failing.
+- **Every ignored error in the slice**: all but one were comma-ok type
+  assertions; the one real one is the second defect above. `CMap.readCode`
+  ignores its read count because Java does.
+
+### Font substitution is environment-dependent — measured
+
+`FileSystemFontProvider` scans the machine's fonts, so the same corpus could
+score differently elsewhere. It does not:
+
+**With every system font directory hidden from the finder, the corpus scores 34
+of 40** — the same as with the 215 fonts this machine has installed. Every
+lookup falls to the embedded LiberationSans instead of to Arial, and nothing
+changes, because text extraction takes its widths from the PDF's `/Widths` and
+`/W` arrays rather than from the substitute.
+
+The floor is guaranteed rather than incidental: `getTrueTypeFont`,
+`getFontBoxFont` and `getCIDFont` all end at `lastResortFont`, which is compiled
+into the binary. None of the three can return nil, and no document can fail for
+want of a font on the machine.
