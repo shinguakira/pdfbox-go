@@ -448,8 +448,13 @@ func (f *pdFont) SpaceWidth() float32 {
 	// The /ToUnicode branch needs fontbox/cmap and is not ported; a font that
 	// carries one therefore takes the encoding branch, which is what Java does
 	// for a font that carries none.
-	width, err := f.self.StringWidth(" ")
-	if err == nil {
+	//
+	// Java catches IllegalArgumentException and UnsupportedOperationException
+	// round this one call -- "Happens if space is not available in the font or
+	// if encoding isn't implemented". A Type 3 font's encode throws the second
+	// outright, so the recover is not an edge case: it is the ordinary path for
+	// every Type 3 font.
+	if width, err := f.stringWidthOfSpace(); err == nil {
 		// PDFBOX-5920: try with encoding, which gets the correct code
 		f.fontWidthOfSpace = width
 	}
@@ -526,4 +531,21 @@ func buildFontDescriptor(metrics *afm.FontMetrics) *PDFontDescriptor {
 	fd.SetCharacterSet(metrics.CharacterSet())
 	fd.SetStemV(0) // for PDF/A
 	return fd
+}
+
+// stringWidthOfSpace measures a single space, turning the panic a font that
+// cannot encode one raises into an error.
+//
+// Java writes this as a try/catch round getStringWidth(" ") inside
+// getSpaceWidth, catching IllegalArgumentException and
+// UnsupportedOperationException. Both are unchecked, which this port maps to a
+// panic, so the catch maps to a recover.
+func (f *pdFont) stringWidthOfSpace() (width float32, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			width = 0
+			err = fmt.Errorf("font: %v", r)
+		}
+	}()
+	return f.self.StringWidth(" ")
 }

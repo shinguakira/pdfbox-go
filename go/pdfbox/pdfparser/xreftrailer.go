@@ -290,3 +290,22 @@ func (r *XrefTrailerResolver) Reset() {
 	r.resolved = nil
 	r.current = nil
 }
+
+// ReplaceXrefTable throws away the resolved cross-reference table and puts the
+// given entries in its place.
+//
+// Java writes xrefOffset.clear() then putAll on the live map getXrefTable
+// hands back; the port's XrefTable returns a copy, so the replacement is a
+// method of its own.
+func (r *XrefTrailerResolver) ReplaceXrefTable(entries map[*cos.ObjectKey]int64) {
+	if r.resolved == nil {
+		return
+	}
+	r.resolved.xrefTable = make(map[int64]*xrefTableEntry, len(entries))
+	for key, offset := range entries {
+		if key == nil {
+			continue
+		}
+		r.resolved.xrefTable[key.InternalHash()] = &xrefTableEntry{key: key, offset: offset}
+	}
+}

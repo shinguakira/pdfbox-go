@@ -19,6 +19,11 @@ import (
 type PDPageTree struct {
 	root *cos.Dictionary
 
+	// resourceCache is what each page of the tree reads its resources through.
+	// Java takes a PDDocument in the reading constructor, which is only there to
+	// reach this.
+	resourceCache ResourceCache
+
 	// pageSet collects the nodes a search has been through, so that a tree
 	// pointing back at itself is caught instead of overflowing the stack.
 	pageSet map[*cos.Dictionary]bool
@@ -37,10 +42,16 @@ func NewPDPageTree() *PDPageTree {
 
 // NewPDPageTreeOf returns the page tree under the given root, for reading.
 func NewPDPageTreeOf(root *cos.Dictionary) *PDPageTree {
+	return NewPDPageTreeOfCache(root, nil)
+}
+
+// NewPDPageTreeOfCache returns the page tree under the given root, whose pages
+// read their resources through the given cache.
+func NewPDPageTreeOfCache(root *cos.Dictionary, cache ResourceCache) *PDPageTree {
 	if root == nil {
 		panic("pdmodel: page tree root cannot be null")
 	}
-	tree := &PDPageTree{pageSet: map[*cos.Dictionary]bool{}}
+	tree := &PDPageTree{resourceCache: cache, pageSet: map[*cos.Dictionary]bool{}}
 	// repair bad PDFs which contain a Page dict instead of a page tree, see PDFBOX-3154
 	if cos.Page == root.GetCOSName(cos.Type) {
 		kids := cos.NewArray()
@@ -164,7 +175,7 @@ func (t *PDPageTree) All(yield func(*PDPage) bool) {
 func (t *PDPageTree) Get(index int) *PDPage {
 	dict := t.get(index+1, t.root, 0)
 	sanitizeType(dict)
-	return NewPDPageOf(dict)
+	return NewPDPageOfCache(dict, t.resourceCache)
 }
 
 // sanitizeType fills in a missing type and rejects one that is not Page.

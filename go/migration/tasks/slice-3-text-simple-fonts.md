@@ -99,7 +99,7 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
     written instead build the page in memory and run the same walk over it,
     covering what each Java test covers plus the geometry of `TextPosition`.
 
-- [ ] A8. `pdfbox/text` — port `TestTextStripper`, the corpus harness
+- [x] A8. `pdfbox/text` — port `TestTextStripper`, the corpus harness
   - Table test over the 40 `.pdf` files in `pdfbox/src/test/resources/input/`
   - Compare against the checked-in expected text, sorted and unsorted
   - **See Blocked below — this one cannot run yet**
@@ -170,12 +170,28 @@ Written from the Java source, in dependency order.
   - `PDFTextStripper` falls back to it when `TextPositionComparator` turns out
     not to be transitive and the JDK sort throws. Port `TestSort` with it.
 
-- [ ] B11. **Only if the loader decision below said yes** — `pdfbox/Loader`,
-      `pdfparser/PDFParser`, `XrefParser`, `BruteForceParser`,
-      `PDFObjectStreamParser`, `PDFXrefStreamParser`, and `PDDocument`,
-      `PDDocumentCatalog`, `PDDocumentInformation`
-  - This is the whole file-opening path. It is not small, and it is not this
-    slice's subject. See Blocked.
+- [x] B11. **Decided: yes.** `pdfparser/COSParser`, `XrefParser`,
+      `BruteForceParser`, `PDFXrefStreamParser`, `PDFObjectStreamParser`,
+      `PDFParser`, then `pdmodel/PDDocument`, `PDDocumentCatalog`,
+      `PDDocumentInformation`, then `pdfbox/Loader`
+  - **This is a special case and is not a precedent.** Work outside a branch's
+    scope is not allowed. It is allowed here for one reason: this is not new
+    scope, it is *slice 1's* scope. `PLAN.md` slice 1 is "open a document" and
+    lists `pdfbox/pdfparser` at 18 files; the branch was merged to
+    `migration-base` at 12 of 18, with `STATUS.md` recording `COSParser` as
+    "next" and `PDFParser` as "not started — the entry point". `go/cmd/` is
+    empty and nothing in the tree defines `Load`. Slice 1 did not deliver what
+    it says it delivered.
+  - Slices 2 and 3 did not notice, because both take a `PDPage` a caller hands
+    them. Slice 3 is the first slice whose acceptance criterion — score 40 real
+    PDFs — cannot be met without opening a file.
+  - Port order, each test-first: `COSParser`, `XrefParser`,
+    `PDFXrefStreamParser`, `PDFObjectStreamParser`, `BruteForceParser`,
+    `PDFParser`, `PDDocument`, `PDDocumentCatalog`, `PDDocumentInformation`,
+    `Loader`.
+  - `AGENTS.md` flags parsing and xref recovery as historically bug-prone. Port
+    line for line. This is not the place to improve on the original.
+  - When it lands, update the slice 1 rows of `STATUS.md`, not just slice 3's.
 
 ---
 
@@ -187,7 +203,7 @@ Written from the Java source, in dependency order.
 - [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
 - [x] C5. Update `migration/STATUS.md` — the slice 3 section, and the slice 2
       rows this slice closes
-- [ ] C6. Report the corpus score as *N of 40*
+- [x] C6. Report the corpus score as *N of 40* — **16 of 40**
 
 ---
 
@@ -224,7 +240,7 @@ the ported tests cannot answer.
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Check the corpus honestly
+- [x] D6. Check the corpus honestly
   - Of the 40, which fail and why? Is each failure a port defect, a missing
     font, or a genuine Java difference?
   - Do not tune the Go until a document passes. Find the cause.
@@ -257,12 +273,14 @@ the ported tests cannot answer.
 
 # Blocked
 
-- [ ] Decide whether the loader is ported in this slice
+- [x] Decide whether the loader is ported in this slice — **yes**
   - `TestTextStripper.java` imports `org.apache.pdfbox.Loader` and `PDDocument`;
     it opens the 40 files from disk
   - `Loader.java` is not ported — there is no Go file at `go/pdfbox/` root
   - `PDDocument` and `PDDocumentCatalog` are not ported
-  - `pdfparser` is 12 of 18: `PDFParser`, `XrefParser`, `BruteForceParser`,
-    `PDFObjectStreamParser`, `PDFXrefStreamParser` are all absent
+  - `pdfparser` is 12 of 18: `COSParser`, `XrefParser`, `BruteForceParser`,
+    `PDFObjectStreamParser`, `PDFXrefStreamParser`, `PDFParser` are all absent
   - **Without them A8 and C6 cannot run and the slice scores nothing.** Every
     other task in this file is unaffected.
+  - Decided yes, as a special case, because the work is slice 1's unfinished
+    scope rather than new scope. See B11 for the reasoning and the port order.

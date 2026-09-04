@@ -392,3 +392,40 @@ func (d *Document) COSObject() Base { return d }
 
 // Accept dispatches to the visitor.
 func (d *Document) Accept(v Visitor) error { return v.VisitDocument(d) }
+
+// XRefOffset returns where the cross-reference table says the given object is,
+// negative where it sits inside an object stream. The second result is false
+// where the table does not mention it.
+//
+// Java writes document.getXrefTable().get(objKey), which is a lookup on the
+// live map; XRefTable hands back a copy, so the lookup is a method of its own.
+func (d *Document) XRefOffset(key *ObjectKey) (int64, bool) {
+	if key == nil {
+		if d.nilKeyEntry == nil {
+			return 0, false
+		}
+		return *d.nilKeyEntry, true
+	}
+	entry, ok := d.xrefTable[key.InternalHash()]
+	if !ok {
+		return 0, false
+	}
+	return entry.offset, true
+}
+
+// PutXRefOffset records where the cross-reference table says an object is.
+//
+// Java writes document.getXrefTable().put(objKey, offset) in the one place the
+// brute force search fills a gap; AddXRefTable is the bulk form.
+func (d *Document) PutXRefOffset(key *ObjectKey, offset int64) {
+	d.AddXRefTable(map[*ObjectKey]int64{key: offset})
+}
+
+// ClearXRefTable empties the cross-reference table.
+//
+// Java writes document.getXrefTable().clear() on the live map; XRefTable hands
+// back a copy, so clearing it is a method of its own.
+func (d *Document) ClearXRefTable() {
+	clear(d.xrefTable)
+	d.nilKeyEntry = nil
+}

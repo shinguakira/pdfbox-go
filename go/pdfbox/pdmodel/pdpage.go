@@ -25,6 +25,11 @@ type PDPage struct {
 	page      *cos.Dictionary
 	resources *PDResources
 	mediaBox  *common.PDRectangle
+
+	// resourceCache is what the page reads its resources through. Java takes a
+	// PDDocument here and asks it for the cache; the port takes the cache
+	// itself, which is all the document was for.
+	resourceCache ResourceCache
 }
 
 var _ common.COSObjectable = (*PDPage)(nil)
@@ -46,6 +51,12 @@ func NewPDPageOfSize(mediaBox *common.PDRectangle) *PDPage {
 // NewPDPageOf returns the page held by the given page dictionary, for reading.
 func NewPDPageOf(pageDictionary *cos.Dictionary) *PDPage {
 	return &PDPage{page: pageDictionary}
+}
+
+// NewPDPageOfCache returns the page the given dictionary holds, reading its
+// resources through the given cache.
+func NewPDPageOfCache(pageDictionary *cos.Dictionary, cache ResourceCache) *PDPage {
+	return &PDPage{page: pageDictionary, resourceCache: cache}
 }
 
 // COSObject returns the dictionary behind this page.
@@ -135,7 +146,7 @@ func (p *PDPage) Resources() *PDResources {
 	if p.resources == nil {
 		base := GetInheritableAttribute(p.page, cos.Resources)
 		if dict, ok := base.(*cos.Dictionary); ok {
-			p.resources = NewPDResourcesOf(dict)
+			p.resources = NewPDResourcesOfCache(dict, p.resourceCache)
 		}
 	}
 	return p.resources
