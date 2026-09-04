@@ -470,6 +470,11 @@ func (a *Array) String() string {
 	return sb.String()
 }
 
+// Equal reports whether two COS objects are equal the way Java's equals does:
+// a name, a number, a string or a boolean by value, everything else by
+// identity, since COSDictionary, COSArray and COSStream do not override equals.
+func Equal(a, b Base) bool { return cosEqual(a, b) }
+
 // cosEqual compares two COS values by content where the type defines equality,
 // and by identity otherwise.
 //

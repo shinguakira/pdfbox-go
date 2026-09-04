@@ -1,9 +1,6 @@
 package graphics
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 )
@@ -17,13 +14,6 @@ type PDXObject struct {
 }
 
 var _ common.COSObjectable = (*PDXObject)(nil)
-
-// ErrFormXObjectNotPorted is what CreateXObject reports for a form XObject.
-//
-// pdmodel/graphics/form is slice 9's, together with the rendering that reads
-// it; slice 6 ports the image half of PDXObject and the base they share.
-var ErrFormXObjectNotPorted = errors.New(
-	"graphics: form XObjects are not ported yet, they are slice 9")
 
 // NewPDXObjectOfStream builds an XObject over the given stream, stamping the
 // type and subtype into it.
@@ -54,23 +44,9 @@ func (x *PDXObject) Stream() *cos.Stream { return x.stream.Stream() }
 // PDStream returns the stream below this XObject.
 func (x *PDXObject) PDStream() *common.PDStream { return x.stream }
 
-// SubtypeOf returns the /Subtype of an XObject stream, which is what
-// CreateXObject dispatches on.
-//
-// Java's createXObject is not ported here: it builds a PDImageXObject, which is
-// in pdmodel/graphics/image and imports this package, so the factory lives
-// there instead and this is the part of it that does not.
-func SubtypeOf(base cos.Base) (*cos.Stream, string, error) {
-	if base == nil {
-		// TODO throw an exception?
-		return nil, "", nil
-	}
-	stream, ok := base.(*cos.Stream)
-	if !ok {
-		return nil, "", fmt.Errorf("Unexpected object type: %T", base)
-	}
-	return stream, stream.GetNameAsString(cos.Subtype, ""), nil
-}
+// Java's static createXObject is not here: it builds a PDImageXObject and a
+// PDFormXObject, whose packages import this one, so the factory lives in
+// pdmodel, which reaches both. See pdmodel.CreateXObject.
 
 // PDPostScriptXObject is a PostScript XObject.
 //

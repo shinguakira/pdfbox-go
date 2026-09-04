@@ -4,8 +4,9 @@
 // Port of org.apache.pdfbox.pdmodel.graphics.form. PLAN.md puts this package in
 // slice 9, with the rest of the drawing; slice 8 ports it because
 // PDAppearanceStream extends PDFormXObject and every annotation appearance is
-// one. PDTransparencyGroup, the third file, stays with slice 9: it exists for
-// the renderer. See migration/STATUS.md.
+// one. PDTransparencyGroup comes with it: PDXObject.createXObject builds one,
+// and the structure tree asks that factory for the object a reference points
+// at. See migration/STATUS.md.
 package form
 
 import (

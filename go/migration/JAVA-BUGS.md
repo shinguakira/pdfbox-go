@@ -1519,3 +1519,83 @@ holds.
 
 **Confidence** high. The parameter is unused and the literal is written in its
 place; there is no reading of the method under which it is correct.
+
+## 38. `PDUserAttributeObject` reads `/P` without checking it is there
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDUserAttributeObject.java`:
+
+```java
+public List<PDUserProperty> getOwnerUserProperties()
+{
+    COSArray p = getCOSObject().getCOSArray(COSName.P);
+    List<PDUserProperty> properties = new ArrayList<>(p.size());
+    ...
+}
+```
+
+`addUserProperty` and `removeUserProperty` read `/P` the same way and use it
+without a check.
+
+**What correct would be** `getCOSArray` returns null when the entry is absent
+or is not an array, so all three need the null guard the rest of the class
+gives its entries: an empty list from the getter, and a new `COSArray` put into
+`/P` from the two setters.
+
+**Why it matters** A user attribute object with no `/P` --- which is what
+`new PDUserAttributeObject()` builds, since its constructor writes only `/O` ---
+throws a `NullPointerException` from every one of the three. So the object
+cannot be filled in through its own API: `addUserProperty` on a fresh one always
+throws, and the only way in is `setUserProperties`, which writes the array
+first. PDF 32000-1:2008 Table 328 marks `/P` required, so a malformed file
+reaches the same throw on the reading side.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdattributeobject.go`,
+`OwnerUserProperties`, `AddUserProperty` and `RemoveUserProperty`. A nil
+`*cos.Array` panics on the first method call, the way the null does in Java, and
+each carries a comment naming this entry.
+
+**Confidence** high. `COSDictionary.getCOSArray` returns null by contract, and
+none of the three tests for it.
+
+## 39. `PDStructureNode.insertBefore` inserts at -1 when the reference kid is not found
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureNode.java`:
+
+```java
+protected void insertBefore(COSBase newKid, Object refKid)
+{
+    ...
+    if (k instanceof COSArray)
+    {
+        COSArray array = (COSArray) k;
+        int refIndex = array.indexOfObject(refKidBase);
+        array.add(refIndex, newKid.getCOSObject());
+    }
+    ...
+}
+```
+
+**What correct would be** `indexOfObject` answers -1 when the kid is not in the
+array, and `COSArray.add(int, COSBase)` hands that to `List.add(int, E)`, which
+throws `IndexOutOfBoundsException`. The branch needs to check the index before
+using it --- the single-kid branch below it does exactly that, doing nothing
+when the reference kid does not match.
+
+**Why it matters** Two ordinary calls reach it. One is a `refKid` that is
+simply not a kid of this node. The other is any marked-content identifier taken
+from `getKids`, which returns those as `java.lang.Integer`: an Integer is not a
+`COSObjectable`, so `refKidBase` stays null, `indexOfObject(null)` answers -1,
+and the insert throws --- even though `PDStructureElement.insertBefore(COSInteger,
+Object)` exists to insert one identifier before another. The javadoc promises
+neither exception.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdstructurenode.go`,
+`InsertBeforeBase`, with the comment above it naming this entry. `Array.AddAt`
+at -1 panics on the slice bounds, which is the same failure.
+
+**Confidence** high. Both the -1 and the throw follow from the two library
+contracts, and the sibling branch shows the check that is missing.
