@@ -1447,3 +1447,43 @@ that it does not read like the correct one.
 **Confidence** high for the code; the specification reading is from Table 30 of
 PDF 32000-1:2008. No test resource in the repository carries a bead dictionary,
 so there is nothing to measure it against.
+
+---
+
+## 36. `PDWindowsLaunchParams.setOperation` writes the wrong key
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDWindowsLaunchParams.java`:
+
+```java
+public String getOperation()
+{
+    return params.getString(COSName.O, OPERATION_OPEN);
+}
+
+public void setOperation( String op )
+{
+    params.setString( COSName.D, op );
+}
+```
+
+The getter reads `/O` and the setter writes `/D`.
+
+**What correct would be** `params.setString(COSName.O, op)`.
+
+**Why it matters** two things go wrong at once, and neither is visible from the
+class. Setting the operation silently overwrites `/D`, which is the working
+directory that `setDirectory` wrote and `getDirectory` reads --- so a launch
+action given both a directory and an operation loses the directory. And the
+operation itself is never stored, so `getOperation` keeps returning its default,
+`"open"`, however many times it is set. A launch action built through this class
+can never say `"print"`.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/interactive/action/actions.go`, `SetOperation`, with the
+comment above it naming this entry.
+
+**Confidence** high. It is two adjacent methods reading and writing different
+constants, and `PDWindowsLaunchParams` has no other use of either key beyond
+`getDirectory` and `setDirectory`, which is what makes the collision real rather
+than harmless.
