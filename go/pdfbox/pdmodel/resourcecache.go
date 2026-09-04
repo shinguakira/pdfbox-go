@@ -33,6 +33,8 @@ type DefaultResourceCache struct {
 	stableFonts  map[int64]bool
 
 	fontDescriptors map[*cos.Object]*font.PDFontDescriptor
+
+	cidFonts map[*cos.Object]font.PDCIDFont
 }
 
 var _ ResourceCache = (*DefaultResourceCache)(nil)
@@ -52,6 +54,7 @@ func NewDefaultResourceCacheStable(enableStableCache bool) *DefaultResourceCache
 		removedFonts:       map[int64]int{},
 		stableFonts:        map[int64]bool{},
 		fontDescriptors:    map[*cos.Object]*font.PDFontDescriptor{},
+		cidFonts:           map[*cos.Object]font.PDCIDFont{},
 	}
 }
 
@@ -138,4 +141,25 @@ func (c *DefaultResourceCache) objectKey(indirect *cos.Object) (int64, bool) {
 		return 0, false
 	}
 	return key.InternalHash(), true
+}
+
+// GetCIDFont returns the CIDFont read from the given indirect object, or nil.
+func (c *DefaultResourceCache) GetCIDFont(indirect *cos.Object) font.PDCIDFont {
+	return c.cidFonts[indirect]
+}
+
+// PutCIDFont records the CIDFont read from the given indirect object.
+func (c *DefaultResourceCache) PutCIDFont(indirect *cos.Object, cidFont font.PDCIDFont) {
+	c.cidFonts[indirect] = cidFont
+}
+
+// RemoveCIDFont drops the CIDFont read from the given indirect object and
+// returns it.
+func (c *DefaultResourceCache) RemoveCIDFont(indirect *cos.Object) font.PDCIDFont {
+	cidFont, ok := c.cidFonts[indirect]
+	if !ok {
+		return nil
+	}
+	delete(c.cidFonts, indirect)
+	return cidFont
 }

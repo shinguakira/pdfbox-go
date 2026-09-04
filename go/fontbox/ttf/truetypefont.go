@@ -26,6 +26,14 @@ import (
 // a lock, and the port keeps one for the same reason: reading a table moves the
 // shared cursor and puts it back.
 type TrueTypeFont struct {
+	// hasPostScriptTag says whether the version identifies this font as a
+	// PostScript one, which only an OpenTypeFont reads.
+	hasPostScriptTag bool
+
+	// isOpenType says whether the font was read by an OTFParser, which is what
+	// Java answers with `instanceof OpenTypeFont`.
+	isOpenType bool
+
 	version        float32
 	numberOfGlyphs int
 	unitsPerEm     int
@@ -55,7 +63,14 @@ func (f *TrueTypeFont) Close() error { return f.data.Close() }
 func (f *TrueTypeFont) Version() float32 { return f.version }
 
 // SetVersion sets the version of the font.
-func (f *TrueTypeFont) SetVersion(version float32) { f.version = version }
+//
+// Java splits this: OpenTypeFont.setVersion works out hasPostScriptTag and then
+// calls super. The port keeps the flag here and computes it always, since
+// nothing but an OpenTypeFont ever reads it.
+func (f *TrueTypeFont) SetVersion(version float32) {
+	f.hasPostScriptTag = float32Bits(version) == ottoVersion // OTTO
+	f.version = version
+}
 
 // AddTable adds a table to the directory.
 func (f *TrueTypeFont) AddTable(table tableBase) {

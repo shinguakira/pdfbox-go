@@ -25,6 +25,12 @@ const (
 // Port of org.apache.fontbox.ttf.TTFParser.
 type Parser struct {
 	isEmbedded bool
+
+	// isOTF and readTableHook are what OTFParser overrides. Java overrides
+	// newFont and readTable; Go embedding has no virtual dispatch, so the two
+	// travel as fields the OTF constructor sets.
+	isOTF         bool
+	readTableHook func(tag string) tableBase
 }
 
 // NewParser returns a parser for a stand-alone font file, which must carry
@@ -92,6 +98,7 @@ func (p *Parser) ParseStream(raf DataStream) (*TrueTypeFont, error) {
 // createFontWithTables reads the table directory.
 func (p *Parser) createFontWithTables(raf DataStream) (*TrueTypeFont, error) {
 	font := p.newFont(raf)
+	font.isOpenType = p.isOTF
 	r := newReader(raf)
 	font.SetVersion(r.fixed())
 	numberOfTables := r.unsignedShort()
@@ -118,6 +125,10 @@ func (p *Parser) createFontWithTables(raf DataStream) (*TrueTypeFont, error) {
 }
 
 // newFont returns the font the directory is read into.
+//
+// Java has OTFParser override this to build an OpenTypeFont; the port wraps the
+// font the parse produces instead, which comes to the same thing because
+// OpenTypeFont carries no state of its own.
 func (p *Parser) newFont(raf DataStream) *TrueTypeFont {
 	return NewTrueTypeFont(raf)
 }
@@ -133,11 +144,12 @@ func (p *Parser) parseTables(font *TrueTypeFont) error {
 		}
 	}
 
-	// An OpenType font with CFF outlines is read by a later slice; here a CFF
-	// table is only ever the reason a font is rejected.
 	_, hasCFF := font.tables[CFFTag]
-	isOTF := false
+	isOTF := p.isOTF
 	isPostScript := hasCFF
+	if isOTF {
+		isPostScript = (&OpenTypeFont{TrueTypeFont: font}).IsPostScript()
+	}
 
 	head, err := font.Header()
 	if err != nil {
@@ -270,6 +282,15 @@ func (p *Parser) newTable(tag string) tableBase {
 // readTable returns the table a subclass of the parser would read, which for
 // this one is always a table it keeps but does not read.
 func (p *Parser) readTable(tag string) tableBase {
+	if p.readTableHook != nil {
+		return p.readTableHook(tag)
+	}
 	// PDFBOX-5344: the parser of an OpenType font overrides this
 	return &UnknownTable{}
 }
+
+// allowCFF reports whether the parser accepts a font with CFF outlines.
+//
+// Nothing in the Java calls it; OTFParser overrides it and both are ported so
+// that the pair stays visible.
+func (p *Parser) allowCFF() bool { return false }

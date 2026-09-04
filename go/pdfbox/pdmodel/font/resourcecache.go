@@ -38,4 +38,15 @@ type ResourceCache interface {
 	// RemoveFontDescriptor drops the font descriptor read from the given
 	// indirect object and returns it.
 	RemoveFontDescriptor(indirect *cos.Object) *PDFontDescriptor
+
+	// GetCIDFont returns the CIDFont read from the given indirect object, or
+	// nil where the cache has none.
+	GetCIDFont(indirect *cos.Object) PDCIDFont
+
+	// PutCIDFont records the CIDFont read from the given indirect object.
+	PutCIDFont(indirect *cos.Object, cidFont PDCIDFont)
+
+	// RemoveCIDFont drops the CIDFont read from the given indirect object and
+	// returns it.
+	RemoveCIDFont(indirect *cos.Object) PDCIDFont
 }

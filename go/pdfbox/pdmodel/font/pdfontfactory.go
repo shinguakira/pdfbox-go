@@ -41,7 +41,7 @@ func CreateFont(dictionary *cos.Dictionary, resourceCache ResourceCache) (PDFont
 	case cos.Type3.Equals(subType):
 		return NewPDType3Font(dictionary, resourceCache)
 	case cos.Type0.Equals(subType):
-		return nil, fmt.Errorf("font: Type 0 fonts are not ported yet")
+		return NewPDType0Font(dictionary, resourceCache)
 	case cos.CIDFontType0.Equals(subType):
 		return nil, fmt.Errorf("font: Type 0 descendant font not allowed")
 	case cos.CIDFontType2.Equals(subType):
@@ -52,4 +52,23 @@ func CreateFont(dictionary *cos.Dictionary, resourceCache ResourceCache) (PDFont
 		// looking at the FontFile
 		return NewPDType1FontFromDictionary(dictionary, resourceCache)
 	}
+}
+
+// CreateDescendantFont returns the CIDFont the given dictionary describes,
+// which is the descendant of a Type 0 font.
+//
+// Port of org.apache.pdfbox.pdmodel.font.PDFontFactory.createDescendantFont.
+func CreateDescendantFont(dictionary *cos.Dictionary, resourceCache ResourceCache) (PDCIDFont, error) {
+	fontType := dictionary.GetCOSNameDefault(cos.Type, cos.Font)
+	if !cos.Font.Equals(fontType) {
+		return nil, fmt.Errorf("Expected 'Font' dictionary but found '%s'", fontType.Name())
+	}
+	subType := dictionary.GetCOSName(cos.Subtype)
+	if cos.CIDFontType0.Equals(subType) {
+		return NewPDCIDFontType0(dictionary, resourceCache)
+	}
+	if cos.CIDFontType2.Equals(subType) {
+		return NewPDCIDFontType2(dictionary, resourceCache)
+	}
+	return nil, fmt.Errorf("Invalid font type: %s", fontType.Name())
 }
