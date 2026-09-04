@@ -1179,3 +1179,83 @@ file says so at the top:
 - **`logIfStrongEncryptionMissing` does nothing.** It warns when the JCE
   unlimited strength policy files are missing, and Go has no key length policy.
   The call sites keep it so that the two read the same.
+
+### The slice 5 adversarial review
+
+The branch's own D7, D8 and D9 asked for a byte-level sweep, the wrong-password
+behaviour, and not to take a green suite as proof. All three found something.
+
+#### Found and fixed
+
+- **RC2's key expansion divided by zero.** `tm := byte(255 % (1 << n))` reads
+  correctly and is wrong: Go gives the untyped `1` the byte type of the
+  conversion around it, so `1 << 8` is 0 and the modulus divides by zero. It is
+  a defect the port introduced rather than one it carried — Java's `1` is an
+  int — and it is the kind D7 exists to catch. The RFC 2268 test vectors now run
+  against the fixed expansion.
+- **`validatePerms` refused a short /Perms with an error.** Java only turns a
+  *misaligned* one into an IOException, through the IllegalBlockSizeException
+  the cipher raises; a missing or empty one reaches `perms[9]` and throws an
+  unchecked exception. The port now does the same: the length check covers the
+  aligned case and the indexing covers the rest.
+- **Two of the review's own test premises were wrong**, which is worth writing
+  down because both were assumptions rather than readings:
+  - A wrong keystore *alias* was expected to fail. It does not:
+    `PublicKeyDecryptionMaterial` ignores the alias entirely when the store
+    holds one entry, and all four checked-in keystores hold exactly one. The
+    test now pins that, because it is surprising and it is what Java does.
+  - A password-protected document opened *with* a keystore was expected to
+    reach the handler and be refused as incompatible material. It never gets
+    there: the keystore is loaded with the same password first, so the failure
+    is the keystore's. The test now asserts that.
+
+#### What was checked
+
+- **Every byte-level operation**, which is what D7 asks. `RC4Cipher.fixByte`,
+  which exists only because a Java byte is signed and Go's is not; the `& 0xFF`
+  masks in `AccessPermission(byte[])`, `calcFinalKey` and the /Perms word; the
+  unsigned `>>>` shifts of the permission integer, which the port writes as a
+  `uint32` conversion so that a negative permission word shifts the way Java's
+  does; the XOR of the iteration key against the round number in all three
+  password functions; `truncateOrPad`'s 32-byte pad and `truncate127`'s cut.
+- **The digest resets.** Java's `MessageDigest.digest()` resets the digest, so
+  the fifty-round loops of `computeEncryptedKeyRev234` and `computeRC4key` start
+  each round from empty. A Go hash keeps its state, so each round builds a fresh
+  one; getting this wrong would have produced a plausible, wrong key.
+- **`computeHash2B`'s loop condition**, `round < 64 || (e[e.length-1] & 0xFF) >
+  round - 32`, which reads `e` only from round 64 on — Go's `||` short-circuits
+  the same way, so the nil first time round is safe.
+- **The two swallows.** Java's AES-256 path reads through a CipherInputStream
+  and swallows the bad padding at the end, keeping the blocks already written;
+  the AES-128 path turns the same failure into an IOException. The port keeps
+  the asymmetry, and returns the partial plaintext where Java has already
+  written it.
+- **The raw stream hazard.** `decryptStream` reads a stream and writes it back
+  through `createRawInputStream` and `createRawOutputStream`. Java's
+  `createRawOutputStream` clears the buffer when the data is already in memory,
+  which would wipe what the reader is reading; it is safe only because a parsed
+  stream keeps its data in a read view instead. The Go does exactly the same, so
+  the port is faithful here rather than accidentally safe.
+
+#### What the wrong password does — D8
+
+Five failures, each with a test:
+
+| Case | What happens |
+| --- | --- |
+| Wrong document password | `InvalidPasswordError`, "Cannot decrypt PDF, the password is incorrect" |
+| Wrong keystore password | The PKCS#12 MAC check fails, before anything is decrypted |
+| Wrong alias, single-entry store | Opens — the alias is ignored, as in Java |
+| Public key document, password given | "Decryption material is not compatible with the document" |
+| Password document, keystore given | The keystore refuses the document password |
+
+None of them returns a document full of rubbish, which is the failure D8 is
+about.
+
+#### D9 — the evidence is external
+
+Every file the ported tests read was produced by something other than this port:
+three by Adobe Acrobat, four by whatever wrote the public key fixtures, and the
+keystores with them. The from-source tests take their values from RFC 2268,
+RFC 4013 and Go's own `crypto/rc4`. Nothing in the slice is checked against
+itself.

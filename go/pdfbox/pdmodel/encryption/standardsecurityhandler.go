@@ -211,6 +211,8 @@ func (h *StandardSecurityHandler) PrepareForDecryption(encryption *PDEncryption,
 
 	var currentAccessPermission *AccessPermission
 
+	// Java picks the charset first and encodes once; ISO-8859-1 keeps the low
+	// byte of each UTF-16 unit, and UTF-8 is Go's native form.
 	passwordBytes := encodeISO88591(password)
 	if passwordIsUTF8 {
 		passwordBytes = []byte(password)
@@ -294,10 +296,14 @@ func (h *StandardSecurityHandler) validatePerms(encryption *PDEncryption, dicPer
 		return err
 	}
 	encryptedPerms := encryption.Perms()
-	if len(encryptedPerms)%aes.BlockSize != 0 || len(encryptedPerms) < 12 {
+	if len(encryptedPerms)%aes.BlockSize != 0 {
+		// javax.crypto.IllegalBlockSizeException, which the catch below turns
+		// into an IOException.
 		logIfStrongEncryptionMissing()
 		return fmt.Errorf("encryption: /Perms is %d bytes", len(encryptedPerms))
 	}
+	// A missing or empty /Perms leaves nothing to index below, which is the
+	// unchecked exception Java gets from doFinal(null) or from perms[9].
 	perms := make([]byte, len(encryptedPerms))
 	for offset := 0; offset < len(encryptedPerms); offset += aes.BlockSize {
 		block.Decrypt(perms[offset:offset+aes.BlockSize], encryptedPerms[offset:])

@@ -103,51 +103,51 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [x] D4. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D7. Check every byte-level operation
+- [x] D7. Check every byte-level operation
   - Java `byte` is signed and Go's is not. Every comparison, every shift, every
     array index derived from a byte is a place the port can silently differ.
   - Padding, key length truncation and the 32-byte password pad are the usual
     places this goes wrong.
 
-- [ ] D8. Check what happens on the wrong password
+- [x] D8. Check what happens on the wrong password
   - Java's behaviour on a failed decrypt is specific. Does the Go do the same,
     or does it return a different error, or worse, garbage?
 
-- [ ] D9. Do not accept a passing test as proof
+- [x] D9. Do not accept a passing test as proof
   - A round trip that encrypts and decrypts with the same port passes even if
     both halves are wrong. Check against the checked-in encrypted fixtures,
     which Java produced.
