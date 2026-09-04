@@ -72,6 +72,7 @@ func TestIntegerLongValue(t *testing.T) {
 }
 
 func TestIntegerAccept(t *testing.T) {
+	// The emitted bytes are asserted in accept_external_test.go.
 	assertVisits(t, GetInteger(0), "integer")
 }
 

@@ -62,6 +62,7 @@ func TestFloatLongValue(t *testing.T) {
 }
 
 func TestFloatAccept(t *testing.T) {
+	// The emitted bytes are asserted in accept_external_test.go.
 	assertVisits(t, NewFloat(1.5), "float")
 }
 

@@ -76,27 +76,27 @@ are the incremental-save machinery deferred to slice 7 and one is folded into
 | `COSArray.java` | `array.go` | done — minus the update state and the `COSObjectable` overloads |
 | `COSDictionary.java` | `dictionary.go` | done — minus dates, `getCOSStream`, the `COSObjectable` overloads and the update state |
 | `UnmodifiableCOSDictionary.java` | `unmodifiable.go` | done — as a read-only interface, see below |
-| `COSStream.java` | `stream.go` | done — minus the update state; **written before its test**, see the method note |
+| `COSStream.java` | `stream.go` | done; **written before its test**, see the method note (update state added in slice 7) |
 | `COSInputStream.java` | — | not ported — `Stream.CreateReader` returns a plain `io.Reader`; the class exists in Java only to carry a `DecodeResult` |
 | `COSOutputStream.java` | — | not ported — folded into `streamWriter` in `stream.go` |
-| `COSDocument.java` | `document.go` | done — minus the document state |
-| `COSDocumentState.java` | — | deferred to slice 7 — incremental save |
-| `COSUpdateInfo.java` | — | deferred to slice 7 — incremental save |
-| `COSUpdateState.java` | — | deferred to slice 7 — incremental save |
-| `COSIncrement.java` | — | deferred to slice 7 — incremental save |
+| `COSDocument.java` | `document.go` | done (document state added in slice 7) |
+| `COSDocumentState.java` | `documentstate.go` | done in slice 7 |
+| `COSUpdateInfo.java` | `updateinfo.go` | done in slice 7 |
+| `COSUpdateState.java` | `updatestate.go` | done in slice 7 |
+| `COSIncrement.java` | `increment.go` | done in slice 7 |
 
 ### Ported tests — `cos`
 
 | Java test | Go test | Notes |
 | --- | --- | --- |
 | `TestCOSBase` | `base_test.go` | abstract in Java; becomes `assertBaseContract`, called per type |
-| `TestCOSBoolean` | `boolean_test.go` | complete except the COSWriter byte assertions |
+| `TestCOSBoolean` | `boolean_test.go` | complete; the COSWriter byte assertions are in `accept_external_test.go` |
 | `COSObjectKeyTest` | `objectkey_test.go` | `testPDFBox5742` not ported — needs parser, writer, multipdf and a renderer |
 | `TestCOSName` | `name_test.go` | all three Java tests drive documents; their real assertions (`/m#E4nnlich`, `/m#00nnlich`, PDFBOX-4076) are asserted against `WritePDF` directly |
 | `TestCOSNumber` | `number_test.go` | complete |
 | `TestCOSInteger` | `integer_test.go` | complete |
 | `TestCOSFloat` | `float_test.go` | complete |
-| `TestCOSString` | `string_test.go` | COSWriter serialisation assertions replaced by checks on `Bytes`, `ToHexString` and `ForceHexForm` |
+| `TestCOSString` | `string_test.go` | complete; the COSWriter serialisation assertions are in `accept_external_test.go` |
 | `PDFDocEncodingTest` | `pdfdocencoding_test.go` | complete, including PDFBOX-3864 |
 | `TestCOSArray` | `array_test.go` | complete |
 | `COSDictionaryTest` | `dictionary_test.go` | `testCOSDictionaryNotEqualsCOSStream` needs `COSStream`; the identity semantics it guards are covered |
@@ -105,12 +105,22 @@ are the incremental-save machinery deferred to slice 7 and one is folded into
 
 ### Deviations — `cos`
 
-**Open debt — must be closed when `pdfwriter` lands.** The Java `accept()` tests
-drive a `COSWriter` and assert the emitted bytes. `COSWriter` is not ported, so
-the port asserts the visitor double dispatch plus a direct `WritePDF` byte
-check. **Until then the serialised form is only checked against itself.** This
-applies to `boolean_test.go`, `integer_test.go`, `float_test.go` and
-`string_test.go`.
+**Open debt — closed in slice 7.** The Java `accept()` tests drive a `COSWriter`
+and assert the emitted bytes. Until slice 7 the port asserted the visitor double
+dispatch plus a direct `WritePDF` byte check, and the serialised form was only
+checked against itself. `cos/accept_external_test.go` now makes the Java
+assertions — for booleans, integers, floats and strings, and for the static
+`COSWriter.writeString` — in package `cos_test`, because a test file in package
+`cos` cannot import `pdfwriter` without a cycle. The four tests named in
+`boolean_test.go`, `integer_test.go`, `float_test.go` and `string_test.go` keep
+asserting the double dispatch and point at it.
+
+The one thing not restored is `TestCOSFloat`'s sweep. Java's `BaseTester` walks
+`i * new Random(seed).nextFloat()` for `i` in `[-100000, 300000)` step 20000,
+once with a fixed seed and once with the clock. `java.util.Random`'s sequence
+cannot be reproduced in Go without porting the generator, so the accept test
+uses the sweep slice 1 chose for the rest of `float_test.go`, plus the
+PDFBOX-1778 corner case that `testWritePDF` adds.
 
 Deliberate differences, each commented at the point it occurs:
 
@@ -1662,3 +1672,296 @@ holding whatever the pixel had before. Java reads `numBands` values and throws
 `ArrayIndexOutOfBoundsException`; the port panics now. A *longer* array is still
 fine in both, which is what lets the CIE colour spaces pass a three element one
 to a single band raster.
+
+---
+
+## Slice 7 — write and manipulate
+
+Branch `slice/7-write-merge`. The first slice that produces a PDF rather than
+consuming one.
+
+### `pdfbox/pdfwriter` — all 3 files
+
+| Java file | Go file | Notes |
+| --- | --- | --- |
+| `COSWriter.java` | `coswriter.go` | done, minus `getDataToSign` — see below |
+| `COSStandardOutputStream.java` | `cosstandardoutputstream.go` | done; unexported, because nothing outside the package uses it |
+| `ContentStreamWriter.java` | `contentstreamwriter.go` | done |
+
+`COSWriter`'s public byte constants and its static `writeString` are declared in
+`pdfwriter/compress` and re-exported here under the Java names.
+`COSWriterObjectStream` needs them and `pdfwriter` imports `compress`, so Go
+forbids the direction Java uses; putting the definitions at the bottom of the
+dependency keeps one implementation rather than two. `compress/tokens.go` says
+so, and so does the block at the top of `coswriter.go`.
+
+`getDataToSign` is **not ported.** It builds the byte range to be signed out of
+`COSFilterInputStream`, which lives in `pdmodel/interactive/digitalsignature`
+and arrives with slice 8. Everything around it is ported: `doWriteSignature`
+computes and writes the `/ByteRange`, and `WriteExternalSignature` writes a
+signature made elsewhere into the reserved space. Signing through a
+`SignatureInterface` returns an error naming this gap. `SignatureInterface`
+itself is declared in `pdfwriter` rather than in the package Java has it in, for
+the same reason — it is one method, and the writer is the only thing in this
+slice that names it.
+
+### `pdfbox/pdfwriter/compress` — all 4 files
+
+| Java file | Go file |
+| --- | --- |
+| `CompressParameters.java` | `compressparameters.go` |
+| `COSObjectPool.java` | `cosobjectpool.go` |
+| `COSWriterCompressionPool.java` | `coswritercompressionpool.go` |
+| `COSWriterObjectStream.java` | `coswriterobjectstream.go` |
+
+`COSWriterCompressionPool` takes a `PDDocument` in Java. The port declares
+`compress.DocumentLike` — `Document()` and `Encryption()` — so that the
+dependency runs one way, the same device slice 5 used for the security handlers.
+`pdfwriter.PDDocumentLike` embeds it and `encryption.PDDocumentLike`.
+
+### `pdfparser/PDFXRefStream` — done
+
+`pdfparser/pdfxrefstream.go`. Java's `Collection<COSObjectKey>` and `Set<Long>`
+become maps keyed on the key's internal hash and on the number, sorted where
+Java's `TreeSet` iteration order matters.
+
+### `pdfbox/cos` — the update state slice 1 deferred
+
+`COSUpdateInfo`, `COSUpdateState`, `COSDocumentState` and `COSIncrement` are
+ported, and wired into `Dictionary`, `Array`, `Object`, `Stream` and `Document`
+at every site Java calls `getUpdateState().update(...)`.
+
+Java's three default methods of `COSUpdateInfo` cannot be embedded: they need
+the owner, and an embedded struct in Go has no way back to the value embedding
+it. Each implementor writes them out, one line each. `Stream` overrides the four
+it would inherit from the `Dictionary` it embeds, so that the state's owner is
+the stream — otherwise an increment would write the dictionary inside a stream
+and drop the stream data.
+
+Three slice 1 gaps next to that machinery are closed with it, because the writer
+depends on them:
+
+- **`COSArray.maybeWrap` and the same wrapping in `COSDictionary.setItem`.** A
+  dictionary or array that is not direct and already has a key is stored as a
+  `COSObject` referring to it. Without this the writer emits such an object
+  inline at every use instead of once.
+- **`COSDictionary.removeItem` updates unconditionally.** Java calls `update()`
+  whether or not the key was there; the port did not fire at all when the key
+  was absent.
+- **`COSDictionary.resetObjectKeys` and `COSArray.resetObjectKeys`**, which
+  `PDDocument.importPage` and `Splitter.createNewDocument` need to avoid
+  overlapping object numbers.
+
+`COSObject.setToNull` also stopped setting `isDereferenced`, which Java does not
+do; `isDereferenced()` is read by `COSIncrement.collect(COSObject)`.
+
+`ObjectStreamXReference`'s `object` field is still not carried by
+`xref.ObjectStreamReference`. Its only accessor, `getObject()`, has no caller in
+the Java main tree.
+
+### `pdfbox/pdmodel` — the save path
+
+`pddocument_save.go` holds `save`, `saveIncremental`, `setVersion`,
+`getDocumentId`/`setDocumentId` and `importPage`. `PDPage` gained
+`getContentStreams`, `getContents` and the two `setContents`; `PDStream` gained
+the constructors that write into a document.
+
+`subsetDesignatedFonts` is a no-op: Java walks `fontsToSubset` and calls
+`font.subset()`, and font subsetting is font embedding, which slice 3 left out.
+The set is always empty, so the call site is ported and the body is not.
+
+`new PDDocument()` now does two things it did not: it sets `/Version` `1.4` on
+the catalogue, which Java's constructor does, and it hands the document a
+`filter.Provider`. Java resolves a filter through a static registry; the port
+passes the provider in, which is what keeps `cos` from importing `filter`, and
+without it a document built in memory could not write a Flate stream.
+
+### `pdfbox/multipdf` — 3 of 6 files
+
+| Java file | Go file | Notes |
+| --- | --- | --- |
+| `PDFCloneUtility.java` | `pdfcloneutility.go` | done |
+| `PageExtractor.java` | `pageextractor.go` | done |
+| `Splitter.java` | `splitter.go` | the page splitting, not the structure tree — see below |
+| `PDFMergerUtility.java` | — | **deferred to slice 8** |
+| `LayerUtility.java` | — | **deferred to slice 8** |
+| `Overlay.java` | — | **deferred to slice 8** |
+
+`PDFMergerUtility` names 12 types from `pdmodel/interactive` and
+`pdmodel/documentinterchange/logicalstructure` — acroforms, annotations,
+actions, destinations, outlines, the structure tree, viewer preferences — and
+`LayerUtility` needs `PDPageContentStream` and `graphics/optionalcontent`.
+`Overlay` needs `graphics/form/PDFormXObject`, which in turn needs
+`PDPropertyList`. All of that is slice 8's subtree.
+
+`Splitter` is ported as far as the same wall. `split`, `processPages`,
+`createNewDocumentIfNecessary`, `splitAtPage`, `createNewDocument`,
+`processPage` and the three setters are here, so the pages, their content and
+their resources are split exactly as Java splits them. Seven private methods are
+not: `fixDestinations`, `cloneStructureTree`, `cloneIDTree`, `cloneRoleMap`,
+`cloneTreeElement`, `processResources` and `processAnnotations`. What a split
+therefore leaves behind is the structure tree, the outline destinations and the
+annotations. The four `createNewDocument` catalogue copies — viewer preferences,
+language, mark info, metadata — are in the same position. Every one of them is
+named in the type comment on `Splitter`.
+
+### Which Java tests are ported, and which are not
+
+| Java test | Go test | Notes |
+| --- | --- | --- |
+| `OperatorNameTest` | `contentstream/operator/names_test.go` | all 8, complete. Moved to the package the names live in, which is where a Go reader looks |
+| `COSWriterTest` | `pdfwriter/coswriter_test.go` | 2 of 4 — see below |
+| `PageExtractorTest` | `multipdf/pageextractor_test.go` | complete |
+| `TestToUnicodeWriter` | `pdmodel/font/tounicodewriter_test.go` | all 8, complete — the A3 deferral from slice 3 |
+| `COSWriterCompressionPoolTest` | — | needs `PDDocumentOutline` and `PDOutlineItem` — slice 8 |
+| `COSDocumentCompressionTest` | — | all 5 need `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox` or `protect` |
+| `ContentStreamWriterTest` | — | needs `PDFRenderer` and `TestPDFToImage` — slice 9 |
+| `PDFCloneUtilityTest` | — | all 3 need `PDPageContentStream`, `PDFMergerUtility` or `PDOptionalContentProperties` |
+| `OverlayTest` | — | needs `PDPageContentStream` and `PDFRenderer` |
+| `TestLayerUtility` | — | needs `LayerUtility` |
+| `MergeAcroFormsTest`, `MergeAnnotationsTest`, `PDFMergerUtilityTest` | — | need `PDFMergerUtility` |
+| `TestFontEmbedding` | — | needs `PDPageContentStream` and `TestPDFToImage`; the other half of slice 3's A3 deferral |
+
+`COSWriterTest`'s two that are not ported: `testPDFBox5945` builds an AcroForm
+out of `PDAcroForm`, `PDTextField` and `PDAnnotationWidget`, and `testPDFBox6036`
+downloads two PDFs from `issues.apache.org` — the port's tests do not reach the
+network.
+
+### Tests that are not ported from Java
+
+`pdfwriter/writeverify_test.go` holds the two checks phase D asks for, and says
+in its header that it is not a port:
+
+- `TestEmittedBytesMatchPDFBox` compares the byte sequences this writer emits
+  against `PDFBoxLegacyMerge-SameMerged.pdf` in the Java test resources, which
+  PDFBox wrote. Header, object header, `endobj`, `endstream`, the two xref entry
+  forms, the xref header, the trailer and `%%EOF` all match byte for byte. Each
+  assertion fails the test if the reference stops containing the shape, so it
+  cannot rot into a tautology.
+- `TestIncrementalSaveAppends` checks that an incremental save leaves every byte
+  of the original where it was, appends the update, and that the update is
+  visible after reloading.
+- `TestSaveRoundTrip` is the cheap first signal only; on its own it proves
+  nothing, because writing and reading with the same broken port passes.
+
+There is no Maven in this environment, so PDFBox itself could not be built to
+diff a whole file against a Java run. The reference file is the closest thing
+available and it is a real one.
+
+### What a plain save does to object numbers
+
+`COSWriter.write` sets `number = getHighestXRefObjectNumber()` before it starts,
+so a full, uncompressed save of a **loaded** document renumbers every object
+from there — a file with 227 objects comes back with objects 228 to 454 and
+`/Size 455`, and the xref table carries 227 free entries for the gap. That is
+Java, not a port defect: `fillGapsWithFreeEntries` exists for exactly this. The
+compressed path does not renumber, because the compression pool offers each
+object's existing key back to `COSObjectPool.put`.
+
+### The slice 7 adversarial review
+
+Read `coswriter.go`, `contentstreamwriter.go`, the four `compress` files,
+`pdfxrefstream.go`, the four `cos` update-state files and the three `multipdf`
+files against their Java side by side.
+
+**Found and fixed.** `visitFromDictionary` assigns `byteRangeArray = (COSArray)
+entry.getValue()`, an unchecked cast that throws `ClassCastException` where the
+entry is not an array. The port had written `w.byteRangeArray, _ =
+value.(*cos.Array)`, which leaves it nil and turns a loud failure into a nil
+dereference several steps later, in `doWriteSignature`. It now asserts the same
+way Java casts.
+
+**Found and recorded.** `ToUnicodeWriter.allowDestinationRange` checks only
+`prev` for being a single code point, so a longer destination following a
+one-character one is swallowed into the range and everything after its first
+character is lost. JAVA-BUGS 33; the port carries it, with the comment above the
+method.
+
+**Checked and matching**, each read against the Java:
+
+- Every branch and its order in `visitFromArray`, `visitFromDictionary`,
+  `visitFromStream`, `visitFromString`, `visitFromObject` and
+  `visitFromDocument`.
+- `doWriteBody`, `doWriteBodyCompressed`, `doWriteHeader`, `doWriteTrailer`,
+  `doWriteXRefTable`, `doWriteXRefInc`, `fillGapsWithFreeEntries`,
+  `getXRefRanges`, `getObjectKey`, `addObjectToWrite`, `prepareIncrement`.
+- `COSStandardOutputStream`: `position += len` against Go's `Write` returning
+  `n == len(b)` on success, and `writeEOL`'s single-newline guard.
+- `COSWriter` implements `ICOSVisitor` only — no `Closeable`, no `close()` — and
+  `PDDocument.save` does not close the stream it is given. PDFBOX-4321.
+- The xref entry number formats: `DecimalFormat("0000000000")` and `("00000")`
+  against `%010d` and `%05d`. They differ for a negative value, where Java keeps
+  ten digits after the sign and Go counts the sign into the width; neither
+  column is ever negative — one is a byte offset, the other a free object
+  number.
+- `PDFXRefStream.getIndexEntry` walked by hand for the inputs {0}, {0,1} and
+  {0,5}.
+- `COSObjectKey.Equals(nil)` returns false, which is what `equals(null)` does,
+  and `COSObjectPool.put` depends on it.
+- `ObjectStreamXReference`'s constructor argument order against
+  `xref.NewObjectStreamReference`.
+
+**Deliberate divergences**, each commented where it occurs:
+
+- `PDFCloneUtility.cloneForNewDocument` is generic in Java and casts its result.
+  The port returns `cos.Base` and adds `CloneDictionaryForNewDocument` for the
+  one caller shape that needs the concrete type; both are the same unchecked
+  cast, in a different place.
+- `PDFCloneUtility`'s constructor and `cloneMerge`, and `Splitter.splitAtPage`,
+  `createNewDocument` and the two document accessors, are `protected` or
+  package-private in Java. Go has no such level and the types are public, so
+  they are exported.
+- `PDStream(PDDocument, InputStream, ...)` closes the `InputStream`; a Go
+  `io.Reader` has nothing to close, so `NewPDStreamOfInput` leaves that to the
+  caller.
+- `ToUnicodeWriter` is package-private and final in Java, so the port keeps it
+  unexported. Nothing calls it yet: its caller is the font embedding path, which
+  slice 3 left out.
+
+### Port defects found in the slice 7 feedback, fixed
+
+**`COSDictionary.addAll` was routed through `setItem`.** Java's `addAll` is
+`items.putAll(dict.items)` and nothing else. The port had it copying entries
+through `SetItem`, which was harmless until this slice gave `SetItem` two jobs
+it did not have before: wrapping a keyed, non-direct value into a `COSObject`,
+and calling `getUpdateState().update(value)`. Both then leaked into every
+`addAll`, so a copied entry became an indirect reference and the receiving
+dictionary was marked as needing an incremental write. `COSDictionary`'s copy
+constructor is `addAll`, so `new COSDictionary(page.getCOSObject())` in
+`importPage` was affected too. `AddAll` now uses the raw insertion helper.
+`TestDictionaryAddAllIsARawPut` asserts both halves and fails on either.
+
+**The trailer `/ID` digest hashed UTF-8.** Java feeds it
+`Long.toString(idTime).getBytes(ISO_8859_1)` and
+`cosBase.toString().getBytes(ISO_8859_1)`; the port converted the Go strings
+directly, which is UTF-8. Identical for ASCII metadata and different for
+anything else, so a document with a non-ASCII `/Title` came out with an `/ID`
+the reference would not produce — visible whenever `setDocumentId` is used to
+make the output deterministic. `encodeISO88591` in `coswriter.go` now does what
+the charset does, including the `?` an unmappable character becomes. Java has no
+shared helper for this and neither does the port; `encryption` has its own copy
+with the same body. `TestDocumentIDDigestUsesISO88591` computes the expected
+digest from the Java rule, not from the port.
+
+**`Document.SetTrailer`'s doc comment.** Java's javadoc carries an editorial
+note from the original author, and the port had transcribed it with its leading
+`//` intact, producing a doubled comment marker and a line that reads as
+nonsense in the Go documentation. The comment now says what the method does —
+it links the trailer to the document state, which is what makes a later change
+count as an update — and attributes the note.
+
+### Reviewed and declined — slice 7
+
+**`PageExtractor.Extract` panics for a start page beyond the document.**
+Reported as contradicting the doc comment, which promises a blank document. It
+does contradict it — in the Java. `extract`'s guard covers `startPage >
+endPage` and not `startPage > getNumberOfPages()`, so pages 30 to 40 of a 28
+page file reach `setEndPage(28)` with `startPage` already 30, and
+`IllegalArgumentException` is thrown two frames down. The port panics, which is
+what an unchecked exception becomes. Recorded as JAVA-BUGS 34 and pinned by
+`TestExtractBeyondTheDocumentPanics`, which asserts the panic and its message.
+
+The same report also worried about indexing `splitted[0]` when nothing is
+extracted. That cannot happen: reaching the index means both setters accepted
+their arguments, so `1 <= startPage <= endPage <= numberOfPages`, and
+`processPages` therefore makes at least one destination document.

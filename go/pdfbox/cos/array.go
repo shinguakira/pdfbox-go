@@ -8,14 +8,40 @@ import "strings"
 // Java list holds for an absent element, and may be an *Object standing for an
 // indirect reference — see Get versus GetObject.
 //
-// Not yet ported: the COSUpdateState Java tracks for incremental saves, and the
-// COSObjectable-taking overloads, which need pdmodel. See migration/STATUS.md.
+// Not yet ported: the COSObjectable-taking overloads, which need pdmodel. See
+// migration/STATUS.md.
 type Array struct {
 	object
+	updateInfoState
 	objects []Base
 }
 
 var _ Base = (*Array)(nil)
+var _ UpdateInfo = (*Array)(nil)
+
+// UpdateState returns the current UpdateState of this Array.
+func (a *Array) UpdateState() *UpdateState { return a.state(a) }
+
+// IsNeedToBeUpdated gets the update state for the COSWriter.
+func (a *Array) IsNeedToBeUpdated() bool { return a.UpdateState().IsUpdated() }
+
+// SetNeedToBeUpdated sets the update state for the COSWriter.
+func (a *Array) SetNeedToBeUpdated(flag bool) { a.UpdateState().updateTo(flag) }
+
+// ToIncrement uses this Array as the base object of a new Increment.
+func (a *Array) ToIncrement() *Increment { return a.UpdateState().toIncrement() }
+
+// maybeWrap stores a dictionary or array that already has a key and is not
+// direct as an indirect reference to it, so that the writer emits it once
+// rather than inline at every use.
+//
+// Port of the private COSArray.maybeWrap.
+func maybeWrap(object Base) Base {
+	if object != nil && isWrappable(object) {
+		return NewObjectWithKey(object, object.Key())
+	}
+	return object
+}
 
 // NewArray returns an empty array.
 func NewArray() *Array {
@@ -84,19 +110,30 @@ func (a *Array) IsEmpty() bool { return len(a.objects) == 0 }
 
 // Add appends an object.
 func (a *Array) Add(object Base) {
-	a.objects = append(a.objects, object)
+	objectToAdd := maybeWrap(object)
+	a.objects = append(a.objects, objectToAdd)
+	a.UpdateState().updateChild(objectToAdd)
 }
 
 // AddAt inserts an object at the given index.
 func (a *Array) AddAt(i int, object Base) {
+	objectToAdd := maybeWrap(object)
 	a.objects = append(a.objects, nil)
 	copy(a.objects[i+1:], a.objects[i:])
-	a.objects[i] = object
+	a.objects[i] = objectToAdd
+	a.UpdateState().updateChild(objectToAdd)
 }
 
 // AddAll appends every object in the slice.
+//
+// Java updates only when List.addAll reports a change, which for an addAll is
+// exactly when the collection was not empty.
 func (a *Array) AddAll(objects []Base) {
+	if len(objects) == 0 {
+		return
+	}
 	a.objects = append(a.objects, objects...)
+	a.UpdateState().updateChildren(objects)
 }
 
 // AddArray appends every entry of another array.
@@ -104,12 +141,17 @@ func (a *Array) AddArray(other *Array) {
 	if other == nil {
 		return
 	}
+	if len(other.objects) == 0 {
+		return
+	}
 	a.objects = append(a.objects, other.objects...)
+	a.UpdateState().updateChildren(other.ToList())
 }
 
 // Clear removes every entry.
 func (a *Array) Clear() {
 	a.objects = a.objects[:0]
+	a.UpdateState().update()
 }
 
 // Get returns the raw entry at index, which may be nil or an indirect
@@ -135,12 +177,18 @@ func (a *Array) GetObject(index int) Base {
 
 // Set replaces the entry at index.
 func (a *Array) Set(index int, object Base) {
-	a.objects[index] = object
+	objectToAdd := maybeWrap(object)
+	a.objects[index] = objectToAdd
+	a.UpdateState().updateChild(objectToAdd)
 }
 
 // SetInt stores an integer at index.
+//
+// Java has its own set(int, int) rather than routing through set(int, COSBase),
+// so it updates without a child.
 func (a *Array) SetInt(index, value int) {
-	a.Set(index, GetInteger(int64(value)))
+	a.objects[index] = GetInteger(int64(value))
+	a.UpdateState().update()
 }
 
 // SetName stores a name at index.
@@ -204,6 +252,7 @@ func (a *Array) GetString(index int, defaultValue string) string {
 func (a *Array) RemoveAt(index int) Base {
 	removed := a.objects[index]
 	a.objects = append(a.objects[:index], a.objects[index+1:]...)
+	a.UpdateState().update()
 	return removed
 }
 
@@ -242,10 +291,13 @@ func (a *Array) RemoveAll(objects []Base) {
 		}
 	}
 	a.objects = kept
+	// Java updates whether or not anything was removed.
+	a.UpdateState().update()
 }
 
 // RetainAll removes every entry not equal to one in the slice.
 func (a *Array) RetainAll(objects []Base) {
+	sizeBefore := len(a.objects)
 	kept := a.objects[:0]
 	for _, item := range a.objects {
 		if containsBase(objects, item) {
@@ -253,6 +305,10 @@ func (a *Array) RetainAll(objects []Base) {
 		}
 	}
 	a.objects = kept
+	// Java updates only when List.retainAll reports a change.
+	if len(a.objects) != sizeBefore {
+		a.UpdateState().update()
+	}
 }
 
 // IndexOf returns the index of the first entry equal to object, or -1.
@@ -293,6 +349,7 @@ func (a *Array) GrowToSizeWith(size int, object Base) {
 	for a.Size() < size {
 		a.Add(object)
 	}
+	a.UpdateState().update()
 }
 
 // ToList returns a copy of the entries.
@@ -456,4 +513,58 @@ func baseString(b Base) string {
 		return s.String()
 	}
 	return "?"
+}
+
+// resetObjectKeys collects all indirect objects numbers within this array and
+// all included structures, resetting them.
+//
+// Port of the protected COSArray.resetObjectKeys.
+func (a *Array) resetObjectKeys(indirectObjects map[int64]bool) map[int64]bool {
+	if indirectObjects == nil {
+		return indirectObjects
+	}
+	if key := a.Key(); key != nil {
+		// avoid endless recursions
+		if indirectObjects[key.InternalHash()] {
+			return indirectObjects
+		}
+		indirectObjects[key.InternalHash()] = true
+		// reset key
+		a.SetKey(nil)
+	}
+	for _, cosBase := range a.objects {
+		if cosBase == nil {
+			continue
+		}
+		var indirectObjectKey *ObjectKey
+		if reference, ok := cosBase.(*Object); ok {
+			indirectObjectKey = reference.Key()
+		}
+		if indirectObjectKey != nil {
+			if indirectObjects[indirectObjectKey.InternalHash()] {
+				continue
+			}
+			dereferencedObject := cosBase.(*Object).Object()
+			// reset key
+			cosBase.SetKey(nil)
+			cosBase = dereferencedObject
+		}
+		switch value := cosBase.(type) {
+		case *Stream:
+			// COSStream is a COSDictionary in Java, so it takes the same branch.
+			value.resetObjectKeys(indirectObjects)
+		case *Dictionary:
+			// descend to included dictionary to reset all included indirect objects
+			value.resetObjectKeys(indirectObjects)
+		case *Array:
+			// descend to included array to reset all included indirect objects
+			value.resetObjectKeys(indirectObjects)
+		default:
+			if indirectObjectKey != nil {
+				// add key for all indirect objects other than COSDictionary/COSArray
+				indirectObjects[indirectObjectKey.InternalHash()] = true
+			}
+		}
+	}
+	return indirectObjects
 }

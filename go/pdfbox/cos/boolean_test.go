@@ -54,9 +54,9 @@ func TestBooleanEquals(t *testing.T) {
 }
 
 func TestBooleanAccept(t *testing.T) {
-	// Java drives a COSWriter and asserts the emitted bytes. COSWriter is not
-	// ported yet, so this asserts the double dispatch and checks the token
-	// bytes directly through WritePDF.
+	// This asserts the double dispatch and the token bytes through WritePDF.
+	// The COSWriter assertions the Java test makes are in
+	// accept_external_test.go, which can import pdfwriter.
 	assertVisits(t, True, "boolean")
 	assertVisits(t, False, "boolean")
 

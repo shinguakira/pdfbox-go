@@ -1301,3 +1301,113 @@ likely to look.
 
 **Confidence** high. Measured: the port decoded 680 bytes from a stream whose
 first 676 are the original, and the last four repeat bytes 672 to 675.
+
+---
+
+## 33. `ToUnicodeWriter.allowDestinationRange` checks only one of its two strings
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/ToUnicodeWriter.java`,
+`allowDestinationRange`.
+
+**What it does**
+
+```java
+static boolean allowDestinationRange(String prev, String next)
+{
+    ...
+    int prevCode = prev.codePointAt(0);
+    int nextCode = next.codePointAt(0);
+    return allowCodeRange(prevCode, nextCode) && prev.codePointCount(0, prev.length()) == 1;
+}
+```
+
+Both strings are destinations of a `bfrange`, and a range is written as one
+starting destination that the reader increments. That is only correct if every
+destination in the range is a single code point. The method checks `prev` and
+not `next`.
+
+**What correct would be** `&& next.codePointCount(0, next.length()) == 1` as
+well — or, equivalently, refusing the range whenever either side is longer than
+one code point.
+
+**Why it matters** a CID mapped to a one character string followed by a CID
+mapped to a longer one extends the range instead of starting a new one, and
+everything after the first character of the longer string is dropped from the
+CMap. With 0x400 mapped to `a` and 0x401 mapped to `bc`, the writer emits
+`<0400> <0401> <0061>`, and a reader decodes 0x401 as `b`. The ligature the
+mapping existed for is lost, silently, in a file that otherwise looks correct.
+It does not fire in `TestToUnicodeWriter.testCMapLigatures` only because the
+ligatures there — `ff`, `fi`, `ffl` — all start with `f`, so `allowCodeRange`
+rejects them first.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/font/tounicodewriter.go`, `allowDestinationRange`, which
+checks `utf8.RuneCountInString(prev) == 1` and not `next`. The comment above it
+names this entry.
+
+**Confidence** high for the code reading; the failing case is derived from the
+method, not measured against a Java run, because there is no Maven in this
+environment to build PDFBox with. Every ported test of this class passes with
+the Java values.
+
+---
+
+## 34. `PageExtractor.extract` throws where its own javadoc promises a blank document
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PageExtractor.java`,
+`extract`, together with `Splitter.setEndPage`.
+
+**What it does**
+
+```java
+public PDDocument extract() throws IOException
+{
+    if (endPage - startPage + 1 <= 0)
+    {
+        return new PDDocument();
+    }
+    Splitter splitter = new Splitter();
+    splitter.setStartPage(Math.max(startPage, 1));
+    splitter.setEndPage(Math.min(endPage, sourceDocument.getNumberOfPages()));
+    ...
+}
+```
+
+and its javadoc says
+
+> If startPage is greater than endPage or greater than the number of pages in
+> the source document, a blank document will be returned.
+
+The guard covers only the first half of that sentence. A start page beyond the
+end of the document with an end page beyond it too — say pages 30 to 40 of a 28
+page file — passes the guard, because `40 - 30 + 1` is 11. Then `setStartPage`
+is given 30 and `setEndPage` is given `min(40, 28)`, which is 28, and
+
+```java
+if (end < startPage)
+{
+    throw new IllegalArgumentException("End page is smaller than startPage");
+}
+```
+
+fires. The blank document is never returned.
+
+**What correct would be** clamping the start page against the page count in the
+same guard, so that `startPage > getNumberOfPages()` also returns a blank
+document — or reordering `setEndPage` before `setStartPage`, which would remove
+the cross-check but is not what the javadoc promises either.
+
+**Why it matters** the javadoc is the contract callers read, and it says the
+out-of-range case is handled. It is not: the caller gets an unchecked exception
+from two frames down, in a class it never named.
+
+**Where the Go carries it** `go/pdfbox/multipdf/pageextractor.go`, `Extract`,
+which has the same guard and the same order of the two setters, and
+`splitter.go`, whose `SetEndPage` panics with the same message —
+`IllegalArgumentException` is unchecked, so the port panics.
+`TestExtractBeyondTheDocumentPanics` in `pageextractor_test.go` pins it and
+names this entry.
+
+**Confidence** high. Read from the two methods and confirmed by the port
+panicking with `End page is smaller than startPage` for pages 30 to 40 of the
+28 page `cweb.pdf`, which is the document `PageExtractorTest` uses.

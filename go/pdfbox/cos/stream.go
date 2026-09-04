@@ -75,6 +75,24 @@ type Stream struct {
 }
 
 var _ Base = (*Stream)(nil)
+var _ UpdateInfo = (*Stream)(nil)
+
+// UpdateState returns the current UpdateState of this Stream.
+//
+// COSStream extends COSDictionary in Java, so the state COSDictionary's
+// constructor makes belongs to the stream; these four override the ones
+// promoted from the embedded Dictionary so that the owner is the stream and an
+// increment writes the stream, not the dictionary inside it.
+func (s *Stream) UpdateState() *UpdateState { return s.state(s) }
+
+// IsNeedToBeUpdated gets the update state for the COSWriter.
+func (s *Stream) IsNeedToBeUpdated() bool { return s.UpdateState().IsUpdated() }
+
+// SetNeedToBeUpdated sets the update state for the COSWriter.
+func (s *Stream) SetNeedToBeUpdated(flag bool) { s.UpdateState().updateTo(flag) }
+
+// ToIncrement uses this Stream as the base object of a new Increment.
+func (s *Stream) ToIncrement() *Increment { return s.UpdateState().toIncrement() }
 
 // NewStream returns an empty stream.
 //
@@ -95,6 +113,8 @@ func NewStreamWithCache(cache pdfio.StreamCache, codecs CodecProvider) *Stream {
 		streamCache: cache,
 		codecs:      codecs,
 	}
+	// Java runs COSDictionary's constructor with the stream as this.
+	s.updateState = NewUpdateState(s)
 	s.SetInt(Length, 0)
 	return s
 }

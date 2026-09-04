@@ -11,15 +11,15 @@ import (
 // cross-reference table, and the pool of objects read from it.
 //
 // Port of org.apache.pdfbox.cos.COSDocument.
-//
-// Not yet ported: the COSDocumentState this carries in Java, which tracks
-// whether the document has been changed for an incremental save. That is slice
-// 7 work; see migration/STATUS.md.
 type Document struct {
 	object
 
 	version float32
 	trailer *Dictionary
+
+	// documentState says whether the document is still being parsed, which is
+	// what decides whether a change to an object counts as an update.
+	documentState *DocumentState
 
 	// objectPool holds one proxy per object key, so that a forward reference
 	// resolved later is seen by everyone holding it. Keyed by the packed
@@ -126,8 +126,26 @@ func (d *Document) SetVersion(version float32) { d.version = version }
 // Trailer returns the trailer dictionary.
 func (d *Document) Trailer() *Dictionary { return d.trailer }
 
-// SetTrailer records the trailer dictionary.
-func (d *Document) SetTrailer(trailer *Dictionary) { d.trailer = trailer }
+// SetTrailer records the trailer dictionary and links it to the document's
+// state, which is what makes a later change to it count as an update for an
+// incremental save.
+//
+// Java's javadoc here carries an editorial note from the original author —
+// "maybe this should not be supported as trailer is a persistence construct" —
+// which is a doubt about the method's existence, not about what it does.
+func (d *Document) SetTrailer(trailer *Dictionary) {
+	d.trailer = trailer
+	trailer.UpdateState().SetOriginDocumentState(d.DocumentState())
+}
+
+// DocumentState returns the DocumentState of this Document.
+func (d *Document) DocumentState() *DocumentState {
+	if d.documentState == nil {
+		// Java makes it in the field initialiser, which always runs.
+		d.documentState = NewDocumentState()
+	}
+	return d.documentState
+}
 
 // IsDecrypted reports whether the document has been decrypted.
 func (d *Document) IsDecrypted() bool { return d.isDecrypted }
