@@ -32,13 +32,6 @@ var altNames = map[string]string{
 // PDType1Font is a Type 1 font, which is what the fourteen standard fonts are.
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDType1Font.
-//
-// The embedded PFB font program is read here. What is still missing is the
-// substitute the system supplies for a font that is not embedded, which needs
-// the font mapper chain (B6); until that lands genericFont is nil for such a
-// font and every path that reads a glyph outline or a width out of the font
-// program fails rather than guessing. The widths of a standard 14 font come
-// from its AFM. See migration/STATUS.md.
 type PDType1Font struct {
 	pdSimpleFont
 
@@ -85,10 +78,19 @@ func NewPDType1FontStandard14(baseFont FontName) (*PDType1Font, error) {
 
 	// todo: could load the PFB font here if we wanted to support Standard 14
 	// embedding
-	//
-	// Java asks the font mapper for a substitute to draw the glyphs with; that
-	// is slice 4, so there is none here.
-	f.genericFont = nil
+	f.type1font = nil
+	mapping := FontMappersInstance().GetFontBoxFont(f.BaseFont(), f.FontDescriptor())
+	f.genericFont = mapping.Font()
+
+	if mapping.IsFallback() {
+		// Java catches the IOException getName may throw and logs "?" instead.
+		fontName, err := f.genericFont.Name()
+		if err != nil {
+			slog.Debug("Couldn't get font name - setting to '?'", "err", err)
+			fontName = "?"
+		}
+		slog.Warn("Using fallback font", "fallback", fontName, "baseFont", f.BaseFont())
+	}
 	f.isEmbedded = false
 	f.isDamaged = false
 	f.fontMatrixTransform = geom.NewIdentityTransform()
@@ -138,13 +140,19 @@ func NewPDType1FontFromDictionary(fontDictionary *cos.Dictionary, resourceCache 
 
 	// find a generic font to use for rendering, could be a .pfb, but might be
 	// a .ttf
-	//
-	// Java asks the font mapper for a substitute where the font is not
-	// embedded; that is B6, so an unembedded font still has none here.
 	if t1 != nil {
 		f.genericFont = t1
 	} else {
-		f.genericFont = nil
+		mapping := FontMappersInstance().GetFontBoxFont(f.BaseFont(), fd)
+		f.genericFont = mapping.Font()
+
+		if mapping.IsFallback() {
+			fontName, err := f.genericFont.Name()
+			if err != nil {
+				return nil, err
+			}
+			slog.Warn("Using fallback font", "fallback", fontName, "font", f.BaseFont())
+		}
 	}
 
 	if err := f.readEncoding(); err != nil {
@@ -174,9 +182,6 @@ func (f *PDType1Font) Height(code int) (float32, error) {
 	if err != nil {
 		return 0, err
 	}
-	if f.genericFont == nil {
-		return 0, errNoFontProgram
-	}
 	// todo: should be scaled by font matrix
 	path, err := f.genericFont.GetPath(name)
 	if err != nil {
@@ -184,10 +189,6 @@ func (f *PDType1Font) Height(code int) (float32, error) {
 	}
 	return float32(path.Bounds().Height), nil
 }
-
-// errNoFontProgram is what every path that needs the font program returns for
-// a font that is not embedded, while the font mapper is unported.
-var errNoFontProgram = fmt.Errorf("font: no font program: the font is not embedded and the font mapper is not ported yet")
 
 // encodeCodePoint returns the bytes that draw the given code point.
 func (f *PDType1Font) encodeCodePoint(unicode int) ([]byte, error) {
@@ -208,29 +209,46 @@ func (f *PDType1Font) encodeCodePoint(unicode int) ([]byte, error) {
 		}
 	} else {
 		if !f.encoding.ContainsName(name) {
-			return nil, fmt.Errorf("font: U+%04X ('%s') is not available in the font %s, encoding: %s",
-				unicode, name, f.Name(), f.encoding.EncodingName())
+			genericName, err := f.genericFont.Name()
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf(
+				"font: U+%04X ('%s') is not available in the font %s (generic: %s), encoding: %s",
+				unicode, name, f.Name(), genericName, f.encoding.EncodingName())
 		}
+
 		nameInFont, err := f.getNameInFont(name)
 		if err != nil {
 			return nil, err
 		}
+
 		hasGlyph := false
-		if f.genericFont != nil {
-			hasGlyph, err = f.genericFont.HasGlyph(nameInFont)
-			if err != nil {
+		if nameInFont != ".notdef" {
+			// Java's || short-circuits, so a .notdef never reaches hasGlyph.
+			if hasGlyph, err = f.genericFont.HasGlyph(nameInFont); err != nil {
 				return nil, err
 			}
 		}
 		if nameInFont == ".notdef" || !hasGlyph {
-			return nil, fmt.Errorf("font: No glyph for U+%04X in the font %s", unicode, f.Name())
+			genericName, err := f.genericFont.Name()
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("font: No glyph for U+%04X in the font %s (generic: %s)",
+				unicode, f.Name(), genericName)
 		}
 	}
 
 	code, ok := f.encoding.NameToCodeMap()[name]
 	if !ok || code < 0 {
-		return nil, fmt.Errorf("font: U+%04X ('%s') is not available in the font %s, encoding: %s",
-			unicode, name, f.Name(), f.encoding.EncodingName())
+		genericName, err := f.genericFont.Name()
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf(
+			"font: U+%04X ('%s') is not available in the font %s (generic: %s), encoding: %s",
+			unicode, name, f.Name(), genericName, f.encoding.EncodingName())
 	}
 	b := []byte{byte(code)}
 	f.codeToBytesMap[unicode] = b
@@ -246,9 +264,6 @@ func (f *PDType1Font) WidthFromFont(code int) (float32, error) {
 	// width of .notdef is ignored for substitutes, see PDFBOX-1900
 	if !f.isEmbedded && name == ".notdef" {
 		return 250, nil
-	}
-	if f.genericFont == nil {
-		return 0, errNoFontProgram
 	}
 	width, err := f.genericFont.GetWidth(name)
 	if err != nil {
@@ -317,9 +332,6 @@ func (f *PDType1Font) generateBoundingBox() (*fontutil.BoundingBox, error) {
 				bbox.UpperRightX(), bbox.UpperRightY()), nil
 		}
 	}
-	if f.genericFont == nil {
-		return nil, errNoFontProgram
-	}
 	return f.genericFont.FontBBox()
 }
 
@@ -336,11 +348,6 @@ func (f *PDType1Font) CodeToName(code int) (string, error) {
 // not always the name the encoding gives.
 func (f *PDType1Font) getNameInFont(name string) (string, error) {
 	if f.IsEmbedded() {
-		return name, nil
-	}
-	if f.genericFont == nil {
-		// Java asks the substitute font here; with none, nothing else in this
-		// method can answer either.
 		return name, nil
 	}
 	hasGlyph, err := f.genericFont.HasGlyph(name)
@@ -407,9 +414,6 @@ func (f *PDType1Font) GetPathByName(name string) (*geom.Path2D, error) {
 	if name == ".notdef" && !f.isEmbedded {
 		return geom.NewPathFloat(), nil
 	}
-	if f.genericFont == nil {
-		return nil, errNoFontProgram
-	}
 	nameInFont, err := f.getNameInFont(name)
 	if err != nil {
 		return nil, err
@@ -439,9 +443,6 @@ func (f *PDType1Font) GetNormalizedPath(code int) (*geom.Path2D, error) {
 
 // HasGlyphByName reports whether the font has the named glyph.
 func (f *PDType1Font) HasGlyphByName(name string) (bool, error) {
-	if f.genericFont == nil {
-		return false, errNoFontProgram
-	}
 	nameInFont, err := f.getNameInFont(name)
 	if err != nil {
 		return false, err
@@ -460,12 +461,11 @@ func (f *PDType1Font) FontMatrix() *util.Matrix {
 		// PDF specified that Type 1 fonts use a 1000upem matrix, but some fonts
 		// specify their own custom matrix anyway, for example PDFBOX-2298
 		var numbers []float32
-		if f.genericFont != nil {
-			if got, err := f.genericFont.FontMatrix(); err == nil {
-				numbers = got
-			} else {
-				f.fontMatrix = defaultFontMatrix
-			}
+		if got, err := f.genericFont.FontMatrix(); err == nil {
+			numbers = got
+		} else {
+			slog.Debug("Couldn't get font matrix box - returning default value", "err", err)
+			f.fontMatrix = defaultFontMatrix
 		}
 		if len(numbers) == 6 {
 			f.fontMatrix = util.NewMatrixOf(numbers[0], numbers[1], numbers[2],

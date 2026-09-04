@@ -16,11 +16,6 @@ import (
 // PDCIDFontType0 is a Type 0 CIDFont (CFF).
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDCIDFontType0.
-//
-// The substitute the system supplies for a font that is not embedded needs the
-// font mapper chain (B6); until that lands both fonts are nil for such a font
-// and every path that reads the font program fails rather than guessing, which
-// also means substituteUnicodeCmap is always nil here. See migration/STATUS.md.
 type PDCIDFontType0 struct {
 	pdCIDFont
 
@@ -53,6 +48,7 @@ func NewPDCIDFontType0(fontDictionary *cos.Dictionary,
 	f.initCIDFont(resourceCache)
 
 	fontIsDamaged := false
+	var substituteCmap ttf.CmapLookup
 	var cffFont cff.CFFFont
 	fd := f.FontDescriptor()
 	if fd != nil {
@@ -84,11 +80,57 @@ func NewPDCIDFontType0(fontDictionary *cos.Dictionary,
 		f.isEmbedded = true
 		f.isDamaged = false
 	} else {
-		// Java finds the font or a substitute here, through the font mapper;
-		// that is B6, so both fonts stay nil.
+		// find font or substitute
+		mapping := FontMappersInstance().GetCIDFont(f.BaseFont(), fd, f.CIDSystemInfo())
+		var font fontbox.FontBoxFont
+		if mapping.IsCIDFont() {
+			cffTable, err := mapping.Font().CFF()
+			if err != nil {
+				return nil, err
+			}
+			cffFont = cffTable.Font()
+			if cidKeyed, ok := cffFont.(*cff.CFFCIDFont); ok {
+				f.cidFont = cidKeyed
+				f.t1Font = nil
+				font = cidKeyed
+			} else {
+				// PDFBOX-3515: OpenType fonts are loaded as CFFType1Font
+				//
+				// Java casts here, which throws ClassCastException where the
+				// substitute's CFF is neither kind.
+				type1 := cffFont.(*cff.CFFType1Font)
+				f.cidFont = nil
+				f.t1Font = type1
+				font = type1
+			}
+		} else {
+			f.cidFont = nil
+			f.t1Font = mapping.TrueTypeFont()
+			font = f.t1Font
+		}
+
+		if mapping.IsFallback() {
+			name, err := font.Name()
+			if err != nil {
+				return nil, err
+			}
+			slog.Warn("Using fallback for CID-keyed font", "fallback", name,
+				"font", f.BaseFont())
+		}
+		if f.cidFont != nil && mapping.IsCIDFont() && !f.isCharacterCollectionMatch(f.cidFont) &&
+			f.cidFont.Ordering() == "Identity" {
+			cmapLookup, err := mapping.Font().UnicodeCmapLookupStrict()
+			if err != nil {
+				slog.Warn("Could not read cmap of the substitute for font",
+					"font", f.BaseFont(), "err", err)
+			} else {
+				substituteCmap = cmapLookup
+			}
+		}
 		f.isEmbedded = false
 		f.isDamaged = fontIsDamaged
 	}
+	f.substituteUnicodeCmap = substituteCmap
 	f.fontMatrixTransform = f.FontMatrix().CreateAffineTransform()
 	f.fontMatrixTransform.Scale(1000, 1000)
 	return f, nil
@@ -155,7 +197,7 @@ func (f *PDCIDFontType0) FontMatrix() *util.Matrix {
 	var numbers []float32
 	if f.cidFont != nil {
 		numbers, _ = f.cidFont.FontMatrix()
-	} else if f.t1Font != nil {
+	} else {
 		var err error
 		if numbers, err = f.t1Font.FontMatrix(); err != nil {
 			slog.Debug("Couldn't get font matrix - returning default value", "err", err)
@@ -192,10 +234,8 @@ func (f *PDCIDFontType0) generateBoundingBox() *fontutil.BoundingBox {
 	var err error
 	if f.cidFont != nil {
 		bbox, err = f.cidFont.FontBBox()
-	} else if f.t1Font != nil {
-		bbox, err = f.t1Font.FontBBox()
 	} else {
-		err = errNoCIDFontProgram
+		bbox, err = f.t1Font.FontBBox()
 	}
 	if err != nil {
 		slog.Debug("Couldn't get font bounding box - returning default value", "err", err)
@@ -234,6 +274,14 @@ func (f *PDCIDFontType0) GetType2CharString(cid int) (*cff.Type2CharString, erro
 		return type1.GetType2CharString(cid)
 	}
 	return nil, nil
+}
+
+// isCharacterCollectionMatch reports whether the substitute names the same
+// character collection this font does.
+func (f *PDCIDFontType0) isCharacterCollectionMatch(substitute *cff.CFFCIDFont) bool {
+	ros := f.CIDSystemInfo()
+	return ros != nil && ros.Registry() == substitute.Registry() &&
+		ros.Ordering() == substitute.Ordering()
 }
 
 // codeToSubstituteGID is the GID in the substitute for the given code, via
@@ -287,9 +335,6 @@ func (f *PDCIDFontType0) GetPath(code int, parent *PDType0Font) (*geom.Path2D, e
 		}
 		return charString.Path(), nil
 	}
-	if f.t1Font == nil {
-		return nil, errNoCIDFontProgram
-	}
 	return f.t1Font.GetPath(f.getGlyphName(code, parent))
 }
 
@@ -317,9 +362,6 @@ func (f *PDCIDFontType0) HasGlyph(code int, parent *PDType0Font) (bool, error) {
 			return false, err
 		}
 		return charString.GID() != 0, nil
-	}
-	if f.t1Font == nil {
-		return false, errNoCIDFontProgram
 	}
 	return f.t1Font.HasGlyph(f.getGlyphName(code, parent))
 }
@@ -384,9 +426,6 @@ func (f *PDCIDFontType0) WidthFromFont(code int, parent *PDType0Font) (float32, 
 			}
 			width = float32(charString.Width())
 		} else {
-			if f.t1Font == nil {
-				return 0, errNoCIDFontProgram
-			}
 			var err error
 			if width, err = f.t1Font.GetWidth(f.getGlyphName(code, parent)); err != nil {
 				return 0, err
@@ -408,9 +447,6 @@ func (f *PDCIDFontType0) Height(code int, parent *PDType0Font) (float32, error) 
 	charString, err := f.GetType2CharString(cid)
 	if err != nil {
 		return 0, err
-	}
-	if charString == nil {
-		return 0, errNoCIDFontProgram
 	}
 	height := float32(charString.Bounds().Height)
 	f.glyphHeights[cid] = height

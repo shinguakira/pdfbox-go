@@ -51,12 +51,6 @@ func MacOSRomanCodeToName() map[int]string {
 // PDTrueTypeFont is a TrueType font of a PDF.
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDTrueTypeFont.
-//
-// The substitute a system font provides for a font that is not embedded needs
-// the font mapper chain, which slice 4 ports; a font that is not embedded
-// therefore has no font program here, and the paths that read one report that
-// rather than guessing. OpenType fonts with CFF outlines are slice 4 as well.
-// See migration/STATUS.md.
 type PDTrueTypeFont struct {
 	pdSimpleFont
 
@@ -107,12 +101,17 @@ func NewPDTrueTypeFontFromDictionary(fontDictionary *cos.Dictionary, resourceCac
 	f.isEmbedded = ttfFont != nil
 	f.isDamaged = fontIsDamaged
 
-	// Java asks the font mapper for a substitute here; that is B6, so a font
-	// that is not embedded has no font program at all.
-	f.ttf = ttfFont
-	if ttfFont != nil {
-		f.otf = asSupportedOTF(ttfFont)
+	// substitute
+	if ttfFont == nil {
+		mapping := FontMappersInstance().GetTrueTypeFont(f.BaseFont(), f.FontDescriptor())
+		ttfFont = mapping.Font()
+
+		if mapping.IsFallback() {
+			slog.Warn("Using fallback font", "fallback", ttfFont, "font", f.BaseFont())
+		}
 	}
+	f.otf = asSupportedOTF(ttfFont)
+	f.ttf = ttfFont
 
 	if err := f.readEncoding(); err != nil {
 		return nil, err
@@ -152,9 +151,6 @@ func (f *PDTrueTypeFont) readEncodingFromFont() (encoding.Encoding, error) {
 	}
 
 	// synthesize an encoding, so that getEncoding() is always usable
-	if f.ttf == nil {
-		return nil, errNoTrueTypeProgram
-	}
 	post, err := f.ttf.PostScript()
 	if err != nil {
 		return nil, err
@@ -179,10 +175,6 @@ func (f *PDTrueTypeFont) readEncodingFromFont() (encoding.Encoding, error) {
 	}
 	return encoding.NewBuiltInEncoding(codeToName), nil
 }
-
-// errNoTrueTypeProgram is what every path that needs the font program returns
-// while the font mapper is unported.
-var errNoTrueTypeProgram = fmt.Errorf("font: no font program: the font mapper is not ported yet")
 
 // ReadCode reads one character code from the stream.
 func (f *PDTrueTypeFont) ReadCode(in *bytes.Reader) (int, error) {
@@ -213,9 +205,6 @@ func (f *PDTrueTypeFont) generateBoundingBox() (*fontutil.BoundingBox, error) {
 				bbox.UpperRightX(), bbox.UpperRightY()), nil
 		}
 	}
-	if f.ttf == nil {
-		return nil, errNoTrueTypeProgram
-	}
 	return f.ttf.FontBBox()
 }
 
@@ -227,9 +216,6 @@ func (f *PDTrueTypeFont) TrueTypeFont() *ttf.TrueTypeFont { return f.ttf }
 
 // WidthFromFont returns the width the font program gives for the glyph.
 func (f *PDTrueTypeFont) WidthFromFont(code int) (float32, error) {
-	if f.ttf == nil {
-		return 0, errNoTrueTypeProgram
-	}
 	gid, err := f.CodeToGID(code)
 	if err != nil {
 		return 0, err
@@ -251,9 +237,6 @@ func (f *PDTrueTypeFont) WidthFromFont(code int) (float32, error) {
 
 // Height returns how tall the given glyph is.
 func (f *PDTrueTypeFont) Height(code int) (float32, error) {
-	if f.ttf == nil {
-		return 0, errNoTrueTypeProgram
-	}
 	gid, err := f.CodeToGID(code)
 	if err != nil {
 		return 0, err
@@ -274,9 +257,6 @@ func (f *PDTrueTypeFont) Height(code int) (float32, error) {
 
 // encodeCodePoint returns the bytes that draw the given code point.
 func (f *PDTrueTypeFont) encodeCodePoint(unicode int) ([]byte, error) {
-	if f.ttf == nil {
-		return nil, errNoTrueTypeProgram
-	}
 	if f.encoding != nil {
 		name := f.GlyphList().CodePointToName(unicode)
 		if !f.encoding.ContainsName(name) {
@@ -350,9 +330,6 @@ func (f *PDTrueTypeFont) IsEmbedded() bool { return f.isEmbedded }
 
 // GetPath returns the outline of the given glyph.
 func (f *PDTrueTypeFont) GetPath(code int) (*geom.Path2D, error) {
-	if f.ttf == nil {
-		return nil, errNoTrueTypeProgram
-	}
 	gid, err := f.CodeToGID(code)
 	if err != nil {
 		return nil, err
@@ -378,9 +355,6 @@ func (f *PDTrueTypeFont) GetPath(code int) (*geom.Path2D, error) {
 
 // GetPathByName returns the outline of the named glyph.
 func (f *PDTrueTypeFont) GetPathByName(name string) (*geom.Path2D, error) {
-	if f.ttf == nil {
-		return nil, errNoTrueTypeProgram
-	}
 	// handle glyph names and uniXXXX names
 	gid, err := f.ttf.NameToGID(name)
 	if err != nil {
@@ -423,9 +397,6 @@ func (f *PDTrueTypeFont) GetPathByName(name string) (*geom.Path2D, error) {
 // GetNormalizedPath returns the outline of the given glyph, scaled so that the
 // font matrix is the default one.
 func (f *PDTrueTypeFont) GetNormalizedPath(code int) (*geom.Path2D, error) {
-	if f.ttf == nil {
-		return nil, errNoTrueTypeProgram
-	}
 	var path *geom.Path2D
 	var err error
 	if f.otf != nil && f.otf.IsPostScript() {
@@ -485,9 +456,6 @@ func (f *PDTrueTypeFont) getPathFromOutlines(code int) (*geom.Path2D, error) {
 
 // HasGlyphByName reports whether the font has the named glyph.
 func (f *PDTrueTypeFont) HasGlyphByName(name string) (bool, error) {
-	if f.ttf == nil {
-		return false, errNoTrueTypeProgram
-	}
 	gid, err := f.ttf.NameToGID(name)
 	if err != nil {
 		return false, err
@@ -500,12 +468,7 @@ func (f *PDTrueTypeFont) HasGlyphByName(name string) (bool, error) {
 }
 
 // FontBoxFont returns the font program the glyphs are drawn from.
-func (f *PDTrueTypeFont) FontBoxFont() fontbox.FontBoxFont {
-	if f.ttf == nil {
-		return nil
-	}
-	return f.ttf
-}
+func (f *PDTrueTypeFont) FontBoxFont() fontbox.FontBoxFont { return f.ttf }
 
 // HasGlyphForCode reports whether the font has an outline for the glyph.
 func (f *PDTrueTypeFont) HasGlyphForCode(code int) (bool, error) {
@@ -518,9 +481,6 @@ func (f *PDTrueTypeFont) HasGlyphForCode(code int) (bool, error) {
 
 // CodeToGID returns which glyph the given character code reaches.
 func (f *PDTrueTypeFont) CodeToGID(code int) (int, error) {
-	if f.ttf == nil {
-		return 0, errNoTrueTypeProgram
-	}
 	if err := f.extractCmapTable(); err != nil {
 		return 0, err
 	}

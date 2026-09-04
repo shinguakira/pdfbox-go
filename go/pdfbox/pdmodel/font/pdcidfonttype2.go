@@ -19,11 +19,6 @@ import (
 // PDCIDFontType2 is a Type 2 CIDFont (TrueType).
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDCIDFontType2.
-//
-// The substitute the system supplies for a font that is not embedded needs the
-// font mapper chain (B6); until that lands ttf is nil for such a font and every
-// path that reads the font program fails rather than guessing. See
-// migration/STATUS.md.
 type PDCIDFontType2 struct {
 	pdCIDFont
 
@@ -97,9 +92,10 @@ func NewPDCIDFontType2WithFont(fontDictionary *cos.Dictionary,
 		f.isDamaged = fontIsDamaged
 
 		if ttfFont == nil {
-			// Java asks the font mapper for the font or a substitute here; that
-			// is B6, so a font that is not embedded has none.
-			return f, nil
+			var err error
+			if ttfFont, err = f.findFontOrSubstitute(); err != nil {
+				return nil, err
+			}
 		}
 		f.otf = asSupportedOTF(ttfFont)
 		f.ttf = ttfFont
@@ -113,6 +109,38 @@ func NewPDCIDFontType2WithFont(fontDictionary *cos.Dictionary,
 		return nil, err
 	}
 	return f, nil
+}
+
+// findFontOrSubstitute returns the system font of this name, or the substitute
+// the mapper picked for it.
+func (f *PDCIDFontType2) findFontOrSubstitute() (*ttf.TrueTypeFont, error) {
+	var ttfFont *ttf.TrueTypeFont
+
+	mapping := FontMappersInstance().GetCIDFont(f.BaseFont(), f.FontDescriptor(),
+		f.CIDSystemInfo())
+	if mapping.IsCIDFont() {
+		ttfFont = mapping.Font().TrueTypeFont
+	} else {
+		// Java casts the FontBoxFont to TrueTypeFont, which throws
+		// ClassCastException where the mapper handed back another kind.
+		if trueType := mapping.TrueTypeFont(); trueType != nil {
+			ttfFont = trueType.(*ttf.TrueTypeFont)
+		}
+		if ttfFont == nil {
+			// shouldn't happen?!
+			return nil, fmt.Errorf(
+				"font: mapping.TrueTypeFont() returns nil, please report")
+		}
+	}
+	if mapping.IsFallback() {
+		name, err := ttfFont.Name()
+		if err != nil {
+			return nil, err
+		}
+		slog.Warn("Using fallback font for CID-keyed TrueType font",
+			"fallback", name, "font", f.BaseFont())
+	}
+	return ttfFont, nil
 }
 
 // asSupportedOTF gives the OpenType view of a font that has one and is
@@ -218,9 +246,6 @@ func (f *PDCIDFontType2) generateBoundingBox() (*fontutil.BoundingBox, error) {
 				bbox.UpperRightX(), bbox.UpperRightY()), nil
 		}
 	}
-	if f.ttf == nil {
-		return nil, errNoCIDFontProgram
-	}
 	return f.ttf.FontBBox()
 }
 
@@ -289,9 +314,6 @@ func (f *PDCIDFontType2) CodeToGID(code int, parent *PDType0Font) (int, error) {
 
 		// a non-embedded font always has a cmap (otherwise FontMapper won't
 		// load it)
-		if f.cmap == nil {
-			return 0, errNoCIDFontProgram
-		}
 		return f.cmap.GetGlyphID(codePointAt(utf16Units(unicode), 0)), nil
 	}
 
@@ -323,9 +345,6 @@ func (f *PDCIDFontType2) CodeToGID(code int, parent *PDType0Font) (int, error) {
 
 // Height returns how tall the given glyph is.
 func (f *PDCIDFontType2) Height(code int, parent *PDType0Font) (float32, error) {
-	if f.ttf == nil {
-		return 0, errNoCIDFontProgram
-	}
 	// todo: really we want the BBox, (for text extraction:)
 	hh, err := f.ttf.HorizontalHeader()
 	if err != nil {
@@ -341,9 +360,6 @@ func (f *PDCIDFontType2) Height(code int, parent *PDType0Font) (float32, error) 
 
 // WidthFromFont returns the width the font program gives for the glyph.
 func (f *PDCIDFontType2) WidthFromFont(code int, parent *PDType0Font) (float32, error) {
-	if f.ttf == nil {
-		return 0, errNoCIDFontProgram
-	}
 	gid, err := f.CodeToGID(code, parent)
 	if err != nil {
 		return 0, err
@@ -389,9 +405,6 @@ func (f *PDCIDFontType2) Encode(unicode int, parent *PDType0Font) ([]byte, error
 		}
 	} else {
 		// a non-embedded font always has a cmap (otherwise we wouldn't load it)
-		if f.cmap == nil {
-			return nil, errNoCIDFontProgram
-		}
 		cid = f.cmap.GetGlyphID(unicode)
 	}
 
@@ -415,9 +428,6 @@ func (f *PDCIDFontType2) TrueTypeFont() *ttf.TrueTypeFont { return f.ttf }
 
 // GetPath returns the glyph path for the given character code.
 func (f *PDCIDFontType2) GetPath(code int, parent *PDType0Font) (*geom.Path2D, error) {
-	if f.ttf == nil {
-		return nil, errNoCIDFontProgram
-	}
 	if f.otf != nil && f.otf.IsPostScript() {
 		path, err := f.getPathFromOutlines(code, parent)
 		if err != nil {
@@ -448,9 +458,6 @@ func (f *PDCIDFontType2) GetPath(code int, parent *PDType0Font) (*geom.Path2D, e
 
 // GetNormalizedPath returns the glyph path scaled to the 1000 unit square.
 func (f *PDCIDFontType2) GetNormalizedPath(code int, parent *PDType0Font) (*geom.Path2D, error) {
-	if f.ttf == nil {
-		return nil, errNoCIDFontProgram
-	}
 	var path *geom.Path2D
 	var err error
 	if f.otf != nil && f.otf.IsPostScript() {

@@ -719,3 +719,80 @@ written out beside it.
 
 **Confidence** high. The correct walk is in the same package, in the method
 this one exists to complement.
+
+## 19. `FileSystemFontProvider.writeFontInfo` sign-extends a Panose byte before hex
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
+`writeFontInfo`.
+
+**What it does** it writes the ten Panose bytes into the on-disk font cache as
+two hex digits each:
+
+```java
+byte[] bytes = fontInfo.panose.getBytes();
+for (int i = 0; i < 10; i ++)
+{
+    String str = Integer.toHexString(bytes[i]);
+    if (str.length() == 1)
+    {
+        writer.write('0');
+    }
+    writer.write(str);
+}
+```
+
+`bytes[i]` is a signed `byte`, and `Integer.toHexString` takes an `int`, so the
+byte is widened with sign extension first. A value of 0x00–0x7F comes out as one
+or two digits and is padded to two; a value of 0x80–0xFF becomes a negative
+`int` and comes out as **eight** digits — 0x8A prints as `ffffff8a`.
+
+The reader on the other side assumes exactly two digits per value:
+
+```java
+String str = parts[8].substring(i * 2, i * 2 + 2);
+```
+
+**What correct would be** `Integer.toHexString(bytes[i] & 0xFF)`, which is the
+mask the reader already applies coming back (`panose[i] = (byte)(b & 0xff)`).
+
+**Why it matters** one Panose byte of 0x80 or more shifts every later byte of
+the field by six characters, so the ten values read back are garbage — and the
+Panose comparison in `FontMapperImpl.getFontMatches` is the *most reliable*
+signal it has for picking a substitute, per its own comment. The field is not
+long enough to throw, because the field is longer than the twenty characters the
+reader slices, so the damage is silent. The ten standard Panose digits are all
+in 0–15, which is why it survives: it needs a font whose "OS/2" table carries an
+out-of-range Panose value, and those exist but are not common.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
+`writeFontInfo`, which converts through `int8` before `toHexString` so that the
+same eight digits come out.
+
+**Confidence** high. The reader's own `& 0xff` says what the writer meant.
+
+## 20. `FileSystemFontProvider.addTrueTypeFontImpl` ANDs the two halves of a CID supplement
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
+`addTrueTypeFontImpl`, reading the "gcid" table of an Apple AAT font.
+
+**What it does**
+
+```java
+int supplementVersion = bytes[140] << 8 & (bytes[141] & 0xFF);
+```
+
+**What correct would be** `bytes[140] << 8 | (bytes[141] & 0xFF)` — the two
+bytes of a big-endian 16-bit number are ORed together, not ANDed.
+
+**Why it matters** `bytes[140] << 8` has a zero low byte by construction, and
+`bytes[141] & 0xFF` has nothing but a low byte, so the AND is always 0. Every
+AAT font read this way gets supplement 0 in its `CIDSystemInfo`, whatever the
+table says. Nothing in PDFBox compares supplements — `isCharSetMatch` looks at
+registry and ordering only — so the wrong value never changes a substitution,
+but it is written into the on-disk cache and handed to anyone reading
+`FontInfo.getCIDSystemInfo()`.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
+`addTrueTypeFontImpl`, which writes the same `&` with a comment.
+
+**Confidence** high. `&` between disjoint byte lanes cannot be what was meant.

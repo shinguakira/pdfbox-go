@@ -19,11 +19,6 @@ import (
 // PDType1CFont is a Type 1-equivalent CFF font.
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDType1CFont.
-//
-// The substitute the system supplies for a font that is not embedded needs the
-// font mapper chain (B6); until that lands genericFont is nil for such a font
-// and every path that reads the font program fails rather than guessing. See
-// migration/STATUS.md.
 type PDType1CFont struct {
 	pdSimpleFont
 
@@ -78,9 +73,17 @@ func NewPDType1CFontFromDictionary(fontDictionary *cos.Dictionary,
 		f.genericFont = f.cffFont
 		f.isEmbedded = true
 	} else {
-		// Java asks the font mapper for a substitute here; that is B6, so an
-		// unembedded font has none.
-		f.genericFont = nil
+		baseFont := f.BaseFont()
+		mapping := FontMappersInstance().GetFontBoxFont(baseFont, fd)
+		f.genericFont = mapping.Font()
+
+		if mapping.IsFallback() {
+			fontName, err := f.genericFont.Name()
+			if err != nil {
+				return nil, err
+			}
+			slog.Warn("Using fallback font", "fallback", fontName, "font", baseFont)
+		}
 		f.isEmbedded = false
 	}
 	if err := f.readEncoding(); err != nil {
@@ -145,9 +148,6 @@ func (f *PDType1CFont) GetPathByName(name string) (*geom.Path2D, error) {
 	if name == ".notdef" && !f.IsEmbedded() && !f.IsStandard14() {
 		return geom.NewPathFloat(), nil
 	}
-	if f.genericFont == nil {
-		return nil, errNoType1CProgram
-	}
 	if name == "sfthyphen" {
 		return f.genericFont.GetPath("hyphen")
 	}
@@ -163,11 +163,6 @@ func (f *PDType1CFont) GetPathByName(name string) (*geom.Path2D, error) {
 	}
 	return f.genericFont.GetPath(name)
 }
-
-// errNoType1CProgram is what every path that needs the font program returns for
-// a font that is not embedded, while the font mapper is unported.
-var errNoType1CProgram = fmt.Errorf(
-	"font: no font program: the font is not embedded and the font mapper is not ported yet")
 
 // HasGlyphForCode reports whether the font has an outline for the glyph.
 func (f *PDType1CFont) HasGlyphForCode(code int) (bool, error) {
@@ -241,9 +236,6 @@ func (f *PDType1CFont) GetNormalizedPath(code int) (*geom.Path2D, error) {
 
 // HasGlyphByName reports whether the font has the named glyph.
 func (f *PDType1CFont) HasGlyphByName(name string) (bool, error) {
-	if f.genericFont == nil {
-		return false, errNoType1CProgram
-	}
 	return f.genericFont.HasGlyph(name)
 }
 
@@ -266,9 +258,6 @@ func (f *PDType1CFont) generateBoundingBox() (*fontutil.BoundingBox, error) {
 			return fontutil.NewBoundingBoxOf(bbox.LowerLeftX(), bbox.LowerLeftY(),
 				bbox.UpperRightX(), bbox.UpperRightY()), nil
 		}
-	}
-	if f.genericFont == nil {
-		return nil, errNoType1CProgram
 	}
 	return f.genericFont.FontBBox()
 }
@@ -306,10 +295,6 @@ func (f *PDType1CFont) FontMatrix() *util.Matrix {
 	if f.fontMatrix != nil {
 		return f.fontMatrix
 	}
-	if f.genericFont == nil {
-		f.fontMatrix = defaultFontMatrix
-		return f.fontMatrix
-	}
 	numbers, err := f.genericFont.FontMatrix()
 	if err != nil {
 		slog.Debug("Couldn't get font matrix - returning default value", "err", err)
@@ -335,9 +320,6 @@ func (f *PDType1CFont) WidthFromFont(code int) (float32, error) {
 	}
 	if name, err = f.getNameInFont(name); err != nil {
 		return 0, err
-	}
-	if f.genericFont == nil {
-		return 0, errNoType1CProgram
 	}
 	width, err := f.genericFont.GetWidth(name)
 	if err != nil {
@@ -390,7 +372,8 @@ func (f *PDType1CFont) encodeCodePoint(unicode int) ([]byte, error) {
 	inverted := f.encoding.NameToCodeMap()
 
 	hasGlyph := false
-	if f.genericFont != nil {
+	if nameInFont != ".notdef" {
+		// Java's || short-circuits, so a .notdef never reaches hasGlyph.
 		if hasGlyph, err = f.genericFont.HasGlyph(nameInFont); err != nil {
 			return nil, err
 		}
@@ -457,25 +440,23 @@ func (f *PDType1CFont) getNameInFont(name string) (string, error) {
 	if f.IsEmbedded() {
 		return name, nil
 	}
-	if f.genericFont != nil {
-		hasGlyph, err := f.genericFont.HasGlyph(name)
+	hasGlyph, err := f.genericFont.HasGlyph(name)
+	if err != nil {
+		return "", err
+	}
+	if hasGlyph {
+		return name, nil
+	}
+	// try unicode name
+	unicodes := f.GlyphList().ToUnicode(name)
+	if runes := []rune(unicodes); len(runes) == 1 {
+		uniName := getUniNameOfCodePoint(int(runes[0]))
+		hasUni, err := f.genericFont.HasGlyph(uniName)
 		if err != nil {
 			return "", err
 		}
-		if hasGlyph {
-			return name, nil
-		}
-		// try unicode name
-		unicodes := f.GlyphList().ToUnicode(name)
-		if runes := []rune(unicodes); len(runes) == 1 {
-			uniName := getUniNameOfCodePoint(int(runes[0]))
-			hasUni, err := f.genericFont.HasGlyph(uniName)
-			if err != nil {
-				return "", err
-			}
-			if hasUni {
-				return uniName, nil
-			}
+		if hasUni {
+			return uniName, nil
 		}
 	}
 	return ".notdef", nil

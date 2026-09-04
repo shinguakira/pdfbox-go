@@ -305,6 +305,21 @@ func (p *Parser) readTable(tag string) tableBase {
 // that the pair stays visible.
 func (p *Parser) allowCFF() bool { return false }
 
+// ParseTableHeaders reads the headers of the font the given source holds, which
+// it closes.
+//
+// Port of the public TTFParser.parseTableHeaders(RandomAccessRead).
+func (p *Parser) ParseTableHeaders(randomAccessRead pdfio.RandomAccessRead) (*FontHeaders, error) {
+	dataStream, err := newUnbufferedDataStream(randomAccessRead)
+	if err != nil {
+		randomAccessRead.Close()
+		return nil, err
+	}
+	// dataStream closes randomAccessRead
+	defer dataStream.Close()
+	return p.parseTableHeaders(dataStream)
+}
+
 // parseTableHeaders parses all table headers and checks if all needed tables
 // are present, which is based on parseTables.
 //
