@@ -95,12 +95,12 @@ implementation, then move on. Do not open all eight at once.
     and `setContents` since slice 2
 - [ ] B2. `interactive/form` — AcroForms and the field hierarchy
 - [ ] B3. `interactive/annotation` — annotations and their appearance handlers
-- [ ] B4. `interactive/action`
+- [x] B4. `interactive/action`
 - [ ] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
 - [ ] B6. `interactive/digitalsignature`
-- [ ] B7. `interactive/measurement`, `interactive/viewerpreferences`
-  - `viewerpreferences` is done, the whole subpackage. `measurement` is not
-    started
+- [x] B7. `interactive/measurement`, `interactive/viewerpreferences`
+  - both subpackages are done: the five viewer preference enums, and the
+    measure, number format, rectlinear measure and viewport dictionaries
 - [ ] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
       prepress
 - [x] B9. `pdmodel/graphics/optionalcontent` — 3 files, and `PDPropertyList`
