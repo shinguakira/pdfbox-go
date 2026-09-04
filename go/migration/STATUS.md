@@ -18,8 +18,8 @@ Last updated: 2026-09-04
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 17 of 18; `pdfwriter` not started |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset plus the simple font path, the encodings, the font descriptor and the resource cache |
-| 4 | `fontbox` | 143 | in progress — `afm`, `encoding`, the root interfaces, and 15 of 44 `ttf` files |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset, plus `pdmodel/font` at 34 of 39 (the 5 left are the slice 7 embedders) and all 12 encodings |
+| 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | in progress — the engine and every text operator; `text` has all 6 files, minus what needs a document |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
 | 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision |
@@ -472,8 +472,8 @@ blocked decision recorded at the end of this section.
 | `PostScriptTable`, `WGL4Names` | `postscript.go`, `wgl4names.go` | done |
 | `OS2WindowsMetricsTable` | `os2windowsmetrics.go` | done |
 | `CmapTable`, `CmapSubtable`, `CmapLookup` | `cmap.go` | done |
-| `GlyphTable`, `GlyphData`, `GlyphDescription`, `GlyfDescript`, `GlyfSimpleDescript`, `GlyfCompositeDescript`, `GlyfCompositeComp` | `glyph.go` | done — minus `GlyphData.getPath`, which needs `GlyphRenderer` (slice 9) |
-| `gsub/`, `TTFSubsetter`, `TrueTypeCollection`, `OTFParser`, `OpenTypeFont`, `CFFTable`, the vertical and kerning tables | — | not started — slice 4 |
+| `GlyphTable`, `GlyphData`, `GlyphDescription`, `GlyfDescript`, `GlyfSimpleDescript`, `GlyfCompositeDescript`, `GlyfCompositeComp` | `glyph.go` | done — `GlyphData.getPath` needed `GlyphRenderer`, which slice 4 ported |
+| `gsub/`, `TTFSubsetter`, `TrueTypeCollection`, `OTFParser`, `OpenTypeFont`, `CFFTable`, the vertical and kerning tables | — | not started when slice 3 closed; ported in slice 4, see below |
 
 Every table the parser does not read keeps its place in the directory as an
 `UnknownTable`, so a later slice can add the read without the file being walked
@@ -533,10 +533,13 @@ What a font in this slice cannot do, and why:
 - **No font program for a font that is not embedded.** The font mapper chain and
   `fontbox/util/autodetect` are slice 4. Every path that would read a width or
   an outline out of a substitute reports that rather than guessing; the widths
-  of a standard 14 font come from its AFM and are unaffected.
-- **No glyph outlines.** `GlyphRenderer` and the CFF charstrings are slice 9.
+  of a standard 14 font come from its AFM and are unaffected. **Closed by slice
+  4.**
+- **No glyph outlines.** `GlyphRenderer` and the CFF charstrings were listed
+  here as slice 9; both landed in slice 4 instead. **Closed.**
 - **No embedded Type 1 program.** `fontbox/type1` is slice 4; until then such a
   font reads as damaged, which is what Java does with one it cannot parse.
+  **Closed by slice 4.**
 
 Three cycles Java does not have, and how each is broken:
 
@@ -752,5 +755,176 @@ port had reversed runes, which keeps the character whole. Reverted, recorded as
   substitute, because its font mapper never returns null. The same holds for
   `PDFont.getWidthFromFont` on a font with no `/Widths` array. This is the
   largest practical gap in the slice after the missing ToUnicode CMap.
+  **Closed by slice 4:** the mapper always returns a font, down to the
+  last-resort LiberationSans, so nothing aborts for want of one.
 - **`minYTopForLine` is computed and never read**, in the port as in Java, whose
   own comment says the check it was meant for caused regression failures.
+
+## Slice 4 — text from CID and CFF fonts
+
+Branch `slice/4-text-cid-cff`. The slice finishes `fontbox` — the CFF and Type 1
+font programs, the CMaps, the rest of the TrueType tables and the GSUB shaping
+machinery — and the CID half of the font model, including the font mapper that
+finds a substitute on the machine for a font a PDF does not embed.
+
+### `fontbox/cmap` — all 5 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `CMap`, `CMapParser`, `CMapStrings`, `CIDRange`, `CodespaceRange` | `cmap.go`, `cmapparser.go`, `cmapstrings.go` | done — all 5 Java tests |
+
+The predefined CMaps under `org/apache/fontbox/resources/cmap` are copied byte
+for byte into `fontbox/resources` and embedded; Go has no classpath.
+
+`CMapStrings` builds its 65536-entry and 256-entry tables eagerly, where Java
+fills them in a static block. `getMapping` and `getIndexValue` return the
+comma-ok pair Java gets from a `null` return.
+
+### `fontbox/type1` and `fontbox/pfb` — all 7 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `Type1Font`, `Type1Parser`, `Type1Lexer`, `Token`, `DamagedFontException` | `type1font.go`, `type1parser.go`, `lexer.go`, `token.go` | done — `Type1LexerTest` and the `Type1Font` half of `PfbParserTest` |
+| `Type1CharStringReader` | `cff/type1charstring.go` | moved — see the cycle note below |
+| `pfb/PfbParser` | `pfb/pfbparser.go` | done — 3 of the 5 `PfbParserTest` cases; the other 2 need a font this repository does not carry |
+
+`PfbParser` accumulates its record size in `int32`, so a record whose length
+byte sets bit 31 goes negative and trips the "record size is negative" check the
+way Java's 32-bit `int` does.
+
+`Type1Parser.decrypt` needed brackets: Java's `&` binds looser than `+`, so the
+whole sum is masked, while Go's binds tighter.
+
+### `fontbox/cff` — all 26 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `CFFParser`, `CFFFont`, `CFFCIDFont`, `CFFType1Font`, the four charsets and the two encodings, `CFFStandardString`, `CFFOperator`, `CharStringCommand`, `Type1CharString`, `Type2CharString`, the two charstring parsers, `DataInput` and its two implementations, `CharStringHandler`, `IndexData`, `FDSelect` and its two formats | `cff/` (15 files) | done — 5 of the 6 Java tests |
+
+`CFFParserTest` skips: it reads a font the Java build downloads into
+`target/fonts`.
+
+`DataInput.readByte` is `ReadSignedByte` here, because `go vet` reserves
+`ReadByte() (byte, error)` for `io.ByteReader`.
+
+Two Java package cycles the Go cannot have, both resolved by moving the
+declaration to the package that is depended on:
+
+- **`cff` ↔ `type1`.** `Type1CharStringReader` lives in `type1` in Java and is
+  implemented by `CFFType1Font`. The port declares it in `cff` and aliases it
+  back from `type1`.
+- **`cff` ↔ `ttf`.** `CFFParser.parseFirstSubFontROS` writes into a
+  `FontHeaders`, which lives in `ttf`, which reads `cff` for its `CFF ` table.
+  The port declares a `FontHeadersSink` interface in `cff` that `FontHeaders`
+  satisfies.
+
+### `fontbox/ttf` — the other 29 files, and the 39 of the GSUB tree
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `OTFParser`, `OpenTypeFont`, `CFFTable`, `OTLTable` | `opentype.go` | done |
+| `TrueTypeCollection`, `TTCDataStream`, `RandomAccessReadUnbufferedDataStream` | `collection.go` | done — `TrueTypeFontCollectionTest`, 2 of its 3 collections present on this machine |
+| `FontHeaders`, and the `readHeaders` of every table that has one | `fontheaders.go` | done |
+| `GlyphRenderer` | `glyphrenderer.go` | done |
+| `TTFSubsetter` | `ttfsubsetter.go` | done — 5 of the 8 `TTFSubsetterTest` cases |
+| `VerticalHeaderTable`, `VerticalMetricsTable`, `VerticalOriginTable`, `DigitalSignatureTable` | `verticaltables.go` | done |
+| `KerningTable`, `KerningSubtable` | `kerning.go` | done |
+| `OpenTypeScript` | `opentypescript.go`, `opentypescripttable.go` | done — `Scripts.txt` embedded, 953 ranges |
+| `GlyphSubstitutionTable`, `SubstitutingCmapLookup` | `glyphsubstitution.go`, `opentype.go` | done — both `GlyphSubstitutionTable*Test` |
+| `gsub/*.java` (13) | `ttf/gsub/` | done — `CompoundCharacterTokenizerTest`, `GlyphArraySplitterRegexImplTest`, `DefaultGsubWorkerTest`, `GsubWorkerForLatinTest`, `GsubWorkerForBengaliTest`, `GsubWorkerForDfltTest` |
+| `model/*.java` (5) | `ttf/model/model.go` | done |
+| `table/common/*.java` (12) | `ttf/table/common/common.go` | done |
+| `table/gsub/*.java` (9) | `ttf/table/gsub/gsub.go` | done |
+
+A third Java package cycle: **`gsub` ↔ `ttf`.** `GsubWorker` takes a
+`CmapLookup`, which lives in `ttf`, which reaches into `gsub` for its worker
+factory. The port declares the two-method `CmapLookup` in `gsub` as well.
+
+`model.GlyphKey` stands for Java's `List<Integer>` map key, which Go cannot use:
+it is the ids joined with commas.
+
+Go's `regexp` is leftmost-first the way Java's is, so the longest-first
+alternation the compound-character tokenizer builds carries over unchanged.
+
+`TrueTypeFont.getPath` reads the glyph and returns its path now that
+`GlyphRenderer` is here; it was the last "not ported yet" in `fontbox`.
+
+### `fontbox/util/autodetect` — all 7 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `FontDirFinder`, `NativeFontDirFinder`, `UnixFontDirFinder`, `MacFontDirFinder`, `OS400FontDirFinder`, `WindowsFontDirFinder`, `FontFileFinder` | `util/autodetect/autodetect.go` | done |
+
+A substitution rather than a transliteration, as the task file called for: Java
+reads the `os.name` and `env.windir` system properties, and the port reads
+`runtime.GOOS` and the environment. `File.isHidden` becomes a leading dot, which
+is what a font directory is ever likely to carry. `find()` gives back paths
+rather than URIs, which is what every caller turned them into anyway.
+
+### `pdmodel/font` — the CID half, and the font mapper chain
+
+34 of 39 files. The five that are left are the embedders, which slice 7 needs:
+`TrueTypeEmbedder`, `PDTrueTypeFontEmbedder`, `PDCIDFontType2Embedder`,
+`Subsetter` and `ToUnicodeWriter`.
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `PDType0Font` | `pdtype0font.go` | done |
+| `PDCIDFont`, `PDCIDSystemInfo` | `pdcidfont.go` | done |
+| `PDCIDFontType0` | `pdcidfonttype0.go` | done |
+| `PDCIDFontType2` | `pdcidfonttype2.go` | done |
+| `PDType1CFont`, `PDMMType1Font` | `pdtype1cfont.go`, `pdmmtype1font.go` | done |
+| `CMapManager` | `cmapmanager.go` | done |
+| `PDFont.toUnicode` and the ToUnicode CMap | `pdfont.go` | done — the hole slice 3 left |
+| `FontMapper`, `FontMappers`, `FontMapperImpl` | `fontmapper.go`, `fontmappers.go`, `fontmapperimpl.go` | done — `CIDCharSetMatchTest` |
+| `FontMapping`, `CIDFontMapping` | `fontmapping.go` | done |
+| `FontProvider`, `FileSystemFontProvider` | `fontprovider.go`, `filesystemfontprovider.go` | done |
+| `FontCache`, `FontInfo`, `FontFormat`, `CIDSystemInfo` | `fontcache.go`, `fontinfo.go`, `fontformat.go`, `cidsysteminfo.go` | done |
+
+With the mapper here, the five font classes that had no font program for an
+unembedded font — `PDType1Font`, `PDType1CFont`, `PDTrueTypeFont`,
+`PDCIDFontType0`, `PDCIDFontType2` — all take the Java path and get a
+substitute. Every "the font mapper is not ported yet" error is gone.
+
+`PDCIDFontType0SubstituteTest` is ported and skips on this machine, as its Java
+`assumeTrue` does: it needs a CID-keyed Adobe-CNS1 substitute installed.
+
+Four deviations, each commented where it is:
+
+- **`FontCache` holds its fonts outright.** Java holds each through a
+  `SoftReference`, so the collector may drop one and the next lookup re-reads it
+  from disk. Go has no soft reference and no hook that stands in for one. Nothing
+  observes the difference beyond memory use.
+- **`java.util.PriorityQueue` is ported, not replaced with a sort.**
+  `getFontMatches` scores every candidate and polls the best; two candidates of
+  equal score come back in the order the heap gives them, which a sort would
+  order differently. `siftUp` and `siftDown` are written out, and so is
+  `Double.compare`.
+- **`FontMapperImpl.fontInfoByName` keeps its insertion order.** Java's is a
+  `LinkedHashMap`, and the order decides which of two equally good candidates
+  wins. The port carries the key order in a slice beside the map.
+- **The two system properties are package variables.** `pdfbox.fontcache` is
+  `font.FontCacheDir` and `pdfbox.fontcache.skipchecksums` is
+  `font.SkipChecksums`, each with the Java default. The on-disk `.pdfbox.cache`
+  is written in exactly the Java format, including the platform line separator,
+  so the two implementations can read each other's.
+
+### The corpus — 34 of 40 unsorted, 33 sorted
+
+Slice 3 left it at **16 of 40 either way**. The Type 0 fonts, the Type 1C fonts
+and the ToUnicode CMaps that accounted for 19 of the 24 failures are all read
+now.
+
+**40 of 40 open. 34 of 40 match unsorted, 33 sorted.** The 6 that do not:
+
+| Cause | Files | Where it lands |
+| --- | ---: | --- |
+| Text drawn through a form XObject (`Do`) | 3 | the graphics slice — `PDFBOX-3498-…`, `PDFBOX-4322-Empty-ToUnicode-reduced`, `Liste732004001452_…` |
+| Article beads | 2 | needs `PDThreadBead` in `pdmodel/interactive/pagenavigation`; both are `PDFBOX-3110-poems-beads` |
+| Arabic diacritics ordered differently | 1 | `FC60_Times.pdf`; the merge logic matches the Java line for line, so the difference is upstream in the widths or in `XDirAdj` |
+
+Sorted mode fails one more, `PDFBOX-3127-…VFont.pdf`, on a single missing space.
+
+The three form-XObject files draw all of their text inside a `Do`, which the
+content-stream engine does not descend into yet; that was confirmed by dumping
+their content streams, not inferred.

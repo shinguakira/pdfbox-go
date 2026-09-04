@@ -69,12 +69,12 @@ The bulk of `fontbox`, and the CID half of the font model.
 - [x] A1. `fontbox/cmap` — port all 5 Java tests
 - [x] A2. `fontbox/type1` — port the 1 Java test
 - [x] A3. `fontbox/cff` — port all 6 Java tests
-- [ ] A4. `fontbox/ttf` — port `GlyphSubstitutionTableTest`,
+- [x] A4. `fontbox/ttf` — port `GlyphSubstitutionTableTest`,
       `GlyphSubstitutionTableLiberationFontTest`, `TTFSubsetterTest`,
       `TrueTypeFontCollectionTest`
-- [ ] A5. `pdmodel/font` — port `CIDCharSetMatchTest`,
+- [x] A5. `pdmodel/font` — port `CIDCharSetMatchTest`,
       `PDCIDFontType0SubstituteTest`
-- [ ] A6. Extend the slice 3 corpus test — the score should move
+- [x] A6. Extend the slice 3 corpus test — the score should move
 
 ---
 
@@ -84,7 +84,7 @@ The bulk of `fontbox`, and the CID half of the font model.
 - [x] B2. `fontbox/type1` — the Type 1 font parser, and `fontbox/pfb` — the
       PFB container it arrives in
 - [x] B3. `fontbox/cff` — CFF and Type 2 charstrings, 26 files
-- [ ] B4. `fontbox/ttf` — the rest of it
+- [x] B4. `fontbox/ttf` — the rest of it
   - GSUB: `gsub/` 13 files, `model/` 5, `table/common/` 12, `table/gsub/` 9 —
     39 files, more than the 13 the `gsub` directory alone suggests
   - OpenType (`OTFParser`, `OpenTypeFont`, `OpenTypeScript`, `CFFTable`),
@@ -92,28 +92,28 @@ The bulk of `fontbox`, and the CID half of the font model.
     kerning tables, `TTFSubsetter`, `GlyphRenderer`,
     `SubstitutingCmapLookup`, `RandomAccessReadUnbufferedDataStream`,
     `DigitalSignatureTable`, `FontHeaders`
-- [ ] B5. `pdmodel/font` — `PDType0Font`, `PDCIDFont`, `PDCIDFontType0`,
+- [x] B5. `pdmodel/font` — `PDType0Font`, `PDCIDFont`, `PDCIDFontType0`,
       `PDCIDFontType2`, `CIDSystemInfo`, `PDCIDSystemInfo`, `CMapManager`,
       `PDType1CFont`, `PDMMType1Font`
-- [ ] B6. `pdmodel/font` — the font mapper chain: `FontMapper`,
+- [x] B6. `pdmodel/font` — the font mapper chain: `FontMapper`,
       `FontMapperImpl`, `FontMappers`, `FontMapping`, `CIDFontMapping`,
       `FontProvider`, `FileSystemFontProvider`, `FontCache`, `FontInfo`,
       `FontFormat`
   - and `fontbox/util/autodetect` — 7 files, the per-platform font directory
     finders `FileSystemFontProvider` scans. Windows, Mac and Unix each have
     their own; the Go equivalent is a substitution, not a transliteration.
-- [ ] B7. `pdmodel/font/encoding` — anything slice 3 left
+- [x] B7. `pdmodel/font/encoding` — anything slice 3 left
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
-- [ ] C6. Report the corpus score as *N of 40*, and the change from slice 3
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
+- [x] C6. Report the corpus score as *N of 40*, and the change from slice 3 — **34 of 40 unsorted, 33 sorted**, from 16 either way
 
 ---
 
