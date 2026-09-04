@@ -158,3 +158,6 @@ the tests, not that the migration is faithful.
 
 **E — user feedback.** Stop. Wait. Judge each item before acting, and where it
 needs fixing, write a strict failing test first.
+
+**A to D run without stopping.** E1 is the only stop; finishing a task, a
+phase, a package or a commit is not one.

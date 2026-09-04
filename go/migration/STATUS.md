@@ -9,7 +9,7 @@ none". This file is where partial work and the reasons for it get recorded.
 
 Status values: `done` · `in progress` · `blocked` · `not started` · `out of scope`
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Summary
 
@@ -17,12 +17,13 @@ Last updated: 2026-09-03
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 12 of 18 |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — the slice 2 subset: page, page tree, resources, rectangle, graphics state, colour |
-| 4 | `fontbox` | 143 | in progress — `BoundingBox` only, pulled in by `PDRectangle` |
-| 5 | `contentstream`, `text` | 85 | in progress — the engine, the dispatch, and the operators needing no font |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 17 of 18; `pdfwriter` not started |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset plus the simple font path, the encodings, the font descriptor and the resource cache |
+| 4 | `fontbox` | 143 | in progress — `afm`, `encoding`, the root interfaces, and 15 of 44 `ttf` files |
+| 5 | `contentstream`, `text` | 85 | in progress — the engine and every text operator; `text` has all 6 files, minus what needs a document |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
 | 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision |
+| — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points |
 | 7 | `cmd/pdfbox` | 26 | not started |
 | — | `xmpbox` | 74 | not started |
 
@@ -312,10 +313,11 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `common/PDImmutableRectangle.java` | `common/pdrectangle.go` | done — as a flag, since Go has no subclassing; `PDImmutableRectangleTest` ported |
 | `common/PDDictionaryWrapper.java` | `common/pddictionarywrapper.go` | done |
 | `common/PDTypedDictionaryWrapper.java` | `common/pdtypeddictionarywrapper.go` | done |
-| `common/PDStream.java` | — | not started — needs `COSArrayList`, `COSDictionaryMap`, `PDMetadata` and a file specification |
+| `common/PDStream.java` | `common/pdstream.go` | partial — the reading path the fonts need; the writing constructors, the decode parameters, the file specification and the metadata still need `COSArrayList`, `COSDictionaryMap`, `PDMetadata` and a file specification |
 | `common/COSArrayList.java` | — | not started — its Java test needs annotations |
-| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing; every typed getter waits on the type it returns |
-| `ResourceCache.java` | — | not started — every method is typed on a font, colour space, shading, pattern or XObject |
+| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing and `getFont` with its direct cache; `getColorSpace`, `getExtGState`, `getShading`, `getPattern`, `getProperties` and `getXObject` still wait on the type each returns |
+| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | partial — the font and font descriptor members; the colour space, graphics state, shading, pattern, property list and XObject members wait on their types. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package |
+| `DefaultResourceCache.java` | `resourcecache.go` | partial — the font and font descriptor halves, including the stable-cache bookkeeping. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
 | `PDPage.java` | `pdpage.go` | partial — boxes, rotation, resources, contents; annotations, thread beads, transitions, actions, viewports, metadata and the `PDStream` methods are absent |
 | `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
 | `MissingResourceException.java` | `errors.go` | done |
@@ -340,7 +342,7 @@ of which is ported.
 | the other 20 colour spaces | — | not started |
 | `state/RenderingIntent.java` | `graphics/state/renderingintent.go` | done — `RenderingIntentTest` ported |
 | `state/RenderingMode.java` | `graphics/state/renderingmode.go` | done |
-| `state/PDTextState.java` | `graphics/state/pdtextstate.go` | done — minus the font, which needs `PDFont` |
+| `state/PDTextState.java` | `graphics/state/pdtextstate.go` | done |
 | `state/PDGraphicsState.java` | `graphics/state/pdgraphicsstate.go` | partial — minus the soft mask, `getCurrentClippingPath` and the Area form of `intersectClippingPath`, and the two Java composites |
 | `state/PDSoftMask.java` | — | not started — needs a transparency group and a function |
 | `state/PDExtendedGraphicsState.java` | — | not started — reads fonts, soft masks and dash patterns out of a dictionary |
@@ -440,3 +442,315 @@ rejects it as invalid hex. The port had sliced `hex[start:end]`, correcting it.
 Reverted, recorded as [`JAVA-BUGS.md`](JAVA-BUGS.md) entry 11, and pinned by
 `string_test.go`, which now asserts the error and the force-parsing
 substitution.
+
+## Slice 3 — text from simple fonts
+
+Branch `slice/3-text-simple-fonts`. The slice reads the font programs and the
+encodings a simple font needs, decodes the text operators, and writes out the
+text of a page. What it does not carry is the file-opening path: the loader is a
+blocked decision recorded at the end of this section.
+
+### `fontbox` — the root and the metrics
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `FontBoxFont.java` | `fontbox/fontboxfont.go` | done |
+| `EncodedFont.java` | `fontbox/fontboxfont.go` | done |
+| `afm/*.java` (8) | `fontbox/afm/` | done — all 8, with all 8 Java tests |
+| `encoding/*.java` (4) | `fontbox/encoding/` | done — `EncodingTest` ported |
+
+### `fontbox/ttf` — the reading path
+
+15 of 44 files: the table directory, and the ten tables text extraction reads.
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `TTFDataStream`, `RandomAccessReadDataStream` | `datastream.go` | done |
+| `TTFParser`, `TTFTable`, `TrueTypeFont` | `ttfparser.go`, `table.go`, `truetypefont.go` | done for the tables below |
+| `HeaderTable`, `MaximumProfileTable`, `HorizontalHeaderTable`, `HorizontalMetricsTable`, `IndexToLocationTable` | `tables.go` | done |
+| `NamingTable`, `NameRecord` | `naming.go` | done — minus `readHeaders`, the `FontHeaders` fast path, which is slice 4 |
+| `PostScriptTable`, `WGL4Names` | `postscript.go`, `wgl4names.go` | done |
+| `OS2WindowsMetricsTable` | `os2windowsmetrics.go` | done |
+| `CmapTable`, `CmapSubtable`, `CmapLookup` | `cmap.go` | done |
+| `GlyphTable`, `GlyphData`, `GlyphDescription`, `GlyfDescript`, `GlyfSimpleDescript`, `GlyfCompositeDescript`, `GlyfCompositeComp` | `glyph.go` | done — minus `GlyphData.getPath`, which needs `GlyphRenderer` (slice 9) |
+| `gsub/`, `TTFSubsetter`, `TrueTypeCollection`, `OTFParser`, `OpenTypeFont`, `CFFTable`, the vertical and kerning tables | — | not started — slice 4 |
+
+Every table the parser does not read keeps its place in the directory as an
+`UnknownTable`, so a later slice can add the read without the file being walked
+again.
+
+Two things Go cannot reproduce directly, both commented where they are:
+
+- **`TrueTypeFont.readTable` is not locked**, matching Java, which locks only
+  `getTableBytes`. A table read reaches back into the font for the tables it
+  depends on; a lock there would deadlock where Java simply re-enters its own
+  monitor. `GlyphTable` does lock its own stream, so the recursion a composite
+  glyph makes goes through `getGlyphLocked`.
+- **`GlyfCompositeDescript` shadows the parent's `contourCount`** with a field
+  of its own. Go embedding does not shadow, so the composite count has its own
+  name.
+
+`TestCMapSubtable` is not ported: both of its tests read fonts the Java build
+downloads into `target/fonts`, which this repository does not carry.
+`TestTTFParser.testParseVertical` and `testParseHeaders` likewise.
+
+### `pdmodel/font/encoding` — all 12 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `Encoding`, `BuiltInEncoding`, `DictionaryEncoding`, `Type1Encoding` | `encoding.go`, `dictionaryencoding.go` | done |
+| `StandardEncoding`, `WinAnsiEncoding`, `MacRomanEncoding`, `MacOSRomanEncoding`, `MacExpertEncoding`, `SymbolEncoding`, `ZapfDingbatsEncoding` | `encodings.go`, `tables.go` | done — the seven tables generated from the Java |
+| `GlyphList` | `glyphlist.go` | done |
+
+`glyphlist.txt`, `zapfdingbats.txt` and `additional.txt` are copied byte for
+byte into `pdfbox/resources` and embedded, since Go has no classpath.
+
+Three places walk a Java `HashMap` whose result depends on the iteration order
+Java leaves unspecified — `BuiltInEncoding`, `Type1Encoding.fromFontBox` and the
+reverse glyph list. The port walks the keys in order instead, so the same input
+always gives the same encoding.
+
+### `pdmodel/font` — the simple font path
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `PDFontLike`, `PDVectorFont` | `pdfont.go` | done |
+| `PDFont`, `PDSimpleFont` | `pdfont.go`, `pdsimplefont.go` | done — minus the ToUnicode CMap, below |
+| `PDFontDescriptor`, `PDPanose`, `PDPanoseClassification` | `pdfontdescriptor.go`, `pdpanose.go` | done |
+| `Standard14Fonts`, `UniUtil` | `standard14fonts.go` | done — the 15 AFM files embedded |
+| `PDType1Font` | `pdtype1font.go` | partial — the standard 14 path is whole; the embedded PFB needs `fontbox/type1` and the substitute needs the font mapper, both slice 4 |
+| `PDTrueTypeFont` | `pdtruetypefont.go` | partial — an embedded font is read whole; a font that is not embedded has no substitute until the font mapper arrives |
+| `PDType3Font`, `PDType3CharProc` | `pdtype3font.go`, `pdtype3charproc.go` | done |
+| `PDFontFactory` | `pdfontfactory.go` | partial — Type 1, TrueType and Type 3; Type 0, Type 1C, Multiple Master and the CID fonts report that they are not ported |
+| `PDType0Font`, `PDCIDFont*`, `PDType1CFont`, `PDMMType1Font`, the `FontMapper` chain, every `*Embedder`, `Subsetter`, `ToUnicodeWriter`, `CMapManager`, `FontCache`, `FileSystemFontProvider` | — | not started — slices 4 and 7 |
+
+What a font in this slice cannot do, and why:
+
+- **No ToUnicode CMap.** `fontbox/cmap` is slice 4. `PDFont.toUnicode` therefore
+  always falls through to what each font works out from its encoding, which is
+  the same path a font carrying no `/ToUnicode` takes. This is the single
+  largest thing standing between this slice and correct text on a real corpus.
+- **No font program for a font that is not embedded.** The font mapper chain and
+  `fontbox/util/autodetect` are slice 4. Every path that would read a width or
+  an outline out of a substitute reports that rather than guessing; the widths
+  of a standard 14 font come from its AFM and are unaffected.
+- **No glyph outlines.** `GlyphRenderer` and the CFF charstrings are slice 9.
+- **No embedded Type 1 program.** `fontbox/type1` is slice 4; until then such a
+  font reads as damaged, which is what Java does with one it cannot parse.
+
+Three cycles Java does not have, and how each is broken:
+
+- **`ResourceCache` names `PDFont`**, and Java puts it in `pdmodel`, which this
+  package's parent imports. The interface is declared in `pdmodel/font` and
+  `pdmodel` aliases it back under its Java name.
+- **`PDType3Font.getResources` and `PDType3CharProc.getResources` return a
+  `PDResources`**, likewise in `pdmodel`. They hand out the resource dictionary
+  instead, and `contentstream` wraps it where the engine needs one.
+- **The `PDFont` constructor calls the abstract `getName`.** Java dispatches
+  virtually from a constructor and Go does not, so the port splits it: the
+  concrete font sets `self`, then calls `initFromDictionary`.
+
+### `pdmodel` — the holes slice 2 left
+
+`PDResources.getFont` with its direct font cache, `ResourceCache` and
+`DefaultResourceCache` for the font and font descriptor members, the font field
+of `PDTextState`, and the reading half of `common/PDStream`. Java holds every
+cache entry through a `SoftReference`; Go has none and the port holds them
+outright. The stable-cache bookkeeping in `removeFont` is ported as it stands,
+since it decides whether a re-read gives the same font object.
+
+### `contentstream` — the text path
+
+The five text-showing operators, and the engine methods behind them: `showText`,
+`showTextString`, `showTextStrings`, `applyTextAdjustment`, `showGlyph`,
+`showFontGlyph`, `showType3Glyph`, `processType3Stream` and `getDefaultFont`.
+The four glyph hooks join `StreamEngineOverrides`.
+
+`shouldProcessColorOperators` is still always true: the Type 3 char proc case
+that clears it is `d0`/`d1` handling, which belongs with the renderer.
+`processChildStream` is still absent, so a form XObject is still not walked.
+
+### `pdfbox/text` — 6 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `TextPosition`, `TextPositionComparator` | `textposition.go` | done |
+| `LegacyPDFStreamEngine` | `legacystreamengine.go` | done — minus the `DrawObject` processor, which walks into a form XObject |
+| `PDFTextStripper` | `pdftextstripper.go` | partial — the page walk is whole; `getText(PDDocument)`, `writeText`, the bookmark range and the article beads need types this slice does not carry |
+| `PDFTextStripperByArea` | `pdftextstripperbyarea.go` | done |
+| `PDFMarkedContentExtractor` | `pdfmarkedcontentextractor.go` | done — minus the XObject walk |
+| `pdmodel/documentinterchange/markedcontent/PDMarkedContent` | `.../pdmarkedcontent.go` | done — `PDArtifactMarkedContent` folded in, since only its tag matters here |
+
+Two deliberate departures:
+
+- **The default line separator is a line feed, not `System.lineSeparator()`.**
+  Java's choice makes the text a document yields depend on the machine that read
+  it. A caller wanting the platform separator sets it.
+- **The sort is always `IterativeMergeSort`.** Java tries the JDK sort first and
+  falls back when it throws on the intransitive comparator; Go's sort does not
+  check, so trying it first would give a different order on exactly the
+  documents the fallback exists for.
+
+`golang.org/x/text` is the module's first dependency, for the NFKC
+normalisation and the bidi reordering the stripper needs and the Go standard
+library does not carry.
+
+### The loader — slice 1's unfinished half, ported here
+
+`PLAN.md` slice 1 is "open a document" and lists `pdfbox/pdfparser` at 18 files.
+The branch was merged to `migration-base` at 12 of 18, with the rows above
+recording `COSParser` as "next" and `PDFParser` as "not started — the entry
+point". Nothing in the tree could open a `.pdf`; `go/cmd/` was empty. Slices 2
+and 3 did not notice, because both take a `PDPage` a caller hands them. Slice 3
+is the first slice whose acceptance criterion — score 40 real PDFs — cannot be
+met without a file, so the work was done here as a special case.
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `COSParser.java` (the file half) | `pdfparser/fileparser.go` | done — minus encryption |
+| `XrefParser.java` | `pdfparser/xrefparser.go` | done |
+| `PDFXrefStreamParser.java` | `pdfparser/xrefstreamparser.go` | done |
+| `PDFObjectStreamParser.java` | `pdfparser/objectstreamparser.go` | done |
+| `BruteForceParser.java` | `pdfparser/bruteforceparser.go` | done |
+| `PDFParser.java` | `pdfparser/pdfparser.go` | done — returns a `cos.Document`, and `Loader` wraps it |
+| `Loader.java` | `pdfbox/loader.go` | done — the reading entry points |
+| `PDDocument.java` | `pdmodel/pddocument.go` | partial — the reading path; signatures, form fields, importing a page and saving each need a package this port has not reached |
+| `PDDocumentCatalog.java` | `pdmodel/pddocument.go` | partial — the pages and the version; forms, outlines, names, threads, metadata and actions wait on their types |
+| `PDDocumentInformation.java` | `pdmodel/pddocument.go` | partial — minus the dates, which need the COS date parsing slice 1 left out |
+| `PDFXRefStream.java`, `EndstreamFilterStream.java`, `FDFParser.java` | — | not started — the first two are the writing path, the third is FDF |
+
+Four things worth naming:
+
+- **A cross-reference table is keyed on the packed object number and
+  generation**, which is what `COSObjectKey.equals` compares — the stream index
+  is left out. `XrefEntries` carries that, because a Go map on the key struct
+  would compare the stream index too and split entries Java merges.
+- **`cos.Document` gained `XRefOffset`, `PutXRefOffset` and `ClearXRefTable`,
+  and `XrefTrailerResolver` gained `ReplaceXrefTable`.** Java writes through the
+  live map its getter returns; the port's getters return copies, so each write
+  is a method.
+- **`PDPageTree` and `PDPage` now carry the `ResourceCache`.** Java passes a
+  `PDDocument` into the reading constructor, which is only there to reach that
+  cache. This closes the slice 1 hole recorded above.
+- **Encryption is not ported.** `pdmodel/encryption` is a package this port has
+  not reached, so an encrypted document is reported rather than decrypted.
+
+### The corpus — 16 of 40
+
+`TestTextStripper` walks the 40 PDFs of `pdfbox/src/test/resources/input` and
+compares against the expected text checked in beside each. The port scores
+rather than asserts, because a document needing something this slice does not
+carry cannot match and a failing assertion would say nothing new.
+
+**40 of 40 open. 16 of 40 match the expected text exactly.** The 24 that do not:
+
+| Cause | Files | Where it lands |
+| --- | ---: | --- |
+| Type 0 font | 12 | slice 4 — `PDType0Font` and the CID fonts |
+| Type 1C font | 3 | slice 4 — `fontbox/cff` |
+| ToUnicode CMap | 4 | slice 4 — `fontbox/cmap` |
+| Article beads | 2 | needs `PDThreadBead`; both are `PDFBOX-3110-poems-beads` |
+| Yields nothing, cause not yet established | 2 | `PDFBOX-3498-…` and `Liste732004001452_…` |
+| One line differs in spacing | 1 | `cweb.pdf` line 249 |
+
+The last three rows are the ones to look at first; the first three are the
+slice 4 work in the order it will pay off.
+
+### One more port defect the corpus found, fixed
+
+`PDFont.getSpaceWidth` wraps its `getStringWidth(" ")` call in a catch for
+`IllegalArgumentException` and `UnsupportedOperationException` — "Happens if
+space is not available in the font or if encoding isn't implemented". A Type 3
+font's `encode` throws the second outright, so that catch is the ordinary path
+for every Type 3 font rather than an edge case. The port had let the equivalent
+panic escape, which took down the whole page walk; `stringWidthOfSpace` now
+recovers it where Java catches.
+
+### Port defects found in the slice 3 review, fixed
+
+Five, all found by reading the Java beside the Go rather than by the ported
+tests. Each carries a test in `text/review_test.go` that fails without the fix.
+
+- **Four length comparisons counted runes where Java counts UTF-16 units.**
+  `TextPosition.mergeDiacritic` returns early for a diacritic of length > 1,
+  `isDiacritic` requires length 1, and the duplicate-suppression tolerance in
+  both `PDFTextStripper` and `PDFMarkedContentExtractor` divides by the length.
+  A character outside the basic plane is one rune and two UTF-16 units, so the
+  port merged diacritics Java leaves alone and used half the tolerance Java uses.
+  `utf16Length` now counts the way Java does at each of the four.
+- **`hasFontOrSizeChanged` dropped Java's last branch.** Java compares font
+  names, and where *both* are null falls back to comparing `PDFont.hashCode`,
+  which is the hash of the font dictionary. The port had collapsed that to a
+  name comparison on the grounds that Go's `Name` never returns null — but a
+  Type 3 font with no `/Name` returns the empty string, so two different unnamed
+  Type 3 fonts compared equal and the running average character width was never
+  reset between them.
+- **`removeContainedSpaces` did not shrink the article.** Java removes through
+  the list iterator, so the list the article holds shrinks with it; the port
+  returned a new slice and assigned it only to the local. Anything reading
+  `getCharactersByArticle` after a page — which `PDFTextStripperByArea` does —
+  still saw the space.
+- **`multiplyFloat` widened before multiplying.** Java multiplies in `float` and
+  rounds that; the port converted to `float64` first, which rounds the other way
+  either side of a half. It decides whether a line is indented enough to start a
+  paragraph.
+
+### Port defects found in the slice 3 feedback, fixed
+
+Seven, from the review comments on the pull request. Each carries a test that
+fails without its fix.
+
+- **`isDigitAt` and `XrefStreamParser.readNextValue` swallowed every read
+  failure.** Java's `RandomAccessRead.read` throws for a failure and returns -1
+  only at the end of the data, and both callers distinguish the two. The port
+  treated a failing source as "not a digit" and as "no more data", so a parse
+  carried on over whatever state the failure left. Both now return the error
+  unless it is `io.EOF`.
+- **`PDFTextStripperByArea.ProcessPage` did not clear the duplicate map.**
+  Java's `processPage` clears `characterListMapping` before walking; the port
+  reimplements `processPage` — Go embedding does not dispatch — and had left it
+  out. A stripper used twice, which `extractRegions` documents as supported,
+  reported nothing the second time.
+- **`GetTextOfPages` did not reset the engine.** Java's `writeText` calls
+  `resetEngine` first, which puts `currentPageNo` back to 1 and empties the
+  per-page state, and applies the extra formatting where it was asked for. The
+  port left the page number where the previous call had pushed it.
+- **`parseIntRadix` parsed at 64 bits.** Java calls `Integer.parseInt`, which
+  rejects anything outside the 32-bit range. An AFM carrying `Characters
+  2147483648` was accepted here and then looped on.
+- **`readInternationalDate` overflowed.** A `time.Duration` is int64 nanoseconds
+  and reaches about 292 years, so a `LONGDATETIME` past 2196 wrapped silently
+  and came back as a date in the past. Java counts in milliseconds and has no
+  such limit. Both copies of the read now build the instant from the seconds.
+- **The corpus harness only ran unsorted.** Java runs every file both ways
+  against `<name>.pdf.txt` and `<name>.pdf-sorted.txt`; the harness now scores
+  both. **16 of 40 either way.**
+
+### A Java bug the port had corrected, reverted
+
+`PDFTextStripper.handleDirection` reverses a right-to-left run with
+`word.charAt(end)` counting down — UTF-16 code units, so a character outside the
+basic plane comes out as its two halves in the wrong order and is destroyed. The
+port had reversed runes, which keeps the character whole. Reverted, recorded as
+[`JAVA-BUGS.md`](JAVA-BUGS.md) entry 15, and pinned by
+`text/feedback_test.go`.
+
+### Reviewed and declined
+
+- **The `aux` clone in `IterativeMergeSort` is dead but stays.** `mergeRuns`
+  overwrites `aux[from:to]` before copying it back, so the initial copy is never
+  read. Java writes `T[] aux = arr.clone()`, and the port writes the clone. It
+  is one allocation-sized copy per sort against a deviation from the source; the
+  source wins.
+
+### Known behaviour differences, not defects
+
+- **A symbolic TrueType font that is not embedded aborts the page.** Its
+  encoding is synthesised from the font program, and there is none until the
+  font mapper arrives in slice 4; the port reports that rather than guessing, and
+  the error travels out through `Tf` and stops the walk. Java always has a
+  substitute, because its font mapper never returns null. The same holds for
+  `PDFont.getWidthFromFont` on a font with no `/Widths` array. This is the
+  largest practical gap in the slice after the missing ToUnicode CMap.
+- **`minYTopForLine` is computed and never read**, in the port as in Java, whose
+  own comment says the check it was meant for caused regression failures.

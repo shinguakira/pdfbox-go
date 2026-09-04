@@ -381,3 +381,218 @@ too, and `string_test.go` pins the throwing behaviour.
 
 **Confidence** high. The offset is plainly computed and plainly not used, and
 the comment above it states an intent the code does not carry out.
+
+---
+
+## 12. `TrueTypeFont.nameToGID` dereferences a null cmap for a `uniXXXX` name
+
+**Where** `fontbox/src/main/java/org/apache/fontbox/ttf/TrueTypeFont.java`,
+`nameToGID`.
+
+```java
+int uni = parseUniName(name);
+if (uni > -1)
+{
+    CmapLookup cmap = getUnicodeCmapLookup(false);
+    return cmap.getGlyphId(uni);
+}
+```
+
+**What it does** `getUnicodeCmapLookup(false)` is the lenient form, and its
+whole point is that it returns `null` rather than throwing when the font has no
+`cmap` table:
+
+```java
+CmapTable cmapTable = getCmap();
+if (cmapTable == null)
+{
+    if (isStrict) { throw new IOException(...); }
+    else { return null; }
+}
+```
+
+`nameToGID` then calls `getGlyphId` on it without a null check, so the lenient
+path throws a `NullPointerException` instead of the `IOException` it was written
+to avoid.
+
+**What correct would be** a null check returning 0, which is what `nameToGID`
+returns for every other name it cannot resolve.
+
+**Why it matters** `TTFParser` requires a `cmap` table only when the font is not
+embedded — `if (!isEmbedded && font.getCmap() == null) throw` — so an embedded
+TrueType font with no `cmap` parses fine, and is exactly the case this branch
+was written for. Asking such a font for `getWidth("uni0041")` or
+`hasGlyph("uni0041")` — both of which go through `nameToGID` — throws NPE out of
+a method declared to throw `IOException`. The name has to survive the `post`
+table lookup first, which an embedded subset with no `post` names will.
+
+**Where the Go carries it** `go/fontbox/ttf/truetypefont.go`, `NameToGID`.
+`unicodeCmapImpl` returns a nil `*CmapSubtable`, `UnicodeCmapLookup` hands it
+back inside a `CmapLookup` interface, and `cmap.GetGlyphID(uni)` dereferences
+nil and panics — which is what this port does with an unchecked Java exception.
+
+**Confidence** high. The null return is explicit three lines up in the same
+class, and no caller of the lenient form checks it.
+
+---
+
+## 13. `GlyphList.loadList` stops at the first stream that is not ready
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/GlyphList.java`,
+`loadList`.
+
+```java
+try (BufferedReader in = new BufferedReader(new InputStreamReader(input, StandardCharsets.ISO_8859_1)))
+{
+    while (in.ready())
+    {
+        String line = in.readLine();
+```
+
+**What it does** `BufferedReader.ready()` reports whether the *next read will
+not block*, not whether the stream has more data. The loop therefore ends both
+at end of input and at any point where the reader has drained its buffer and the
+underlying stream has nothing available yet. The glyph list is then silently
+short: no exception, no log line, just names that resolve to null from there on.
+
+**What correct would be** the ordinary idiom the class already half-writes,
+since it null-checks `line` inside the loop anyway:
+
+```java
+String line;
+while ((line = in.readLine()) != null)
+```
+
+**Why it matters** the two shipped lists come off the classpath, where `ready()`
+is true until the end, so the bundled path is unaffected. But both constructors
+are public and take an arbitrary `InputStream`: `GlyphList(InputStream, int)`
+and `GlyphList(GlyphList, InputStream)`. A caller handing it a socket, a pipe,
+or a slow decompressing stream gets a truncated glyph list and no indication of
+it. `LegacyPDFStreamEngine` uses the second constructor to add `additional.txt`
+on top of the Adobe Glyph List.
+
+**Where the Go carries it** it does not, and cannot: Go has no `ready()`, and
+there is nothing to emulate it with -- a `bufio.Scanner` reads to end of input.
+`go/pdfbox/pdmodel/font/encoding/glyphlist.go`, `loadList`, therefore reads the
+whole stream. For every input this library actually passes -- the embedded
+files -- the two behave identically.
+
+**Confidence** high. `ready()` is documented as "Tells whether this stream is
+ready to be read", and using it as a loop condition in place of a null check on
+`readLine` is a long-standing known misuse.
+
+---
+
+## 14. `PDFontDescriptor.getPanose` dereferences a missing `/Panose` entry
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontDescriptor.java`,
+`getPanose`.
+
+```java
+public PDPanose getPanose()
+{
+    COSDictionary style = dic.getCOSDictionary(COSName.STYLE);
+    if (style != null)
+    {
+        COSString panose = (COSString)style.getDictionaryObject(COSName.PANOSE);
+        byte[] bytes = panose.getBytes();
+        if (bytes.length >= PDPanose.LENGTH)
+        {
+            return new PDPanose(bytes);
+        }
+    }
+    return null;
+}
+```
+
+**What it does** the method null-checks `/Style` and then does not null-check
+what it reads out of it. A font descriptor carrying a `/Style` dictionary with
+no `/Panose` entry -- or one whose `/Panose` is anything other than a string --
+makes `getDictionaryObject` return null, or the cast fail, and the method throws
+`NullPointerException` or `ClassCastException` out of a getter declared to
+return null when it has nothing.
+
+**What correct would be** the same null check the method already applies one
+line up:
+
+```java
+COSBase base = style.getDictionaryObject(COSName.PANOSE);
+if (base instanceof COSString)
+{
+    byte[] bytes = ((COSString) base).getBytes();
+    ...
+}
+```
+
+**Why it matters** `/Style` is optional and `/Panose` is the only entry the
+specification defines inside it, so in practice the two travel together -- but
+nothing enforces that, and a font descriptor is read straight out of a file that
+may say anything. The specification (ISO 32000-1 table 124) marks `/Panose`
+required *within* `/Style`, which is exactly the kind of "required" a malformed
+file ignores. Every other getter on this class returns a default for a missing
+entry.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/pdfontdescriptor.go`,
+`Panose`. The type assertion is written without the comma-ok form, so it panics
+where Java throws.
+
+**Confidence** high. The null check on the line above shows the author knew the
+dictionary could be absent; the entry inside it is read without one.
+
+---
+
+## 15. `PDFTextStripper.handleDirection` reverses UTF-16 units, breaking any character outside the basic plane
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/text/PDFTextStripper.java`,
+`handleDirection`.
+
+```java
+if ((level & 1) != 0)
+{
+    while (--end >= start)
+    {
+        char character = word.charAt(end);
+        if (Character.isMirrored(word.codePointAt(end)))
+        {
+            ...
+        }
+        else
+        {
+            result.append(character);
+        }
+    }
+}
+```
+
+**What it does** the loop walks a right-to-left run backwards one `char` at a
+time, and a `char` is a UTF-16 code unit rather than a character. A character
+outside the basic multilingual plane is two of them, so the pair comes out low
+half first. The two halves no longer form a pair, and the character is gone:
+writing the resulting `String` out as UTF-8 replaces each unpaired half.
+
+The `codePointAt(end)` on the next line shows the author knew the difference —
+the mirroring test is done on the code point and the append on the code unit.
+
+**What correct would be** walking the run backwards by code point, which is what
+`StringBuilder.reverse` does; its own documentation says "if there are any
+surrogate pairs included in the sequence, these are treated as single
+characters". `getVisuallyOrderedUnicode`, four hundred lines away in
+`TextPosition`, reverses with exactly that and is unaffected.
+
+**Why it matters** every right-to-left script that reaches outside the basic
+plane loses its characters when the text is extracted: Arabic Mathematical
+Alphabetic Symbols (U+1EE00–U+1EEFF), Cypriot, Phoenician, Old South Arabian,
+and the Arabic and Hebrew ranges in the Supplementary Multilingual Plane. The
+run has to be right to left for the branch to be taken, so a Latin document is
+never affected — which is why it has gone unnoticed.
+
+**Where the Go carries it** `go/pdfbox/text/direction.go`, `handleDirection`.
+The port originally reversed runes, which kept the character whole and
+corrected the bug. That was reverted: the units are reversed here too, and the
+halves that no longer pair become the replacement character, which is what
+Java's `String` becomes once it is written out. `feedback_test.go`,
+`TestHandleDirectionReversesUTF16Units`, pins it.
+
+**Confidence** high. The same method reads the code point for the mirroring
+test and appends the code unit, one line apart.

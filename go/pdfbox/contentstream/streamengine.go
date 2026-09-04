@@ -13,6 +13,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfparser"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
@@ -88,6 +89,18 @@ type StreamEngineOverrides interface {
 
 	// MarkedContentPoint handles the MP and DP operators.
 	MarkedContentPoint(tag *cos.Name, properties *cos.Dictionary)
+
+	// ShowGlyph is called for each glyph the engine decodes.
+	ShowGlyph(textRenderingMatrix *util.Matrix, f font.PDFont, code int, displacement util.Vector) error
+
+	// ShowFontGlyph is called for each glyph of a font that is not Type 3.
+	ShowFontGlyph(textRenderingMatrix *util.Matrix, f font.PDFont, code int, displacement util.Vector) error
+
+	// ShowType3Glyph is called for each glyph of a Type 3 font.
+	ShowType3Glyph(textRenderingMatrix *util.Matrix, f *font.PDType3Font, code int, displacement util.Vector) error
+
+	// ApplyTextAdjustment moves the pen by the amounts a TJ array asks for.
+	ApplyTextAdjustment(tx, ty float32)
 }
 
 // PDFStreamEngine walks a content stream and hands each operator to the
@@ -122,6 +135,10 @@ type PDFStreamEngine struct {
 	// overrides is what the engine calls instead of its own hooks. It is the
 	// engine itself until SetOverrides is called.
 	overrides StreamEngineOverrides
+
+	// defaultFont is what the engine draws with where the content stream set no
+	// font, read the first time one is needed.
+	defaultFont font.PDFont
 }
 
 var _ StreamEngineOverrides = (*PDFStreamEngine)(nil)

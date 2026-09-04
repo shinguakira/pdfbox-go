@@ -17,7 +17,12 @@ Depends on `slice/1` only. Independent of slices 2, 3, 4, 6, 7 and 8.
 - **NEVER change `migration/PLAN.md`.**
 - **NEVER commit to `migration-base` directly.**
 - **NEVER touch `apache/pdfbox`** — no PR, no pull, fetch, merge or rebase.
-- **Do not stop while work in this branch's scope remains.**
+- **DO NOT STOP UNTIL PHASE E.** Phases A to D run end to end. Finishing a
+  task is not a stopping point; neither is finishing a phase, a package, or a
+  commit. Do not pause to report progress as if it were a result, do not ask
+  whether to continue, and do not end a turn with a list of what is left.
+  **E1 is the only stop in this file** — that is where the user reviews. Only
+  the user stops the work before it.
 
 `AGENTS.md` marks encryption a sensitive area. Port line for line.
 
