@@ -483,11 +483,26 @@ func (f *TrueTypeFont) unicodeCmapImpl(isStrict bool) (*CmapSubtable, error) {
 }
 
 // GetPath returns the outline of the named glyph.
-//
-// Rendering a glyph to a path is left to a later slice, which ports
-// GlyphRenderer; see migration/STATUS.md.
 func (f *TrueTypeFont) GetPath(name string) (*geom.Path2D, error) {
-	return nil, fmt.Errorf("ttf: glyph outlines are not ported yet")
+	gid, err := f.NameToGID(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// some glyphs have no outlines (e.g. space, table, newline)
+	glyphTable, err := f.Glyph()
+	if err != nil {
+		return nil, err
+	}
+	glyph, err := glyphTable.GetGlyph(gid)
+	if err != nil {
+		return nil, err
+	}
+	if glyph == nil {
+		return geom.NewPathFloat(), nil
+	}
+	// must scaled by caller using FontMatrix
+	return glyph.Path(), nil
 }
 
 // GetWidth returns how far the pen moves after the named glyph.

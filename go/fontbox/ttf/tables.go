@@ -423,3 +423,60 @@ func (t *HeaderTable) ReadHeaders(ttf *TrueTypeFont, data DataStream, outHeaders
 	outHeaders.setHeaderMacStyle(&macStyle)
 	return nil
 }
+
+// MaxZones returns the number of zones the font's instructions use.
+func (t *MaximumProfileTable) MaxZones() int { return t.maxZones }
+
+// MaxTwilightPoints returns how many points the twilight zone holds.
+func (t *MaximumProfileTable) MaxTwilightPoints() int { return t.maxTwilightPoints }
+
+// MaxStorage returns how many storage locations the instructions use.
+func (t *MaximumProfileTable) MaxStorage() int { return t.maxStorage }
+
+// MaxFunctionDefs returns how many function definitions the font has.
+func (t *MaximumProfileTable) MaxFunctionDefs() int { return t.maxFunctionDefs }
+
+// MaxInstructionDefs returns how many instruction definitions the font has.
+func (t *MaximumProfileTable) MaxInstructionDefs() int { return t.maxInstructionDefs }
+
+// MaxStackElements returns how deep the instruction stack goes.
+func (t *MaximumProfileTable) MaxStackElements() int { return t.maxStackElements }
+
+// MaxSizeOfInstructions returns the size of the largest glyph's instructions.
+func (t *MaximumProfileTable) MaxSizeOfInstructions() int { return t.maxSizeOfInstructions }
+
+// MaxComponentElements returns how many components a composite glyph refers to.
+func (t *MaximumProfileTable) MaxComponentElements() int { return t.maxComponentElements }
+
+// MinLeftSideBearing returns the smallest left side bearing of the font.
+func (t *HorizontalHeaderTable) MinLeftSideBearing() int16 { return t.minLeftSideBearing }
+
+// MinRightSideBearing returns the smallest right side bearing of the font.
+func (t *HorizontalHeaderTable) MinRightSideBearing() int16 { return t.minRightSideBearing }
+
+// XMaxExtent returns the largest horizontal extent of the font.
+func (t *HorizontalHeaderTable) XMaxExtent() int16 { return t.xMaxExtent }
+
+// CaretSlopeRise returns the rise of the caret slope.
+func (t *HorizontalHeaderTable) CaretSlopeRise() int16 { return t.caretSlopeRise }
+
+// CaretSlopeRun returns the run of the caret slope.
+func (t *HorizontalHeaderTable) CaretSlopeRun() int16 { return t.caretSlopeRun }
+
+// Reserved1 returns the first reserved field, which holds the caret offset.
+func (t *HorizontalHeaderTable) Reserved1() int16 { return t.reserved1 }
+
+// Reserved2 returns the second reserved field.
+func (t *HorizontalHeaderTable) Reserved2() int16 { return t.reserved2 }
+
+// Reserved3 returns the third reserved field.
+func (t *HorizontalHeaderTable) Reserved3() int16 { return t.reserved3 }
+
+// Reserved4 returns the fourth reserved field.
+func (t *HorizontalHeaderTable) Reserved4() int16 { return t.reserved4 }
+
+// Reserved5 returns the fifth reserved field.
+func (t *HorizontalHeaderTable) Reserved5() int16 { return t.reserved5 }
+
+// MetricDataFormat returns the format of the horizontal metrics.
+func (t *HorizontalHeaderTable) MetricDataFormat() int16 { return t.metricDataFormat }
