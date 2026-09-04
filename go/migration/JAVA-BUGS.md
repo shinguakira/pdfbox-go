@@ -945,3 +945,116 @@ which falls through to the two-byte table for a zero-length code exactly as Java
 does, with a comment saying why the length-0 case is not special-cased.
 
 **Confidence** high. The two arms of the caller disagree about the same input.
+
+## 24. `PDEncryption.hasSecurityHandler` answers the opposite of its name
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PDEncryption.java`.
+
+**What it does**
+
+```java
+public boolean hasSecurityHandler()
+{
+    return securityHandler == null;
+}
+```
+
+The field is null when the document has no security handler — when
+`SecurityHandlerFactory.newSecurityHandlerForFilter` did not recognise the
+`/Filter`, or when the dictionary was built empty. So the method returns true
+exactly when the answer is no.
+
+**What correct would be** `securityHandler != null`.
+
+**Why it matters** nothing in PDFBox calls it, so the bug is latent; but it is
+public API, and a caller checking before `getSecurityHandler` — which is what
+the name invites — gets the opposite of what it asked and then the IOException
+it was trying to avoid.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/encryption/pdencryption.go`,
+`HasSecurityHandler`, which returns `e.securityHandler == nil` with a comment
+saying so.
+
+**Confidence** high. The method body and the method name cannot both be right.
+
+## 25. `PDEncryption.getRecipientsLength` dereferences a missing /Recipients
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PDEncryption.java`.
+
+**What it does**
+
+```java
+public int getRecipientsLength()
+{
+    COSArray array = (COSArray) dictionary.getItem(COSName.RECIPIENTS);
+    return array.size();
+}
+```
+
+`getItem` returns null where the key is absent, which every password-encrypted
+document is: `/Recipients` belongs to the public key handler. The cast of null
+succeeds and `array.size()` throws `NullPointerException`.
+`getRecipientStringAt` has the same shape.
+
+**What correct would be** returning 0 for a missing array, which is what the
+method's own documentation — "the number of recipients contained in the
+Recipients field" — implies for a document that has none.
+
+**Why it matters** it is public API on a class every encrypted document has.
+PDFBox itself has stopped calling the pair — `PublicKeySecurityHandler` reads
+the array directly, with a TODO saying both should be deprecated — so nothing
+in the library trips it, but a caller asking how many recipients a document has
+gets a NullPointerException rather than zero.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/encryption/pdencryption.go`,
+`RecipientsLength` and `RecipientStringAt`, which assert the type without the
+comma-ok and so panic where Java throws.
+
+**Confidence** high. `getItem` is documented to return null for an absent key.
+
+## 26. `SecurityHandlerFactory.registerHandler` does not refuse a duplicate policy
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/SecurityHandlerFactory.java`.
+
+**What it does**
+
+```java
+/**
+ * ...
+ * If another handler was previously registered for the same filter name or
+ * for the same policy name, an exception is thrown
+ */
+public void registerHandler(String name,
+                            Class<? extends SecurityHandler> securityHandler,
+                            Class<? extends ProtectionPolicy> protectionPolicy)
+{
+    if (nameToHandler.containsKey(name))
+    {
+        throw new IllegalStateException("The security handler name is already registered");
+    }
+
+    nameToHandler.put(name, securityHandler);
+    policyToHandler.put(protectionPolicy, securityHandler);
+}
+```
+
+The javadoc promises the check on both maps; the code makes it on one. A second
+registration under a new filter name but an existing policy class is accepted,
+and `policyToHandler.put` replaces the handler the policy had.
+
+**What correct would be** the second `containsKey`, on `policyToHandler`, which
+the javadoc already describes.
+
+**Why it matters** it is only reachable through the public `registerHandler`, so
+PDFBox's own two registrations are safe. A caller that adds a handler for a
+policy already spoken for takes it over silently, and every later
+`newSecurityHandlerForPolicy` for that policy builds the wrong handler — a
+document is then encrypted by a handler nobody asked for.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/encryption/securityhandlerfactory.go`, `RegisterHandler`,
+which checks `nameToHandler` only and says so above the assignment.
+`TestRegisterHandlerReplacesADuplicatePolicy` in `fromsource_test.go` pins it.
+
+**Confidence** high. The javadoc and the method body contradict each other in
+five lines.

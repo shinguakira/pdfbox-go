@@ -18,7 +18,7 @@ Last updated: 2026-09-04
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 17 of 18; `pdfwriter` not started |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset, plus `pdmodel/font` at 34 of 39 (the 5 left are the slice 7 embedders) and all 12 encodings |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset, `pdmodel/font` at 34 of 39 (the 5 left are the slice 7 embedders), all 12 encodings, and `pdmodel/encryption` at 17 of 19 |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | in progress — the engine and every text operator; `text` has all 6 files, minus what needs a document |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
@@ -637,6 +637,7 @@ Four things worth naming:
   cache. This closes the slice 1 hole recorded above.
 - **Encryption is not ported.** `pdmodel/encryption` is a package this port has
   not reached, so an encrypted document is reported rather than decrypted.
+  **Closed by slice 5.**
 
 ### The corpus — 16 of 40
 
@@ -1068,3 +1069,238 @@ of scope, and two were Java behaviour the port already reproduced.
   where `type` is the dictionary's `/Type`. The port now concatenates the
   `COSName` rather than its name, as Java does, so the message reads
   `Invalid font type: COSName{Font}` on both sides.
+
+## Slice 5 — encrypted documents
+
+Branch `slice/5-encryption`. The slice reads a password-protected or
+certificate-protected PDF: the standard security handler for revisions 2 to 6,
+the public key handler, and the wiring that decrypts every string and stream as
+the parser reads it.
+
+### `pdmodel/encryption` — 17 of 19 files
+
+| Java | Go | Status |
+| --- | --- | --- |
+| `AccessPermission` | `accesspermission.go` | done |
+| `InvalidPasswordException` | `decryptionmaterial.go` | done — an error type, since Java's extends IOException |
+| `DecryptionMaterial`, `StandardDecryptionMaterial` | `decryptionmaterial.go` | done |
+| `PublicKeyDecryptionMaterial`, `PublicKeyRecipient` | `publickeymaterial.go` | done |
+| `ProtectionPolicy`, `StandardProtectionPolicy`, `PublicKeyProtectionPolicy` | `protectionpolicy.go`, `publickeymaterial.go` | done |
+| `PDEncryption` | `pdencryption.go` | done |
+| `PDCryptFilterDictionary` | `pdcryptfilterdictionary.go` | done |
+| `RC4Cipher` | `rc4cipher.go` | done |
+| `SaslPrep` | `saslprep.go` | done |
+| `SecurityHandler` | `securityhandler.go` | done |
+| `SecurityHandlerFactory` | `securityhandlerfactory.go` | done — a registry of constructors, since Java builds by reflection |
+| `StandardSecurityHandler` | `standardsecurityhandler.go` | done |
+| `PublicKeySecurityHandler` | `publickeysecurityhandler.go` | the reading half; see below |
+| `MessageDigests` | — | not ported — three JCE lookups for MD5, SHA-1 and SHA-256, which are `crypto/md5`, `crypto/sha1` and `crypto/sha256` here |
+| `SecurityProvider` | — | not ported — it holds a JCE Provider, and Go has no provider to hold |
+
+`SecurityHandler` is an interface plus an embedded struct, the way the port
+takes every abstract class; Java's type parameter `<TPOLICY extends
+ProtectionPolicy>` says which policy a handler takes, and the two concrete
+handlers narrow it themselves.
+
+### What the tests reach
+
+`TestSymmetricKeyEncryption.testPermissions` is ported whole and its three
+files cover the reading path end to end: **R2/V1** (RC4-40), **R3/V2**
+(RC4-128) and **R6/V5** (AES-256), so `RC4Cipher`, algorithm 2, algorithm 2.A,
+algorithm 2.B and `SaslPrep` all run. All three were made with Adobe Acrobat
+rather than with PDFBox, which is the point: a round trip through this port
+would pass even if both halves were wrong.
+
+The four read-only tests of `TestPublicKeyEncryption` are ported and pass, on
+files and keystores this port did not make either.
+
+`fromsource_test.go` covers what neither reaches, and names it at the top:
+`AccessPermission`'s bit arithmetic and its read-only lock,
+`getPermissionBytesForPublicKey`, the protection policies, the handler factory,
+`PDEncryption`'s setters, and the two ciphers. Its values come from outside the
+port — RFC 2268's test vectors for RC2, Go's own `crypto/rc4` for RC4, and
+RFC 4013's worked examples for SASLprep.
+
+### The three tests that are not ported, and why
+
+`testProtection`, `testProtectionInnerAttachment`, `testPDFBox4308` and
+`testPDFBox4453` of the symmetric test, and `testProtection`,
+`testProtectionError` and `testMultipleRecipients` of the public key one, all
+**encrypt a document and save it**. The writer is slice 7. This is the decision
+the branch's Blocked section asked for: the branch ports the reading half and
+the encrypting code that does not need a writer, and leaves the tests that save
+to the slice that can run them.
+
+`testPDFBox5955` and `testPDFBox5639` read PDFs the Java build downloads into
+`target/pdfs`, which this repository does not carry.
+
+### Infrastructure the port supplies, which is not a migration
+
+Java hands three things to BouncyCastle and the JCE. Go's standard library has
+none of them and PDFBox has no code of its own to port for them, so this branch
+writes them — the same kind of decision the slice 9 rasteriser needs, and each
+file says so at the top:
+
+- **`cms.go`** reads a CMS enveloped-data blob: the key transport recipients,
+  their identifiers, and the content once the RSA key has unwrapped it. Only
+  reading; the encrypting half would need an encoder.
+- **`pkcs12.go`** reads a PKCS#12 keystore — the RFC 7292 SHA-1 derivation, the
+  MAC, 3DES for the shrouded key bags and 40-bit RC2 for the certificate bags,
+  which is what the checked-in keystores use.
+- **`rc2.go`** is RC2 from RFC 2268, which nothing in Go has and the
+  certificate bags need.
+
+### What is deferred, and why
+
+- **`PublicKeySecurityHandler.prepareDocumentForEncryption`** reports an error.
+  It builds one CMS enveloped-data blob per recipient, which needs an encoder
+  Go does not have; and nothing can save a document until slice 7, so it cannot
+  be exercised either way. It is the one method of the nineteen files that does
+  not do what the Java does.
+- **`StandardSecurityHandler.prepareDocumentForEncryption` is ported** and does
+  what Java does; it has no test, because a test would have to save.
+
+### Deviations from Java, each commented where it is
+
+- **The security handler's `objects` set is a Go map keyed on the interface.**
+  Java uses an IdentityHashMap-backed set, for the reason its comment gives —
+  two equal COSStrings must not be conflated. A Go map keyed on an interface
+  holding a pointer already compares by identity, which is what that buys.
+- **`ProtectionPolicy.setEncryptionKeyLength` returns an error** where Java
+  throws IllegalArgumentException. The caller is asking for a key length a
+  document cannot carry, not making a mistake it cannot see.
+- **The AES-256 path keeps the plaintext of every block before a bad final
+  one.** Java reads through a CipherInputStream, which has already written
+  those blocks by the time `doFinal` throws, and swallows the exception; the
+  port returns the same bytes. The AES-128 path does *not* swallow it, in Java
+  or here.
+- **`SaslPrep`'s prohibited-character message names the code point**, where
+  Java names the character with `Character.getName`; Go has no name table.
+- **`logIfStrongEncryptionMissing` does nothing.** It warns when the JCE
+  unlimited strength policy files are missing, and Go has no key length policy.
+  The call sites keep it so that the two read the same.
+
+### The slice 5 adversarial review
+
+The branch's own D7, D8 and D9 asked for a byte-level sweep, the wrong-password
+behaviour, and not to take a green suite as proof. All three found something.
+
+#### Found and fixed
+
+- **RC2's key expansion divided by zero.** `tm := byte(255 % (1 << n))` reads
+  correctly and is wrong: Go gives the untyped `1` the byte type of the
+  conversion around it, so `1 << 8` is 0 and the modulus divides by zero. It is
+  a defect the port introduced rather than one it carried — Java's `1` is an
+  int — and it is the kind D7 exists to catch. The RFC 2268 test vectors now run
+  against the fixed expansion.
+- **`validatePerms` refused a short /Perms with an error.** Java only turns a
+  *misaligned* one into an IOException, through the IllegalBlockSizeException
+  the cipher raises; a missing or empty one reaches `perms[9]` and throws an
+  unchecked exception. The port now does the same: the length check covers the
+  aligned case and the indexing covers the rest.
+- **Two of the review's own test premises were wrong**, which is worth writing
+  down because both were assumptions rather than readings:
+  - A wrong keystore *alias* was expected to fail. It does not:
+    `PublicKeyDecryptionMaterial` ignores the alias entirely when the store
+    holds one entry, and all four checked-in keystores hold exactly one. The
+    test now pins that, because it is surprising and it is what Java does.
+  - A password-protected document opened *with* a keystore was expected to
+    reach the handler and be refused as incompatible material. It never gets
+    there: the keystore is loaded with the same password first, so the failure
+    is the keystore's. The test now asserts that.
+
+#### What was checked
+
+- **Every byte-level operation**, which is what D7 asks. `RC4Cipher.fixByte`,
+  which exists only because a Java byte is signed and Go's is not; the `& 0xFF`
+  masks in `AccessPermission(byte[])`, `calcFinalKey` and the /Perms word; the
+  unsigned `>>>` shifts of the permission integer, which the port writes as a
+  `uint32` conversion so that a negative permission word shifts the way Java's
+  does; the XOR of the iteration key against the round number in all three
+  password functions; `truncateOrPad`'s 32-byte pad and `truncate127`'s cut.
+- **The digest resets.** Java's `MessageDigest.digest()` resets the digest, so
+  the fifty-round loops of `computeEncryptedKeyRev234` and `computeRC4key` start
+  each round from empty. A Go hash keeps its state, so each round builds a fresh
+  one; getting this wrong would have produced a plausible, wrong key.
+- **`computeHash2B`'s loop condition**, `round < 64 || (e[e.length-1] & 0xFF) >
+  round - 32`, which reads `e` only from round 64 on — Go's `||` short-circuits
+  the same way, so the nil first time round is safe.
+- **The two swallows.** Java's AES-256 path reads through a CipherInputStream
+  and swallows the bad padding at the end, keeping the blocks already written;
+  the AES-128 path turns the same failure into an IOException. The port keeps
+  the asymmetry, and returns the partial plaintext where Java has already
+  written it.
+- **The raw stream hazard.** `decryptStream` reads a stream and writes it back
+  through `createRawInputStream` and `createRawOutputStream`. Java's
+  `createRawOutputStream` clears the buffer when the data is already in memory,
+  which would wipe what the reader is reading; it is safe only because a parsed
+  stream keeps its data in a read view instead. The Go does exactly the same, so
+  the port is faithful here rather than accidentally safe.
+
+#### What the wrong password does — D8
+
+Five failures, each with a test:
+
+| Case | What happens |
+| --- | --- |
+| Wrong document password | `InvalidPasswordError`, "Cannot decrypt PDF, the password is incorrect" |
+| Wrong keystore password | The PKCS#12 MAC check fails, before anything is decrypted |
+| Wrong alias, single-entry store | Opens — the alias is ignored, as in Java |
+| Public key document, password given | "Decryption material is not compatible with the document" |
+| Password document, keystore given | The keystore refuses the document password |
+
+None of them returns a document full of rubbish, which is the failure D8 is
+about.
+
+#### D9 — the evidence is external
+
+Every file the ported tests read was produced by something other than this port:
+three by Adobe Acrobat, four by whatever wrote the public key fixtures, and the
+keystores with them. The from-source tests take their values from RFC 2268,
+RFC 4013 and Go's own `crypto/rc4`. Nothing in the slice is checked against
+itself.
+
+### Port defects found in the slice 5 feedback, fixed
+
+**The CMS reader could not read an RC2 envelope, which is the only kind PDFBox
+writes.** `decryptCMSContent` read the initialisation vector once, before it
+knew the algorithm, as a bare OCTET STRING. That is the shape AES-CBC and
+DES-EDE3-CBC use — RFC 3565 section 4.1 and RFC 3370 section 5.2 — and it is not
+the shape RC2-CBC uses: RFC 3370 section 5.3 wraps the version and the IV in a
+SEQUENCE. The unmarshal failed with a tag mismatch before the switch could
+reach the RC2 branch below it, so that branch was unreachable and every
+`/Recipients` entry Java's `createDERForRecipient` produces — it asks the JCE
+for `PKCSObjectIdentifiers.RC2_CBC` — would have been refused. The four
+checked-in public key fixtures use AES and 3DES, so nothing caught it.
+`TestCMSContentParameters` now runs both shapes; it failed with exactly the tag
+mismatch before the fix.
+
+**A comment on the wrong side of the encryption.** The `SecurityHandler`
+interface said `PrepareDocumentForEncryption` "prepares everything to decrypt
+the document". Both implementations already said encrypt; Java's javadoc says
+"Prepare the document for encryption". The interface was alone in being wrong.
+
+**A dummy reference propping up an import.** `pddocument_encryption.go` carried
+`var _ = cos.Encrypt` so that the `cos` import would compile. Nothing else in
+the file used the package. Both are gone.
+
+**What `LoadPDFFromWithKeyStore`'s password is.** The comment read as though the
+password and the keystore were alternatives. They are not: where a keystore is
+given the same string opens it, because Java calls `KeyStore.load(keyStore,
+password.toCharArray())` and then hands the string on to
+`PublicKeyDecryptionMaterial` as the private key password. One argument, two
+jobs. Java's own javadoc says only "password to be used for decryption".
+
+### Reviewed and declined — slice 5
+
+**`RegisterHandler` should refuse a duplicate policy.** It should, and Java's
+javadoc says it does, and Java's code does not — it checks `nameToHandler` and
+then overwrites `policyToHandler` without a look. Adding the second check would
+be fixing a bug that is in the Java. It is recorded as JAVA-BUGS 26, commented
+where it happens, and pinned by
+`TestRegisterHandlerReplacesADuplicatePolicy`. The doc comment now says what the
+code does rather than repeating Java's promise.
+
+**The error message should name the handler.** `"The security handler name is
+already registered"` is Java's string, character for character. The port keeps
+Java's messages so that a caller matching on them sees the same text.

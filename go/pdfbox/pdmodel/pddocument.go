@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
@@ -25,6 +26,10 @@ type PDDocument struct {
 	pdfSource pdfio.RandomAccessRead
 
 	resourceCache ResourceCache
+
+	encryption             *encryption.PDEncryption
+	accessPermission       *encryption.AccessPermission
+	allSecurityToBeRemoved bool
 }
 
 // NewPDDocument returns an empty document.

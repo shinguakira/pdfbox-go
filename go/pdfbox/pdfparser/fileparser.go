@@ -1,14 +1,15 @@
 package pdfparser
 
 import (
-	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
@@ -56,6 +57,14 @@ type FileParser struct {
 	trailerWasRebuild bool
 	bruteForceParser  *BruteForceParser
 
+	// The decryption material and what prepareDecryption makes of it.
+	password         string
+	keyStoreInput    io.Reader
+	keyAlias         string
+	encryption       *encryption.PDEncryption
+	securityHandler  encryption.SecurityHandler
+	accessPermission *encryption.AccessPermission
+
 	readTrailBytes int
 }
 
@@ -64,6 +73,17 @@ var _ cos.Parser = (*FileParser)(nil)
 // NewFileParser returns a parser over the given file, together with the
 // document it fills.
 func NewFileParser(source pdfio.RandomAccessRead, cache pdfio.StreamCache, codecs cos.CodecProvider) (*FileParser, error) {
+	return NewFileParserWithPassword(source, "", nil, "", cache, codecs)
+}
+
+// NewFileParserWithPassword returns a parser over the given file, which it
+// decrypts with the given password, or with the given PKCS#12 keystore and
+// alias where the document uses public key security.
+//
+// Port of the COSParser constructor that takes all four.
+func NewFileParserWithPassword(source pdfio.RandomAccessRead, password string,
+	keyStore io.Reader, keyAlias string, cache pdfio.StreamCache,
+	codecs cos.CodecProvider) (*FileParser, error) {
 	length, err := source.Length()
 	if err != nil {
 		return nil, err
@@ -77,6 +97,9 @@ func NewFileParser(source pdfio.RandomAccessRead, cache pdfio.StreamCache, codec
 		xrefTable:           NewXrefEntries(),
 		decompressedObjects: map[int64]map[int64]cos.Base{},
 		readTrailBytes:      defaultTrailByteCount,
+		password:            password,
+		keyStoreInput:       keyStore,
+		keyAlias:            keyAlias,
 	}
 	// The document needs the parser as its cos.Parser and the parser needs the
 	// document as its object pool, so the document is built here rather than by
@@ -401,6 +424,13 @@ func (p *FileParser) parseFileObject(objOffset int64, objKey *cos.ObjectKey) (co
 		if err != nil {
 			return nil, err
 		}
+
+		if p.securityHandler != nil {
+			if err := p.securityHandler.DecryptStream(stream, objKey.Number(),
+				int64(objKey.Generation())); err != nil {
+				return nil, err
+			}
+		}
 		parsedObject = stream
 
 		if err := p.SkipSpaces(); err != nil {
@@ -423,6 +453,14 @@ func (p *FileParser) parseFileObject(objOffset int64, objKey *cos.ObjectKey) (co
 				}
 			}
 		}
+	} else if p.securityHandler != nil {
+		decrypted, err := p.securityHandler.Decrypt(parsedObject, objKey.Number(),
+			int64(objKey.Generation()))
+		if err != nil {
+			return nil, err
+		}
+		parsedObject = decrypted
+		parsedObject.SetKey(objKey)
 	}
 
 	if !strings.HasPrefix(endObjectKey, endobjString) {
@@ -646,20 +684,51 @@ func (p *FileParser) parseHeader(headerMarker, defaultVersion string) (bool, err
 	return true, nil
 }
 
-// ErrEncrypted is what an encrypted document is reported with.
-//
-// Java decrypts it here, through pdmodel/encryption; that package is not ported.
-// See migration/STATUS.md.
-var ErrEncrypted = errors.New("pdfparser: encrypted documents are not supported yet")
-
-// prepareDecryption would set up the security handler.
+// prepareDecryption prepares the decryption of the document, reporting an
+// InvalidPasswordError where the password is wrong.
 func (p *FileParser) prepareDecryption() error {
-	trailer := p.Document().Trailer()
-	if trailer == nil {
+	if p.encryption != nil {
 		return nil
 	}
-	if trailer.GetDictionaryObject(cos.Encrypt) == nil {
+	encryptionDictionary := p.Document().EncryptionDictionary()
+	if encryptionDictionary == nil {
 		return nil
 	}
-	return ErrEncrypted
+
+	p.encryption = encryption.NewPDEncryptionOf(encryptionDictionary)
+	var decryptionMaterial encryption.DecryptionMaterial
+	if p.keyStoreInput != nil {
+		ks, err := encryption.LoadPKCS12(p.keyStoreInput, p.password)
+		if err != nil {
+			return err
+		}
+		decryptionMaterial = encryption.NewPublicKeyDecryptionMaterial(ks, p.keyAlias, p.password)
+	} else {
+		decryptionMaterial = encryption.NewStandardDecryptionMaterial(p.password)
+	}
+
+	securityHandler, err := p.encryption.SecurityHandler()
+	if err != nil {
+		return err
+	}
+	p.securityHandler = securityHandler
+	if err := securityHandler.PrepareForDecryption(p.encryption,
+		p.Document().DocumentID(), decryptionMaterial); err != nil {
+		return err
+	}
+	p.accessPermission = securityHandler.CurrentAccessPermission()
+	return nil
+}
+
+// SecurityHandler returns the security handler of the document. The document
+// must be parsed before this is called.
+func (p *FileParser) SecurityHandler() encryption.SecurityHandler { return p.securityHandler }
+
+// Encryption returns the encryption dictionary of the document, or nil.
+func (p *FileParser) Encryption() *encryption.PDEncryption { return p.encryption }
+
+// AccessPermission returns the permissions the password granted, or nil where
+// the document is not encrypted.
+func (p *FileParser) AccessPermission() *encryption.AccessPermission {
+	return p.accessPermission
 }
