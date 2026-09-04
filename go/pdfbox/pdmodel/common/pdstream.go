@@ -164,3 +164,19 @@ func NewPDStreamOfInput(doc COSDocumentLike, input io.Reader, filters cos.Base) 
 	}
 	return &PDStream{stream: stream}, nil
 }
+
+// CreateOutputStream returns a writer that stores what is written to it in the
+// stream, without a filter.
+//
+// Port of createOutputStream().
+func (s *PDStream) CreateOutputStream() (io.WriteCloser, error) {
+	return s.stream.CreateWriter()
+}
+
+// CreateOutputStreamOfFilter returns a writer that encodes what is written to
+// it with the given filter.
+//
+// Port of createOutputStream(COSName).
+func (s *PDStream) CreateOutputStreamOfFilter(filter *cos.Name) (io.WriteCloser, error) {
+	return s.stream.CreateWriterWithFilters(filter)
+}

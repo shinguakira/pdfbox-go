@@ -200,6 +200,20 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] Appearance generation for form fields and annotations draws content
+- [x] Appearance generation for form fields and annotations draws content
       streams, which needs the writer from slice 7. Decide whether this branch
       ports only the reading half, or waits.
+
+      **Decided: the writing half is in scope, and it pulls three files in with
+      it.** Slice 7 is merged, so the question is no longer whether to wait.
+      What appearance generation actually draws through is
+      `PDAppearanceContentStream`, which extends `PDPageContentStream`, which
+      extends `PDAbstractContentStream` --- all three in top-level `pdmodel`,
+      and none of them named in any slice's scope table. They are ported here
+      because this is the slice that needs them; `AppearanceGeneratorHelper`
+      cannot exist without them.
+
+      `PDAbstractContentStream` reaches `PDFormXObject`, `PDShading` and
+      `PDPattern`, which are slice 9's. Those methods are the ones left out,
+      named where they occur and in `migration/STATUS.md`; the text, colour,
+      path and image methods appearance generation uses are all here.
