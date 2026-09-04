@@ -10,10 +10,10 @@ import (
 //
 // Port of org.apache.pdfbox.pdmodel.font.PDFontFactory.createFont.
 //
-// Type 0, Type 1C, Multiple Master and the two CID font types are read by later
-// slices; a dictionary naming one of them is reported rather than read as
-// something else. The /Subtype repair Java does for a Type 0 font goes with
-// them, since it only matters to the font it repairs. See migration/STATUS.md.
+// Type 0 and the two CID font types are read by a later step of this slice; a
+// dictionary naming one of them is reported rather than read as something else.
+// The /Subtype repair Java does for a Type 0 font goes with them, since it only
+// matters to the font it repairs. See migration/STATUS.md.
 func CreateFont(dictionary *cos.Dictionary, resourceCache ResourceCache) (PDFont, error) {
 	fontType := dictionary.GetCOSNameDefault(cos.Type, cos.Font)
 	if !cos.Font.Equals(fontType) {
@@ -27,15 +27,15 @@ func CreateFont(dictionary *cos.Dictionary, resourceCache ResourceCache) (PDFont
 	case cos.Type1.Equals(subType):
 		fd := dictionary.GetCOSDictionary(cos.FontDescriptor)
 		if fd != nil && fd.ContainsKey(cos.FontFile3) {
-			return nil, fmt.Errorf("font: Type 1C fonts are not ported yet")
+			return NewPDType1CFontFromDictionary(dictionary, resourceCache)
 		}
 		return NewPDType1FontFromDictionary(dictionary, resourceCache)
 	case cos.MMType1.Equals(subType):
 		fd := dictionary.GetCOSDictionary(cos.FontDescriptor)
 		if fd != nil && fd.ContainsKey(cos.FontFile3) {
-			return nil, fmt.Errorf("font: Type 1C fonts are not ported yet")
+			return NewPDType1CFontFromDictionary(dictionary, resourceCache)
 		}
-		return nil, fmt.Errorf("font: Multiple Master fonts are not ported yet")
+		return NewPDMMType1Font(dictionary)
 	case cos.TrueType.Equals(subType):
 		return NewPDTrueTypeFontFromDictionary(dictionary, resourceCache)
 	case cos.Type3.Equals(subType):

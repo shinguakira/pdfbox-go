@@ -667,3 +667,55 @@ with `b1*d1` written out and a comment pointing here.
 
 **Confidence** high. The five cells around it are a textbook 3x2 matrix
 product and this one is not.
+
+## 18. `PDType1CFont.getStringWidth` advances one UTF-16 unit at a time
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java`,
+`getStringWidth`.
+
+**What it does** it measures a string by walking it:
+
+```java
+for (int i = 0; i < string.length(); i++)
+{
+    int codePoint = string.codePointAt(i);
+    String name = getGlyphList().codePointToName(codePoint);
+    ...
+    width += cffFont.getType1CharString(name).getWidth();
+}
+```
+
+`String.length()` counts UTF-16 code units and `codePointAt` reads a whole
+character, so a character outside the basic plane is read at its first unit and
+then again at its second. The second read lands on the low surrogate, which is
+not part of a pair from where it starts, and `codePointAt` gives back that bare
+unit — a code point in D800–DFFF.
+
+`PDFont.encode`, six hundred lines away, does the same walk correctly:
+
+```java
+for (int offset = 0; offset < text.length(); )
+{
+    int codePoint = text.codePointAt(offset);
+    ...
+    offset += Character.charCount(codePoint);
+}
+```
+
+**What correct would be** the `charCount` advance `PDFont.encode` uses.
+
+**Why it matters** the character is measured twice, and the second measurement
+is of a lone surrogate. `codePointToName` has no name for one, so the width
+comes out as the width of whatever `.notdef`-ish name it produces, or — much
+more likely — the `hasGlyph` check just above fails and the whole call throws
+`IllegalArgumentException`. Measuring any string with an emoji or a
+supplementary-plane character in a Type 1C font is therefore either wrong or
+fatal. It needs a Type 1C font that actually has such a glyph to show, which is
+why it has gone unnoticed.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/pdtype1cfont.go`,
+`StringWidth`, which walks `utf16Units` one at a time with `codePointAt`, both
+written out beside it.
+
+**Confidence** high. The correct walk is in the same package, in the method
+this one exists to complement.
