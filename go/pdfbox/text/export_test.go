@@ -11,3 +11,6 @@ func HasFontOrSizeChangedForTest(current, last *TextPosition) bool {
 func MultiplyFloatForTest(value1, value2 float32) float32 {
 	return multiplyFloat(value1, value2)
 }
+
+// HandleDirectionForTest exposes handleDirection.
+func HandleDirectionForTest(word string) string { return handleDirection(word) }

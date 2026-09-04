@@ -720,7 +720,10 @@ func (p *AFMParser) readInt() (int, error) {
 }
 
 func parseIntRadix(intValue string, radix int) (int, error) {
-	value, err := strconv.ParseInt(intValue, radix, 64)
+	// Java calls Integer.parseInt, which rejects anything outside the 32-bit
+	// range; a 64-bit parse here would accept a count the reference
+	// implementation throws on and then loop on it.
+	value, err := strconv.ParseInt(intValue, radix, 32)
 	if err != nil {
 		return 0, fmt.Errorf("afm: error parsing AFM document: %w", err)
 	}

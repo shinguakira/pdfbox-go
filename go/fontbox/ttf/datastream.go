@@ -346,7 +346,11 @@ func (s *RandomAccessReadDataStream) ReadInternationalDate() (time.Time, error) 
 	}
 	// Java builds this through a Calendar in UTC and adds the seconds as
 	// milliseconds, which is the same instant.
-	return ttfEpoch.Add(time.Duration(secondsSince1904) * time.Second), nil
+	//
+	// A time.Duration is int64 nanoseconds and reaches only about 292 years, so
+	// adding one would wrap for a date past 2196; Java's milliseconds have no
+	// such limit. The instant is built from the seconds directly.
+	return time.Unix(ttfEpoch.Unix()+secondsSince1904, 0).UTC(), nil
 }
 
 // ReadTag reads the four-character tag that names a table.
@@ -474,7 +478,13 @@ func readInternationalDate(s DataStream) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	return ttfEpoch.Add(time.Duration(secondsSince1904) * time.Second), nil
+	// Java builds this through a Calendar in UTC and adds the seconds as
+	// milliseconds, which is the same instant.
+	//
+	// A time.Duration is int64 nanoseconds and reaches only about 292 years, so
+	// adding one would wrap for a date past 2196; Java's milliseconds have no
+	// such limit. The instant is built from the seconds directly.
+	return time.Unix(ttfEpoch.Unix()+secondsSince1904, 0).UTC(), nil
 }
 
 func readBytes(s DataStream, numberOfBytes int) ([]byte, error) {

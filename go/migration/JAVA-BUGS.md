@@ -539,3 +539,60 @@ where Java throws.
 
 **Confidence** high. The null check on the line above shows the author knew the
 dictionary could be absent; the entry inside it is read without one.
+
+---
+
+## 15. `PDFTextStripper.handleDirection` reverses UTF-16 units, breaking any character outside the basic plane
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/text/PDFTextStripper.java`,
+`handleDirection`.
+
+```java
+if ((level & 1) != 0)
+{
+    while (--end >= start)
+    {
+        char character = word.charAt(end);
+        if (Character.isMirrored(word.codePointAt(end)))
+        {
+            ...
+        }
+        else
+        {
+            result.append(character);
+        }
+    }
+}
+```
+
+**What it does** the loop walks a right-to-left run backwards one `char` at a
+time, and a `char` is a UTF-16 code unit rather than a character. A character
+outside the basic multilingual plane is two of them, so the pair comes out low
+half first. The two halves no longer form a pair, and the character is gone:
+writing the resulting `String` out as UTF-8 replaces each unpaired half.
+
+The `codePointAt(end)` on the next line shows the author knew the difference —
+the mirroring test is done on the code point and the append on the code unit.
+
+**What correct would be** walking the run backwards by code point, which is what
+`StringBuilder.reverse` does; its own documentation says "if there are any
+surrogate pairs included in the sequence, these are treated as single
+characters". `getVisuallyOrderedUnicode`, four hundred lines away in
+`TextPosition`, reverses with exactly that and is unaffected.
+
+**Why it matters** every right-to-left script that reaches outside the basic
+plane loses its characters when the text is extracted: Arabic Mathematical
+Alphabetic Symbols (U+1EE00–U+1EEFF), Cypriot, Phoenician, Old South Arabian,
+and the Arabic and Hebrew ranges in the Supplementary Multilingual Plane. The
+run has to be right to left for the branch to be taken, so a Latin document is
+never affected — which is why it has gone unnoticed.
+
+**Where the Go carries it** `go/pdfbox/text/direction.go`, `handleDirection`.
+The port originally reversed runes, which kept the character whole and
+corrected the bug. That was reverted: the units are reversed here too, and the
+halves that no longer pair become the replacement character, which is what
+Java's `String` becomes once it is written out. `feedback_test.go`,
+`TestHandleDirectionReversesUTF16Units`, pins it.
+
+**Confidence** high. The same method reads the code point for the mirroring
+test and appends the code unit, one line apart.

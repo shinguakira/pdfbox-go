@@ -133,23 +133,37 @@ func TestCorpusOpens(t *testing.T) {
 }
 
 // TestCorpusScore reports how many of the corpus files yield exactly the text
-// the Java expects.
+// the Java expects, unsorted and sorted by position.
+//
+// Java runs every file both ways, comparing against "<name>.pdf.txt" and
+// "<name>.pdf-sorted.txt"; the port scores both the same way.
 func TestCorpusScore(t *testing.T) {
+	t.Run("unsorted", func(t *testing.T) { scoreCorpus(t, false) })
+	t.Run("sorted", func(t *testing.T) { scoreCorpus(t, true) })
+}
+
+// scoreCorpus scores every file of the corpus one way round.
+func scoreCorpus(t *testing.T, sortByPosition bool) {
 	files := corpusFiles(t)
 	if len(files) == 0 {
 		t.Skip("the Java test corpus is not present")
+	}
+
+	suffix := ".txt"
+	if sortByPosition {
+		suffix = "-sorted.txt"
 	}
 
 	matched := 0
 	var report []string
 	for _, path := range files {
 		name := filepath.Base(path)
-		expectedBytes, err := os.ReadFile(path + ".txt")
+		expectedBytes, err := os.ReadFile(path + suffix)
 		if err != nil {
 			report = append(report, name+": no expected output")
 			continue
 		}
-		got, err := stripFile(path, false)
+		got, err := stripFile(path, sortByPosition)
 		if err != nil {
 			report = append(report, name+": "+err.Error())
 			continue

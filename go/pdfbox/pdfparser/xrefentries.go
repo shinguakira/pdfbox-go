@@ -1,6 +1,9 @@
 package pdfparser
 
 import (
+	"errors"
+	"io"
+
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
@@ -100,9 +103,14 @@ func isDigitAt(source pdfio.RandomAccessRead) (bool, error) {
 		return false, err
 	}
 	b := make([]byte, 1)
-	n, _ := source.Read(b)
+	n, readErr := source.Read(b)
 	if _, err := source.Seek(position, 0); err != nil {
 		return false, err
+	}
+	// Java's peek returns -1 at the end of the data and throws for anything
+	// else, and every caller distinguishes the two.
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return false, readErr
 	}
 	if n < 1 {
 		return false, nil

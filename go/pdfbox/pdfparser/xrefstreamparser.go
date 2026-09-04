@@ -1,7 +1,9 @@
 package pdfparser
 
 import (
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
@@ -142,12 +144,14 @@ func (p *XrefStreamParser) readNextValue(value []byte) error {
 	remainingBytes := len(value)
 	for remainingBytes > 0 {
 		amountRead, err := p.source.Read(value[len(value)-remainingBytes:])
+		// Java's read throws for a failure and returns -1 at the end of the
+		// data; only the second ends the loop.
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
 		if amountRead <= 0 {
 			// Java's loop ends when read returns 0 or less, leaving the rest of
 			// the buffer as it was.
-			if err != nil {
-				return nil
-			}
 			return nil
 		}
 		remainingBytes -= amountRead

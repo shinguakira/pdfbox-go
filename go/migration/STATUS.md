@@ -695,6 +695,54 @@ tests. Each carries a test in `text/review_test.go` that fails without the fix.
   either side of a half. It decides whether a line is indented enough to start a
   paragraph.
 
+### Port defects found in the slice 3 feedback, fixed
+
+Seven, from the review comments on the pull request. Each carries a test that
+fails without its fix.
+
+- **`isDigitAt` and `XrefStreamParser.readNextValue` swallowed every read
+  failure.** Java's `RandomAccessRead.read` throws for a failure and returns -1
+  only at the end of the data, and both callers distinguish the two. The port
+  treated a failing source as "not a digit" and as "no more data", so a parse
+  carried on over whatever state the failure left. Both now return the error
+  unless it is `io.EOF`.
+- **`PDFTextStripperByArea.ProcessPage` did not clear the duplicate map.**
+  Java's `processPage` clears `characterListMapping` before walking; the port
+  reimplements `processPage` — Go embedding does not dispatch — and had left it
+  out. A stripper used twice, which `extractRegions` documents as supported,
+  reported nothing the second time.
+- **`GetTextOfPages` did not reset the engine.** Java's `writeText` calls
+  `resetEngine` first, which puts `currentPageNo` back to 1 and empties the
+  per-page state, and applies the extra formatting where it was asked for. The
+  port left the page number where the previous call had pushed it.
+- **`parseIntRadix` parsed at 64 bits.** Java calls `Integer.parseInt`, which
+  rejects anything outside the 32-bit range. An AFM carrying `Characters
+  2147483648` was accepted here and then looped on.
+- **`readInternationalDate` overflowed.** A `time.Duration` is int64 nanoseconds
+  and reaches about 292 years, so a `LONGDATETIME` past 2196 wrapped silently
+  and came back as a date in the past. Java counts in milliseconds and has no
+  such limit. Both copies of the read now build the instant from the seconds.
+- **The corpus harness only ran unsorted.** Java runs every file both ways
+  against `<name>.pdf.txt` and `<name>.pdf-sorted.txt`; the harness now scores
+  both. **16 of 40 either way.**
+
+### A Java bug the port had corrected, reverted
+
+`PDFTextStripper.handleDirection` reverses a right-to-left run with
+`word.charAt(end)` counting down — UTF-16 code units, so a character outside the
+basic plane comes out as its two halves in the wrong order and is destroyed. The
+port had reversed runes, which keeps the character whole. Reverted, recorded as
+[`JAVA-BUGS.md`](JAVA-BUGS.md) entry 15, and pinned by
+`text/feedback_test.go`.
+
+### Reviewed and declined
+
+- **The `aux` clone in `IterativeMergeSort` is dead but stays.** `mergeRuns`
+  overwrites `aux[from:to]` before copying it back, so the initial copy is never
+  read. Java writes `T[] aux = arr.clone()`, and the port writes the clone. It
+  is one allocation-sized copy per sort against a deviation from the source; the
+  source wins.
+
 ### Known behaviour differences, not defects
 
 - **A symbolic TrueType font that is not embedded aborts the page.** Its

@@ -2,6 +2,7 @@ package text
 
 import (
 	"strings"
+	"unicode/utf16"
 
 	"golang.org/x/text/unicode/bidi"
 )
@@ -32,14 +33,19 @@ func handleDirection(word string) string {
 		run := order.Run(i)
 		runText := run.String()
 		if run.Direction() == bidi.RightToLeft {
-			runes := []rune(runText)
-			for j := len(runes) - 1; j >= 0; j-- {
-				character := runes[j]
+			// JAVA-BUGS entry 15: Java walks the run backwards with charAt, a
+			// UTF-16 code unit at a time, so the two halves of a character
+			// outside the basic plane come out in the wrong order and no longer
+			// pair. Ported as written: the units are reversed here too, and the
+			// halves that no longer pair become the replacement character, which
+			// is what Java's String becomes once it is written out as UTF-8.
+			units := utf16.Encode([]rune(runText))
+			for j := len(units) - 1; j >= 0; j-- {
+				character := rune(units[j])
 				if mirrored, ok := mirroringCharMap[character]; ok {
-					result.WriteRune(mirrored)
-				} else {
-					result.WriteRune(character)
+					character = mirrored
 				}
+				result.WriteRune(character)
 			}
 		} else {
 			result.WriteString(runText)

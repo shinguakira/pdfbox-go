@@ -150,8 +150,17 @@ func (s *PDFTextStripper) SetOutput(output io.Writer) { s.output = output }
 // This stands in for getText(PDDocument) while the loader is unported: it is
 // the same walk, given the page tree rather than the document.
 func (s *PDFTextStripper) GetTextOfPages(pages *pdmodel.PDPageTree) (string, error) {
+	// Java's writeText calls resetEngine before anything else, and applies the
+	// extra formatting where it was asked for.
+	s.resetEngine()
 	var out strings.Builder
 	s.output = &out
+	if s.AddMoreFormatting() {
+		s.paragraphEnd = s.lineSeparator
+		s.pageStart = s.lineSeparator
+		s.articleStart = s.lineSeparator
+		s.articleEnd = s.lineSeparator
+	}
 	if err := s.ProcessPages(pages); err != nil {
 		return "", err
 	}
@@ -1246,3 +1255,19 @@ func (s *PDFTextStripper) ArticleEnd() string { return s.articleEnd }
 
 // SetArticleEnd sets what closes an article.
 func (s *PDFTextStripper) SetArticleEnd(articleEndValue string) { s.articleEnd = articleEndValue }
+
+// clearCharacterListMapping empties what the duplicate suppression remembers,
+// which Java's processPage does before walking a page.
+func (s *PDFTextStripper) clearCharacterListMapping() {
+	s.characterListMapping = map[string]map[float32]map[float32]bool{}
+}
+
+// resetEngine puts the stripper back where it started, so that one stripper can
+// write out one document after another.
+//
+// Port of the private resetEngine, which writeText calls first.
+func (s *PDFTextStripper) resetEngine() {
+	s.currentPageNo = 1
+	s.charactersByArticle = nil
+	s.clearCharacterListMapping()
+}

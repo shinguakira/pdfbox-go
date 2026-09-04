@@ -121,6 +121,11 @@ func (s *PDFTextStripperByArea) ProcessPage(page *pdmodel.PDPage) error {
 	if err := s.StartPage(page); err != nil {
 		return err
 	}
+	// Java's processPage clears this before walking the page. Without it the
+	// duplicate suppression still holds the previous extraction, and a stripper
+	// used twice -- which extractRegions says it may be -- reports nothing the
+	// second time.
+	s.clearCharacterListMapping()
 	if err := s.LegacyPDFStreamEngine.ProcessPage(page); err != nil {
 		return err
 	}
