@@ -87,3 +87,41 @@ func (s *PDStream) DecodedStreamLength() int {
 func (s *PDStream) SetDecodedStreamLength(decodedStreamLength int) {
 	s.stream.SetInt(cos.DL, decodedStreamLength)
 }
+
+// CreateInputStreamStopping returns the content of this stream, decoded
+// through every filter up to but not including the first one named in
+// stopFilters.
+//
+// Port of createInputStream(List<String>). PDImageXObject uses it to hand the
+// still-encoded image data to a caller that wants the JPEG or the fax data
+// rather than the samples.
+func (s *PDStream) CreateInputStreamStopping(stopFilters []string) (io.Reader, error) {
+	raw, err := s.stream.CreateRawReader()
+	if err != nil {
+		return nil, err
+	}
+	var someFilters []*cos.Name
+	for _, nextFilter := range s.Filters() {
+		if containsString(stopFilters, nextFilter.Name()) {
+			break
+		}
+		someFilters = append(someFilters, nextFilter)
+	}
+	if len(someFilters) == 0 {
+		return raw, nil
+	}
+	// The port decodes through the stream's own codec provider rather than
+	// through filter.Decode: pdmodel/common must not import pdfbox/filter,
+	// which imports this package's sibling cos, and the provider is what the
+	// stream was built with.
+	return s.stream.CreateReaderStopping(len(someFilters))
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}

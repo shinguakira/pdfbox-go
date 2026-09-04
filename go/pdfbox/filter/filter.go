@@ -6,11 +6,14 @@
 package filter
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
 // ErrUnsupportedFilter is returned for a filter name with no implementation.
@@ -83,16 +86,111 @@ func decodeParamsFor(dictionary *cos.Dictionary, index int) *cos.Dictionary {
 
 // ByName returns the filter for a PDF filter name.
 //
-// Port of FilterFactory.getFilter. Names not yet implemented return
-// ErrUnsupportedFilter rather than a filter that silently does nothing.
+// Port of FilterFactory.getFilter, which keeps a map from name to a single
+// instance of each filter; the Go filters hold no state, so the switch returns
+// the same zero value every time and comparing two of them by == matches Java
+// comparing two references to the one instance.
+//
+// Java throws IOException("Invalid filter: " + name) for a name it does not
+// know. /Identity is not in Java's map either -- it is reached through
+// CryptFilter -- but slice 1 put it here and the parser depends on it.
 func ByName(name *cos.Name) (Filter, error) {
 	switch name {
 	case cos.FlateDecode, cos.Fl:
 		return Flate{}, nil
+	case cos.DCTDecode, cos.DCT:
+		return DCT{}, nil
+	case cos.CCITTFaxDecode, cos.CCF:
+		return CCITTFax{}, nil
+	case cos.LZWDecode, cos.LZW:
+		return LZW{}, nil
+	case cos.ASCIIHexDecode, cos.AHx:
+		return ASCIIHex{}, nil
+	case cos.ASCII85Decode, cos.A85:
+		return ASCII85{}, nil
+	case cos.RunLengthDecode, cos.RL:
+		return RunLength{}, nil
+	case cos.Crypt:
+		return Crypt{}, nil
+	case cos.JPXDecode:
+		return JPX{}, nil
+	case cos.JBIG2Decode:
+		return JBIG2{}, nil
 	case cos.Identity:
 		return Identity{}, nil
 	}
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedFilter, name.Name())
+}
+
+// allFilters returns every filter the factory holds, once each.
+//
+// Port of the package-private FilterFactory.getAllFilters, which exists for the
+// tests. Java's map holds each filter under both its name and its abbreviation
+// and getAllFilters returns the values, so a Java caller sees each filter twice;
+// this returns each once, because the test it serves round trips every one and
+// doing that twice proves nothing.
+func allFilters() []Filter {
+	return []Filter{
+		Flate{}, DCT{}, CCITTFax{}, LZW{}, ASCIIHex{}, ASCII85{},
+		RunLength{}, Crypt{}, JPX{}, JBIG2{},
+	}
+}
+
+// Decode reads encoded data through a chain of filters.
+//
+// Port of the static Filter.decode. It panics on an empty filter list, where
+// Java throws IllegalArgumentException.
+//
+// Java sizes the intermediate buffer from the stream's /Length, four times over
+// and clamped to a chunk size; that is a memory decision with no effect on the
+// bytes, so the port lets a bytes.Buffer grow. Java also closes each
+// intermediate stream in a finally, which a buffer here does not need.
+func Decode(encoded io.Reader, filterList []Filter, parameters *cos.Dictionary,
+	options *DecodeOptions, results *[]DecodeResult) (pdfio.RandomAccessRead, error) {
+	if len(filterList) == 0 {
+		panic("Empty filterList")
+	}
+	if len(filterList) > 1 {
+		seen := make(map[Filter]bool, len(filterList))
+		reduced := make([]Filter, 0, len(filterList))
+		for _, f := range filterList {
+			if !seen[f] {
+				seen[f] = true
+				reduced = append(reduced, f)
+			}
+		}
+		if len(reduced) != len(filterList) {
+			// replace origin list with the reduced one
+			filterList = reduced
+			slog.Warn("filter: removed duplicated filter entries")
+		}
+	}
+
+	input := encoded
+	var output bytes.Buffer
+	// apply filters
+	for i, f := range filterList {
+		if i > 0 {
+			input = bytes.NewReader(output.Bytes())
+			output = bytes.Buffer{}
+		}
+		result, err := decodeWithOptions(f, &output, input, parameters, i, options)
+		if results != nil {
+			*results = append(*results, result)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return pdfio.NewReadBufferBytes(output.Bytes()), nil
+}
+
+// decodeWithOptions is Java's Filter.decode overload that takes DecodeOptions,
+// whose base implementation drops them; a filter that honours them overrides
+// it, and Go has no override, so the ones that do are named here.
+func decodeWithOptions(f Filter, w io.Writer, r io.Reader, parameters *cos.Dictionary,
+	index int, options *DecodeOptions) (DecodeResult, error) {
+	return f.Decode(w, r, parameters, index)
 }
 
 // Identity passes data through unchanged.

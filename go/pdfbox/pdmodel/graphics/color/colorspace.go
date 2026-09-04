@@ -6,6 +6,9 @@
 package color
 
 import (
+	goimage "image"
+
+	awtimage "github.com/shinguakira/pdfbox-go/go/awt/image"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 )
@@ -40,6 +43,60 @@ type PDColorSpace interface {
 	// ToRGB converts a colour value of this colour space to RGB, with each
 	// component between 0 and 1.
 	ToRGB(value []float32) ([]float32, error)
+
+	// ToRGBImage converts the given raster to an RGB image.
+	//
+	// Java returns a BufferedImage of TYPE_INT_RGB; the port returns an
+	// *image.RGBA with every alpha byte 255, which is the nearest Go has.
+	ToRGBImage(raster *awtimage.Raster) (goimage.Image, error)
+
+	// ToRawImage returns an image in this colour space itself, or nil where
+	// there is no way to hold one. Java can do it for an ICC based space and
+	// for an indexed one over sRGB, because java.awt.image can carry an ICC
+	// colour model; Go has no colour model beyond RGB and grey, so this port
+	// returns nil throughout and the caller falls back to ToRGBImage, which is
+	// what Java's callers do for the spaces that return null there.
+	ToRawImage(raster *awtimage.Raster) (goimage.Image, error)
+}
+
+// newRGBImage returns the destination Java's `new BufferedImage(w, h,
+// TYPE_INT_RGB)` gives, which is opaque.
+func newRGBImage(width, height int) *goimage.RGBA {
+	img := goimage.NewRGBA(goimage.Rect(0, 0, width, height))
+	for i := 3; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 0xFF
+	}
+	return img
+}
+
+// setRGB writes one pixel of an image built by newRGBImage, clamping each
+// component to a byte the way Java's raster does when a float is written into
+// a TYPE_INT_RGB image.
+func setRGB(img *goimage.RGBA, x, y int, r, g, b float32) {
+	i := img.PixOffset(x, y)
+	img.Pix[i] = clampToByte(r)
+	img.Pix[i+1] = clampToByte(g)
+	img.Pix[i+2] = clampToByte(b)
+}
+
+func clampToByte(value float32) byte {
+	switch {
+	case value <= 0:
+		return 0
+	case value >= 255:
+		return 255
+	}
+	return byte(value)
+}
+
+// pixelAt reads one pixel of an image built by newRGBImage back as the three
+// samples Java's getPixel returns.
+func pixelAt(img *goimage.RGBA, x, y int, out []int) []int {
+	i := img.PixOffset(x, y)
+	out[0] = int(img.Pix[i])
+	out[1] = int(img.Pix[i+1])
+	out[2] = int(img.Pix[i+2])
+	return out
 }
 
 // PatternColorSpace is a colour space whose values name a pattern rather than

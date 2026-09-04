@@ -68,42 +68,56 @@ relying on it.
 
 # Phase A — Write the tests
 
-- [ ] A1. `pdfbox/filter` — port `TestFilters` in full
+- [x] A1. `pdfbox/filter` — port `TestFilters` in full
   - Slice 1 ported the round-trip generator only. `testPDFBOX1977` needs LZW
     and `testRLE` needs RunLength; both are in scope here.
-- [ ] A2. `pdfbox/filter` — port the second test in that package
+- [x] A2. `pdfbox/filter` — port the second test in that package
 - [ ] A3. `pdmodel/graphics/image` — port all 7 Java tests
-- [ ] A4. Write from source for any filter the Java tests do not reach
+
+      **Three of the seven, and not the other four.** `PDInlineImageTest` and
+      `JPEGFactoryTest` are ported as far as they go without a writer, and
+      `ValidateXImage.validate` is the helper both use. `CCITTFactoryTest`,
+      `LosslessFactoryTest`, `PNGConverterTest` and `PDImageXObjectTest` are
+      not: every one of their tests builds a document, adds the image and saves
+      it, and several then render the saved file back. That is slice 7 and
+      slice 9.
+
+      In their place the port tests the property each factory rests on, which
+      needs neither — that what goes in comes back out, pixel for pixel, over
+      the same checked-in files those tests use. See `migration/STATUS.md`.
+      This box stays open because the four Java tests are still unported, and
+      it is the slice 7 branch that can close it.
+- [x] A4. Write from source for any filter the Java tests do not reach
   - Name which ones before writing
 
 ---
 
 # Phase B — Port the implementation
 
-- [ ] B1. The ASCII filters — `ASCIIHexFilter`, `ASCII85Filter`
-- [ ] B2. `RunLengthDecodeFilter`
-- [ ] B3. `LZWFilter` — check `compress/lzw` against the PDF variant first;
+- [x] B1. The ASCII filters — `ASCIIHexFilter`, `ASCII85Filter`
+- [x] B2. `RunLengthDecodeFilter`
+- [x] B3. `LZWFilter` — check `compress/lzw` against the PDF variant first;
       PDF uses early change, which the stdlib may not
-- [ ] B4. `DCTFilter` — JPEG. Check CMYK and YCCK handling
-- [ ] B5. `CCITTFaxFilter` and its decoder — Group 3 and Group 4
-- [ ] B6. `JBIG2Filter` — decide whether it is ported or left declared and
+- [x] B4. `DCTFilter` — JPEG. Check CMYK and YCCK handling
+- [x] B5. `CCITTFaxFilter` and its decoder — Group 3 and Group 4
+- [x] B6. `JBIG2Filter` — decide whether it is ported or left declared and
       unsupported, as Java does when the optional jar is missing
-- [ ] B7. `DecodeOptions` — image subsampling, which slice 1 left out
-- [ ] B8. `pdmodel/graphics` root — `PDXObject`, `PDPostScriptXObject`
-- [ ] B9. `pdmodel/graphics/image` — `PDImageXObject`, `PDInlineImage`,
+- [x] B7. `DecodeOptions` — image subsampling, which slice 1 left out
+- [x] B8. `pdmodel/graphics` root — `PDXObject`, `PDPostScriptXObject`
+- [x] B9. `pdmodel/graphics/image` — `PDImageXObject`, `PDInlineImage`,
       `PDImage`, `SampledImageReader` and the rest of the 9
-- [ ] B10. `pdfbox/util/filetypedetector` — 3 files, sniffing an image's type
+- [x] B10. `pdfbox/util/filetypedetector` — 3 files, sniffing an image's type
       from its bytes
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
 
 ---
 
@@ -113,49 +127,49 @@ relying on it.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [x] D4. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D7. A filter that produces *nearly* the right bytes is a failed port
+- [x] D7. A filter that produces *nearly* the right bytes is a failed port
   - Compare byte for byte against the Java output, not visually.
 
-- [ ] D8. Check the damage tolerance
+- [x] D8. Check the damage tolerance
   - Every PDFBox filter is written to return what it decoded when the input is
     corrupt, rather than failing. Slice 1 already found one place the Go got
     this wrong. Check each new filter for the same.
 
-- [ ] D9. Check the image types the Go stdlib does not cover
+- [x] D9. Check the image types the Go stdlib does not cover
   - Where `image/jpeg` refuses a file Java reads, that is a port gap, not a
     Java bug. Record it.
 
@@ -184,6 +198,25 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] `pdmodel/graphics/image` needs colour spaces. Slice 2 ported
+- [x] `pdmodel/graphics/image` needs colour spaces. Slice 2 ported
       `PDColorSpace` as an interface with only `PDDeviceGray` behind it; the
       other 20 are absent. Decide whether they come here or in slice 9.
+
+      **Decided: they come here, minus two.** `PDImageXObject.getColorSpace`
+      calls `PDColorSpace.create`, and `SampledImageReader` cannot turn samples
+      into a picture without one, so the image work cannot be done without
+      them; slice 2's own `colorspace.go` says the create methods and
+      `toRGBImage` "belong with the image work of a later slice", which is this
+      one. `create` dispatches on the name, so the dispatch has to be complete
+      or the port diverges from the Java on a file it should read.
+
+      Two stay out: **`PDPattern`**, which takes a `PDResources` and builds
+      pattern dictionaries that only rendering reads, and **`PDJPXColorSpace`**,
+      which only `JPXFilter` constructs and that filter needs a JPEG 2000
+      decoder Go has not got. Both go to slice 9. `create` reports them the way
+      Java reports a colour space it cannot build.
+
+      `PDSeparation` and `PDDeviceN` evaluate a tint transform, so
+      `pdmodel/common/function` comes with them — 6 files and the type 4
+      subtree. That is scope this branch takes on rather than defers, because
+      the two colour spaces are useless without it.

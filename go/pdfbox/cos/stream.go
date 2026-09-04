@@ -483,3 +483,65 @@ func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
 	}
 	return pdfio.NewReadBufferFromReader(decoded)
 }
+
+// CreateReaderStopping returns a reader over the stream data, applying only the
+// first count filters of the stream's filter array.
+//
+// Java has no such method on COSStream: PDStream.createInputStream(List<String>)
+// builds the filter list itself and calls the static Filter.decode. The port
+// puts it here instead, because pdmodel/common cannot import pdfbox/filter --
+// that package imports cos, and cos is where the codec provider a stream was
+// built with lives.
+func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
+	raw, err := s.CreateRawReader()
+	if err != nil {
+		return nil, err
+	}
+
+	codecs, err := s.codecList()
+	if err != nil {
+		return nil, err
+	}
+	if count > len(codecs) {
+		count = len(codecs)
+	}
+	if count <= 0 {
+		return raw, nil
+	}
+	codecs = codecs[:count]
+
+	// Java's PDStream.createInputStream(List<String>) hands its filters to the
+	// static Filter.decode, which reduces a repeated filter to one before it
+	// applies any: a stream whose /Filter array names the same filter twice is
+	// a malformed one PDFBox repairs rather than refuses. Decoding both entries
+	// gives back over-decoded rubbish.
+	//
+	// createInputStream() with no stop filters does *not* do this -- it chains
+	// the filters one for one through COSInputStream -- so the reduction is
+	// here and not in codecList.
+	if len(codecs) > 1 {
+		seen := make(map[StreamCodec]bool, len(codecs))
+		reduced := make([]StreamCodec, 0, len(codecs))
+		for _, c := range codecs {
+			if !seen[c] {
+				seen[c] = true
+				reduced = append(reduced, c)
+			}
+		}
+		codecs = reduced
+	}
+	count = len(codecs)
+
+	current := raw
+	for i := 0; i < count; i++ {
+		decoded := pdfio.NewReadWriteBuffer()
+		if err := codecs[i].Decode(decoded, current, &s.Dictionary, i); err != nil {
+			return nil, fmt.Errorf("cos: decoding filter %d: %w", i, err)
+		}
+		if err := pdfio.SeekTo(decoded, 0); err != nil {
+			return nil, err
+		}
+		current = pdfio.NewReader(decoded)
+	}
+	return current, nil
+}

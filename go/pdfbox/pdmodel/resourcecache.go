@@ -3,6 +3,7 @@ package pdmodel
 import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 )
 
 // ResourceCache keeps the objects read out of a resource dictionary, so that
@@ -35,6 +36,10 @@ type DefaultResourceCache struct {
 	fontDescriptors map[*cos.Object]*font.PDFontDescriptor
 
 	cidFonts map[*cos.Object]font.PDCIDFont
+
+	// colorSpaces is Java's colorSpaces map, keyed on the object number the
+	// way the removed-font bookkeeping above is.
+	colorSpaces map[int64]color.PDColorSpace
 }
 
 var _ ResourceCache = (*DefaultResourceCache)(nil)
@@ -162,4 +167,30 @@ func (c *DefaultResourceCache) RemoveCIDFont(indirect *cos.Object) font.PDCIDFon
 	}
 	delete(c.cidFonts, indirect)
 	return cidFont
+}
+
+// GetColorSpace returns the colour space read from the given indirect object,
+// or nil where the cache has none.
+//
+// Port of DefaultResourceCache.getColorSpace.
+func (c *DefaultResourceCache) GetColorSpace(indirect *cos.Object) color.PDColorSpace {
+	key, ok := c.objectKey(indirect)
+	if !ok {
+		return nil
+	}
+	return c.colorSpaces[key]
+}
+
+// PutColorSpace records the colour space read from the given indirect object.
+//
+// Port of DefaultResourceCache.put(COSObject, PDColorSpace).
+func (c *DefaultResourceCache) PutColorSpace(indirect *cos.Object, space color.PDColorSpace) {
+	key, ok := c.objectKey(indirect)
+	if !ok {
+		return
+	}
+	if c.colorSpaces == nil {
+		c.colorSpaces = map[int64]color.PDColorSpace{}
+	}
+	c.colorSpaces[key] = space
 }

@@ -1058,3 +1058,246 @@ which checks `nameToHandler` only and says so above the assignment.
 
 **Confidence** high. The javadoc and the method body contradict each other in
 five lines.
+
+## 27. `ASCII85InputStream` reads a 0xFF data byte as the end of the stream
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85InputStream.java`.
+
+**What it does**
+
+```java
+int zz = (byte) in.read();
+if (zz == -1)
+{
+    eof = true;
+    return -1;
+}
+z = (byte) zz;
+```
+
+`InputStream.read` returns 0 to 255, or -1 at the end of the stream. The cast
+to `byte` narrows before the test, so a data byte 0xFF also becomes -1 and is
+taken for the end of the stream. The same three lines appear twice, once for
+the first character of a group and once for the rest.
+
+**What correct would be** testing the int the stream returned, before
+narrowing it.
+
+**Why it matters** only for a malformed stream: 0xFF is not a character an
+ASCII85 stream may contain, so a well-formed one never carries it. On a damaged
+one the difference shows — the decoder ends the stream quietly where it should
+raise `IOException("Invalid data in Ascii85 stream")`, which is what every
+other byte outside the alphabet gets.
+
+**Where the Go carries it** `go/pdfbox/filter/ascii85.go`, `readSignificant`,
+which narrows to `int8` and tests for -1 exactly as the Java does, with a
+comment saying why.
+
+**Confidence** high. The narrowing is visible in the expression.
+
+## 28. `LZWFilter.findPatternCode` returns a negative code for a high byte
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java`.
+
+**What it does**
+
+```java
+private static int findPatternCode(List<byte[]> codeTable, byte[] pattern)
+{
+    // for the first 256 entries, index matches value
+    if (pattern.length == 1)
+    {
+        return pattern[0];
+    }
+```
+
+A Java `byte` is signed, so a pattern holding one byte of 0x80 or above returns
+a negative code where the comment says the index matches the value. The other
+place the encoder computes a single byte code writes `by & 0xff`, which is the
+mask this branch is missing.
+
+**What correct would be** `return pattern[0] & 0xFF;`.
+
+**Why it matters** it does not, today: `encode` is the only caller and only
+asks about patterns of two bytes or more, so the branch is unreachable. It is
+recorded because the next caller would not know that.
+
+**Where the Go carries it** `go/pdfbox/filter/lzw.go`, `findPatternCode`, which
+writes `int(int8(pattern[0]))` to keep the sign, with a comment.
+
+**Confidence** high, for the arithmetic. That nothing reaches it is from
+reading the one caller.
+
+## 29. Type 4 `not` negates an integer instead of complementing it
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/BitwiseOperators.java`.
+
+**What it does**
+
+```java
+else if (op1 instanceof Integer)
+{
+    int int1 = (Integer)op1;
+    int result = -int1;
+    stack.push(result);
+}
+```
+
+ISO 32000-1 table 42 gives `not` as "logical | bitwise not", and the PostScript
+Language Reference says of the integer operand that `not` "returns the bitwise
+complement (ones complement) of its value". The ones complement of 52 is -53;
+this returns -52.
+
+**What correct would be** `int result = ~int1;`.
+
+**Why it matters** a type 4 function that applies `not` to an integer computes
+something else, and a tint transform or a shading built on one comes out wrong.
+It is not caught by the Java's own tests because they assert the behaviour:
+`TestOperators.testNot` expects `52 not` to be -52.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/common/function/type4/bitwiseoperators.go`,
+`notOperator`, which writes `-v` with a comment; `TestNot` in
+`type4_test.go` keeps the Java's expected values.
+
+**Confidence** high. The specification and the code disagree in one character.
+
+## 30. `ASCIIHexFilter` adds -1 for a digit that is not hexadecimal
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCIIHexFilter.java`.
+
+**What it does**
+
+```java
+if (REVERSE_HEX[firstByte] == -1)
+{
+    LOG.error("Invalid hex, int: {} char: {} (1st byte)", firstByte, (char) firstByte);
+}
+int value = REVERSE_HEX[firstByte] * 16;
+...
+if (REVERSE_HEX[secondByte] == -1)
+{
+    LOG.error("Invalid hex, int: {} char: {} (2nd byte)", secondByte, (char) secondByte);
+}
+value += REVERSE_HEX[secondByte];
+decoded.write(value);
+```
+
+The table holds -1 for every byte that is not a hexadecimal digit, and the
+filter logs that and then uses it. So `4Z` decodes to 4 × 16 + (-1) = 63, one
+less than the 64 a reader would expect from "the bad digit is a zero"; and an
+invalid *first* digit contributes -16, so `Z4` decodes to -12, which
+`decoded.write` narrows to 0xF4.
+
+**What correct would be** treating the entry as zero after logging, or
+refusing the stream. The specification says a conforming reader may ignore
+characters outside the alphabet, which is neither of these.
+
+**Why it matters** only for a malformed stream, which is exactly when a filter
+is asked to be predictable. One wrong digit shifts the byte around it rather
+than the byte itself, and the error is silent past the log.
+
+**Where the Go carries it** `go/pdfbox/filter/asciihex.go`, `Decode`, which
+multiplies and adds the table entry as Java does; `TestASCIIHexTolerance` in
+`fromsource_test.go` pins both cases with the arithmetic written out.
+
+**Confidence** high. The port's test was written expecting 64 and measured 63.
+
+## 31. `SampledImageReader.from8bit` writes a region to the wrong rows
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/SampledImageReader.java`.
+
+**What it does**
+
+```java
+if (currentSubsampling == 1)
+{
+    // Not the entire region was requested, but if no subsampling should
+    // be performed, we can still copy the entire part of this row
+    System.arraycopy(tempBytes, startx * numComponents, bank,
+            y * inputWidth * numComponents, scanWidth * numComponents);
+}
+```
+
+`bank` is the destination raster, `width` by `height`, where `width` and
+`height` are the *clipped region*. The destination offset is computed from `y`,
+which is the row of the *source* image, and from `inputWidth`, which is the
+width of the *source* image. Both are wrong for the destination: the row should
+be `y - starty` and the stride should be `width`.
+
+For any region that is a strict subset the copy lands on the wrong row and, once
+`y` is large enough, past the end of `bank`. The exception is
+ArrayIndexOutOfBoundsException, and `getRGBImage` catches only
+`NegativeArraySizeException` and `IllegalArgumentException`, so it escapes.
+
+**What correct would be**
+
+```java
+System.arraycopy(tempBytes, startx * numComponents, bank,
+        (y - starty) * width * numComponents, scanWidth * numComponents);
+```
+
+which is what the subsampled branch below it computes by running an index.
+
+**Why it matters** it is reachable: `getRGBImage(pdImage, region, subsampling,
+colorKey)` with a region, a subsampling of 1 and an 8-bit image whose decode
+array is the default. The renderer asks for a region when it draws a tiling
+pattern, and `PDImageXObject.getImage(Rectangle, int)` is public. The other
+three paths through the reader -- `from1Bit`, `fromAny` and the fast copy --
+index correctly.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/graphics/image/sampledimagereader.go`,
+`from8bit`, which computes the same offset and so panics where Java throws. The
+comment there names this entry.
+
+**Confidence** high. The line beside it, for the subsampled case, does the same
+job with a running index and gets it right.
+
+## 32. A truncated ASCII85 stream repeats its last complete group
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85InputStream.java`.
+
+**What it does** `read()` sets `index = 0` before it reads a group, and returns
+-1 from inside the group loop where the stream ends part way through one:
+
+```java
+index = 0;
+...
+ascii[0] = z;
+for (k = 1; k < 5; ++k)
+{
+    do
+    {
+        int zz = (byte) in.read();
+        if (zz == -1)
+        {
+            eof = true;
+            return -1;      // n is still the previous group's 4
+        }
+        ...
+```
+
+`n` keeps the previous group's value. The array read then starts with
+
+```java
+if (eof && index >= n) { return -1; }
+```
+
+which is false, because `index` was just reset to 0 and `n` is 4 — so it copies
+`b[0..3]` out a second time. `transferTo` calls it again, gets those four bytes,
+and only then reaches the end.
+
+**What correct would be** setting `n = 0` beside `eof = true` on that path, or
+resetting `index` only once a group has actually been read.
+
+**Why it matters** a truncated ASCII85 stream — which is what a damaged PDF has
+— decodes to the right bytes followed by four bytes of the previous four
+repeated. Silently, and only at the end, which is where a reader is least
+likely to look.
+
+**Where the Go carries it** `go/pdfbox/filter/ascii85.go`, `readByte` and
+`Read`, which keep the same order; `TestASCII85DamageTolerance` in
+`fromsource_test.go` asserts the repeat and says why.
+
+**Confidence** high. Measured: the port decoded 680 bytes from a stream whose
+first 676 are the original, and the last four repeat bytes 672 to 675.
