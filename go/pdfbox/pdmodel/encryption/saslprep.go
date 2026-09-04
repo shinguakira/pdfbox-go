@@ -127,10 +127,18 @@ func isLCat(r rune) bool {
 	return properties.Class() == bidi.L
 }
 
-// definedCategories are the top-level Unicode general categories; a code point
-// is defined where it falls in one of them, which is Character.isDefined.
+// definedCategories are the Unicode general categories, each named by its two
+// letters; a code point is defined where it falls in one of them, which is
+// Character.isDefined. The one-letter tables are unions that cover unassigned
+// gaps, so they cannot be used for this.
 var definedCategories = []*unicode.RangeTable{
-	unicode.L, unicode.M, unicode.N, unicode.P, unicode.S, unicode.Z, unicode.C,
+	unicode.Cc, unicode.Cf, unicode.Co, unicode.Cs,
+	unicode.Ll, unicode.Lm, unicode.Lo, unicode.Lt, unicode.Lu,
+	unicode.Mc, unicode.Me, unicode.Mn,
+	unicode.Nd, unicode.Nl, unicode.No,
+	unicode.Pc, unicode.Pd, unicode.Pe, unicode.Pf, unicode.Pi, unicode.Po, unicode.Ps,
+	unicode.Sc, unicode.Sk, unicode.Sm, unicode.So,
+	unicode.Zl, unicode.Zp, unicode.Zs,
 }
 
 func isDefined(r rune) bool {

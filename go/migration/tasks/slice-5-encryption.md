@@ -65,35 +65,35 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 
 # Phase A — Write the tests
 
-- [ ] A1. Port `TestSymmetricKeyEncryption` — RC4 and AES, 40/128/256 bit
-- [ ] A2. Port `TestPublicKeyEncryption` — certificate-based
-- [ ] A3. Write from source for the 19 classes the two tests do not reach
+- [x] A1. Port `TestSymmetricKeyEncryption` — RC4 and AES, 40/128/256 bit
+- [x] A2. Port `TestPublicKeyEncryption` — certificate-based
+- [x] A3. Write from source for the 19 classes the two tests do not reach
   - Name which ones those are before writing, so the gap is visible
 
 ---
 
 # Phase B — Port the implementation
 
-- [ ] B1. The security handler base and the registry
+- [x] B1. The security handler base and the registry
   - `SecurityHandler`, `SecurityHandlerFactory`, `ProtectionPolicy`
-- [ ] B2. Standard security — password
+- [x] B2. Standard security — password
   - `StandardSecurityHandler`, `StandardProtectionPolicy`, `StandardDecryptionMaterial`,
     `AccessPermission`
-- [ ] B3. Public key security — certificate
+- [x] B3. Public key security — certificate
   - `PublicKeySecurityHandler`, `PublicKeyProtectionPolicy`,
     `PublicKeyDecryptionMaterial`, `PublicKeyRecipient`
-- [ ] B4. The crypt filters and the rest of the package
-- [ ] B5. Wire decryption into the parser — an encrypted document must open
+- [x] B4. The crypt filters and the rest of the package
+- [x] B5. Wire decryption into the parser — an encrypted document must open
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
 
 ---
 
@@ -177,6 +177,6 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] `TestSymmetricKeyEncryption` writes encrypted PDFs as well as reading
+- [x] `TestSymmetricKeyEncryption` writes encrypted PDFs as well as reading
       them. The writer lands in slice 7. Decide whether this branch ports only
       the reading half, or waits.

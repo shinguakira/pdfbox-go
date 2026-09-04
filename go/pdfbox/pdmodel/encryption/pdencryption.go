@@ -216,9 +216,10 @@ func (e *PDEncryption) SetRecipients(recipients [][]byte) {
 // RecipientsLength returns the number of recipients contained in the Recipients
 // field of the dictionary.
 func (e *PDEncryption) RecipientsLength() int {
-	// Java casts the item to a COSArray without checking, and calls size on it;
-	// a missing or wrongly typed entry is a ClassCastException or a
-	// NullPointerException there and a panic here.
+	// JAVA-BUGS entry 25: Java casts the item to a COSArray without checking
+	// and calls size on it, so a document with no /Recipients -- every
+	// password-encrypted one -- gets a NullPointerException rather than zero.
+	// Ported as written; the assertion below panics where Java throws.
 	array := e.dictionary.GetItem(cos.Recipients).(*cos.Array)
 	return array.Size()
 }
