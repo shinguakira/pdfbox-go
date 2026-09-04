@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
@@ -27,6 +29,13 @@ type PDDocument struct {
 
 	resourceCache ResourceCache
 
+	documentId *int64
+
+	// signInterface signs an incremental save. Java holds a SignatureInterface;
+	// the writer declares the same contract, and the signature model that fills
+	// this in arrives with slice 8.
+	signInterface pdfwriter.SignatureInterface
+
 	encryption             *encryption.PDEncryption
 	accessPermission       *encryption.AccessPermission
 	allSecurityToBeRemoved bool
@@ -34,7 +43,10 @@ type PDDocument struct {
 
 // NewPDDocument returns an empty document.
 func NewPDDocument() *PDDocument {
-	doc := cos.NewDocument(nil)
+	// Java resolves a filter through a static registry; the port passes the
+	// provider in, which is what keeps cos from importing filter.
+	doc := cos.NewDocumentWithCache(nil, filter.Provider{}, nil)
+	doc.DocumentState().SetParsing(false)
 	trailer := cos.NewDictionary()
 	doc.SetTrailer(trailer)
 	d := &PDDocument{document: doc, resourceCache: NewDefaultResourceCache()}
@@ -42,6 +54,7 @@ func NewPDDocument() *PDDocument {
 	// initialise the document catalogue, which builds the page tree
 	root := cos.NewDictionary()
 	root.SetItem(cos.Type, cos.Catalog)
+	root.SetItem(cos.Version, cos.GetPDFName("1.4"))
 	trailer.SetItem(cos.Root, root)
 
 	pages := cos.NewDictionary()
@@ -55,6 +68,7 @@ func NewPDDocument() *PDDocument {
 // NewPDDocumentOf returns the document the given COS document holds, read
 // through the given source.
 func NewPDDocumentOf(doc *cos.Document, source pdfio.RandomAccessRead) *PDDocument {
+	doc.DocumentState().SetParsing(false)
 	return &PDDocument{
 		document:      doc,
 		pdfSource:     source,

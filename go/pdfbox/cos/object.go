@@ -28,18 +28,28 @@ type Parser interface {
 //
 // Port of org.apache.pdfbox.cos.COSObject. The referenced object is resolved
 // lazily, the first time Object is called.
-//
-// Not yet ported: the COSUpdateState this carries in Java, which tracks whether
-// the object has changed for an incremental save. That is slice 7 work; see
-// migration/STATUS.md.
 type Object struct {
 	object
+	updateInfoState
 	baseObject     Base
 	parser         Parser
 	isDereferenced bool
 }
 
 var _ Base = (*Object)(nil)
+var _ UpdateInfo = (*Object)(nil)
+
+// UpdateState returns the current UpdateState of this Object.
+func (o *Object) UpdateState() *UpdateState { return o.state(o) }
+
+// IsNeedToBeUpdated gets the update state for the COSWriter.
+func (o *Object) IsNeedToBeUpdated() bool { return o.UpdateState().IsUpdated() }
+
+// SetNeedToBeUpdated sets the update state for the COSWriter.
+func (o *Object) SetNeedToBeUpdated(flag bool) { o.UpdateState().updateTo(flag) }
+
+// ToIncrement uses this Object as the base object of a new Increment.
+func (o *Object) ToIncrement() *Increment { return o.UpdateState().toIncrement() }
 
 // NewObject wraps an already-resolved object.
 //
@@ -104,6 +114,9 @@ func (o *Object) Object() Base {
 			slog.Error("cos: cannot dereference object", "key", o.Key(), "err", err)
 		} else {
 			o.baseObject = base
+			// Java reaches this only when dereferencing did not throw, so a
+			// failed dereference leaves the child's origin document state unset.
+			o.UpdateState().dereferenceChild(o.baseObject)
 		}
 	}
 	return o.baseObject
@@ -111,10 +124,15 @@ func (o *Object) Object() Base {
 
 // SetToNull replaces the referenced object with the null object and drops the
 // parser, so it is never resolved.
+//
+// Java leaves isDereferenced alone here; getObject then still returns the null
+// object, because the parser it would have gone through is gone.
 func (o *Object) SetToNull() {
+	if o.baseObject != nil {
+		o.UpdateState().update()
+	}
 	o.baseObject = NullObject
 	o.parser = nil
-	o.isDereferenced = true
 }
 
 // COSObject returns the receiver.

@@ -10,11 +10,11 @@ import (
 
 // Ported from pdfbox/src/test/java/org/apache/pdfbox/cos/TestCOSString.java.
 //
-// The Java tests assert the PDF-serialised form through COSWriter.writeString,
-// which belongs to pdfwriter and is not ported. Those assertions are replaced
-// here by checks on the pieces COSWriter reads — Bytes, ToHexString and
-// ForceHexForm — so the same behaviour is pinned. The serialisation assertions
-// return with pdfwriter; see migration/STATUS.md.
+// The Java tests that assert the PDF-serialised form through
+// COSWriter.writeString are in accept_external_test.go, which can import
+// pdfwriter without the cycle a test file in this package would make. What is
+// left here checks the pieces COSWriter reads — Bytes, ToHexString and
+// ForceHexForm.
 
 const (
 	escCharString = "( test#some) escaped< \\chars>!~1239857 "
@@ -50,6 +50,7 @@ func TestStringObjBaseContract(t *testing.T) {
 }
 
 func TestStringObjAccept(t *testing.T) {
+	// The emitted bytes are asserted in accept_external_test.go.
 	assertVisits(t, NewStringObj(escCharString), "string")
 }
 

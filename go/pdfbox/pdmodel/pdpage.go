@@ -1,6 +1,8 @@
 package pdmodel
 
 import (
+	"bytes"
+	"io"
 	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
@@ -327,4 +329,60 @@ func (p *PDPage) Equals(other *PDPage) bool {
 		return false
 	}
 	return p.page == other.page
+}
+
+// ContentStreams returns the content streams of this page.
+//
+// Port of getContentStreams, whose Iterator becomes a slice.
+func (p *PDPage) ContentStreams() []*common.PDStream {
+	base := p.page.GetDictionaryObject(cos.Contents)
+	switch value := base.(type) {
+	case *cos.Stream:
+		return []*common.PDStream{common.NewPDStream(value)}
+	case *cos.Array:
+		streams := make([]*common.PDStream, 0, value.Size())
+		for i := 0; i < value.Size(); i++ {
+			stream, ok := value.GetObject(i).(*cos.Stream)
+			if !ok {
+				// Java casts without a check and throws ClassCastException.
+				panic("pdmodel: a content stream array holds something that is not a stream")
+			}
+			streams = append(streams, common.NewPDStream(stream))
+		}
+		return streams
+	}
+	return nil
+}
+
+// Contents returns the content stream or streams of this page as a single
+// reader.
+//
+// Port of getContents().
+func (p *PDPage) Contents() (io.Reader, error) {
+	contentsForRandomAccess, err := p.ContentsForRandomAccess()
+	if err != nil {
+		return nil, err
+	}
+	if contentsForRandomAccess != nil {
+		return pdfio.NewReader(contentsForRandomAccess), nil
+	}
+	return bytes.NewReader(nil), nil
+}
+
+// SetContents sets the contents of this page.
+//
+// Port of setContents(PDStream).
+func (p *PDPage) SetContents(contents *common.PDStream) {
+	p.page.SetItem(cos.Contents, contents.COSObject())
+}
+
+// SetContentsOfList sets the contents of this page to the given streams.
+//
+// Port of setContents(List<PDStream>).
+func (p *PDPage) SetContentsOfList(contents []*common.PDStream) {
+	array := cos.NewArray()
+	for _, stream := range contents {
+		array.Add(stream.COSObject())
+	}
+	p.page.SetItem(cos.Contents, array)
 }

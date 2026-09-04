@@ -8,10 +8,9 @@ import (
 
 // PDStream is a stream of a PDF document.
 //
-// Port of org.apache.pdfbox.pdmodel.common.PDStream. The reading path is
-// ported; the parts that write a stream into a document, and the decode
-// parameters, the file specification and the metadata, need pieces a later
-// slice brings. See migration/STATUS.md.
+// Port of org.apache.pdfbox.pdmodel.common.PDStream. The decode parameters, the
+// file specification and the metadata need pieces a later slice brings. See
+// migration/STATUS.md.
 type PDStream struct {
 	stream *cos.Stream
 }
@@ -124,4 +123,44 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// COSDocumentLike is the half of a COS document PDStream creates streams
+// through.
+//
+// Java's constructors take a PDDocument or a COSDocument; the port names what
+// is used, so that this package does not import pdmodel back.
+type COSDocumentLike interface {
+	// CreateStream returns a new empty stream belonging to the document.
+	CreateStream() *cos.Stream
+}
+
+// NewPDStreamOfDocument creates a new empty PDStream object.
+//
+// Port of PDStream(PDDocument) and PDStream(COSDocument), which are the same
+// method once the document is taken through what it is used for.
+func NewPDStreamOfDocument(document COSDocumentLike) *PDStream {
+	return &PDStream{stream: document.CreateStream()}
+}
+
+// NewPDStreamOfInput reads all data from the input stream and embeds it into
+// the document with the given filters applied, if any.
+//
+// Port of the private PDStream(PDDocument, InputStream, COSBase), which the
+// three public overloads delegate to. Java closes the InputStream; a Go
+// io.Reader has nothing to close, so the caller keeps that duty.
+func NewPDStreamOfInput(doc COSDocumentLike, input io.Reader, filters cos.Base) (*PDStream, error) {
+	stream := doc.CreateStream()
+	output, err := stream.CreateWriterWithFilters(filters)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(output, input); err != nil {
+		output.Close()
+		return nil, err
+	}
+	if err := output.Close(); err != nil {
+		return nil, err
+	}
+	return &PDStream{stream: stream}, nil
 }

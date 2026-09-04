@@ -11,15 +11,15 @@ import (
 // cross-reference table, and the pool of objects read from it.
 //
 // Port of org.apache.pdfbox.cos.COSDocument.
-//
-// Not yet ported: the COSDocumentState this carries in Java, which tracks
-// whether the document has been changed for an incremental save. That is slice
-// 7 work; see migration/STATUS.md.
 type Document struct {
 	object
 
 	version float32
 	trailer *Dictionary
+
+	// documentState says whether the document is still being parsed, which is
+	// what decides whether a change to an object counts as an update.
+	documentState *DocumentState
 
 	// objectPool holds one proxy per object key, so that a forward reference
 	// resolved later is seen by everyone holding it. Keyed by the packed
@@ -127,7 +127,22 @@ func (d *Document) SetVersion(version float32) { d.version = version }
 func (d *Document) Trailer() *Dictionary { return d.trailer }
 
 // SetTrailer records the trailer dictionary.
-func (d *Document) SetTrailer(trailer *Dictionary) { d.trailer = trailer }
+//
+// // MIT added, maybe this should not be supported as trailer is a persistence
+// construct.
+func (d *Document) SetTrailer(trailer *Dictionary) {
+	d.trailer = trailer
+	trailer.UpdateState().SetOriginDocumentState(d.DocumentState())
+}
+
+// DocumentState returns the DocumentState of this Document.
+func (d *Document) DocumentState() *DocumentState {
+	if d.documentState == nil {
+		// Java makes it in the field initialiser, which always runs.
+		d.documentState = NewDocumentState()
+	}
+	return d.documentState
+}
 
 // IsDecrypted reports whether the document has been decrypted.
 func (d *Document) IsDecrypted() bool { return d.isDecrypted }

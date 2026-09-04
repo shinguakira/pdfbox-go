@@ -19,15 +19,29 @@ import (
 // the same here.
 //
 // Not yet ported: the date accessors, which need a date parser from
-// pdfbox/util; getCOSStream, which needs Stream; the COSObjectable overloads,
-// which need pdmodel; and the COSUpdateState for incremental saves. See
-// migration/STATUS.md.
+// pdfbox/util; getCOSStream, which needs Stream; and the COSObjectable
+// overloads, which need pdmodel. See migration/STATUS.md.
 type Dictionary struct {
 	object
+	updateInfoState
 	items map[*Name]Base
 	// keys holds the insertion order of items.
 	keys []*Name
 }
+
+var _ UpdateInfo = (*Dictionary)(nil)
+
+// UpdateState returns the current UpdateState of this Dictionary.
+func (d *Dictionary) UpdateState() *UpdateState { return d.state(d) }
+
+// IsNeedToBeUpdated gets the update state for the COSWriter.
+func (d *Dictionary) IsNeedToBeUpdated() bool { return d.UpdateState().IsUpdated() }
+
+// SetNeedToBeUpdated sets the update state for the COSWriter.
+func (d *Dictionary) SetNeedToBeUpdated(flag bool) { d.UpdateState().updateTo(flag) }
+
+// ToIncrement uses this Dictionary as the base object of a new Increment.
+func (d *Dictionary) ToIncrement() *Increment { return d.UpdateState().toIncrement() }
 
 var _ Base = (*Dictionary)(nil)
 
@@ -55,33 +69,67 @@ func (d *Dictionary) Size() int { return len(d.items) }
 func (d *Dictionary) Clear() {
 	d.items = make(map[*Name]Base)
 	d.keys = d.keys[:0]
+	d.UpdateState().update()
 }
 
 // SetItem stores value under key. A nil value removes the entry, which is what
 // Java does when setItem is given null.
+//
+// A dictionary or array that already has a key and is not direct is stored as
+// an indirect reference to it, so that the writer emits it once rather than
+// inline at every use.
 func (d *Dictionary) SetItem(key *Name, value Base) {
 	if value == nil {
 		d.RemoveItem(key)
 		return
 	}
+	if isWrappable(value) {
+		cosObject := NewObjectWithKey(value, value.Key())
+		d.putItem(key, cosObject)
+		d.UpdateState().updateChild(cosObject)
+		return
+	}
+	d.putItem(key, value)
+	d.UpdateState().updateChild(value)
+}
+
+// putItem is the items.put(key, value) of setItem, which keeps the key order
+// alongside the map.
+func (d *Dictionary) putItem(key *Name, value Base) {
 	if _, exists := d.items[key]; !exists {
 		d.keys = append(d.keys, key)
 	}
 	d.items[key] = value
 }
 
-// RemoveItem removes the entry under key, if any.
-func (d *Dictionary) RemoveItem(key *Name) {
-	if _, exists := d.items[key]; !exists {
-		return
+// isWrappable reports whether Java would store the given value as a COSObject
+// rather than directly, which is the condition setItem and COSArray.maybeWrap
+// share.
+func isWrappable(value Base) bool {
+	switch value.(type) {
+	case *Dictionary, *Array, *Stream:
+		// COSStream is a COSDictionary in Java, so it takes the same branch.
+		return !value.IsDirect() && value.Key() != nil
 	}
-	delete(d.items, key)
-	for i, k := range d.keys {
-		if k == key {
-			d.keys = append(d.keys[:i], d.keys[i+1:]...)
-			break
+	return false
+}
+
+// RemoveItem removes the entry under key, if any.
+//
+// Java calls update() whether or not the key was there, because Map.remove of
+// an absent key is a no-op but the update is not conditional on it; the port
+// does the same, so an incremental save writes the same objects.
+func (d *Dictionary) RemoveItem(key *Name) {
+	if _, exists := d.items[key]; exists {
+		delete(d.items, key)
+		for i, k := range d.keys {
+			if k == key {
+				d.keys = append(d.keys[:i], d.keys[i+1:]...)
+				break
+			}
 		}
 	}
+	d.UpdateState().update()
 }
 
 // GetItem returns the raw entry under key, which may be an indirect reference
@@ -563,4 +611,77 @@ func (d *Dictionary) GetCOSStream(key *Name) *Stream {
 		return stream
 	}
 	return nil
+}
+
+// ResetImportedObjectKeys resets all object keys to avoid overlapping numbers
+// when saving the new pdf.
+func (d *Dictionary) ResetImportedObjectKeys() {
+	clear(d.resetObjectKeys(map[int64]bool{}))
+}
+
+// resetObjectKeys collects all indirect objects numbers within this dictionary
+// and all included dictionaries. It is used to avoid overlapping object numbers
+// when importing an existing page to another pdf.
+//
+// Expert use only. You might run into an endless recursion if choosing a wrong
+// starting point.
+//
+// Java's collection is of COSObjectKey, which overrides equals; the port keys
+// the set on the key's internal hash, as everything else that holds keys does.
+// A nil map is Java's null argument, which it returns unchanged.
+func (d *Dictionary) resetObjectKeys(indirectObjects map[int64]bool) map[int64]bool {
+	if indirectObjects == nil {
+		return indirectObjects
+	}
+	if key := d.Key(); key != nil {
+		// avoid endless recursions
+		if indirectObjects[key.InternalHash()] {
+			return indirectObjects
+		}
+		indirectObjects[key.InternalHash()] = true
+		// reset object key
+		d.SetKey(nil)
+	}
+	for _, entryKey := range d.KeySet() {
+		cosBase := d.items[entryKey]
+		var indirectObjectKey *ObjectKey
+		if reference, ok := cosBase.(*Object); ok {
+			indirectObjectKey = reference.Key()
+		}
+		if indirectObjectKey != nil {
+			// avoid endless recursions
+			if indirectObjects[indirectObjectKey.InternalHash()] {
+				continue
+			}
+			// dereference object first
+			dereferenced := cosBase.(*Object).Object()
+			// reset object key
+			cosBase.SetKey(nil)
+			cosBase = dereferenced
+		}
+		switch value := cosBase.(type) {
+		case *Stream:
+			// COSStream is a COSDictionary in Java, so it takes the same branch.
+			// descend to included dictionary to reset all included indirect objects
+			// skip PARENT and P references to avoid recursions
+			if entryKey != Parent && entryKey != P {
+				value.resetObjectKeys(indirectObjects)
+			}
+		case *Dictionary:
+			// descend to included dictionary to reset all included indirect objects
+			// skip PARENT and P references to avoid recursions
+			if entryKey != Parent && entryKey != P {
+				value.resetObjectKeys(indirectObjects)
+			}
+		case *Array:
+			// descend to included array to reset all included indirect objects
+			value.resetObjectKeys(indirectObjects)
+		default:
+			if indirectObjectKey != nil {
+				// add key for all indirect objects other than COSDictionary/COSArray
+				indirectObjects[indirectObjectKey.InternalHash()] = true
+			}
+		}
+	}
+	return indirectObjects
 }
