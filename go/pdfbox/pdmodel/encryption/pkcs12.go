@@ -220,7 +220,7 @@ func (s *pkcs12KeyStore) readSafeContents(der []byte, bmpPassword []byte) error 
 				Algorithm algorithmIdentifier
 				Data      []byte
 			}
-			if _, err := asn1.Unmarshal(bag.Value.FullBytes, &encrypted); err != nil {
+			if _, err := asn1.Unmarshal(bag.Value.Bytes, &encrypted); err != nil {
 				return fmt.Errorf("encryption: reading a PKCS#12 shrouded key bag: %w", err)
 			}
 			pkcs8, err := pkcs12Decrypt(encrypted.Algorithm, encrypted.Data, bmpPassword)

@@ -77,7 +77,9 @@ func newRC2Cipher(key []byte, effectiveKeyBits int) (cipher.Block, error) {
 
 	t := len(key)
 	t8 := (effectiveKeyBits + 7) / 8
-	tm := byte(255 % (1 << uint(8+effectiveKeyBits-8*t8)))
+	// The shift has to happen at int width: written as byte(255 % (1 << n)) Go
+	// gives the untyped 1 the byte type of the conversion, and 1 << 8 is then 0.
+	tm := byte(255 % (int(1) << uint(8+effectiveKeyBits-8*t8)))
 
 	for i := t; i < 128; i++ {
 		l[i] = rc2PITable[(int(l[i-1])+int(l[i-t]))%256]

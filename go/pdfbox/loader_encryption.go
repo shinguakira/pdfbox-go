@@ -85,6 +85,10 @@ func LoadPDFFromWithKeyStore(source pdfio.RandomAccessRead, password string, key
 		return nil, err
 	}
 	pdDocument := pdmodel.NewPDDocumentOf(document, source)
+	// Java does these two in PDFParser.parse, which returns the PDDocument; the
+	// port's parser returns the COS document and the loader wraps it, so they
+	// happen here.
 	pdDocument.SetAccessPermission(parser.AccessPermission())
+	pdDocument.SetEncryptionDictionary(parser.Encryption())
 	return pdDocument, nil
 }

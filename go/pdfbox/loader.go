@@ -62,7 +62,9 @@ func LoadPDFFrom(source pdfio.RandomAccessRead) (*pdmodel.PDDocument, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pdmodel.NewPDDocumentOf(document, source), nil
+	pdDocument := pdmodel.NewPDDocumentOf(document, source)
+	pdDocument.SetEncryptionDictionary(parser.Encryption())
+	return pdDocument, nil
 }
 
 // LoadPDFStrict opens the PDF the given source holds, rejecting a file that
@@ -78,5 +80,7 @@ func LoadPDFStrict(source pdfio.RandomAccessRead) (*pdmodel.PDDocument, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pdmodel.NewPDDocumentOf(document, source), nil
+	pdDocument := pdmodel.NewPDDocumentOf(document, source)
+	pdDocument.SetEncryptionDictionary(parser.Encryption())
+	return pdDocument, nil
 }
