@@ -111,9 +111,18 @@ func (r *Raster) GetPixel(x, y int, out []int) []int {
 }
 
 // SetPixel sets the samples of one pixel.
+//
+// Java reads numBands values out of the array and throws
+// ArrayIndexOutOfBoundsException where there are fewer, so a caller that hands
+// over too few fails rather than half writing the pixel; the port panics for
+// the same. A longer array is fine in both -- the CIE colour spaces pass a
+// three element one to a single band raster.
 func (r *Raster) SetPixel(x, y int, values []int) {
+	if len(values) < r.numBands {
+		panic("image: SetPixel was given fewer values than the raster has bands")
+	}
 	base := r.offset(x, y)
-	for b := 0; b < r.numBands && b < len(values); b++ {
+	for b := 0; b < r.numBands; b++ {
 		r.samples[base+b] = uint16(values[b])
 	}
 }
@@ -123,8 +132,11 @@ func (r *Raster) SetPixel(x, y int, values []int) {
 //
 // Port of setDataElements(int, int, Object) for a byte[] argument.
 func (r *Raster) SetDataElements(x, y int, values []byte) {
+	if len(values) < r.numBands {
+		panic("image: SetDataElements was given fewer values than the raster has bands")
+	}
 	base := r.offset(x, y)
-	for b := 0; b < r.numBands && b < len(values); b++ {
+	for b := 0; b < r.numBands; b++ {
 		r.samples[base+b] = uint16(values[b])
 	}
 }

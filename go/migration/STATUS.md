@@ -1616,3 +1616,49 @@ Five, all recorded in `migration/STATUS.md` and none of them a Java bug:
 **A3**: four of the seven image tests are not ported, because every one of their
 tests saves the document and several render it back. The port tests the property
 each factory rests on instead, over the same files. Closing A3 needs slice 7.
+
+### Port defects found in the slice 6 feedback, fixed
+
+**No sampled or calculator function could be built through the factory.** Java
+`PDFunction.create` tests `base instanceof COSDictionary`, and a `COSStream`
+satisfies it because `COSStream extends COSDictionary`. A Go `*cos.Stream`
+embeds `cos.Dictionary` but is not one, so the port's type assertion rejected
+every type 0 and type 4 function — and those two are *always* streams, one
+holding a sample table and the other a program. Every `/Separation` and
+`/DeviceN` whose tint transform is one of them was therefore unbuildable. The
+ported Java test did not catch it because `TestPDFunctionType4` calls the type 4
+constructor directly. `NewPDFunction` now names both cases and hands the
+constructor the stream, which is what Java's `(COSDictionary) base` still is.
+
+**A losslessly imported CMYK image came back blank.** The predictor encoder
+picked DeviceCMYK for an `*image.CMYK` and then wrote nothing: the branch meant
+to read the four channels tested for a `CMYK()` method, and `image/color.CMYK`
+carries its channels as fields and has no such method. Every sample stayed
+zero, which in CMYK is white. It reads the channels through
+`color.CMYKModel.Convert` now, and `TestLosslessCMYKRoundTrip` checks every
+sample of a 17 by 13 picture.
+
+**A CMYK JPEG was written as three components and declared as four.** Go's
+`image/jpeg` has no four component encoder — it writes every image that is not
+grey as three component YCbCr — but `colorSpaceOfImage` read the Go image type
+and said DeviceCMYK, and the inverted decode array beside it added eight
+entries. A reader would take three samples per pixel as four. The port converts
+a CMYK image to RGB before encoding and declares what it actually wrote; that
+loses the CMYK colour space Java writes, which is recorded above with the other
+image gaps.
+
+**A repeated filter was decoded twice by the stopping stream.**
+`PDStream.createInputStream(List<String>)` hands its filters to the static
+`Filter.decode`, which reduces a repeated filter to one before it applies any —
+a stream whose `/Filter` array names the same filter twice is a malformed one
+PDFBox repairs. The port decoded both. The reduction is in
+`Stream.CreateReaderStopping` and not in `codecList`, because
+`createInputStream()` with no stop filters does not do it: it chains the filters
+one for one through `COSInputStream`.
+
+**`Raster.SetPixel` half wrote a pixel.** Handed fewer values than the raster
+has bands it stopped at the shorter of the two, leaving the remaining bands
+holding whatever the pixel had before. Java reads `numBands` values and throws
+`ArrayIndexOutOfBoundsException`; the port panics now. A *longer* array is still
+fine in both, which is what lets the CIE colour spaces pass a three element one
+to a single band raster.

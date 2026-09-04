@@ -145,6 +145,14 @@ func CreateJPEGFromImage(document DocumentLike, img goimage.Image, quality float
 	dpi int) (*PDImageXObject, error) {
 	awtColorImage, alphaImage := splitAlpha(img)
 
+	// Go's image/jpeg has no four component encoder: it writes every image that
+	// is not grey as a three component YCbCr JPEG. Java writes a CMYK one, and
+	// PDDeviceCMYK with the inverted decode array below is what reads it back;
+	// declaring that over three component data would have a reader take three
+	// samples per pixel as four. So the port converts a CMYK image to RGB here
+	// and declares what it actually wrote. See migration/STATUS.md.
+	awtColorImage = toRGBForJPEG(awtColorImage)
+
 	// create XObject
 	var encoded bytes.Buffer
 	if err := jpeg.Encode(&encoded, awtColorImage,
@@ -315,4 +323,27 @@ func jpegFrameHeader(data []byte) (width, height, components int, err error) {
 			}
 		}
 	}
+}
+
+// toRGBForJPEG converts an image image/jpeg cannot encode in its own colour
+// model into one it can.
+//
+// The only such image is *image.CMYK: the encoder handles *image.Gray as one
+// component and everything else as three, so a CMYK image would be written as
+// three component YCbCr while the dictionary said four. Converting it here
+// keeps the data and the dictionary in agreement, at the cost of the CMYK
+// colour space Java would have written.
+func toRGBForJPEG(img goimage.Image) goimage.Image {
+	if _, isCMYK := img.(*goimage.CMYK); !isCMYK {
+		return img
+	}
+	bounds := img.Bounds()
+	rgb := goimage.NewRGBA(goimage.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	for y := 0; y < bounds.Dy(); y++ {
+		for x := 0; x < bounds.Dx(); x++ {
+			r, g, b, _ := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
+			rgb.SetRGBA(x, y, colorFromRGBA(r, g, b))
+		}
+	}
+	return rgb
 }

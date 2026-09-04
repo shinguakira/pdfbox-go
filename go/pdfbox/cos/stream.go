@@ -508,6 +508,29 @@ func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
 	if count <= 0 {
 		return raw, nil
 	}
+	codecs = codecs[:count]
+
+	// Java's PDStream.createInputStream(List<String>) hands its filters to the
+	// static Filter.decode, which reduces a repeated filter to one before it
+	// applies any: a stream whose /Filter array names the same filter twice is
+	// a malformed one PDFBox repairs rather than refuses. Decoding both entries
+	// gives back over-decoded rubbish.
+	//
+	// createInputStream() with no stop filters does *not* do this -- it chains
+	// the filters one for one through COSInputStream -- so the reduction is
+	// here and not in codecList.
+	if len(codecs) > 1 {
+		seen := make(map[StreamCodec]bool, len(codecs))
+		reduced := make([]StreamCodec, 0, len(codecs))
+		for _, c := range codecs {
+			if !seen[c] {
+				seen[c] = true
+				reduced = append(reduced, c)
+			}
+		}
+		codecs = reduced
+	}
+	count = len(codecs)
 
 	current := raw
 	for i := 0; i < count; i++ {

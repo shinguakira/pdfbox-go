@@ -3,6 +3,7 @@ package image
 import (
 	"bytes"
 	goimage "image"
+	goimagecolor "image/color"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
@@ -345,12 +346,15 @@ func (e *predictorEncoder) readRow(bounds goimage.Rectangle, rowNum int, transfe
 		at := e.img.At(bounds.Min.X+x, bounds.Min.Y+rowNum)
 		base := x * e.bytesPerPixel
 
-		if cmyk, ok := at.(interface {
-			CMYK() (uint8, uint8, uint8, uint8)
-		}); ok {
-			c, m, y, k := cmyk.CMYK()
-			transferRow[base], transferRow[base+1] = c, m
-			transferRow[base+2], transferRow[base+3] = y, k
+		if e.colorSpace == color.PDColorSpace(color.DeviceCMYK) {
+			// image/color.CMYK carries its four channels as fields and has no
+			// accessor for them; the model conversion is the way to ask any
+			// colour for them, and for an *image.CMYK it is the identity.
+			cmyk := goimagecolor.CMYKModel.Convert(at).(goimagecolor.CMYK)
+			transferRow[base] = cmyk.C
+			transferRow[base+1] = cmyk.M
+			transferRow[base+2] = cmyk.Y
+			transferRow[base+3] = cmyk.K
 			continue
 		}
 
@@ -358,9 +362,6 @@ func (e *predictorEncoder) readRow(bounds goimage.Rectangle, rowNum int, transfe
 		switch {
 		case e.colorSpace == color.PDColorSpace(color.DeviceGray):
 			e.putComponent(transferRow, base, r)
-		case e.colorSpace == color.PDColorSpace(color.DeviceCMYK):
-			// reached only through the CMYK branch above; kept so that the
-			// switch is total.
 		default:
 			e.putComponent(transferRow, base, r)
 			e.putComponent(transferRow, base+e.bytesPerComponent, g)

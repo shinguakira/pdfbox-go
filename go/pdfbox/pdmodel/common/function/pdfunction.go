@@ -103,21 +103,34 @@ func NewPDFunction(function cos.Base) (PDFunction, error) {
 	if object, ok := function.(*cos.Object); ok {
 		base = object.Object()
 	}
-	functionDictionary, ok := base.(*cos.Dictionary)
-	if !ok {
+
+	// Java tests `base instanceof COSDictionary`, which a COSStream satisfies
+	// because COSStream extends COSDictionary -- and a type 0 or a type 4
+	// function is always a stream, one holding a sample table and the other a
+	// program. A Go *cos.Stream embeds cos.Dictionary but is not one, so the
+	// two cases are named here; the constructor is handed `base`, the stream
+	// itself, because that is what Java's `(COSDictionary) base` still is.
+	var functionDictionary *cos.Dictionary
+	switch value := base.(type) {
+	case *cos.Stream:
+		functionDictionary = &value.Dictionary
+	case *cos.Dictionary:
+		functionDictionary = value
+	default:
 		return nil, fmt.Errorf("Error: Function must be a Dictionary, but is %s",
 			simpleName(base))
 	}
+
 	functionType := functionDictionary.GetInt(cos.FunctionType)
 	switch functionType {
 	case 0:
-		return NewPDFunctionType0(functionDictionary), nil
+		return NewPDFunctionType0(base), nil
 	case 2:
-		return NewPDFunctionType2(functionDictionary), nil
+		return NewPDFunctionType2(base), nil
 	case 3:
-		return NewPDFunctionType3(functionDictionary), nil
+		return NewPDFunctionType3(base), nil
 	case 4:
-		return NewPDFunctionType4(functionDictionary)
+		return NewPDFunctionType4(base)
 	default:
 		return nil, fmt.Errorf("Error: Unknown function type %d", functionType)
 	}
