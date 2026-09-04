@@ -2,6 +2,7 @@ package pdfparser
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
@@ -23,7 +24,18 @@ type PDFParser struct {
 
 // NewPDFParser returns a parser over the given file.
 func NewPDFParser(source pdfio.RandomAccessRead, cache pdfio.StreamCache, codecs cos.CodecProvider) (*PDFParser, error) {
-	fileParser, err := NewFileParser(source, cache, codecs)
+	return NewPDFParserWithPassword(source, "", nil, "", cache, codecs)
+}
+
+// NewPDFParserWithPassword returns a parser over the given file, which it
+// decrypts with the given password, or with the given PKCS#12 keystore and
+// alias where the document uses public key security.
+//
+// Port of the PDFParser constructor that takes all four.
+func NewPDFParserWithPassword(source pdfio.RandomAccessRead, password string, keyStore io.Reader,
+	keyAlias string, cache pdfio.StreamCache, codecs cos.CodecProvider) (*PDFParser, error) {
+	fileParser, err := NewFileParserWithPassword(source, password, keyStore, keyAlias, cache,
+		codecs)
 	if err != nil {
 		return nil, err
 	}
