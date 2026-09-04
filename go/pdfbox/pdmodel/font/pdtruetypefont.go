@@ -3,6 +3,7 @@ package font
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 
@@ -60,6 +61,7 @@ type PDTrueTypeFont struct {
 	pdSimpleFont
 
 	ttf        *ttf.TrueTypeFont
+	otf        *ttf.OpenTypeFont
 	isEmbedded bool
 	isDamaged  bool
 
@@ -92,71 +94,30 @@ func NewPDTrueTypeFontFromDictionary(fontDictionary *cos.Dictionary, resourceCac
 	fontIsDamaged := false
 	if fd := f.FontDescriptor(); fd != nil {
 		if ff2Stream := fd.FontFile2(); ff2Stream != nil {
-			view, err := ff2Stream.Stream().CreateView()
+			// embedded OTF or TTF
+			parsed, err := readEmbeddedTrueType(ff2Stream.Stream())
 			if err != nil {
-				// Could not read embedded TTF for the font
+				slog.Warn("Could not read embedded TTF for font", "font", f.Name(), "err", err)
 				fontIsDamaged = true
 			} else {
-				// embedded
-				parser, err := trueTypeParser(view, true)
-				if err != nil {
-					fontIsDamaged = true
-					view.Close()
-				} else {
-					ttfFont, err = parser.Parse(view)
-					if err != nil {
-						fontIsDamaged = true
-						ttfFont = nil
-					} else {
-						ttfFont.Close()
-					}
-				}
+				ttfFont = parsed
 			}
 		}
 	}
 	f.isEmbedded = ttfFont != nil
 	f.isDamaged = fontIsDamaged
 
-	// Java asks the font mapper for a substitute here; that is slice 4, so a
-	// font that is not embedded has no font program at all.
+	// Java asks the font mapper for a substitute here; that is B6, so a font
+	// that is not embedded has no font program at all.
 	f.ttf = ttfFont
+	if ttfFont != nil {
+		f.otf = asSupportedOTF(ttfFont)
+	}
 
 	if err := f.readEncoding(); err != nil {
 		return nil, err
 	}
 	return f, nil
-}
-
-// trueTypeParser returns the parser the font at the cursor needs, which for an
-// OpenType font with CFF outlines would be the OTF parser.
-//
-// Java sniffs the "OTTO" tag and returns an OTFParser; slice 4 ports that, so
-// an OpenType font is rejected here rather than read as a TrueType one.
-func trueTypeParser(randomAccessRead interface {
-	Read([]byte) (int, error)
-	Seek(int64, int) (int64, error)
-	Position() (int64, error)
-}, isEmbedded bool) (*ttf.Parser, error) {
-	startPos, err := randomAccessRead.Position()
-	if err != nil {
-		return nil, err
-	}
-	tagBytes := make([]byte, 4)
-	remainingBytes := len(tagBytes)
-	for remainingBytes > 0 {
-		amountRead, err := randomAccessRead.Read(tagBytes[len(tagBytes)-remainingBytes:])
-		if amountRead <= 0 || err != nil {
-			break
-		}
-		remainingBytes -= amountRead
-	}
-	if _, err := randomAccessRead.Seek(startPos, 0); err != nil {
-		return nil, err
-	}
-	if string(tagBytes) == "OTTO" {
-		return nil, fmt.Errorf("font: OpenType fonts with CFF outlines are not ported yet")
-	}
-	return ttf.NewParserEmbedded(isEmbedded), nil
 }
 
 // BaseFont returns the /BaseFont entry of the font dictionary.
@@ -412,13 +373,8 @@ func (f *PDTrueTypeFont) GetPath(code int) (*geom.Path2D, error) {
 	if glyph == nil {
 		return geom.NewPathFloat(), nil
 	}
-	// Rendering the outline needs GlyphRenderer, which a later slice ports.
-	return nil, errGlyphOutlines
+	return glyph.Path(), nil
 }
-
-// errGlyphOutlines is what the paths that render a glyph return while the glyph
-// renderers are unported.
-var errGlyphOutlines = fmt.Errorf("font: glyph outlines are not ported yet")
 
 // GetPathByName returns the outline of the named glyph.
 func (f *PDTrueTypeFont) GetPathByName(name string) (*geom.Path2D, error) {
@@ -461,13 +417,70 @@ func (f *PDTrueTypeFont) GetPathByName(name string) (*geom.Path2D, error) {
 	if glyph == nil {
 		return geom.NewPathFloat(), nil
 	}
-	return nil, errGlyphOutlines
+	return glyph.Path(), nil
 }
 
 // GetNormalizedPath returns the outline of the given glyph, scaled so that the
 // font matrix is the default one.
 func (f *PDTrueTypeFont) GetNormalizedPath(code int) (*geom.Path2D, error) {
-	return nil, errGlyphOutlines
+	if f.ttf == nil {
+		return nil, errNoTrueTypeProgram
+	}
+	var path *geom.Path2D
+	var err error
+	if f.otf != nil && f.otf.IsPostScript() {
+		if path, err = f.getPathFromOutlines(code); err != nil {
+			return nil, err
+		}
+	} else {
+		gid, err := f.CodeToGID(code)
+		if err != nil {
+			return nil, err
+		}
+		if path, err = f.GetPath(code); err != nil {
+			return nil, err
+		}
+		// Acrobat only draws GID 0 for embedded or "Standard 14" fonts, see
+		// PDFBOX-2372
+		if gid == 0 && !f.IsEmbedded() && !f.IsStandard14() {
+			path = nil
+		}
+	}
+	if path == nil {
+		return geom.NewPathFloat(), nil
+	}
+	unitsPerEm, err := f.ttf.UnitsPerEm()
+	if err != nil {
+		return nil, err
+	}
+	if unitsPerEm != 1000 {
+		scale := 1000 / float64(unitsPerEm)
+		// path will have to be cloned if it is cached in the future, see
+		// PDFBOX-5567
+		path.Transform(geom.ScaleInstance(scale, scale))
+	}
+	return path, nil
+}
+
+// getPathFromOutlines reads the outline out of the CFF table of an OpenType
+// font with PostScript outlines.
+func (f *PDTrueTypeFont) getPathFromOutlines(code int) (*geom.Path2D, error) {
+	cffTable, err := f.otf.CFF()
+	if err != nil {
+		return nil, err
+	}
+	cffFont := cffTable.Font()
+	name := f.Encoding().Name(code)
+	sid := cffFont.Charset().SID(name)
+	gid := cffFont.Charset().GIDForSID(sid)
+	charString, err := cffFont.GetType2CharString(gid)
+	if err != nil {
+		return nil, err
+	}
+	if charString == nil {
+		return nil, nil
+	}
+	return charString.Path(), nil
 }
 
 // HasGlyphByName reports whether the font has the named glyph.

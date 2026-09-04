@@ -441,10 +441,7 @@ func (f *PDCIDFontType2) GetPath(code int, parent *PDType0Font) (*geom.Path2D, e
 		return nil, err
 	}
 	if glyph != nil {
-		// Java calls glyph.getPath(), which runs the GlyphRenderer; that is
-		// still unported, so a TrueType outline is not available here. See
-		// migration/STATUS.md.
-		return nil, errGlyphOutlines
+		return glyph.Path(), nil
 	}
 	return geom.NewPathFloat(), nil
 }
