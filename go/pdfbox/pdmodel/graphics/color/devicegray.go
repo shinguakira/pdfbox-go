@@ -1,6 +1,11 @@
 package color
 
-import "github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+import (
+	goimage "image"
+
+	awtimage "github.com/shinguakira/pdfbox-go/go/awt/image"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+)
 
 // PDDeviceGray is a colour space with black, white, and intermediate shades of
 // gray.
@@ -37,4 +42,43 @@ func (c *PDDeviceGray) InitialColor() *PDColor { return c.initialColor }
 // ToRGB spreads the one component across all three channels.
 func (c *PDDeviceGray) ToRGB(value []float32) ([]float32, error) {
 	return []float32{value[0], value[0], value[0]}, nil
+}
+
+// ToRGBImage spreads the one component of each sample across all three
+// channels.
+//
+// Java's PDDeviceGray builds a TYPE_BYTE_GRAY BufferedImage and sets the
+// raster into it, which leaves the caller to convert; the port writes the RGB
+// image directly, because Go's image.Gray would have to be converted by every
+// caller anyway and the spread is the same three assignments.
+func (c *PDDeviceGray) ToRGBImage(raster *awtimage.Raster) (goimage.Image, error) {
+	width := raster.Width()
+	height := raster.Height()
+	image := newRGBImage(width, height)
+	pixel := make([]int, raster.NumBands())
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			raster.GetPixel(x, y, pixel)
+			gray := float32(pixel[0])
+			setRGB(image, x, y, gray, gray, gray)
+		}
+	}
+	return image, nil
+}
+
+// ToRawImage returns the raster as a grey image, which is the one case Java's
+// PDDeviceGray can answer: its raw image is a TYPE_BYTE_GRAY BufferedImage.
+func (c *PDDeviceGray) ToRawImage(raster *awtimage.Raster) (goimage.Image, error) {
+	if raster.DataType() != awtimage.TypeByte || raster.NumBands() != 1 {
+		return nil, nil
+	}
+	width := raster.Width()
+	height := raster.Height()
+	image := goimage.NewGray(goimage.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			image.Pix[y*image.Stride+x] = byte(raster.Samples()[y*width+x])
+		}
+	}
+	return image, nil
 }

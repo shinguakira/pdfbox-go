@@ -1,6 +1,7 @@
 package cos
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -473,22 +474,79 @@ func (d *Dictionary) COSObject() Base { return d }
 func (d *Dictionary) Accept(v Visitor) error { return v.VisitDictionary(d) }
 
 // String returns the Java toString form.
+//
+// Port of COSDictionary.toString, which delegates to getDictionaryString with a
+// list of the objects it has already been through. That list is not decoration:
+// a dictionary may hold itself, directly or through an array, and without it the
+// walk does not end. PDFBOX-5315 is one such document.
 func (d *Dictionary) String() string {
+	return dictionaryString(d, nil)
+}
+
+// dictionaryString is Java's private getDictionaryString.
+//
+// Java identifies a repeat with `objs.contains(base)`, which for these types is
+// identity, because none of them overrides equals; the port compares the
+// interface values, which for a pointer is the same test. Java then prints
+// `hash:` and the identity hash code, which Go has no equivalent of, so the
+// port prints the pointer instead and says as much here.
+func dictionaryString(base Base, objs []Base) string {
+	if base == nil {
+		return "null"
+	}
+	for _, seen := range objs {
+		if seen == base {
+			// avoid endless recursion
+			return fmt.Sprintf("hash:%p", base)
+		}
+	}
+
+	switch value := base.(type) {
+	case *Stream:
+		objs = append(objs, base)
+		var sb strings.Builder
+		sb.WriteString(dictionaryEntriesString(&value.Dictionary, objs))
+		// Java appends the hash of the raw stream data; the port appends the
+		// length instead, because Arrays.hashCode of the bytes is a Java
+		// specific number and nothing reads it.
+		length, _ := value.Length()
+		fmt.Fprintf(&sb, "COSStream{%d}", length)
+		return sb.String()
+
+	case *Dictionary:
+		objs = append(objs, base)
+		return dictionaryEntriesString(value, objs)
+
+	case *Array:
+		objs = append(objs, base)
+		var sb strings.Builder
+		sb.WriteString("COSArray{")
+		for i := 0; i < value.Size(); i++ {
+			sb.WriteString(dictionaryString(value.Get(i), objs))
+			sb.WriteString(";")
+		}
+		sb.WriteString("}")
+		return sb.String()
+
+	case *Object:
+		objs = append(objs, base)
+		inner := value.Object()
+		if inner == nil {
+			inner = NullObject
+		}
+		return "COSObject{" + dictionaryString(inner, objs) + "}"
+	}
+	return baseString(base)
+}
+
+func dictionaryEntriesString(d *Dictionary, objs []Base) string {
 	var sb strings.Builder
 	sb.WriteString("COSDictionary{")
-	for i, k := range d.keys {
-		if i > 0 {
-			sb.WriteString("; ")
-		}
-		sb.WriteString("(")
-		sb.WriteString(k.Name())
+	for _, k := range d.keys {
+		sb.WriteString(k.String())
 		sb.WriteString(":")
-		if v := d.items[k]; v == nil {
-			sb.WriteString("<null>")
-		} else {
-			sb.WriteString(baseString(v))
-		}
-		sb.WriteString(")")
+		sb.WriteString(dictionaryString(d.items[k], objs))
+		sb.WriteString(";")
 	}
 	sb.WriteString("}")
 	return sb.String()
