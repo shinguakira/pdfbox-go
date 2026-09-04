@@ -66,7 +66,7 @@ The bulk of `fontbox`, and the CID half of the font model.
 
 # Phase A — Write the tests
 
-- [ ] A1. `fontbox/cmap` — port all 5 Java tests
+- [x] A1. `fontbox/cmap` — port all 5 Java tests
 - [ ] A2. `fontbox/type1` — port the 1 Java test
 - [ ] A3. `fontbox/cff` — port all 6 Java tests
 - [ ] A4. `fontbox/ttf` — port `GlyphSubstitutionTableTest`,
@@ -80,7 +80,7 @@ The bulk of `fontbox`, and the CID half of the font model.
 
 # Phase B — Port the implementation
 
-- [ ] B1. `fontbox/cmap` — the CMap parser and the predefined CMaps
+- [x] B1. `fontbox/cmap` — the CMap parser and the predefined CMaps
 - [ ] B2. `fontbox/type1` — the Type 1 font parser, and `fontbox/pfb` — the
       PFB container it arrives in
 - [ ] B3. `fontbox/cff` — CFF and Type 2 charstrings, 26 files
