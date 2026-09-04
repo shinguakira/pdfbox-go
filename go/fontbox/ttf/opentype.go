@@ -191,7 +191,9 @@ func NewOTFParserEmbedded(isEmbedded bool) *OTFParser {
 // todo: this is a stub, a full implementation is needed
 func otfReadTable(tag string) tableBase {
 	switch tag {
-	case "BASE", "GDEF", "GPOS", GlyphSubstitutionTag, OTLTag:
+	case GlyphSubstitutionTag:
+		return &GlyphSubstitutionTable{}
+	case "BASE", "GDEF", "GPOS", OTLTag:
 		return &OTLTable{}
 	case CFFTag:
 		return &CFFTable{}

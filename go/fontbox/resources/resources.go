@@ -15,6 +15,7 @@ import (
 )
 
 //go:embed cmap
+//go:embed unicode/Scripts.txt
 var files embed.FS
 
 // Open returns the named resource, the name being the path below

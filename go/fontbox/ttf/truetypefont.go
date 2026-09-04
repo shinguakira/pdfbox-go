@@ -10,6 +10,7 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox"
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf/model"
 	"github.com/shinguakira/pdfbox-go/go/fontbox/util"
 )
 
@@ -587,4 +588,22 @@ func (f *TrueTypeFont) TableNBytes(table tableBase, limit int) ([]byte, error) {
 		return nil, err
 	}
 	return bytes, nil
+}
+
+// GSUB returns the GSUB table, or nil where the font has none.
+func (f *TrueTypeFont) GSUB() (*GlyphSubstitutionTable, error) {
+	return tableAs[*GlyphSubstitutionTable](f, GlyphSubstitutionTag)
+}
+
+// GsubData returns the substitution data of the font, or model.NoDataFound
+// where it has none.
+func (f *TrueTypeFont) GsubData() (model.GsubData, error) {
+	gsub, err := f.GSUB()
+	if err != nil {
+		return nil, err
+	}
+	if gsub == nil {
+		return model.NoDataFound, nil
+	}
+	return gsub.GsubData(), nil
 }
