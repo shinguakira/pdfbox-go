@@ -1058,3 +1058,106 @@ which checks `nameToHandler` only and says so above the assignment.
 
 **Confidence** high. The javadoc and the method body contradict each other in
 five lines.
+
+## 27. `ASCII85InputStream` reads a 0xFF data byte as the end of the stream
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85InputStream.java`.
+
+**What it does**
+
+```java
+int zz = (byte) in.read();
+if (zz == -1)
+{
+    eof = true;
+    return -1;
+}
+z = (byte) zz;
+```
+
+`InputStream.read` returns 0 to 255, or -1 at the end of the stream. The cast
+to `byte` narrows before the test, so a data byte 0xFF also becomes -1 and is
+taken for the end of the stream. The same three lines appear twice, once for
+the first character of a group and once for the rest.
+
+**What correct would be** testing the int the stream returned, before
+narrowing it.
+
+**Why it matters** only for a malformed stream: 0xFF is not a character an
+ASCII85 stream may contain, so a well-formed one never carries it. On a damaged
+one the difference shows — the decoder ends the stream quietly where it should
+raise `IOException("Invalid data in Ascii85 stream")`, which is what every
+other byte outside the alphabet gets.
+
+**Where the Go carries it** `go/pdfbox/filter/ascii85.go`, `readSignificant`,
+which narrows to `int8` and tests for -1 exactly as the Java does, with a
+comment saying why.
+
+**Confidence** high. The narrowing is visible in the expression.
+
+## 28. `LZWFilter.findPatternCode` returns a negative code for a high byte
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java`.
+
+**What it does**
+
+```java
+private static int findPatternCode(List<byte[]> codeTable, byte[] pattern)
+{
+    // for the first 256 entries, index matches value
+    if (pattern.length == 1)
+    {
+        return pattern[0];
+    }
+```
+
+A Java `byte` is signed, so a pattern holding one byte of 0x80 or above returns
+a negative code where the comment says the index matches the value. The other
+place the encoder computes a single byte code writes `by & 0xff`, which is the
+mask this branch is missing.
+
+**What correct would be** `return pattern[0] & 0xFF;`.
+
+**Why it matters** it does not, today: `encode` is the only caller and only
+asks about patterns of two bytes or more, so the branch is unreachable. It is
+recorded because the next caller would not know that.
+
+**Where the Go carries it** `go/pdfbox/filter/lzw.go`, `findPatternCode`, which
+writes `int(int8(pattern[0]))` to keep the sign, with a comment.
+
+**Confidence** high, for the arithmetic. That nothing reaches it is from
+reading the one caller.
+
+## 29. Type 4 `not` negates an integer instead of complementing it
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/BitwiseOperators.java`.
+
+**What it does**
+
+```java
+else if (op1 instanceof Integer)
+{
+    int int1 = (Integer)op1;
+    int result = -int1;
+    stack.push(result);
+}
+```
+
+ISO 32000-1 table 42 gives `not` as "logical | bitwise not", and the PostScript
+Language Reference says of the integer operand that `not` "returns the bitwise
+complement (ones complement) of its value". The ones complement of 52 is -53;
+this returns -52.
+
+**What correct would be** `int result = ~int1;`.
+
+**Why it matters** a type 4 function that applies `not` to an integer computes
+something else, and a tint transform or a shading built on one comes out wrong.
+It is not caught by the Java's own tests because they assert the behaviour:
+`TestOperators.testNot` expects `52 not` to be -52.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/common/function/type4/bitwiseoperators.go`,
+`notOperator`, which writes `-v` with a comment; `TestNot` in
+`type4_test.go` keeps the Java's expected values.
+
+**Confidence** high. The specification and the code disagree in one character.

@@ -184,6 +184,25 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] `pdmodel/graphics/image` needs colour spaces. Slice 2 ported
+- [x] `pdmodel/graphics/image` needs colour spaces. Slice 2 ported
       `PDColorSpace` as an interface with only `PDDeviceGray` behind it; the
       other 20 are absent. Decide whether they come here or in slice 9.
+
+      **Decided: they come here, minus two.** `PDImageXObject.getColorSpace`
+      calls `PDColorSpace.create`, and `SampledImageReader` cannot turn samples
+      into a picture without one, so the image work cannot be done without
+      them; slice 2's own `colorspace.go` says the create methods and
+      `toRGBImage` "belong with the image work of a later slice", which is this
+      one. `create` dispatches on the name, so the dispatch has to be complete
+      or the port diverges from the Java on a file it should read.
+
+      Two stay out: **`PDPattern`**, which takes a `PDResources` and builds
+      pattern dictionaries that only rendering reads, and **`PDJPXColorSpace`**,
+      which only `JPXFilter` constructs and that filter needs a JPEG 2000
+      decoder Go has not got. Both go to slice 9. `create` reports them the way
+      Java reports a colour space it cannot build.
+
+      `PDSeparation` and `PDDeviceN` evaluate a tint transform, so
+      `pdmodel/common/function` comes with them — 6 files and the type 4
+      subtree. That is scope this branch takes on rather than defers, because
+      the two colour spaces are useless without it.
