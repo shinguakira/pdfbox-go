@@ -1411,3 +1411,39 @@ names this entry.
 **Confidence** high. Read from the two methods and confirmed by the port
 panicking with `End page is smaller than startPage` for pages 30 to 40 of the
 28 page `cweb.pdf`, which is the document `PageExtractorTest` uses.
+
+---
+
+## 35. `COSName.BEAD` is `"BEAD"`, and the specification says `/Bead`
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/cos/COSName.java` line 100:
+
+```java
+public static final COSName BEAD = getPDFName("BEAD");
+```
+
+used in one place, `PDThreadBead`'s no-argument constructor:
+
+```java
+bead.setItem(COSName.TYPE, COSName.BEAD);
+```
+
+**What correct would be** `getPDFName("Bead")`. PDF 32000-1:2008 Table 30 gives
+the thread bead dictionary a `/Type` of `Bead`, and PDF names are
+case-sensitive, so `/BEAD` is a different name.
+
+**Why it matters** a bead PDFBox creates is written with `/Type /BEAD`. Nothing
+in PDFBox reads that entry back --- `PDThreadBead` never tests it, and the
+constant has no other use --- so PDFBox round-trips its own output. A conforming
+reader looking for `/Type /Bead` does not find one. It only bites a file PDFBox
+wrote, which is why it has survived: the reading path never touches it.
+
+**Where the Go carries it** `go/pdfbox/cos/names.go` already had it as
+`BEAD = GetPDFName("BEAD")`, transcribed from the Java in slice 1, and
+`go/pdfbox/pdmodel/interactive/pagenavigation/pdthread.go`, `NewPDThreadBead`,
+writes it. The name is deliberately spelled `cos.BEAD` rather than `cos.Bead` so
+that it does not read like the correct one.
+
+**Confidence** high for the code; the specification reading is from Table 30 of
+PDF 32000-1:2008. No test resource in the repository carries a bead dictionary,
+so there is nothing to measure it against.
