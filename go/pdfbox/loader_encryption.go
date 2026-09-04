@@ -68,9 +68,15 @@ func LoadPDFWithKeyStore(path, password string, keyStore io.Reader,
 	return document, nil
 }
 
-// LoadPDFFromWithKeyStore opens the PDF the given source holds, which it
-// decrypts with the given password, or with the given PKCS#12 keystore and
-// alias where the document uses public key security.
+// LoadPDFFromWithKeyStore opens the PDF the given source holds.
+//
+// Where keyStore is nil the password is the document password and the standard
+// security handler takes it. Where keyStore is given, the same password opens
+// the PKCS#12 keystore instead, and the certificate the alias names decrypts
+// the document: Java reads the store with KeyStore.load(keyStore,
+// password.toCharArray()) and then hands the string on to
+// PublicKeyDecryptionMaterial as the private key password, so the one argument
+// carries both. Java's javadoc says only "password to be used for decryption".
 //
 // Port of loadPDF(RandomAccessRead, String, InputStream, String).
 func LoadPDFFromWithKeyStore(source pdfio.RandomAccessRead, password string, keyStore io.Reader,

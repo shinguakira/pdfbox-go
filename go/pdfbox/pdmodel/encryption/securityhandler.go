@@ -30,7 +30,7 @@ var aesSalt = []byte{0x73, 0x41, 0x6c, 0x54}
 // parameter says which protection policy the handler takes; Go has no covariant
 // override, so the concrete handlers narrow the policy themselves.
 type SecurityHandler interface {
-	// PrepareDocumentForEncryption prepares everything to decrypt the document.
+	// PrepareDocumentForEncryption prepares everything to encrypt the document.
 	PrepareDocumentForEncryption(doc PDDocumentLike) error
 
 	// PrepareForDecryption prepares everything to decrypt the document.

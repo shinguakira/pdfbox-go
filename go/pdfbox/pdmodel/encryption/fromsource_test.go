@@ -2,7 +2,10 @@ package encryption
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rc4"
+	"encoding/asn1"
 	"encoding/hex"
 	"testing"
 
@@ -571,4 +574,108 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(digits)
+}
+
+// TestRegisterHandlerReplacesADuplicatePolicy pins JAVA-BUGS 26. Java's
+// registerHandler javadoc says an exception is thrown "if another handler was
+// previously registered for the same filter name or for the same policy name",
+// and the method only looks in nameToHandler, so a second registration under a
+// new name takes the policy over without a word. The port carries it.
+//
+// The registration mutates the factory, so this builds its own rather than
+// reaching for the singleton the tests above use.
+func TestRegisterHandlerReplacesADuplicatePolicy(t *testing.T) {
+	factory := newSecurityHandlerFactory()
+	standardPolicy := NewStandardProtectionPolicy("o", "u", NewAccessPermission())
+
+	err := factory.RegisterHandler("Other.Filter",
+		func() SecurityHandler { return NewPublicKeySecurityHandler() },
+		standardPolicy.policyKey(),
+		func(ProtectionPolicy) SecurityHandler { return NewPublicKeySecurityHandler() })
+	if err != nil {
+		t.Fatalf("a duplicate policy under a new filter name should be accepted: %v", err)
+	}
+	forPolicy := factory.NewSecurityHandlerForPolicy(standardPolicy)
+	if _, ok := forPolicy.(*PublicKeySecurityHandler); !ok {
+		t.Errorf("the standard policy maps to %T, want the registration that replaced it",
+			forPolicy)
+	}
+	// the filter name it was registered under first still finds the first handler
+	if got := factory.NewSecurityHandlerForFilter(StandardSecurityHandlerFilter); got == nil {
+		t.Error("the standard filter name lost its handler")
+	}
+}
+
+// TestCMSContentParameters pins the two shapes a CMS content encryption
+// algorithm carries its initialisation vector in, which are not the same shape.
+//
+// RFC 3370 section 5.2 and RFC 3565 section 4.1 give DES-EDE3-CBC and AES-CBC a
+// bare OCTET STRING. RFC 3370 section 5.3 gives RC2-CBC a SEQUENCE of the
+// version and the IV, and RC2-CBC is what PDFBox itself writes --
+// PublicKeySecurityHandler.createDERForRecipient asks the JCE for
+// PKCSObjectIdentifiers.RC2_CBC -- so a /Recipients entry produced by the Java
+// takes the RC2 path.
+//
+// The ciphers themselves are checked elsewhere: RC2 against RFC 2268's vectors
+// above, AES by Go's own crypto/aes. What this pins is the parameter decoding.
+func TestCMSContentParameters(t *testing.T) {
+	// 24 bytes is what a PDF /Recipients envelope holds: the 20 byte seed and
+	// the 4 permission bytes.
+	plain := []byte("0123456789abcdefghijklmn")
+
+	t.Run("rc2", func(t *testing.T) {
+		key := mustDecodeHex(t, "000102030405060708090a0b0c0d0e0f")
+		iv := mustDecodeHex(t, "0011223344556677")
+		// version 58 is RFC 2268 section 6's encoding of 128 effective key bits
+		parameters, err := asn1.Marshal(struct {
+			Version int
+			IV      []byte
+		}{58, iv})
+		if err != nil {
+			t.Fatal(err)
+		}
+		block, err := newRC2Cipher(key, 128)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkCMSContentRoundTrip(t, oidRC2CBC, parameters, key, block, iv, plain)
+	})
+
+	t.Run("aes128", func(t *testing.T) {
+		key := mustDecodeHex(t, "000102030405060708090a0b0c0d0e0f")
+		iv := mustDecodeHex(t, "000102030405060708090a0b0c0d0e0f")
+		parameters, err := asn1.Marshal(iv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkCMSContentRoundTrip(t, oidAES128CBC, parameters, key, block, iv, plain)
+	})
+}
+
+// checkCMSContentRoundTrip encrypts the given plaintext the way a CMS envelope
+// carries it -- CBC over a PKCS#7 padded body -- and checks that
+// decryptCMSContent reads the algorithm parameters and gives it back.
+func checkCMSContentRoundTrip(t *testing.T, oid asn1.ObjectIdentifier, parameters, key []byte,
+	block cipher.Block, iv, plain []byte) {
+	t.Helper()
+	padding := block.BlockSize() - len(plain)%block.BlockSize()
+	padded := append(append([]byte{}, plain...), bytes.Repeat([]byte{byte(padding)}, padding)...)
+	encrypted := make([]byte, len(padded))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(encrypted, padded)
+
+	algorithm := algorithmIdentifier{
+		Algorithm:  oid,
+		Parameters: asn1.RawValue{FullBytes: parameters},
+	}
+	got, err := decryptCMSContent(algorithm, key, encrypted)
+	if err != nil {
+		t.Fatalf("decryptCMSContent: %v", err)
+	}
+	if !bytes.Equal(got, plain) {
+		t.Errorf("decryptCMSContent gave %q, want %q", got, plain)
+	}
 }

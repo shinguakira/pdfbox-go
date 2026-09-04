@@ -179,29 +179,36 @@ func (r *cmsRecipient) content(privateKey crypto.PrivateKey) ([]byte, error) {
 }
 
 // decryptCMSContent decrypts the enveloped content with the named algorithm.
+//
+// The initialisation vector is read per algorithm because the algorithms do not
+// agree on how to carry it: AES-CBC and DES-EDE3-CBC carry it on its own, as an
+// OCTET STRING, while RC2-CBC wraps it in a SEQUENCE with the version that says
+// how many key bits are effective. Reading it once, before the switch, would
+// take the OCTET STRING shape for granted and refuse every RC2 envelope --
+// which is the shape PDFBox itself writes.
 func decryptCMSContent(algorithm algorithmIdentifier, key, encrypted []byte) ([]byte, error) {
 	var iv []byte
-	if algorithm.Parameters.FullBytes != nil {
-		if _, err := asn1.Unmarshal(algorithm.Parameters.FullBytes, &iv); err != nil {
-			return nil, fmt.Errorf("encryption: reading the content encryption IV: %w", err)
-		}
-	}
 	var block cipher.Block
 	var err error
 	switch {
 	case algorithm.Algorithm.Equal(oidAES128CBC),
 		algorithm.Algorithm.Equal(oidAES192CBC),
 		algorithm.Algorithm.Equal(oidAES256CBC):
-		block, err = aes.NewCipher(key)
+		if iv, err = cmsOctetStringIV(algorithm.Parameters); err == nil {
+			block, err = aes.NewCipher(key)
+		}
 	case algorithm.Algorithm.Equal(oidDESEDE3CBC):
-		block, err = des.NewTripleDESCipher(key)
+		if iv, err = cmsOctetStringIV(algorithm.Parameters); err == nil {
+			block, err = des.NewTripleDESCipher(key)
+		}
 	case algorithm.Algorithm.Equal(oidRC2CBC):
-		// The RC2 parameters carry the effective key bits before the IV.
+		// RC2-CBC-Parameter of RFC 3370 section 5.3: the effective key bits
+		// before the IV, both inside a SEQUENCE.
 		var rc2Params struct {
 			Version int
 			IV      []byte
 		}
-		if _, err := asn1.Unmarshal(algorithm.Parameters.FullBytes, &rc2Params); err != nil {
+		if _, err = asn1.Unmarshal(algorithm.Parameters.FullBytes, &rc2Params); err != nil {
 			return nil, fmt.Errorf("encryption: reading the RC2 parameters: %w", err)
 		}
 		iv = rc2Params.IV
@@ -240,4 +247,18 @@ func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
 		}
 	}
 	return data[:len(data)-padding], nil
+}
+
+// cmsOctetStringIV reads the initialisation vector an AES-CBC or DES-EDE3-CBC
+// AlgorithmIdentifier carries, which is an OCTET STRING on its own: RFC 3565
+// section 4.1 and RFC 3370 section 5.2. RC2-CBC does not use this shape.
+func cmsOctetStringIV(parameters asn1.RawValue) ([]byte, error) {
+	if parameters.FullBytes == nil {
+		return nil, nil
+	}
+	var iv []byte
+	if _, err := asn1.Unmarshal(parameters.FullBytes, &iv); err != nil {
+		return nil, fmt.Errorf("encryption: reading the content encryption IV: %w", err)
+	}
+	return iv, nil
 }

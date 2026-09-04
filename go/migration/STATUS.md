@@ -1259,3 +1259,48 @@ three by Adobe Acrobat, four by whatever wrote the public key fixtures, and the
 keystores with them. The from-source tests take their values from RFC 2268,
 RFC 4013 and Go's own `crypto/rc4`. Nothing in the slice is checked against
 itself.
+
+### Port defects found in the slice 5 feedback, fixed
+
+**The CMS reader could not read an RC2 envelope, which is the only kind PDFBox
+writes.** `decryptCMSContent` read the initialisation vector once, before it
+knew the algorithm, as a bare OCTET STRING. That is the shape AES-CBC and
+DES-EDE3-CBC use — RFC 3565 section 4.1 and RFC 3370 section 5.2 — and it is not
+the shape RC2-CBC uses: RFC 3370 section 5.3 wraps the version and the IV in a
+SEQUENCE. The unmarshal failed with a tag mismatch before the switch could
+reach the RC2 branch below it, so that branch was unreachable and every
+`/Recipients` entry Java's `createDERForRecipient` produces — it asks the JCE
+for `PKCSObjectIdentifiers.RC2_CBC` — would have been refused. The four
+checked-in public key fixtures use AES and 3DES, so nothing caught it.
+`TestCMSContentParameters` now runs both shapes; it failed with exactly the tag
+mismatch before the fix.
+
+**A comment on the wrong side of the encryption.** The `SecurityHandler`
+interface said `PrepareDocumentForEncryption` "prepares everything to decrypt
+the document". Both implementations already said encrypt; Java's javadoc says
+"Prepare the document for encryption". The interface was alone in being wrong.
+
+**A dummy reference propping up an import.** `pddocument_encryption.go` carried
+`var _ = cos.Encrypt` so that the `cos` import would compile. Nothing else in
+the file used the package. Both are gone.
+
+**What `LoadPDFFromWithKeyStore`'s password is.** The comment read as though the
+password and the keystore were alternatives. They are not: where a keystore is
+given the same string opens it, because Java calls `KeyStore.load(keyStore,
+password.toCharArray())` and then hands the string on to
+`PublicKeyDecryptionMaterial` as the private key password. One argument, two
+jobs. Java's own javadoc says only "password to be used for decryption".
+
+### Reviewed and declined — slice 5
+
+**`RegisterHandler` should refuse a duplicate policy.** It should, and Java's
+javadoc says it does, and Java's code does not — it checks `nameToHandler` and
+then overwrites `policyToHandler` without a look. Adding the second check would
+be fixing a bug that is in the Java. It is recorded as JAVA-BUGS 26, commented
+where it happens, and pinned by
+`TestRegisterHandlerReplacesADuplicatePolicy`. The doc comment now says what the
+code does rather than repeating Java's promise.
+
+**The error message should name the handler.** `"The security handler name is
+already registered"` is Java's string, character for character. The port keeps
+Java's messages so that a caller matching on them sees the same text.

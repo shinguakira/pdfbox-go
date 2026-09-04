@@ -1,7 +1,6 @@
 package pdmodel
 
 import (
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 )
 
@@ -62,6 +61,3 @@ var _ encryption.PDDocumentLike = (*PDDocument)(nil)
 // String is Java's Object.toString, which the revision 2 to 4 document ID
 // digest feeds on.
 func (d *PDDocument) String() string { return "PDDocument" }
-
-// Unused reference so that the cos import stays where the file needs it.
-var _ = cos.Encrypt

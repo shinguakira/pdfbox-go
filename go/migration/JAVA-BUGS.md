@@ -1011,3 +1011,50 @@ gets a NullPointerException rather than zero.
 comma-ok and so panic where Java throws.
 
 **Confidence** high. `getItem` is documented to return null for an absent key.
+
+## 26. `SecurityHandlerFactory.registerHandler` does not refuse a duplicate policy
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/SecurityHandlerFactory.java`.
+
+**What it does**
+
+```java
+/**
+ * ...
+ * If another handler was previously registered for the same filter name or
+ * for the same policy name, an exception is thrown
+ */
+public void registerHandler(String name,
+                            Class<? extends SecurityHandler> securityHandler,
+                            Class<? extends ProtectionPolicy> protectionPolicy)
+{
+    if (nameToHandler.containsKey(name))
+    {
+        throw new IllegalStateException("The security handler name is already registered");
+    }
+
+    nameToHandler.put(name, securityHandler);
+    policyToHandler.put(protectionPolicy, securityHandler);
+}
+```
+
+The javadoc promises the check on both maps; the code makes it on one. A second
+registration under a new filter name but an existing policy class is accepted,
+and `policyToHandler.put` replaces the handler the policy had.
+
+**What correct would be** the second `containsKey`, on `policyToHandler`, which
+the javadoc already describes.
+
+**Why it matters** it is only reachable through the public `registerHandler`, so
+PDFBox's own two registrations are safe. A caller that adds a handler for a
+policy already spoken for takes it over silently, and every later
+`newSecurityHandlerForPolicy` for that policy builds the wrong handler — a
+document is then encrypted by a handler nobody asked for.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/encryption/securityhandlerfactory.go`, `RegisterHandler`,
+which checks `nameToHandler` only and says so above the assignment.
+`TestRegisterHandlerReplacesADuplicatePolicy` in `fromsource_test.go` pins it.
+
+**Confidence** high. The javadoc and the method body contradict each other in
+five lines.
