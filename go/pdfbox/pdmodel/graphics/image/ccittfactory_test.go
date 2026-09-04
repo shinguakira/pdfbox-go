@@ -138,3 +138,25 @@ func TestCCITTFromImageRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestCCITTByteShortPaddedWithGarbage is CCITTFactoryTest.testByteShortPaddedWithGarbage,
+// minus its save. It reads two TIFFs whose byte and short tag values are padded
+// with garbage in the three or two bytes after them, which is what the comment
+// in extractFromTiff is about: "when the type is shorter than 4 bytes, the rest
+// can be garbage and must be ignored". Reading those bytes as part of the value
+// gives 842530817 where the answer is 1.
+func TestCCITTByteShortPaddedWithGarbage(t *testing.T) {
+	for _, ext := range []string{".tif", "-bigendian.tif"} {
+		name := "ccittg3-garbage-padded-fields" + ext
+		t.Run(name, func(t *testing.T) {
+			ximage, err := CreateCCITTFromByteArray(testDocument{}, fixtureBytes(t, name))
+			if err != nil {
+				t.Fatalf("CreateCCITTFromByteArray: %v", err)
+			}
+			if ximage == nil {
+				t.Fatal("the factory returned nothing")
+			}
+			validate(t, ximage, 1, 344, 287, "tiff", "DeviceGray")
+		})
+	}
+}

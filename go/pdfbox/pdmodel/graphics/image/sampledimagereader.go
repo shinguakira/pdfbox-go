@@ -349,7 +349,9 @@ func from1Bit(pdImage PDImage, clipped awtgeom.Rectangle, subsampling, width,
 				value := (int32(int8(buff[r])) ^ invert) << uint(24+(x&7))
 				for count := min(8-(x&7), endX-x); count > 0; x, count = x+1, count-1 {
 					if nosubsampling || x%currentSubsampling == 0 {
-						if value < 0 && idx < len(output) {
+						// Java has no bound check here either; the loop counts
+						// are what keep idx inside the raster.
+						if value < 0 {
 							output[idx] = 255
 						}
 						idx++
@@ -445,18 +447,21 @@ func from8bit(pdImage PDImage, raster *awtimage.Raster, clipped awtgeom.Rectangl
 		if currentSubsampling == 1 {
 			// Not the entire region was requested, but if no subsampling should
 			// be performed, we can still copy the entire part of this row
+			//
+			// JAVA BUG 31: the destination offset is the *source* row times the
+			// *source* width, where the raster being filled is the destination
+			// region. For any region that is a strict subset this writes to the
+			// wrong place and runs off the end of the raster; Java throws
+			// ArrayIndexOutOfBoundsException, which getRGBImage does not catch.
+			// The port indexes the same way and panics for the same.
 			dst := y * inputWidth * numComponents
 			for c := 0; c < scanWidth*numComponents; c++ {
-				if dst+c < len(bank) && startx*numComponents+c < len(tempBytes) {
-					bank[dst+c] = uint16(tempBytes[startx*numComponents+c])
-				}
+				bank[dst+c] = uint16(tempBytes[startx*numComponents+c])
 			}
 		} else {
 			for x := startx; x < startx+scanWidth; x += currentSubsampling {
 				for c := 0; c < numComponents; c++ {
-					if i < len(bank) && x*numComponents+c < len(tempBytes) {
-						bank[i] = uint16(tempBytes[x*numComponents+c])
-					}
+					bank[i] = uint16(tempBytes[x*numComponents+c])
 					i++
 				}
 			}

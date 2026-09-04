@@ -256,7 +256,13 @@ func (c *PDIndexed) readColorTable() error {
 	numComponents := c.baseColorSpace.NumberOfComponents()
 
 	// some tables are too short
-	if numComponents > 0 && len(c.lookupData)/numComponents < maxIndex+1 {
+	//
+	// Java divides by numComponents without checking it, so a base colour space
+	// reporting zero components throws ArithmeticException here; the port
+	// divides the same way and panics for it. Nothing reaches it: the only
+	// colour space that can report zero is a PDICCBased whose /N is missing, and
+	// that one fails to construct first, in Java and here.
+	if len(c.lookupData)/numComponents < maxIndex+1 {
 		maxIndex = len(c.lookupData)/numComponents - 1
 	}
 	c.actualMaxIndex = maxIndex // TODO "actual" is ugly, tidy this up

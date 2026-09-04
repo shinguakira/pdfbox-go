@@ -1202,3 +1202,102 @@ multiplies and adds the table entry as Java does; `TestASCIIHexTolerance` in
 `fromsource_test.go` pins both cases with the arithmetic written out.
 
 **Confidence** high. The port's test was written expecting 64 and measured 63.
+
+## 31. `SampledImageReader.from8bit` writes a region to the wrong rows
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/SampledImageReader.java`.
+
+**What it does**
+
+```java
+if (currentSubsampling == 1)
+{
+    // Not the entire region was requested, but if no subsampling should
+    // be performed, we can still copy the entire part of this row
+    System.arraycopy(tempBytes, startx * numComponents, bank,
+            y * inputWidth * numComponents, scanWidth * numComponents);
+}
+```
+
+`bank` is the destination raster, `width` by `height`, where `width` and
+`height` are the *clipped region*. The destination offset is computed from `y`,
+which is the row of the *source* image, and from `inputWidth`, which is the
+width of the *source* image. Both are wrong for the destination: the row should
+be `y - starty` and the stride should be `width`.
+
+For any region that is a strict subset the copy lands on the wrong row and, once
+`y` is large enough, past the end of `bank`. The exception is
+ArrayIndexOutOfBoundsException, and `getRGBImage` catches only
+`NegativeArraySizeException` and `IllegalArgumentException`, so it escapes.
+
+**What correct would be**
+
+```java
+System.arraycopy(tempBytes, startx * numComponents, bank,
+        (y - starty) * width * numComponents, scanWidth * numComponents);
+```
+
+which is what the subsampled branch below it computes by running an index.
+
+**Why it matters** it is reachable: `getRGBImage(pdImage, region, subsampling,
+colorKey)` with a region, a subsampling of 1 and an 8-bit image whose decode
+array is the default. The renderer asks for a region when it draws a tiling
+pattern, and `PDImageXObject.getImage(Rectangle, int)` is public. The other
+three paths through the reader -- `from1Bit`, `fromAny` and the fast copy --
+index correctly.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/graphics/image/sampledimagereader.go`,
+`from8bit`, which computes the same offset and so panics where Java throws. The
+comment there names this entry.
+
+**Confidence** high. The line beside it, for the subsampled case, does the same
+job with a running index and gets it right.
+
+## 32. A truncated ASCII85 stream repeats its last complete group
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85InputStream.java`.
+
+**What it does** `read()` sets `index = 0` before it reads a group, and returns
+-1 from inside the group loop where the stream ends part way through one:
+
+```java
+index = 0;
+...
+ascii[0] = z;
+for (k = 1; k < 5; ++k)
+{
+    do
+    {
+        int zz = (byte) in.read();
+        if (zz == -1)
+        {
+            eof = true;
+            return -1;      // n is still the previous group's 4
+        }
+        ...
+```
+
+`n` keeps the previous group's value. The array read then starts with
+
+```java
+if (eof && index >= n) { return -1; }
+```
+
+which is false, because `index` was just reset to 0 and `n` is 4 — so it copies
+`b[0..3]` out a second time. `transferTo` calls it again, gets those four bytes,
+and only then reaches the end.
+
+**What correct would be** setting `n = 0` beside `eof = true` on that path, or
+resetting `index` only once a group has actually been read.
+
+**Why it matters** a truncated ASCII85 stream — which is what a damaged PDF has
+— decodes to the right bytes followed by four bytes of the previous four
+repeated. Silently, and only at the end, which is where a reader is least
+likely to look.
+
+**Where the Go carries it** `go/pdfbox/filter/ascii85.go`, `readByte` and
+`Read`, which keep the same order; `TestASCII85DamageTolerance` in
+`fromsource_test.go` asserts the repeat and says why.
+
+**Confidence** high. Measured: the port decoded 680 bytes from a stream whose
+first 676 are the original, and the last four repeat bytes 672 to 675.

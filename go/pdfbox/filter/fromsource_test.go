@@ -402,3 +402,129 @@ func TestStaticDecodeChainsFilters(t *testing.T) {
 		t.Errorf("the reduced chain gave %q", got)
 	}
 }
+
+// TestDamageTolerance is slice 6's D8: every PDFBox filter is written to hand
+// back what it decoded when the input is corrupt, rather than failing. Slice 1
+// found one place the Go got that wrong for Flate; this checks each filter this
+// slice added.
+//
+// What each must do is not the same, and the Java decides it:
+//
+//   - LZW catches the EOFException its bit reader raises, logs it and flushes,
+//     so a truncated stream yields the codes that did decode.
+//   - RunLength breaks out of its loop at the end of the input, on both arms.
+//   - ASCIIHex and ASCII85 stop at the end of the data; ASCII85 alone reports an
+//     error, and only for a byte outside its alphabet.
+//   - CCITTFax fills the rest of the bitmap with zeroes, which is what lets
+//     readFromDecoderStream finish a row count the data does not support.
+func TestDamageTolerance(t *testing.T) {
+	original := bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 30)
+
+	for _, c := range []struct {
+		name   string
+		filter Filter
+	}{
+		{"lzw", LZW{}},
+		{"runlength", RunLength{}},
+		{"asciihex", ASCIIHex{}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var encoded bytes.Buffer
+			if err := c.filter.Encode(&encoded, bytes.NewReader(original),
+				cos.NewDictionary()); err != nil {
+				t.Fatalf("Encode: %v", err)
+			}
+
+			// cut the stream in half and decode what is left
+			truncated := encoded.Bytes()[:encoded.Len()/2]
+			var decoded bytes.Buffer
+			// An error is acceptable -- the point is that whatever decoded
+			// before the damage is still handed back rather than discarded.
+			_, _ = c.filter.Decode(&decoded, bytes.NewReader(truncated),
+				cos.NewDictionary(), 0)
+
+			if decoded.Len() == 0 {
+				t.Fatal("a truncated stream yielded nothing; partial data must survive")
+			}
+			if !bytes.HasPrefix(original, decoded.Bytes()) {
+				t.Fatalf("the partial output of %d bytes is not a prefix of the original",
+					decoded.Len())
+			}
+		})
+	}
+}
+
+// TestCCITTDamageTolerance checks the fax decoder's own kind: it fills the rest
+// of the bitmap rather than stopping short, so that a row count the data does
+// not support still produces an image.
+func TestCCITTDamageTolerance(t *testing.T) {
+	const columns, rows = 64, 16
+	bitmap := bytes.Repeat([]byte{0x0F}, columns/8*rows)
+
+	dict := cos.NewDictionary()
+	dict.SetInt(cos.Columns, columns)
+	dict.SetInt(cos.Rows, rows)
+	var encoded bytes.Buffer
+	if err := (CCITTFax{}).Encode(&encoded, bytes.NewReader(bitmap), dict); err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+
+	parms := cos.NewDictionary()
+	parms.SetInt(cos.Columns, columns)
+	parms.SetInt(cos.Rows, rows)
+	parms.SetInt(cos.K, -1)
+	stream := cos.NewDictionary()
+	stream.SetItem(cos.DecodeParms, parms)
+	stream.SetItem(cos.Filter, cos.CCITTFaxDecode)
+
+	var decoded bytes.Buffer
+	truncated := encoded.Bytes()[:encoded.Len()/3]
+	if _, err := (CCITTFax{}).Decode(&decoded, bytes.NewReader(truncated), stream, 0); err != nil {
+		t.Fatalf("a truncated fax stream gave %v, want the rows that decoded", err)
+	}
+	if want := columns / 8 * rows; decoded.Len() != want {
+		t.Errorf("the decoder gave %d bytes, want the full bitmap of %d",
+			decoded.Len(), want)
+	}
+}
+
+// TestASCII85DamageTolerance is ASCII85's own answer, which is not the others'
+// and is worth writing out: a truncated stream hands back everything that
+// decoded and then repeats its last complete group of four bytes.
+//
+// That repeat is JAVA-BUGS 32. ASCII85InputStream.read() sets index to 0 before
+// it reads a group and returns -1 from inside the loop where the stream ends
+// mid-group, leaving n at the previous group's 4; the array read then finds
+// index < n and copies that group out a second time. The port does the same,
+// so this test asserts the repeat rather than a clean prefix.
+func TestASCII85DamageTolerance(t *testing.T) {
+	original := bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 30)
+
+	var encoded bytes.Buffer
+	if err := (ASCII85{}).Encode(&encoded, bytes.NewReader(original),
+		cos.NewDictionary()); err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+
+	truncated := encoded.Bytes()[:encoded.Len()/2]
+	var decoded bytes.Buffer
+	_, _ = (ASCII85{}).Decode(&decoded, bytes.NewReader(truncated), cos.NewDictionary(), 0)
+
+	got := decoded.Bytes()
+	if len(got) == 0 {
+		t.Fatal("a truncated stream yielded nothing; partial data must survive")
+	}
+	if len(got)%4 != 0 {
+		t.Fatalf("the output is %d bytes, which is not whole groups", len(got))
+	}
+	// everything but the last group is the original
+	body := got[:len(got)-4]
+	if !bytes.HasPrefix(original, body) {
+		t.Fatal("the decoded body is not a prefix of the original")
+	}
+	// and the last group repeats the one before it
+	if !bytes.Equal(got[len(got)-4:], body[len(body)-4:]) {
+		t.Errorf("the last group is %q, want a repeat of %q",
+			got[len(got)-4:], body[len(body)-4:])
+	}
+}

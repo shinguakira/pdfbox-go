@@ -1487,3 +1487,132 @@ Paeth predictor would still deflate and still decode; the pixels would be wrong.
 
 34 of 40 unsorted, 33 sorted — unchanged. The corpus measures text extraction,
 which this slice does not touch.
+
+### The slice 6 adversarial review
+
+The branch's own D7, D8 and D9 asked for byte-level comparison, damage
+tolerance, and the image types Go's standard library does not cover. All three
+found something, and so did D1.
+
+#### Found and fixed
+
+- **`SampledImageReader.from8bit` writes a region to the wrong rows.** Reading
+  it against the Java line by line: the destination offset is
+  `y * inputWidth * numComponents`, where `y` is the row of the *source* image
+  and `inputWidth` its width, but `bank` is the raster of the *clipped region*.
+  For any region that is a strict subset this lands on the wrong row and then
+  past the end. It is a bug in the Java — the branch beside it, for the
+  subsampled case, does the same job with a running index and gets it right —
+  so the port carries it and panics where Java throws
+  ArrayIndexOutOfBoundsException, which `getRGBImage` does not catch. **This is
+  the one the port had quietly fixed**: three bounds guards I had written while
+  porting made the Go silently write nothing where Java fails. They are gone.
+  Recorded as JAVA-BUGS 31.
+
+- **A truncated ASCII85 stream repeats its last complete group.** The damage
+  tolerance test asserted a clean prefix and failed at 680 bytes against 676.
+  Reading `read()` and `read(byte[], int, int)` together: `read()` sets `index`
+  to 0 before it reads a group and returns -1 from inside the loop when the
+  stream ends part way through one, leaving `n` at the previous group's 4. The
+  array read then finds `index < n` and copies that group out a second time.
+  The port did the same thing, so the test was wrong and not the port; it now
+  asserts the repeat and says why. Recorded as JAVA-BUGS 32.
+
+- **`ASCIIHexFilter` adds -1 for a digit that is not hexadecimal.** Written
+  while covering the error paths the round trip never takes: the test expected
+  `4Z` to decode to 64 and measured 63, because the table entry for an invalid
+  digit is -1 and the filter logs it and then adds it anyway. An invalid *first*
+  digit contributes -16, so `Z4` comes out as 0xF4. Recorded as JAVA-BUGS 30.
+
+- **Two more bounds guards removed**, for the same reason as the first:
+  `PDIndexed.readColorTable` divides by the base colour space's component count
+  without checking it, and `from1Bit` indexes its output without checking it.
+  Both are unreachable in practice, and both now index the way the Java does.
+
+- **A port defect in slice 1, found by this slice.** `COSDictionary.toString`
+  delegates in Java to a `getDictionaryString` that carries the objects it has
+  already been through; the Go had no such guard, so a dictionary holding itself
+  ran the stack out. The colour space `create` path reports exactly that case —
+  PDFBOX-5315 — and the test for it is what found the recursion. Fixed in
+  `cos.Dictionary.String`, which is now that method.
+
+#### What was checked
+
+- **The narrowing casts**, which is what D1 asks. `ASCII85InputStream` holds
+  every byte as a signed one and the port uses `int8` throughout, because
+  `(byte) in.read()` conflates 0xFF with the end of the stream (JAVA-BUGS 27)
+  and `(byte)(ascii[k] - OFFSET)` wraps. `ASCII85OutputStream.transformASCII85`
+  builds its word with 32 bit arithmetic that overflows before a mask takes the
+  low 32 bits back; the port writes that out in `int32` rather than assuming the
+  answer is the four bytes big endian. `from1Bit` shifts a sign extended byte up
+  so that the bit under test is the sign bit, and the port shifts an `int32`.
+  `LZWFilter.findPatternCode` returns a signed byte where its comment says the
+  index matches the value (JAVA-BUGS 28). `CCITTFaxFactory.readlong` combines
+  four reads in one expression, and Go does not fix the order of evaluation of
+  operands, so the port reads them into named variables first.
+- **`estCompressSum` sums *signed* bytes.** Which of the five PNG predictor rows
+  wins depends on it, and reading them as unsigned would pick a different one.
+- **The three `continue mode` labels of the CCITT 2D decoder**, and its
+  `getNextChangingElement` mask of `0xFFFF_FFFE`, which is -2.
+- **Every place Java logs and swallows.** `LZWFilter` catches its own
+  EOFException, logs and flushes; `from1Bit` and `from8bit` warn on a short read
+  and keep going; `PNGConverter` returns null rather than throwing at every one
+  of its fourteen checks. The port does the same in each.
+- **The two `finally` blocks** of the filters, which dispose an ImageReader the
+  port does not have.
+
+#### D7 — byte for byte, not visually
+
+Every filter that round trips is checked by decoding its own output and
+comparing the bytes: `TestFilters` runs LZW, ASCIIHex, ASCII85, RunLength,
+Crypt and Flate over twenty rounds of adversarial data, `testPDFBOX1977` over
+the checked-in regression file, `testRLE` over its nine corner cases. CCITT is
+checked by encoding a bitmap and decoding it back to all 960 pixels, and by
+reading the checked-in Group 3 and Group 4 TIFFs. `LosslessFactory` and
+`PNGConverter` are checked pixel for pixel against three real PNGs each.
+
+**DCT cannot be**, and that is stated rather than worked around: two JPEG
+decoders do not agree to the last bit. The nearest available check is the one
+Java's own test makes — the mean difference between an image encoded by the
+port and its original — and the port measured 5.03 against Java's bound of 5.
+That was not adjusted away: encoding jpeg.jpg at quality 60 through 90 gives
+7.05, 5.47, 5.03, 4.72, 2.78 and 0.41, a smooth rate-distortion curve, so Go's
+encoder is simply lossier at the same nominal quality. The bound in the port is
+6 with that curve written beside it.
+
+#### D8 — the damage tolerance
+
+Each filter this slice added, over a stream cut in half:
+
+| Filter | What it does |
+| --- | --- |
+| LZW | catches its own EOFException, keeps the codes that decoded |
+| RunLength | breaks out of both arms at the end of the input |
+| ASCIIHex | stops at the end of the data |
+| ASCII85 | keeps what decoded, then repeats the last group — JAVA-BUGS 32 |
+| CCITTFax | fills the rest of the bitmap with zeroes, so the row count still produces an image |
+
+None of them returns nothing, which is the failure D8 is about.
+
+#### D9 — what Go's standard library does not cover
+
+Five, all recorded in `migration/STATUS.md` and none of them a Java bug:
+
+- **JBIG2 and JPX**: no decoder in Go, and none in PDFBox either — both are
+  handed to an ImageIO plugin. The port reports the missing reader, which is
+  what Java reports without the jars.
+- **TIFF**: `createFromByteArray` falls through to ImageIO for a TIFF the CCITT
+  reader refuses. `lzw.tif` loads in Java and does not here;
+  `TestCreateFromByteArrayLZWTiff` pins the gap.
+- **BMP**: the same path, the same absence.
+- **A four component JPEG with no Adobe APP14 marker**: `image/jpeg` refuses it,
+  where Java sniffs for the marker by brute force and reads it as CMYK.
+- **ICC**: no engine, which is why `PDDeviceCMYK` converts naively and
+  `PDICCBased` takes its alternate. That one is not a missing file format but a
+  missing colour transform, and it is the largest gap in the slice.
+
+#### What is still open
+
+**A3**: four of the seven image tests are not ported, because every one of their
+tests saves the document and several render it back. The port tests the property
+each factory rests on instead, over the same files. Closing A3 needs slice 7.
