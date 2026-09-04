@@ -518,3 +518,73 @@ func (f *TrueTypeFont) String() string {
 var (
 	_ fontbox.FontBoxFont = (*TrueTypeFont)(nil)
 )
+
+// VerticalHeader returns the vhea table, or nil where the font has none.
+func (f *TrueTypeFont) VerticalHeader() (*VerticalHeaderTable, error) {
+	return tableAs[*VerticalHeaderTable](f, VerticalHeaderTag)
+}
+
+// VerticalMetrics returns the vmtx table, or nil.
+func (f *TrueTypeFont) VerticalMetrics() (*VerticalMetricsTable, error) {
+	return tableAs[*VerticalMetricsTable](f, VerticalMetricsTag)
+}
+
+// VerticalOrigin returns the VORG table, or nil.
+func (f *TrueTypeFont) VerticalOrigin() (*VerticalOriginTable, error) {
+	return tableAs[*VerticalOriginTable](f, VerticalOriginTag)
+}
+
+// Kerning returns the kern table, or nil.
+func (f *TrueTypeFont) Kerning() (*KerningTable, error) {
+	return tableAs[*KerningTable](f, KerningTag)
+}
+
+// DigitalSignature returns the DSIG table, or nil.
+func (f *TrueTypeFont) DigitalSignature() (*DigitalSignatureTable, error) {
+	return tableAs[*DigitalSignatureTable](f, DigitalSignatureTag)
+}
+
+// readTableHeaders reads just the header fields of the named table, where it is
+// present and knows how to read them.
+func (f *TrueTypeFont) readTableHeaders(tag string, outHeaders *FontHeaders) error {
+	table, ok := f.tables[tag]
+	if !ok {
+		return nil
+	}
+	reader, ok := table.(HeaderReader)
+	if !ok {
+		return nil
+	}
+	// save current position
+	currentPosition := f.data.CurrentPosition()
+	if err := f.data.SeekTo(table.base().Offset()); err != nil {
+		return err
+	}
+	if err := reader.ReadHeaders(f, f.data, outHeaders); err != nil {
+		return err
+	}
+	// restore current position
+	return f.data.SeekTo(currentPosition)
+}
+
+// TableNBytes returns the first limit bytes of the given table.
+func (f *TrueTypeFont) TableNBytes(table tableBase, limit int) ([]byte, error) {
+	entry := table.base()
+	// save current position
+	currentPosition := f.data.CurrentPosition()
+	if err := f.data.SeekTo(entry.Offset()); err != nil {
+		return nil, err
+	}
+
+	// read all data
+	bytes := make([]byte, min(limit, int(entry.Length())))
+	if _, err := f.data.ReadInto(bytes, 0, len(bytes)); err != nil {
+		return nil, err
+	}
+
+	// restore current position
+	if err := f.data.SeekTo(currentPosition); err != nil {
+		return nil, err
+	}
+	return bytes, nil
+}

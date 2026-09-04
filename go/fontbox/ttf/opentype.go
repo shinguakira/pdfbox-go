@@ -242,3 +242,20 @@ func (f *TrueTypeFont) AsOpenType() *OpenTypeFont {
 	}
 	return &OpenTypeFont{TrueTypeFont: f}
 }
+
+// ReadHeaders reads the Registry, Ordering and Supplement out of the first CFF
+// subfont.
+func (t *CFFTable) ReadHeaders(ttf *TrueTypeFont, data DataStream, outHeaders *FontHeaders) error {
+	subReader := data.CreateSubView(t.Length())
+	if subReader == nil {
+		// Java asserts here: "It is inefficient to read TTFDataStream into an
+		// array", and then does it anyway.
+		bytes := make([]byte, int(t.Length()))
+		if _, err := data.ReadInto(bytes, 0, len(bytes)); err != nil {
+			return err
+		}
+		subReader = pdfio.NewReadBufferBytes(bytes)
+	}
+	defer pdfio.CloseQuietly(subReader)
+	return cff.NewCFFParser().ParseFirstSubFontROS(subReader, outHeaders)
+}

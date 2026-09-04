@@ -407,3 +407,19 @@ func (t *IndexToLocationTable) Read(ttf *TrueTypeFont, data DataStream) error {
 // Offsets returns where each glyph starts in the glyf table, with one extra
 // entry marking the end of the last.
 func (t *IndexToLocationTable) Offsets() []int64 { return t.offsets }
+
+// ReadHeaders reads just the macStyle out of the head table.
+func (t *HeaderTable) ReadHeaders(ttf *TrueTypeFont, data DataStream, outHeaders *FontHeaders) error {
+	// 44 == 4 + 4 + 4 + 4 + 2 + 2 + 2*8 + 4*2, see Read
+	if err := data.SeekTo(data.CurrentPosition() + 44); err != nil {
+		return err
+	}
+	r := newReader(data)
+	t.macStyle = r.unsignedShort()
+	if r.err != nil {
+		return r.err
+	}
+	macStyle := t.macStyle
+	outHeaders.setHeaderMacStyle(&macStyle)
+	return nil
+}

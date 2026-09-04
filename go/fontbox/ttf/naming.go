@@ -374,3 +374,13 @@ func (t *NamingTable) FontSubFamily() string { return t.fontSubFamily }
 
 // PostScriptName returns the PostScript name of the font.
 func (t *NamingTable) PostScriptName() string { return t.psName }
+
+// ReadHeaders reads the name records the headers need and nothing else.
+func (t *NamingTable) ReadHeaders(ttf *TrueTypeFont, data DataStream, outHeaders *FontHeaders) error {
+	if err := t.read(ttf, data, true); err != nil {
+		return err
+	}
+	outHeaders.setName(t.psName)
+	outHeaders.setFontFamily(t.fontFamily, t.fontSubFamily)
+	return nil
+}
