@@ -86,8 +86,11 @@ implementation, then move on. Do not open all eight at once.
 
 # Phase B — Port the implementation
 
-- [ ] B1. `pdmodel/common` — `COSArrayList`, `COSDictionaryMap`, `PDStream`,
-      `PDMetadata`, `common/filespecification`
+- [x] B1. `pdmodel/common` — `COSArrayList`, `COSDictionaryMap`, `PDStream`,
+      `PDMetadata`, `common/filespecification`. Also `PDNameTreeNode`,
+      `PDNumberTreeNode`, `PDObjectStream`, `PDPageLabels` and
+      `PDPageLabelRange`. `PDEmbeddedFile`s four date accessors wait for
+      `DateConverter`, which is this slice's and is taken in dependency order
   - `migration/STATUS.md` records these as blocking `PDPage.getContentStreams`
     and `setContents` since slice 2
 - [ ] B2. `interactive/form` — AcroForms and the field hierarchy
@@ -96,9 +99,13 @@ implementation, then move on. Do not open all eight at once.
 - [ ] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
 - [ ] B6. `interactive/digitalsignature`
 - [ ] B7. `interactive/measurement`, `interactive/viewerpreferences`
+  - `viewerpreferences` is done, the whole subpackage. `measurement` is not
+    started
 - [ ] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
       prepress
-- [ ] B9. `pdmodel/graphics/optionalcontent` — 3 files
+- [x] B9. `pdmodel/graphics/optionalcontent` — 3 files, and `PDPropertyList`
+      with them, since the two name each other. `rendering.RenderDestination`
+      came too, because `getRenderState` takes one
   - `PDPropertyList` lives here, and `PDResources.getProperties` returns it.
     Slice 2 recorded that lookup as absent, and BDC and DP in
     `operator/markedcontent` cannot resolve a named property list without it.
