@@ -1301,3 +1301,51 @@ likely to look.
 
 **Confidence** high. Measured: the port decoded 680 bytes from a stream whose
 first 676 are the original, and the last four repeat bytes 672 to 675.
+
+---
+
+## 33. `ToUnicodeWriter.allowDestinationRange` checks only one of its two strings
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/ToUnicodeWriter.java`,
+`allowDestinationRange`.
+
+**What it does**
+
+```java
+static boolean allowDestinationRange(String prev, String next)
+{
+    ...
+    int prevCode = prev.codePointAt(0);
+    int nextCode = next.codePointAt(0);
+    return allowCodeRange(prevCode, nextCode) && prev.codePointCount(0, prev.length()) == 1;
+}
+```
+
+Both strings are destinations of a `bfrange`, and a range is written as one
+starting destination that the reader increments. That is only correct if every
+destination in the range is a single code point. The method checks `prev` and
+not `next`.
+
+**What correct would be** `&& next.codePointCount(0, next.length()) == 1` as
+well — or, equivalently, refusing the range whenever either side is longer than
+one code point.
+
+**Why it matters** a CID mapped to a one character string followed by a CID
+mapped to a longer one extends the range instead of starting a new one, and
+everything after the first character of the longer string is dropped from the
+CMap. With 0x400 mapped to `a` and 0x401 mapped to `bc`, the writer emits
+`<0400> <0401> <0061>`, and a reader decodes 0x401 as `b`. The ligature the
+mapping existed for is lost, silently, in a file that otherwise looks correct.
+It does not fire in `TestToUnicodeWriter.testCMapLigatures` only because the
+ligatures there — `ff`, `fi`, `ffl` — all start with `f`, so `allowCodeRange`
+rejects them first.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/font/tounicodewriter.go`, `allowDestinationRange`, which
+checks `utf8.RuneCountInString(prev) == 1` and not `next`. The comment above it
+names this entry.
+
+**Confidence** high for the code reading; the failing case is derived from the
+method, not measured against a Java run, because there is no Maven in this
+environment to build PDFBox with. Every ported test of this class passes with
+the Java values.

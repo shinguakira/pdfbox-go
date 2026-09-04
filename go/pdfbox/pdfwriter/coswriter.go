@@ -1100,7 +1100,9 @@ func (w *COSWriter) VisitDictionary(obj *cos.Dictionary) error {
 				w.signatureLength = w.standardOutput.Pos() - w.signatureOffset
 
 			case w.reachedSignature && key == cos.ByteRange:
-				w.byteRangeArray, _ = value.(*cos.Array)
+				// Java casts without a check; the port asserts the same way and
+				// panics where the entry is not an array.
+				w.byteRangeArray = value.(*cos.Array)
 				w.byteRangeOffset = w.standardOutput.Pos() + 1
 				if err := value.Accept(w); err != nil {
 					return err
