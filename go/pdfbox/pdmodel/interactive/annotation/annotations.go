@@ -2,6 +2,7 @@ package annotation
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -9,6 +10,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/action"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/documentnavigation/destination"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
 // The /Subtype names, which Java declares one per class as SUB_TYPE.
@@ -159,6 +161,17 @@ func setAnnotationItem(dict *cos.Dictionary, key *cos.Name, value common.COSObje
 		return
 	}
 	dict.SetItem(key, value.COSObject())
+}
+
+// CreationDate returns the /CreationDate of the annotation, and reports false
+// where there is none.
+func (a *PDAnnotationMarkup) CreationDate() (time.Time, bool) {
+	return util.DictionaryDate(a.AnnotationDictionary(), cos.CreationDate)
+}
+
+// SetCreationDate sets the /CreationDate of the annotation.
+func (a *PDAnnotationMarkup) SetCreationDate(creationDate time.Time) {
+	util.SetDictionaryDate(a.AnnotationDictionary(), cos.CreationDate, creationDate)
 }
 
 // ConstantOpacity returns the /CA opacity, which defaults to 1.

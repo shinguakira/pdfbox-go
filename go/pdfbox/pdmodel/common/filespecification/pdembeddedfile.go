@@ -2,20 +2,20 @@ package filespecification
 
 import (
 	"io"
+	"time"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
 // PDEmbeddedFile is a file embedded in a document.
 //
 // Port of PDEmbeddedFile, which extends PDStream.
 //
-// The four date accessors --- getCreationDate, setCreationDate, getModDate and
-// setModDate --- are not here. They go through COSDictionary's embedded date
-// accessors, which are the other half of DateConverter; slice 1 deferred both,
-// and migration/tasks/README.md assigns DateConverter to this slice. They land
-// with it. See migration/STATUS.md.
+// The four date accessors go through the embedded date functions of
+// pdfbox/util, which are where COSDictionary.getEmbeddedDate and its siblings
+// landed; see the comment on them for why they are not methods.
 type PDEmbeddedFile struct {
 	common.PDStream
 }
@@ -137,4 +137,26 @@ func (f *PDEmbeddedFile) setMacString(key *cos.Name, value string) {
 	if params != nil {
 		params.SetEmbeddedString(cos.Mac, key, value)
 	}
+}
+
+// CreationDate returns the /CreationDate of the embedded file's /Params, and
+// reports false where there is none.
+func (f *PDEmbeddedFile) CreationDate() (time.Time, bool) {
+	return util.EmbeddedDate(&f.Stream().Dictionary, cos.Params, cos.CreationDate)
+}
+
+// SetCreationDate sets the /CreationDate of the embedded file's /Params.
+func (f *PDEmbeddedFile) SetCreationDate(creation time.Time) {
+	util.SetEmbeddedDate(&f.Stream().Dictionary, cos.Params, cos.CreationDate, creation)
+}
+
+// ModDate returns the /ModDate of the embedded file's /Params, and reports
+// false where there is none.
+func (f *PDEmbeddedFile) ModDate() (time.Time, bool) {
+	return util.EmbeddedDate(&f.Stream().Dictionary, cos.Params, cos.ModDate)
+}
+
+// SetModDate sets the /ModDate of the embedded file's /Params.
+func (f *PDEmbeddedFile) SetModDate(mod time.Time) {
+	util.SetEmbeddedDate(&f.Stream().Dictionary, cos.Params, cos.ModDate, mod)
 }

@@ -63,6 +63,25 @@ func NewPDResourcesOf(resourceDictionary *cos.Dictionary) *PDResources {
 	}
 }
 
+// NewPDResourcesOfCacheAndFontCache returns the resources held by the given
+// dictionary, read through the given cache and sharing the given direct font
+// cache.
+//
+// Port of the package-private PDResources(COSDictionary, ResourceCache,
+// Map<COSName, SoftReference<PDFont>>), which the AcroForm uses so that its
+// default resources keep one cache across the fields.
+func NewPDResourcesOfCacheAndFontCache(resourceDictionary *cos.Dictionary,
+	resourceCache ResourceCache, directFontCache map[*cos.Name]font.PDFont) *PDResources {
+	if resourceDictionary == nil {
+		panic("pdmodel: resourceDictionary is null")
+	}
+	return &PDResources{
+		resources:       resourceDictionary,
+		cache:           resourceCache,
+		directFontCache: directFontCache,
+	}
+}
+
 // NewPDResourcesOfCache returns the resources held by the given dictionary,
 // read through the given cache.
 func NewPDResourcesOfCache(resourceDictionary *cos.Dictionary, resourceCache ResourceCache) *PDResources {

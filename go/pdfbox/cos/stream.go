@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
@@ -564,4 +565,23 @@ func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
 		current = pdfio.NewReader(decoded)
 	}
 	return current, nil
+}
+
+// ToTextString returns the content of the stream as text, and the empty string
+// where it cannot be read.
+//
+// Port of COSStream.toTextString, which logs the failure and answers the empty
+// string; the port answers the same and logs the same.
+func (s *Stream) ToTextString() string {
+	input, err := s.CreateReader()
+	if err == nil {
+		var array []byte
+		array, err = io.ReadAll(input)
+		if err == nil {
+			return NewStringObjBytes(array).Value()
+		}
+	}
+	slog.Debug("cos: an exception occurred trying to get the content - returning empty string instead",
+		slog.Any("error", err))
+	return ""
 }

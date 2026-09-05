@@ -7,6 +7,7 @@ package annotation
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -89,6 +90,12 @@ type PDAnnotation interface {
 
 	// NormalAppearanceStream returns the normal appearance stream, or nil.
 	NormalAppearanceStream() *PDAppearanceStream
+
+	// IsInvisible reports the invisible flag.
+	IsInvisible() bool
+
+	// IsHidden reports the hidden flag.
+	IsHidden() bool
 }
 
 // annotationFactories maps a /Subtype to the constructor that builds it.
@@ -334,14 +341,16 @@ func (a *PDAnnotationBase) Contents() string { return a.dictionary.GetString(cos
 func (a *PDAnnotationBase) SetContents(value string) { a.dictionary.SetString(cos.Contents, value) }
 
 // ModifiedDate returns the /M date as the string the file holds.
-//
-// Java also has setModifiedDate(Calendar), which goes through
-// COSDictionary.setDate; that is the other half of DateConverter, which this
-// slice takes later. See migration/STATUS.md.
 func (a *PDAnnotationBase) ModifiedDate() string { return a.dictionary.GetString(cos.M, "") }
 
 // SetModifiedDate sets the /M date.
 func (a *PDAnnotationBase) SetModifiedDate(m string) { a.dictionary.SetString(cos.M, m) }
+
+// SetModifiedDateTime sets the /M date from a date rather than the string the
+// file holds, which is the setModifiedDate(Calendar) of Java.
+func (a *PDAnnotationBase) SetModifiedDateTime(c time.Time) {
+	util.SetDictionaryDate(a.dictionary, cos.M, c)
+}
 
 // AnnotationName returns the /NM name of the annotation.
 func (a *PDAnnotationBase) AnnotationName() string { return a.dictionary.GetString(cos.NM, "") }
