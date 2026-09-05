@@ -101,7 +101,7 @@ implementation, then move on. Do not open all eight at once.
 - [x] B7. `interactive/measurement`, `interactive/viewerpreferences`
   - both subpackages are done: the five viewer preference enums, and the
     measure, number format, rectlinear measure and viewport dictionaries
-- [ ] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
+- [x] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
       prepress
 - [x] B9. `pdmodel/graphics/optionalcontent` — 3 files, and `PDPropertyList`
       with them, since the two name each other. `rendering.RenderDestination`

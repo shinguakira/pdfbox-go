@@ -1599,3 +1599,128 @@ at -1 panics on the slice bounds, which is the same failure.
 
 **Confidence** high. Both the -1 and the throw follow from the two library
 contracts, and the sibling branch shows the check that is missing.
+
+## 40. `PDStandardAttributeObject` writes a string array and reads a name array
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDStandardAttributeObject.java`:
+
+```java
+protected String[] getArrayOfString(String name)
+{
+    ...
+    strings[i] = ((COSName) array.getObject(i)).getName();
+    ...
+}
+
+protected void setArrayOfString(String name, String[] values)
+{
+    ...
+    array.add(new COSString(value));
+    ...
+}
+```
+
+**What correct would be** The two halves have to agree. PDF 32000-1:2008
+Table 337 gives `/Headers`, the only attribute that uses them, as an array of
+byte strings, so the setter is right and the getter should read `COSString`.
+
+**Why it matters** A round trip throws. `setHeaders(new String[] {"h1"})`
+followed by `getHeaders()` is a `ClassCastException`, on
+`PDTableAttributeObject` and on `PDExportFormatAttributeObject` alike, and
+`toString` calls the getter, so printing a table attribute object that was
+filled in through its own API throws too. Reading a conforming file throws for
+the same reason: the file holds strings.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdstandardattributeobject.go`,
+`GetArrayOfString`, with the comment above it naming this entry. The type
+assertion panics where the cast throws.
+
+**Confidence** high. The two methods are next to each other and disagree on the
+element type; only one of them can match the specification, and it is not the
+getter.
+
+## 41. `PDFourColours` pads a short array to five entries
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDFourColours.java`:
+
+```java
+public PDFourColours(COSArray array)
+{
+    this.array = array;
+    // ensure that array has 4 items
+    if (this.array.size() < 4)
+    {
+        for (int i = (this.array.size() - 1); i < 4; i++)
+        {
+            this.array.add(COSNull.NULL);
+        }
+    }
+}
+```
+
+**What correct would be** `for (int i = this.array.size(); i < 4; i++)`. The
+comment above the loop says four; the loop starts one index early, so it always
+runs one time too many.
+
+**Why it matters** Every array shorter than four comes out five long, whatever
+its length: an empty one gets five nulls, a three-entry one gets two more. The
+extra entry is written back to the file, since the constructor mutates the array
+it was handed rather than a copy --- so reading a `/BorderColor` of three
+colours through `getColorOrFourColors` cannot happen (that path needs size 3 or
+4), but any caller that builds `PDFourColours` over a short array corrupts it.
+PDF 32000-1:2008 Table 344 gives `/BorderColor` as one colour or exactly four.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdfourcolours.go`,
+`NewPDFourColoursOfArray`, with the comment above it naming this entry.
+
+**Confidence** high. The loop bound is off by one against its own comment, and
+the arithmetic is not in doubt.
+
+## 42. `StandardStructureTypes.types` collects itself
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/StandardStructureTypes.java`:
+
+```java
+public static final List<String> types = new ArrayList<>();
+static
+{
+    Field[] fields = StandardStructureTypes.class.getFields();
+    for (Field field : fields)
+    {
+        if (Modifier.isFinal(field.getModifiers()))
+        {
+            try
+            {
+                types.add(field.get(null).toString());
+            }
+            ...
+```
+
+**What correct would be** The loop wants the `String` constants, so it has to
+skip anything that is not one --- a `field.getType() == String.class` test, or
+naming the constants outright.
+
+**Why it matters** `types` is itself a public final field, so `getFields`
+answers it too and the loop adds `types.toString()` to `types`. The list
+therefore holds one entry that is not a structure type, and which entry that is
+depends on where `types` falls in `Class.getFields`, whose order the Java
+language does not define: first gives `"[]"`, last gives the whole list printed
+as one string, anything between gives a partial one. Nothing in PDFBox reads
+`types`, which is why it has gone unnoticed; a caller that does gets a list it
+cannot trust to hold only type names.
+
+**Where the Go carries it** It does not: Go has no reflection over constants,
+so there is nothing to enumerate and nothing that could pick itself up.
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/standardstructuretypes.go`
+names the forty-seven types and sorts them, and the comment above `Types` says
+that the self-referential entry is left out and why. This is the one entry in
+this file the port does not carry, because carrying it would mean inventing an
+entry whose content Java does not define either.
+
+**Confidence** high for the defect. The field is public and final and the loop
+tests only for final.
