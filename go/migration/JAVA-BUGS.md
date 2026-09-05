@@ -2009,3 +2009,91 @@ puts them in. `migration/STATUS.md` says the same under the slice 8 fixup
 section.
 
 **Confidence** high. The javadoc states the mutation itself.
+
+---
+
+## 49. `PageDrawer.drawTilingPattern` restores nothing when the pattern stream fails
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java`,
+the package-private `drawTilingPattern`.
+
+```java
+Graphics2D savedGraphics = graphics;
+graphics = g;
+GeneralPath savedLinePath = linePath;
+linePath = new GeneralPath();
+...
+setRenderingHints();
+processTilingPattern(pattern, color, colorSpace, patternMatrix);
+
+flipTG = savedFlipTG;
+graphics = savedGraphics;
+linePath = savedLinePath;
+lastClips = savedLastClips;
+initialClip = savedInitialClip;
+clipWindingRule = savedClipWindingRule;
+```
+
+**What** The method swaps six fields of the drawer, runs the pattern's content
+stream, and swaps them back — but the six restores are plain statements, not a
+`finally`. `processTilingPattern` declares `throws IOException` and every
+operator it runs can raise one. When it does, the exception leaves the drawer
+pointing at the tile's `Graphics2D`, with the tile's line path, the tile's clip
+bookkeeping and `flipTG` still true. The drawer is a field of `PageDrawer`, and
+`TilingPaint` calls this while the page is still being rendered, so the rest of
+the page is then drawn onto a disposed tile surface.
+
+The three sibling methods that swap the same fields all use `finally` — the
+`TransparencyGroup` constructor, `processTransparencyGroup` and
+`processTilingPattern` itself. This one does not, which is what makes it look
+like an oversight rather than a choice.
+
+**What correct would be** The same six lines in a `finally`, as its siblings
+have.
+
+**Where the Go carries it**
+`go/pdfbox/rendering/pagedrawer.go`, `DrawTilingPattern` returns the error
+before the restores, with a comment saying why.
+
+**Confidence** high for the shape — the restores are demonstrably outside any
+`finally`, and the siblings show the intended pattern. Whether it is reachable
+in practice depends on `TilingPaint` swallowing the exception, which is
+`PaintContext` territory this port does not reach.
+
+---
+
+## 50. `PageDrawer.showAnnotation` leaves the page rotated when an annotation fails
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java`,
+`showAnnotation`, the `isNoRotate()` branch.
+
+```java
+AffineTransform savedTransform = graphics.getTransform();
+graphics.rotate(Math.toRadians(getCurrentPage().getRotation()),
+        rect.getLowerLeftX(), rect.getUpperRightY());
+super.showAnnotation(annotation);
+graphics.setTransform(savedTransform);
+annotation.setAppearance(appearance); // restore
+```
+
+**What** An annotation with the NoRotate flag on a rotated page is drawn through
+a rotation of its own, and the transform is put back afterwards — again with a
+plain statement rather than a `finally`. `super.showAnnotation` declares
+`throws IOException`. When it raises one, the page's `Graphics2D` keeps the
+annotation's rotation, and every annotation after it in `drawPage`'s loop is
+drawn through that rotation as well.
+
+The second line is worse than the first. A few lines earlier the method may have
+called `annotation.constructAppearances()` to replace the appearance it is about
+to draw, having saved the original in `appearance`; the `setAppearance` here is
+the undo. Skipping it leaves the document holding a generated appearance in
+place of the one the file carried, which outlives the render.
+
+**What correct would be** Both restores in a `finally`.
+
+**Where the Go carries it** `go/pdfbox/rendering/pagedrawer.go`,
+`ShowAnnotation` returns the error before the two restores, with a comment
+saying why.
+
+**Confidence** high. The document mutation is the same `setAppearance` the
+comment in the Java calls "restore".

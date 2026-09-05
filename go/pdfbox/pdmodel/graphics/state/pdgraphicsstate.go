@@ -25,15 +25,18 @@ const (
 //
 // Port of org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState.
 //
-// Three things are not here, each waiting on something the port has not
-// reached: the soft mask, whose PDSoftMask needs a transparency group and a
-// function; getCurrentClippingPath and the Area form of intersectClippingPath,
-// which need java.awt.geom.Area — the clipping paths themselves are kept, and
-// combining them is the renderer's job; and the two Java composites, which are
-// rendering as well. See migration/STATUS.md.
+// The two Java composites are not here: getStrokingJavaComposite and
+// getNonStrokingJavaComposite each wrap the blend mode and an alpha constant in
+// a java.awt.Composite, which is the rasteriser's half of the work. The blend
+// mode and both constants are here, which is what a backend needs to build one.
+// See migration/STATUS.md.
 type PDGraphicsState struct {
+	// softMask is the mask paint reaches the page through, or nil.
+	softMask *PDSoftMask
+
 	isClippingPathDirty         bool
 	clippingPaths               []*geom.Path2D
+	clippingPathCache           *geom.Area
 	currentTransformationMatrix *util.Matrix
 	strokingColor               *color.PDColor
 	nonStrokingColor            *color.PDColor
@@ -258,16 +261,58 @@ func (s *PDGraphicsState) intersectClippingPath(path *geom.Path2D, clonePath boo
 		s.clippingPaths = append([]*geom.Path2D(nil), s.clippingPaths...)
 		s.isClippingPathDirty = true
 	}
-	// add path to current clipping paths, combined later by the renderer
+	// add path to current clipping paths, combined later (see CurrentClippingPath)
 	if clonePath {
 		path = path.Clone()
 	}
 	s.clippingPaths = append(s.clippingPaths, path)
+	// clear cache
+	s.clippingPathCache = nil
 }
 
 // CurrentClippingPaths returns the paths the clipping region is the
 // intersection of. Do not modify them.
 func (s *PDGraphicsState) CurrentClippingPaths() []*geom.Path2D { return s.clippingPaths }
+
+// IntersectClippingArea modifies the current clipping path by intersecting it
+// with the given area. The area is not copied, so the caller must not go on
+// using it.
+//
+// Port of intersectClippingPath(Area), which Java overloads on the argument.
+func (s *PDGraphicsState) IntersectClippingArea(area *geom.Area) {
+	s.intersectClippingPath(geom.NewPathDoubleShape(area), false)
+}
+
+// CurrentClippingPath returns the area the clipping paths intersect to, and
+// replaces the list with that one area so the work is done once.
+//
+// Port of getCurrentClippingPath.
+func (s *PDGraphicsState) CurrentClippingPath() *geom.Area {
+	// If there is just a single clipping path, no intersections are needed.
+	if len(s.clippingPaths) == 1 {
+		if s.clippingPathCache == nil {
+			s.clippingPathCache = geom.NewAreaOfShape(s.clippingPaths[0])
+		}
+		return s.clippingPathCache
+	}
+	// calculate the intersected overall bounding box for all clipping paths
+	boundingBox := s.clippingPaths[0].Bounds2D()
+	for i := 1; i < len(s.clippingPaths); i++ {
+		geom.Intersect(boundingBox, s.clippingPaths[i].Bounds2D(), boundingBox)
+	}
+	// use the overall bounding box as starting area
+	clippingArea := geom.NewAreaOfShape(boundingBox)
+	// combine all clipping paths to a single area
+	for i := 0; i < len(s.clippingPaths); i++ {
+		nextArea := geom.NewAreaOfShape(s.clippingPaths[i])
+		clippingArea.Intersect(nextArea)
+		nextArea.Reset()
+	}
+	s.clippingPathCache = clippingArea
+	// Replace the list of individual clipping paths with the intersection
+	s.clippingPaths = []*geom.Path2D{geom.NewPathDoubleShape(clippingArea)}
+	return clippingArea
+}
 
 // Transfer returns the transfer function.
 func (s *PDGraphicsState) Transfer() cos.Base { return s.transfer }
@@ -300,6 +345,7 @@ func (s *PDGraphicsState) Clone() *PDGraphicsState {
 	clone.nonStrokingColor = s.nonStrokingColor // immutable
 	clone.lineDashPattern = s.lineDashPattern   // immutable
 	clone.clippingPaths = s.clippingPaths       // not cloned, see intersectClippingPath
+	clone.clippingPathCache = s.clippingPathCache
 	clone.isClippingPathDirty = false
 	if s.textLineMatrix != nil {
 		clone.textLineMatrix = s.textLineMatrix.Clone()
@@ -316,3 +362,10 @@ func (s *PDGraphicsState) Clone() *PDGraphicsState {
 func (s *PDGraphicsState) SetRenderingIntentOrNil(value *RenderingIntent) {
 	s.renderingIntent = value
 }
+
+// SoftMask returns the soft mask paint is reaching the page through, or nil
+// where there is none.
+func (s *PDGraphicsState) SoftMask() *PDSoftMask { return s.softMask }
+
+// SetSoftMask sets the soft mask paint reaches the page through.
+func (s *PDGraphicsState) SetSoftMask(softMask *PDSoftMask) { s.softMask = softMask }

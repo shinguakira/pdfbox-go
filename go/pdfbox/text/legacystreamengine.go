@@ -40,10 +40,9 @@ var legacyGlyphList = func() *encoding.GlyphList {
 // stripper has always been built on, and changing them would change the text it
 // produces.
 //
-// The DrawObject processor Java registers -- the text version, which walks into
-// a form XObject -- is not here: XObjects are a slice this port has not reached.
-// A page whose text is inside a form therefore yields nothing from it. See
-// migration/STATUS.md.
+// The DrawObject processor Java registers here is the text version, which walks
+// into a form XObject and steps over an image. It is contentstream.DrawObject,
+// one level up from the operator package Java puts it in; see the comment there.
 type LegacyPDFStreamEngine struct {
 	*contentstream.PDFStreamEngine
 
@@ -74,6 +73,7 @@ func NewLegacyPDFStreamEngine() *LegacyPDFStreamEngine {
 	statepr.AddAll(e.PDFStreamEngine)
 	textpr.AddAll(e.PDFStreamEngine)
 	markedcontent.AddAll(e.PDFStreamEngine)
+	e.AddOperator(contentstream.NewDrawObject(e.PDFStreamEngine))
 	return e
 }
 

@@ -96,6 +96,19 @@ type PDAnnotation interface {
 
 	// IsHidden reports the hidden flag.
 	IsHidden() bool
+
+	// IsPrinted reports the print flag.
+	IsPrinted() bool
+
+	// IsNoView reports the no-view flag.
+	IsNoView() bool
+
+	// IsNoRotate reports the no-rotate flag.
+	IsNoRotate() bool
+
+	// OptionalContent returns the /OC optional content of this annotation, or
+	// nil.
+	OptionalContent() markedcontent.PropertyList
 }
 
 // annotationFactories maps a /Subtype to the constructor that builds it.
