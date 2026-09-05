@@ -219,3 +219,12 @@ func (d *PDDocument) ImportPage(page *PDPage) (*PDPage, error) {
 	}
 	return importedPage, nil
 }
+
+// WriteCOSDocument writes the given COS document out through the given writer.
+//
+// Port of COSWriter.write(COSDocument), which wraps the COS document in a
+// PDDocument and writes that. It is a function here because pdfwriter cannot
+// name PDDocument: this package imports it.
+func WriteCOSDocument(writer *pdfwriter.COSWriter, doc *cos.Document) error {
+	return writer.Write(NewPDDocumentOf(doc, nil))
+}

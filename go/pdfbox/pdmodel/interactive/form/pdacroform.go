@@ -166,9 +166,10 @@ func (a *PDAcroForm) FlattenFields(fields []PDField, refreshAppearances bool) er
 	// remove XFA for hybrid forms
 	a.dictionary.RemoveItem(cos.XFA)
 
-	// Java removes /SigFlags where no signature is left, through
-	// PDDocument.getSignatureDictionaries; that names PDSignature, which
-	// pdmodel/interactive/digitalsignature brings. See migration/STATUS.md.
+	// remove SigFlags if no signature left
+	if len(SignatureDictionariesOfDocument(a.document)) == 0 {
+		a.Dictionary().RemoveItem(cos.SigFlags)
+	}
 	return nil
 }
 

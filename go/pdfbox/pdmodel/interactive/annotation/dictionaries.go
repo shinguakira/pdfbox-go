@@ -109,6 +109,9 @@ func NewPDAppearanceDictionaryOf(dictionary *cos.Dictionary) *PDAppearanceDictio
 // COSObject returns the dictionary.
 func (d *PDAppearanceDictionary) COSObject() cos.Base { return d.dictionary }
 
+// Dictionary returns the dictionary, typed.
+func (d *PDAppearanceDictionary) Dictionary() *cos.Dictionary { return d.dictionary }
+
 // NormalAppearance returns the /N entry, or nil.
 func (d *PDAppearanceDictionary) NormalAppearance() *PDAppearanceEntry {
 	return d.entryOf(cos.N, nil)

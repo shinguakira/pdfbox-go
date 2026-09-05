@@ -1,21 +1,19 @@
 package form
 
 import (
+	"fmt"
 	"log/slog"
+	"reflect"
 	"strconv"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/digitalsignature"
 )
 
 // PDSignatureField is a field that holds a digital signature.
 //
 // Port of PDSignatureField.
-//
-// The value accessors -- getSignature, getValue, setValue(PDSignature),
-// getDefaultValue, setDefaultValue and the seed value pair -- are not here:
-// they name PDSignature and PDSeedValue, and
-// pdmodel/interactive/digitalsignature is not ported yet. They land with it.
-// See migration/STATUS.md.
 type PDSignatureField struct {
 	PDTerminalField
 }
@@ -59,20 +57,76 @@ func (f *PDSignatureField) generatePartialName() string {
 	return fieldName + strconv.Itoa(i)
 }
 
+// Signature returns the signature the field holds, or nil where it holds none.
+func (f *PDSignatureField) Signature() *digitalsignature.PDSignature { return f.Value() }
+
+// SetSignatureValue sets the signature the field holds.
+//
+// Java names it setValue(PDSignature), overloading setValue(String); Go has no
+// overloading, and PDField already asks for the second.
+func (f *PDSignatureField) SetSignatureValue(value *digitalsignature.PDSignature) error {
+	f.FieldDictionary().SetItem(cos.V, common.COSObjectOrNil(value))
+	return f.applyChange()
+}
+
 // SetValue panics: a signature field holds a signature dictionary rather than a
 // string, which is the UnsupportedOperationException Java throws.
 func (f *PDSignatureField) SetValue(value string) error {
-	panic("Signature fields don't support setting the value as String " +
+	panic("Signature fields don.t support setting the value as String " +
 		"- use setValue(PDSignature value) instead")
 }
 
-// ValueAsString returns the value of the field as a string, which is empty
-// until the signature accessors land.
-func (f *PDSignatureField) ValueAsString() string {
+// SetDefaultValue sets the /DV of the field.
+func (f *PDSignatureField) SetDefaultValue(value *digitalsignature.PDSignature) {
+	f.FieldDictionary().SetItem(cos.DV, common.COSObjectOrNil(value))
+}
+
+// Value returns the signature the field holds, or nil where it holds none.
+func (f *PDSignatureField) Value() *digitalsignature.PDSignature {
 	if value := f.FieldDictionary().GetCOSDictionary(cos.V); value != nil {
-		return value.String()
+		return digitalsignature.NewPDSignatureOf(value)
+	}
+	return nil
+}
+
+// DefaultValue returns the /DV of the field, or nil where it has none.
+func (f *PDSignatureField) DefaultValue() *digitalsignature.PDSignature {
+	if value := f.FieldDictionary().GetCOSDictionary(cos.DV); value != nil {
+		return digitalsignature.NewPDSignatureOf(value)
+	}
+	return nil
+}
+
+// ValueAsString returns the value of the field as a string.
+//
+// Java answers signature.toString(), and PDSignature overrides no toString, so
+// what comes back is Object.toString: the class name and the identity hash,
+// which says nothing about the signature. Go has no such default, so the port
+// writes the same shape out of the type and the address. Neither string is
+// useful; that is the Java.
+func (f *PDSignatureField) ValueAsString() string {
+	signature := f.Value()
+	if signature != nil {
+		return fmt.Sprintf("%T@%x", signature, reflect.ValueOf(signature).Pointer())
 	}
 	return ""
+}
+
+// SeedValue returns the seed value dictionary of the field, or nil where it has
+// none.
+func (f *PDSignatureField) SeedValue() *digitalsignature.PDSeedValue {
+	if dict := f.FieldDictionary().GetCOSDictionary(cos.SV); dict != nil {
+		return digitalsignature.NewPDSeedValueOf(dict)
+	}
+	return nil
+}
+
+// SetSeedValue sets the seed value dictionary of the field, and does nothing
+// for a nil one.
+func (f *PDSignatureField) SetSeedValue(sv *digitalsignature.PDSeedValue) {
+	if sv != nil {
+		f.FieldDictionary().SetItem(cos.SV, sv.COSObject())
+	}
 }
 
 // constructAppearances warns rather than drawing: Java has no appearance
