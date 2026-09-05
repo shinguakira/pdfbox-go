@@ -326,55 +326,107 @@ func TestPageablePrintableRefusesAPagePastTheEnd(t *testing.T) {
 
 // recordingBackend is rendering's, which this package cannot reach: a test
 // file is not part of the package it is compiled into. This is the same thing
-// cut down to what these tests read: the transform, and the last stroke.
+// cut down to what these tests read: the state a printable might leak, the last
+// stroke, and the transform it was drawn through.
 type recordingBackend struct {
-	transform  *geom.AffineTransform
-	clip       *geom.Area
-	paint      rendering.Paint
-	stroke     *rendering.Stroke
-	lastDraw   string
-	transforms []*geom.AffineTransform
+	// log is shared with every copy Create makes, the way a Graphics2D copy
+	// draws to the same destination as the one it came from.
+	log *recordingLog
+
+	transform     *geom.AffineTransform
+	clip          *geom.Area
+	paint         rendering.Paint
+	stroke        *rendering.Stroke
+	blendMode     *blend.BlendMode
+	alphaConstant float64
+	antiAliasing  bool
+	interpolation rendering.Interpolation
+}
+
+// recordingLog is what every copy of a backend writes into.
+type recordingLog struct {
+	lastDraw          string
+	lastDrawTransform *geom.AffineTransform
+	disposals         int
+	transforms        []*geom.AffineTransform
 }
 
 var _ rendering.Backend = (*recordingBackend)(nil)
 
 func newRecordingBackend() *recordingBackend {
-	return &recordingBackend{transform: geom.NewAffineTransform(1, 0, 0, 1, 0, 0)}
+	return &recordingBackend{
+		log:       &recordingLog{},
+		transform: geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
+	}
 }
 
 // LastDraw returns the last stroked shape, or the empty string where nothing
 // was stroked.
-func (b *recordingBackend) LastDraw() string { return b.lastDraw }
+func (b *recordingBackend) LastDraw() string { return b.log.lastDraw }
+
+// LastDrawTransform returns the transform the last stroke was drawn through.
+func (b *recordingBackend) LastDrawTransform() *geom.AffineTransform {
+	return b.log.lastDrawTransform
+}
+
+// Disposals returns how many copies of this backend were disposed of.
+func (b *recordingBackend) Disposals() int { return b.log.disposals }
+
+func (b *recordingBackend) Create() rendering.Backend {
+	copied := *b
+	copied.transform = b.transform.Clone()
+	return &copied
+}
+
+func (b *recordingBackend) Dispose() { b.log.disposals++ }
 
 func (b *recordingBackend) Transform() *geom.AffineTransform { return b.transform }
 
 func (b *recordingBackend) SetTransform(at *geom.AffineTransform) {
 	b.transform = at
-	b.transforms = append(b.transforms, at.Clone())
+	b.log.transforms = append(b.log.transforms, at.Clone())
 }
 
-// Rendered returns the transform that was in force while the page was drawn,
-// which is the one installed just before Print put back the caller's own.
+// Rendered returns the last transform installed on this backend or any copy of
+// it, which for a print without a page border is the one the page was drawn
+// through.
 func (b *recordingBackend) Rendered() *geom.AffineTransform {
-	if len(b.transforms) < 2 {
+	if len(b.log.transforms) == 0 {
 		return b.transform
 	}
-	return b.transforms[len(b.transforms)-2]
+	return b.log.transforms[len(b.log.transforms)-1]
 }
 
 func (b *recordingBackend) Clip() *geom.Area { return b.clip }
 
 func (b *recordingBackend) SetClip(clip *geom.Area) { b.clip = clip }
 
+func (b *recordingBackend) Paint() rendering.Paint { return b.paint }
+
 func (b *recordingBackend) SetPaint(paint rendering.Paint) { b.paint = paint }
+
+func (b *recordingBackend) Stroke() *rendering.Stroke { return b.stroke }
 
 func (b *recordingBackend) SetStroke(stroke *rendering.Stroke) { b.stroke = stroke }
 
-func (b *recordingBackend) SetComposite(*blend.BlendMode, float64) {}
+func (b *recordingBackend) BlendMode() *blend.BlendMode { return b.blendMode }
 
-func (b *recordingBackend) SetAntiAliasing(bool) {}
+func (b *recordingBackend) AlphaConstant() float64 { return b.alphaConstant }
 
-func (b *recordingBackend) SetInterpolation(rendering.Interpolation) {}
+func (b *recordingBackend) SetComposite(blendMode *blend.BlendMode, alphaConstant float64) {
+	b.blendMode = blendMode
+	b.alphaConstant = alphaConstant
+}
+
+func (b *recordingBackend) AntiAliasing() bool { return b.antiAliasing }
+
+func (b *recordingBackend) SetAntiAliasing(on bool) { b.antiAliasing = on }
+
+func (b *recordingBackend) Interpolation() rendering.Interpolation { return b.interpolation }
+
+func (b *recordingBackend) SetInterpolation(interpolation rendering.Interpolation) {
+	b.interpolation = interpolation
+}
 
 func (b *recordingBackend) Fill(geom.Shape) error { return nil }
 
@@ -403,7 +455,100 @@ func (b *recordingBackend) Draw(shape geom.Shape) error {
 	if b.stroke != nil {
 		width = b.stroke.LineWidth
 	}
-	b.lastDraw = fmt.Sprintf("[%.2f %.2f %.2f %.2f] paint=%s w=%.3f",
+	b.log.lastDraw = fmt.Sprintf("[%.2f %.2f %.2f %.2f] paint=%s w=%.3f",
 		bounds.X, bounds.Y, bounds.Width, bounds.Height, paint, width)
+	b.log.lastDrawTransform = b.transform.Clone()
 	return nil
+}
+
+// TestPrintLeavesEveryPieceOfStateAlone is what Java gets from
+// `graphics.create()`: the printable draws on a copy and disposes of it, so
+// nothing it did — not the transform, not the clip, not the paint, the stroke,
+// the composite or the rendering hints — reaches the surface the print system
+// handed it.
+func TestPrintLeavesEveryPieceOfStateAlone(t *testing.T) {
+	document := documentOfSize(imageWidth, imageHeight)
+	// showPageBorder guarantees a paint, a stroke and a clip are set
+	printable := NewPDFPrintableRasterized(document, ActualSize, true, RasterizeOff)
+
+	backend := newRecordingBackend()
+	at := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
+	at.Translate(7.0, 11.0)
+	at.Scale(1.3, 1.3)
+	backend.SetTransform(at)
+	backend.SetClip(geom.NewAreaOfShape(geom.NewRectangle2D(1, 2, 3, 4)))
+	backend.SetPaint(rendering.ColorPaint{Red: 1, Alpha: 1})
+	backend.SetStroke(&rendering.Stroke{LineWidth: 3.7})
+	backend.SetComposite(blend.Multiply, 0.25)
+	backend.SetAntiAliasing(false)
+	backend.SetInterpolation(rendering.NearestNeighbor)
+
+	transform := backend.Transform().Clone()
+	clip := backend.Clip()
+	paint := backend.Paint()
+	stroke := backend.Stroke()
+	blendMode := backend.BlendMode()
+	alpha := backend.AlphaConstant()
+
+	if _, err := printable.Print(backend, pageFormatOf(imageWidth, imageHeight), 0); err != nil {
+		t.Fatal(err)
+	}
+
+	if !backend.Transform().Equals(transform) {
+		t.Errorf("transform = %v, want %v", backend.Transform(), transform)
+	}
+	if backend.Clip() != clip {
+		t.Errorf("clip = %v, want the one that was set", backend.Clip())
+	}
+	if backend.Paint() != paint {
+		t.Errorf("paint = %v, want %v", backend.Paint(), paint)
+	}
+	if backend.Stroke() != stroke {
+		t.Errorf("stroke = %v, want %v", backend.Stroke(), stroke)
+	}
+	if backend.BlendMode() != blendMode || backend.AlphaConstant() != alpha {
+		t.Errorf("composite = %v at %v, want %v at %v",
+			backend.BlendMode(), backend.AlphaConstant(), blendMode, alpha)
+	}
+	if backend.AntiAliasing() {
+		t.Error("anti-aliasing was turned on and left on")
+	}
+	if backend.Interpolation() != rendering.NearestNeighbor {
+		t.Errorf("interpolation = %v, want NearestNeighbor", backend.Interpolation())
+	}
+	if backend.Disposals() == 0 {
+		t.Error("the copy Print drew on was never disposed of")
+	}
+}
+
+// TestPageBorderIsDrawnAroundTheRenderedPage pins where the border goes: Java
+// captures the transform for it *after* translating to the imageable area and
+// centring the page, so the border frames the page rather than sitting at the
+// corner of the paper.
+func TestPageBorderIsDrawnAroundTheRenderedPage(t *testing.T) {
+	document := documentOfSize(40, 40)
+	printable := NewPDFPrintableCentered(document, ActualSize, true, RasterizeOff, true)
+
+	// paper with a margin of its own, so the imageable origin is not (0,0)
+	var paper Paper
+	paper.SetSize(200, 200)
+	paper.SetImageableArea(20, 30, 100, 100)
+	format := NewPageFormat()
+	format.Paper = paper
+
+	backend := newRecordingBackend()
+	if _, err := printable.Print(backend, format, 0); err != nil {
+		t.Fatal(err)
+	}
+	at := backend.LastDrawTransform()
+	if at == nil {
+		t.Fatal("nothing was stroked, want the page border")
+	}
+	// 20 in from the left and 30 from the top for the imageable area, then 30
+	// more on each axis to centre a 40 point page in a 100 point one
+	if at.TranslateX() != 20+30 || at.TranslateY() != 30+30 {
+		t.Errorf("border drawn at (%v, %v), want (50, 60) -- the imageable origin "+
+			"and the centring are both missing from it",
+			at.TranslateX(), at.TranslateY())
+	}
 }

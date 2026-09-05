@@ -158,15 +158,17 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 	if pageIndex < 0 || pageIndex >= p.pageTree.Count() {
 		return NoSuchPage, nil
 	}
-	// work on a private copy so the caller's transform is never mutated
-	savedTransform := backend.Transform()
-	defer backend.SetTransform(savedTransform)
+	// work on a private copy so the caller's state -- its transform, clip,
+	// paint, stroke, composite and rendering hints -- is never mutated.
+	// Disposing the copy releases its resources without affecting the original.
+	printerBackend := backend.Create()
+	defer printerBackend.Dispose()
 
 	// capture the DPI that will be used for rasterizing the image
 	// if rasterizing is specified
 	rasterDpi := p.dpi
 	if rasterDpi == RasterizeDPIAuto {
-		transform := backend.Transform()
+		transform := printerBackend.Transform()
 		rasterDpi = util.NewMatrixFromAffineTransform(transform).ScalingFactorX() * 72.0
 		slog.Debug("printing: auto raster dpi", "dpi", rasterDpi, "transform", transform)
 	}
@@ -197,7 +199,7 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 	}
 
 	// set the graphics origin to the origin of the imageable area (i.e the margins)
-	at := backend.Transform().Clone()
+	at := printerBackend.Transform().Clone()
 	at.Translate(pageFormat.ImageableX(), pageFormat.ImageableY())
 
 	// center on page
@@ -213,7 +215,13 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 				"dx", dx, "dy", dy)
 		}
 	}
-	backend.SetTransform(at)
+	printerBackend.SetTransform(at)
+
+	// the transform the page border is drawn through, captured after the
+	// translate to the imageable area and the centring so that the border frames
+	// the page rather than the corner of the paper
+	printerBorderTransform := printerBackend.Transform()
+	borderScale := scale
 
 	// rasterize to bitmap (optional)
 	if rasterDpi > 0 {
@@ -227,7 +235,7 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 	if p.renderingHints != nil {
 		p.renderer.SetRenderingHints(*p.renderingHints)
 	}
-	err := p.renderer.RenderPageToBackend(pageIndex, backend,
+	err := p.renderer.RenderPageToBackend(pageIndex, printerBackend,
 		float32(scale), float32(scale), rendering.Print)
 	if err != nil {
 		return NoSuchPage, err
@@ -236,8 +244,8 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 	// draw crop box on the printer graphics (always, whether rasterizing or not).
 	// Drawing after the blit avoids losing the thin stroke during raster scale-down.
 	if p.showPageBorder {
-		if err := p.drawPageBorder(backend, savedTransform, cropBox,
-			imageableWidth, imageableHeight, scale); err != nil {
+		if err := p.drawPageBorder(printerBackend, printerBorderTransform, cropBox,
+			imageableWidth, imageableHeight, borderScale); err != nil {
 			return NoSuchPage, err
 		}
 	}

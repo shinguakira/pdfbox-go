@@ -304,7 +304,7 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `java.awt.geom.Path2D` | `path.go` | done — one type holding `float64`, rounding on the way in when it is a Float path |
 | `java.awt.geom.Rectangle2D` | `rectangle.go` | done — one type; PDFBox only ever uses the Double form |
 | `java.awt.Rectangle` | `rectangle.go` | done — the integer bounds only |
-| `java.awt.geom.Area` | `area.go` | done in slice 9 — constructive area geometry, minus curves: an added shape is flattened first. Written from the JDK contract, not from what the renderer needs |
+| `java.awt.geom.Area` | `area.go` | done in slice 9 — constructive area geometry, minus curves: an added shape is flattened first. That flattening is the only deviation; `equals` compares the geometries the way the JDK does, by exclusive-or. Written from the JDK contract, not from what the renderer needs |
 
 ### `pdfbox/util`, `fontbox/util`, `internal/javafmt`
 
@@ -2920,3 +2920,68 @@ Three things found while writing rather than by a sweep:
   error now.
 - **`PDExtendedGraphicsState.CopyIntoGraphicsState`'s doc comment** still said
   the `/SMask` arm was not applied, three commits after it was.
+
+### The feedback round
+
+Seven review items. Four were port defects and are fixed, each with a strict
+test written first; two are the Java's own behaviour and are recorded rather
+than changed; one was already correct.
+
+**Fixed — `Area.equals` compared representations, not sets.** The JDK computes
+it by exclusive-or, asking whether what is left is empty, so a square equals the
+union of its two halves however either was built. The port compared rings
+pairwise and answered false. It had a comment saying so, which made it a second
+undocumented deviation beside curve flattening — the one thing D8 says to check
+`Area` for. It is the JDK's algorithm now, which `ExclusiveOr` and `IsEmpty`
+already provided.
+
+**Fixed — `renderImage` accumulated the backend's transform.** Java makes a
+`BufferedImage` and takes a `Graphics2D` of it on every call, so the transform a
+page is drawn through always starts at the identity and the caller never sees
+it. The port drew through a `Backend` the caller installs and keeps, and
+concatenated onto whatever it carried — which after `DrawPage` is the previous
+page's flip. Two consecutive `RenderImage` calls compounded. It starts from the
+identity now and puts back what it found. Three tests: the second render matches
+the first, the caller's transform survives, and a translate on the backend does
+not move the page.
+
+**Fixed — `PDFPrintable.print` leaked six kinds of state.** Java's first line is
+`Graphics2D printerGraphics = (Graphics2D) graphics.create()`, and its last is
+`printerGraphics.dispose()`: the printable draws on a **copy**, so nothing it
+does reaches the surface the print system handed it. The port restored only the
+transform, and with `showPageBorder` on it was guaranteed to leave a grey paint,
+a hairline stroke and a clip behind. `Backend` gains `Create` and `Dispose`,
+which are `java.awt.Graphics.create` and `dispose`, and `Print` works on the
+copy. The alternative — a getter per field — would have grown the interface by
+six rather than two and would still have missed anything added later.
+
+`renderPageToGraphics` does **not** copy in Java, and does not here: it mutates
+the surface it is given, which Java's own javadoc warns about under PDFBOX-4583.
+
+**Fixed — the page border was drawn at the corner of the paper.** Java captures
+`printerBorderTransform` **after** translating to the imageable area and centring
+the page; the port captured it before. On any paper with a margin, or with
+centring on, the border framed the wrong thing. Caught by a test with a paper
+whose imageable origin is (20, 30) and a page centred in it.
+
+**Not changed — `ProcessSoftMask` dereferences the soft mask without checking.**
+Java's first statement is
+`graphicsState.getSoftMask().getInitialTransformationMatrix()`, with no null
+check, so a missing mask is an NPE there and a nil dereference here. It is a
+precondition rather than a defect: the only caller is
+`PageDrawer.applySoftMaskToPaint`, which has already tested the mask. Java's
+method is `protected` and the port's is exported, so the precondition is written
+on it now.
+
+The same comment asked for the graphics state to be restored with a `defer`.
+There are no early returns between the save and the restore, so the restore is
+already unconditional — which is what Java's `finally` buys.
+
+**Not changed — the pattern's underlying colour space is built without the
+resources.** Java holds a `PDResources`, passes it to the `PDPattern` on the same
+line, and builds the underlying colour space with the **one-argument** `create`,
+which passes none. `[/Pattern /DeviceRGB]` and `[/Pattern [/ICCBased 5 0 R]]`
+work; `[/Pattern /CS1]`, naming a colour space in the page's `/ColorSpace`
+dictionary, throws. The three sibling recursions in the same method —
+`PDIndexed`, `PDSeparation`, `PDDeviceN` — all pass the resources on. Ported as
+written and recorded as Java bug 51.

@@ -25,6 +25,8 @@ type recordingBackend struct {
 	calls []string
 
 	transform     *geom.AffineTransform
+	transforms    []*geom.AffineTransform
+	disposals     int
 	clip          *geom.Area
 	paint         Paint
 	stroke        *Stroke
@@ -65,9 +67,23 @@ func (b *recordingBackend) Drawn() []string {
 	return drawn
 }
 
+// Create returns a backend drawing to the same log with a copy of the state,
+// which is java.awt.Graphics.create.
+func (b *recordingBackend) Create() Backend {
+	copied := *b
+	copied.transform = b.transform.Clone()
+	return &copied
+}
+
+// Dispose counts the disposal, so a test can say the copy was released.
+func (b *recordingBackend) Dispose() { b.disposals++ }
+
 func (b *recordingBackend) Transform() *geom.AffineTransform { return b.transform }
 
-func (b *recordingBackend) SetTransform(at *geom.AffineTransform) { b.transform = at }
+func (b *recordingBackend) SetTransform(at *geom.AffineTransform) {
+	b.transform = at
+	b.transforms = append(b.transforms, at.Clone())
+}
 
 func (b *recordingBackend) Clip() *geom.Area { return b.clip }
 
@@ -163,4 +179,13 @@ func describeStroke(stroke *Stroke) string {
 	return fmt.Sprintf("w=%.3f cap=%d join=%d miter=%.1f dash=%v phase=%.3f",
 		stroke.LineWidth, stroke.LineCap, stroke.LineJoin, stroke.MiterLimit,
 		stroke.DashArray, stroke.DashPhase)
+}
+
+// Rendered returns the transform that was in force while the page was drawn,
+// which is the one installed just before the render put back the caller's own.
+func (b *recordingBackend) Rendered() *geom.AffineTransform {
+	if len(b.transforms) < 2 {
+		return b.transform
+	}
+	return b.transforms[len(b.transforms)-2]
 }

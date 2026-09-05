@@ -81,6 +81,12 @@ func (e *PDFStreamEngine) ShowForm(f *form.PDFormXObject) error {
 }
 
 // ProcessSoftMask processes a soft mask transparency group stream.
+//
+// The graphics state must already carry the soft mask this group belongs to:
+// the first thing Java does is read the mask's initial transformation matrix,
+// with no null check, so calling it without one is an NPE there and a nil
+// dereference here. Java reaches it only from PageDrawer.applySoftMaskToPaint,
+// which has already tested the mask.
 func (e *PDFStreamEngine) ProcessSoftMask(group *form.PDTransparencyGroup) error {
 	e.SaveGraphicsState()
 	graphicsState := e.GraphicsState()

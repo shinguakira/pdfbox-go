@@ -125,6 +125,24 @@ type Stroke struct {
 // setters are separate from the drawing calls because Java's are: PageDrawer
 // sets a composite, a paint, a stroke and a clip, and only then fills or draws.
 type Backend interface {
+	// Create returns a backend that draws to the same place as this one, with
+	// a copy of its state: the transform, the clip, the paint, the stroke, the
+	// composite and the rendering hints. Changing the copy's state must not
+	// change this one's.
+	//
+	// Port of java.awt.Graphics.create, which is how a caller that is handed a
+	// surface draws on it without corrupting what its owner set. PDFPrintable
+	// is the one in this port that does; PDFRenderer.renderPageToGraphics
+	// deliberately does not, and mutates the surface it is given, which Java's
+	// own javadoc warns about.
+	Create() Backend
+
+	// Dispose releases the resources of a backend Create returned. Using it
+	// afterwards is a programming error.
+	//
+	// Port of java.awt.Graphics.dispose.
+	Dispose()
+
 	// Transform returns the transform from user space to device space.
 	Transform() *geom.AffineTransform
 

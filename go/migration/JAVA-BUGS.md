@@ -2097,3 +2097,57 @@ saying why.
 
 **Confidence** high. The document mutation is the same `setAppearance` the
 comment in the Java calls "restore".
+
+---
+
+## 51. `PDColorSpace.create` drops the resources when it builds a pattern's underlying colour space
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorSpace.java`,
+the `/Pattern` arm of `create(COSBase, PDResources, boolean)` that handles an
+array.
+
+```java
+else if (name == COSName.PATTERN)
+{
+    if (array.size() == 1)
+    {
+        return new PDPattern(resources);
+    }
+    else
+    {
+        return new PDPattern(resources, PDColorSpace.create(array.get(1)));
+    }
+}
+```
+
+**What** An uncoloured tiling pattern names its underlying colour space as the
+second entry of `[/Pattern <colourspace>]`. The method is holding a
+`PDResources` — it passes it to the `PDPattern` on the very same line — but
+builds the underlying colour space with the **one-argument** `create`, which is
+`create(colorSpace, null, false)`. So the underlying space is resolved with no
+resources at all.
+
+Everything else that recurses in this method passes them on: `PDIndexed`,
+`PDSeparation` and `PDDeviceN` all take `resources` and hand them to the base
+colour space they build.
+
+What it costs: `[/Pattern /DeviceRGB]` works, because a device name needs no
+resources, and `[/Pattern [/ICCBased 5 0 R]]` works, because the array carries
+itself. `[/Pattern /CS1]`, naming a colour space in the page's `/ColorSpace`
+dictionary, does not — with `resources` null the name falls past every device
+arm and out of the bottom of the method, which throws
+`MissingResourceException`. The default colour space substitutions
+(`/DefaultRGB` and its two siblings) are skipped for the same reason.
+
+**What correct would be** `PDColorSpace.create(array.get(1), resources,
+wasDefault)`, as the three sibling recursions do.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/graphics/color/create.go`, the
+`cos.Pattern` case of `createFromArray`, calls the one-argument `Create` and
+says why above the line.
+
+**Confidence** high for the shape — the one-argument call is right there beside
+the `resources` it ignores. Medium for how often it bites: an underlying colour
+space written as a bare name rather than inline is legal but unusual, and no
+PDFBox test covers it.

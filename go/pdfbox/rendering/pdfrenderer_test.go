@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -138,5 +139,84 @@ func TestDefaultRenderingHints(t *testing.T) {
 	if bitonal.Interpolation != NearestNeighbor || bitonal.AntiAliasing || !bitonal.Quality {
 		t.Errorf("DefaultRenderingHints(true) = %+v, want nearest neighbour, no anti-aliasing",
 			bitonal)
+	}
+}
+
+// TestRenderImageStartsFromAFreshSurface pins what Java gets for nothing:
+// renderImage makes a BufferedImage and a Graphics2D of its own each time it is
+// called, so the transform it works from is always the identity. The port draws
+// through a Backend the caller installed and keeps, so it has to say so --
+// otherwise the second page is drawn through the first page's flip.
+func TestRenderImageStartsFromAFreshSurface(t *testing.T) {
+	document := pdmodel.NewPDDocument()
+	document.AddPage(pdmodel.NewPDPageOfSize(common.NewPDRectangleOfSize(100, 200)))
+
+	backend := newRecordingBackend()
+	renderer := NewPDFRenderer(document)
+	renderer.SetBackend(backend, false)
+
+	if err := renderer.RenderImage(0); err != nil {
+		t.Fatal(err)
+	}
+	first := backend.Rendered().Clone()
+
+	if err := renderer.RenderImage(0); err != nil {
+		t.Fatal(err)
+	}
+	if second := backend.Rendered(); !second.Equals(first) {
+		t.Errorf("second render used %v, want %v -- the transforms accumulated", second, first)
+	}
+}
+
+// TestRenderImageLeavesTheBackendAsItFoundIt is the other half: the surface the
+// caller installed is theirs, and Java never touches it, because it never has
+// it. The transform it carried before the render is the one it carries after.
+func TestRenderImageLeavesTheBackendAsItFoundIt(t *testing.T) {
+	document := pdmodel.NewPDDocument()
+	document.AddPage(pdmodel.NewPDPageOfSize(common.NewPDRectangleOfSize(100, 200)))
+
+	backend := newRecordingBackend()
+	installed := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
+	installed.Translate(3, 5)
+	backend.SetTransform(installed)
+	before := backend.Transform().Clone()
+
+	renderer := NewPDFRenderer(document)
+	renderer.SetBackend(backend, false)
+	if err := renderer.RenderImage(0); err != nil {
+		t.Fatal(err)
+	}
+	if !backend.Transform().Equals(before) {
+		t.Errorf("transform = %v, want %v unchanged after RenderImage",
+			backend.Transform(), before)
+	}
+}
+
+// TestRenderImageIgnoresTheBackendsOwnTransform pins the same thing from the
+// other side: Java's fresh Graphics2D starts at the identity whatever the
+// caller's surface carries, so a translate on the backend must not move the
+// page.
+func TestRenderImageIgnoresTheBackendsOwnTransform(t *testing.T) {
+	document := pdmodel.NewPDDocument()
+	document.AddPage(pdmodel.NewPDPageOfSize(common.NewPDRectangleOfSize(100, 200)))
+
+	plain := newRecordingBackend()
+	renderer := NewPDFRenderer(document)
+	renderer.SetBackend(plain, false)
+	if err := renderer.RenderImage(0); err != nil {
+		t.Fatal(err)
+	}
+	want := plain.Rendered().Clone()
+
+	translated := newRecordingBackend()
+	installed := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
+	installed.Translate(3, 5)
+	translated.SetTransform(installed)
+	renderer.SetBackend(translated, false)
+	if err := renderer.RenderImage(0); err != nil {
+		t.Fatal(err)
+	}
+	if got := translated.Rendered(); !got.Equals(want) {
+		t.Errorf("render used %v, want %v -- the backend's own transform leaked in", got, want)
 	}
 }

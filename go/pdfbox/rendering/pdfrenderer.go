@@ -243,9 +243,21 @@ func (r *PDFRenderer) RenderImageTo(pageIndex int, scale float32, imageType Imag
 			pageIndex, surfaceWidth, surfaceHeight, surfaceType)
 	}
 
+	// Java makes the BufferedImage here and takes a Graphics2D of it, so the
+	// transform this page is drawn through always starts at the identity and
+	// the caller never sees it. The port draws through a surface the caller
+	// installed and keeps, so it starts from the identity itself and puts back
+	// what it found.
+	savedTransform := r.backend.Transform()
+	defer r.backend.SetTransform(savedTransform)
 	// use a transparent background if the image type supports alpha
-	r.backend.SetTransform(transformOfPage(r.backend.Transform(), rotationAngle, cropBox, scale, scale))
+	r.backend.SetTransform(transformOfPage(identityTransform(), rotationAngle, cropBox, scale, scale))
 	return r.drawPage(page, destination, cropBox)
+}
+
+// identityTransform is the transform a freshly created Graphics2D carries.
+func identityTransform() *geom.AffineTransform {
+	return geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
 }
 
 // RenderPageToBackend renders the given page onto the given backend.

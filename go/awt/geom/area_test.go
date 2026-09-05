@@ -426,3 +426,52 @@ func appendTriangle(p *Path2D, x0, y0, x1, y1, x2, y2 float64) {
 	p.LineTo(x2, y2)
 	p.ClosePath()
 }
+
+// TestEqualsComparesTheSetsNotTheRings pins the JDK's contract for
+// Area.equals: "Tests whether the geometries of the two Area objects are
+// equal." The JDK computes it by exclusive-or and asking whether the result is
+// empty, so two areas covering the same points are equal however they were
+// built.
+func TestEqualsComparesTheSetsNotTheRings(t *testing.T) {
+	whole := NewAreaOfShape(NewRectangle2D(0, 0, 10, 10))
+
+	// the same square, built as two halves that share an edge
+	halves := NewAreaOfShape(NewRectangle2D(0, 0, 5, 10))
+	halves.Add(NewAreaOfShape(NewRectangle2D(5, 0, 5, 10)))
+
+	if !whole.Equals(halves) {
+		t.Error("a 10x10 square is not equal to the union of two 5x10 halves of it")
+	}
+	if !halves.Equals(whole) {
+		t.Error("Equals is not symmetric")
+	}
+}
+
+// TestEqualsIsFalseForDifferentGeometry keeps the other half of the contract:
+// areas that cover different points are not equal.
+func TestEqualsIsFalseForDifferentGeometry(t *testing.T) {
+	square := NewAreaOfShape(NewRectangle2D(0, 0, 10, 10))
+	bigger := NewAreaOfShape(NewRectangle2D(0, 0, 10, 11))
+	if square.Equals(bigger) {
+		t.Error("a 10x10 square equals a 10x11 one")
+	}
+	moved := NewAreaOfShape(NewRectangle2D(1, 0, 10, 10))
+	if square.Equals(moved) {
+		t.Error("a square equals the same square moved")
+	}
+}
+
+// TestEqualsOfNilAndSelf is the two answers the JDK states outright: an area
+// equals itself, and nothing equals null.
+func TestEqualsOfNilAndSelf(t *testing.T) {
+	square := NewAreaOfShape(NewRectangle2D(0, 0, 10, 10))
+	if !square.Equals(square) {
+		t.Error("an area does not equal itself")
+	}
+	if square.Equals(nil) {
+		t.Error("an area equals nil")
+	}
+	if !NewArea().Equals(NewArea()) {
+		t.Error("two empty areas are not equal")
+	}
+}

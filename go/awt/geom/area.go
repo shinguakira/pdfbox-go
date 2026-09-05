@@ -191,27 +191,22 @@ func (a *Area) CreateTransformedArea(at *AffineTransform) *Area {
 // Clone returns a copy of the area.
 func (a *Area) Clone() *Area { return &Area{rings: cloneRings(a.rings)} }
 
-// Equals reports whether the two areas hold the same rings in the same order.
+// Equals reports whether the two areas cover the same points.
 //
-// Java's Area.equals compares the sets, by subtracting each from the other.
-// This is the cheaper test and answers false for two areas that hold the same
-// points through different rings, so a caller that needs the set comparison
-// subtracts.
+// Port of Area.equals(Area), which the JDK computes the same way: exclusive-or
+// the two and ask whether what is left is empty. It is the geometries that are
+// compared, not how they were built, so a square equals the union of its two
+// halves. Nothing equals nil.
 func (a *Area) Equals(other *Area) bool {
-	if other == nil || len(a.rings) != len(other.rings) {
+	if a == other {
+		return true
+	}
+	if other == nil {
 		return false
 	}
-	for i, ring := range a.rings {
-		if len(ring) != len(other.rings[i]) {
-			return false
-		}
-		for j, p := range ring {
-			if p != other.rings[i][j] {
-				return false
-			}
-		}
-	}
-	return true
+	difference := a.Clone()
+	difference.ExclusiveOr(other)
+	return difference.IsEmpty()
 }
 
 // PathIterator walks the boundary of the area, always reporting WindNonZero.

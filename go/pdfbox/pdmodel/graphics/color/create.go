@@ -169,6 +169,10 @@ func createFromArray(array *cos.Array, resources ResourcesLike,
 		}
 		// Java reads the entry with get rather than getObject, so an indirect
 		// underlying colour space reaches create as a COSObject.
+		//
+		// It also builds it with the one-argument create, which passes no
+		// resources on, so an underlying colour space given as a resource name
+		// cannot be resolved. Ported as written; see migration/JAVA-BUGS.md.
 		underlying, err := Create(array.Get(1))
 		if err != nil {
 			return nil, err
