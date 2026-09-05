@@ -79,7 +79,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 - [ ] A3. `pdmodel/graphics/shading` — Java has no test here; write from source
 - [ ] A4. `awt/geom` — write `Area` tests from the JDK contract, not from the
       implementation
-- [ ] A5. Rendered output needs a comparison strategy
+- [x] A5. Rendered output needs a comparison strategy — decided, see Blocked
   - Java's tests compare against reference images. Decide what the Go compares
     against before writing anything that draws.
 
@@ -87,7 +87,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 
 # Phase B — Port the implementation
 
-- [ ] B0. **Take the raster backend decision first.** `PLAN.md` lists the three
+- [x] B0. **Take the raster backend decision first.** `PLAN.md` lists the three
       options. Write the decision down before B1.
 - [ ] B1. `awt/geom.Area` — constructive area geometry. Slice 2 recorded this
       as the one thing blocking `PDGraphicsState.getCurrentClippingPath`.
@@ -200,5 +200,87 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] B0. The raster backend decision blocks everything from B6 onward.
+- [x] B0. The raster backend decision blocks everything from B6 onward.
       `PLAN.md` says to take it before starting, not during.
+
+      **Decided: `PLAN.md`'s third option — port the geometry, defer the raster
+      backend behind an interface.** That is the default it names, and the two
+      precedents it cites hold up: PdfBox-Android vendored Harmony's
+      `AffineTransform` and delegated rasterisation to `android.graphics`, and
+      PDFBox itself already runs one glyph-layout interface against two
+      backends in `pdfbox-layout-awt` and `pdfbox-layout-fop`.
+
+      What that means concretely, because "defer it" on its own does not say
+      enough to write code against:
+
+      **Everything that computes is ported.** Constructive area geometry,
+      the PDF functions, the colour spaces and their conversions, the seven
+      shading types' colour evaluation, the graphics state, the blend mode and
+      soft mask arithmetic, the path and colour operators, and `PageDrawer`'s
+      decisions about what to draw. None of that is Java2D; all of it is
+      arithmetic the port can carry exactly.
+
+      **Only the last step is behind the interface** — filling a path with a
+      winding rule, stroking one with a stroke spec, intersecting the clip,
+      drawing a raster with a transform, and pushing and popping a compositing
+      layer. That is the boundary `PageDrawer` actually crosses into Java2D,
+      and it is small.
+
+      **No raster backend ships in this slice.** Option 1's
+      `golang.org/x/image/vector` plus hand-written compositing is a slice of
+      its own; taking it here would mean writing an anti-aliasing rasteriser
+      and a blend-mode compositor before a single PDF operator was ported, and
+      D7 warns exactly about how convincing a wrong one looks. What ships is
+      the interface, everything above it, and a recording backend for the tests
+      (see A5). `PDFRenderer.renderImage` therefore answers an error saying no
+      backend is installed, rather than a blank image, and `pdfbox/printing`
+      goes the same way.
+
+      **What this costs is written up under D9**, not left implicit: the port
+      cannot produce a rendered page, so it cannot be used to rasterise, to
+      print, or to run PDFBox's own image-comparison tests. Every slice that
+      deferred something to "the rendering slice" gets the computing half of it
+      here and keeps waiting for the drawing half.
+
+- [x] A5. Rendered output needs a comparison strategy.
+
+      **Decided: compare numbers and call sequences, never pixels.** Java's
+      rendering tests compare against reference images, which needs a
+      rasteriser to produce one and tolerates being subtly wrong when it has
+      one — the failure D7 names. With no backend there is no image, and the
+      strategy that follows is stronger rather than weaker:
+
+      - `Area` against the JDK's documented contract, not against what the
+        renderer happens to need (D8).
+      - Functions, colour space conversions and shading colour evaluation
+        against values taken from the Java, at chosen inputs. These are pure
+        functions of their arguments and compare exactly.
+      - Blend modes and soft masks against the arithmetic in the
+        specification and in Java's composites, per channel.
+      - `PageDrawer` against a **recording backend**: the test installs a
+        backend that records every call the drawer makes, runs a real content
+        stream through the real engine, and asserts the sequence. That says
+        what the drawer decided to draw, in order, with what state — which is
+        what a rendering test is actually for, and it does not depend on a
+        rasteriser existing.
+
+      An image comparison against PDFBox's reference PNGs stays possible later,
+      once a backend exists, and is recorded as the thing this strategy does
+      not cover.
+
+## A note on where this branch started
+
+Branched from `migration-base` at `820ac96bf`, which is what this file says to
+do. `slice/8-forms-annotations` had not merged at that point, and it holds two
+things this slice's scope table also names: `pdmodel/graphics/form`, which slice
+8 ported because an appearance stream is a form XObject, and
+`rendering/RenderDestination`, which it ported because an optional content group
+takes one.
+
+Neither is re-ported here. B5 and B8 merge `migration-base` in once slice 8 has
+landed and build on what is there. `pdfbox/rendering` also imports ten slice 8
+types directly — `PDAnnotation`, `AnnotationFilter`, `PDAnnotationUnknown`,
+`PDAppearanceDictionary`, `PDAppearanceEntry`, `PDPropertyList`,
+`PDOptionalContentProperties`, `PDOptionalContentGroup` and its `RenderState`,
+and `PDOptionalContentMembershipDictionary` — so B8 cannot start before that
+merge either. B0 through B7 do not need any of it.
