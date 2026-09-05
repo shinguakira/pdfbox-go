@@ -544,6 +544,20 @@ func (a *PDAnnotationFreeText) RectDifferences() []float32 {
 	return rectDifferences(a.AnnotationDictionary())
 }
 
+// SetRectDifference sets the /RD rectangle difference, which gives the gap
+// between the rectangle of the annotation and where the drawing happens.
+func (a *PDAnnotationFreeText) SetRectDifference(rd *common.PDRectangle) {
+	setAnnotationItem(a.AnnotationDictionary(), cos.RD, rd)
+}
+
+// RectDifference returns the /RD rectangle difference, or nil.
+func (a *PDAnnotationFreeText) RectDifference() *common.PDRectangle {
+	if rectDifference := a.AnnotationDictionary().GetCOSArray(cos.RD); rectDifference != nil {
+		return common.NewPDRectangleOfCOSArray(rectDifference)
+	}
+	return nil
+}
+
 // SetCallout sets the /CL callout line. Java declares it final.
 func (a *PDAnnotationFreeText) SetCallout(callout []float32) {
 	a.AnnotationDictionary().SetItem(cos.CL, cos.ArrayOfFloats(callout))

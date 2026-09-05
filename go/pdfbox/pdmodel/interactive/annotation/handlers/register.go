@@ -31,6 +31,10 @@ func init() {
 		document common.COSDocumentLike) annotation.PDAppearanceHandler {
 		return NewPDFileAttachmentAppearanceHandlerInDocument(annot, document)
 	})
+	register(annotation.SubTypeFreeText, func(annot annotation.PDAnnotation,
+		document common.COSDocumentLike) annotation.PDAppearanceHandler {
+		return NewPDFreeTextAppearanceHandlerInDocument(annot, document)
+	})
 	register(annotation.SubTypeHighlight, func(annot annotation.PDAnnotation,
 		document common.COSDocumentLike) annotation.PDAppearanceHandler {
 		return NewPDHighlightAppearanceHandlerInDocument(annot, document)
