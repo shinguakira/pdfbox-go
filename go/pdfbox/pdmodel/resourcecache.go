@@ -4,6 +4,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 )
 
 // ResourceCache keeps the objects read out of a resource dictionary, so that
@@ -40,6 +41,9 @@ type DefaultResourceCache struct {
 	// colorSpaces is Java's colorSpaces map, keyed on the object number the
 	// way the removed-font bookkeeping above is.
 	colorSpaces map[int64]color.PDColorSpace
+
+	// extGStates is Java's extGStates map, keyed the same way.
+	extGStates map[int64]*state.PDExtendedGraphicsState
 }
 
 var _ ResourceCache = (*DefaultResourceCache)(nil)
@@ -193,4 +197,31 @@ func (c *DefaultResourceCache) PutColorSpace(indirect *cos.Object, space color.P
 		c.colorSpaces = map[int64]color.PDColorSpace{}
 	}
 	c.colorSpaces[key] = space
+}
+
+// GetExtGState returns the cached extended graphics state of the given
+// indirect object, or nil.
+//
+// Java declares this on ResourceCache; the port's interface cannot name
+// PDExtendedGraphicsState, so PDResources asks the cache for these two by their
+// shape. See the extGStateCache comment in pdresources.go.
+func (c *DefaultResourceCache) GetExtGState(indirect *cos.Object) *state.PDExtendedGraphicsState {
+	key, ok := c.objectKey(indirect)
+	if !ok {
+		return nil
+	}
+	return c.extGStates[key]
+}
+
+// PutExtGState caches the extended graphics state of the given indirect object.
+func (c *DefaultResourceCache) PutExtGState(indirect *cos.Object,
+	extGState *state.PDExtendedGraphicsState) {
+	key, ok := c.objectKey(indirect)
+	if !ok {
+		return
+	}
+	if c.extGStates == nil {
+		c.extGStates = map[int64]*state.PDExtendedGraphicsState{}
+	}
+	c.extGStates[key] = extGState
 }
