@@ -13,9 +13,8 @@ import (
 //
 // Port of PDXFAResource, which Java declares final.
 //
-// getDocument is not here: it parses the bytes into an org.w3c.dom.Document
-// through org.apache.pdfbox.util.XMLUtil, and the port has no DOM yet. See
-// migration/STATUS.md.
+// getDocument is the function XFADocument in fdf.go rather than a method here:
+// it names the DOM, which every other accessor of this class does without.
 type PDXFAResource struct {
 	xfa cos.Base
 }

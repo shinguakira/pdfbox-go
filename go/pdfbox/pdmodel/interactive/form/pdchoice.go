@@ -248,3 +248,10 @@ func (f *PDChoice) updateSelectedOptionsIndex(values, options []string) {
 	slices.Sort(indices)
 	f.SetSelectedOptionsIndex(indices)
 }
+
+// choice answers this field, which ImportFDF finds through the interface every
+// field embedding PDChoice carries because of it.
+//
+// Java writes `this instanceof PDChoice`, which Go cannot ask of an embedded
+// struct; see AsVariableText for the same device.
+func (f *PDChoice) choice() *PDChoice { return f }

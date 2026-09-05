@@ -23,8 +23,8 @@ const (
 //
 // Port of PDAcroForm, which Java declares final.
 //
-// importFDF and exportFDF are not here: they name FDFDocument, and pdmodel/fdf
-// is not ported yet. They land with it. See migration/STATUS.md.
+// importFDF and exportFDF are functions in fdf.go rather than methods here:
+// they name FDFDocument, and pdmodel/fdf sits above this package.
 type PDAcroForm struct {
 	document   *pdmodel.PDDocument
 	dictionary *cos.Dictionary

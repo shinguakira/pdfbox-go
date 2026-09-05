@@ -23,8 +23,9 @@ const (
 // Java's PDField is an abstract class; the port splits it into this interface
 // for the contract and the embedded struct below for the state.
 //
-// importFDF and exportFDF are not here: they name FDFField, and pdmodel/fdf is
-// not ported yet. They land with it. See migration/STATUS.md.
+// importFDF and exportFDF are functions in fdf.go rather than methods on this
+// interface: they name FDFField, and every implementation of the interface
+// would otherwise have to name it too.
 type PDField interface {
 	common.COSObjectable
 
