@@ -1,6 +1,7 @@
 package text
 
 import (
+	markedcontentpr "github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator/markedcontent"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
 )
@@ -9,10 +10,6 @@ import (
 // text of each sequence in it.
 //
 // Port of org.apache.pdfbox.text.PDFMarkedContentExtractor.
-//
-// The DrawObject processor Java also registers walks into an XObject, which is
-// a slice this port has not reached; the xobject method is here because the
-// extractor's callers use it. See migration/STATUS.md.
 type PDFMarkedContentExtractor struct {
 	*LegacyPDFStreamEngine
 
@@ -31,6 +28,9 @@ func NewPDFMarkedContentExtractor() *PDFMarkedContentExtractor {
 	}
 	e.SetOverrides(e)
 	e.SetProcessTextPosition(e.ProcessTextPosition)
+	// Java registers the five marked content operators and its own DrawObject.
+	// The legacy engine above has already registered the five.
+	e.AddOperator(markedcontentpr.NewDrawObject(e.PDFStreamEngine))
 	return e
 }
 

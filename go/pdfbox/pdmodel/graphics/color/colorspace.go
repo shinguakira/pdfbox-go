@@ -130,3 +130,17 @@ func (c PDDeviceColorSpace) COSObject() cos.Base { return cos.GetPDFName(c.name)
 
 // String returns the Java toString form, which is the name.
 func (c PDDeviceColorSpace) String() string { return c.name }
+
+// SpecialColorSpace marks a colour space that adds features or properties to
+// an underlying one.
+//
+// Port of the empty abstract class PDSpecialColorSpace, which PDIndexed,
+// PDSeparation, PDDeviceN and PDPattern extend. It declares nothing in Java
+// either; the marker is here so that the relationship survives the port, and
+// the method exists because a Go interface with no methods marks nothing.
+type SpecialColorSpace interface {
+	PDColorSpace
+
+	// IsSpecialColorSpace marks the implementation. It does nothing.
+	IsSpecialColorSpace()
+}

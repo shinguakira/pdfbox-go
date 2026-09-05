@@ -15,7 +15,10 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/pattern"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
@@ -101,21 +104,26 @@ type StreamEngineOverrides interface {
 
 	// ApplyTextAdjustment moves the pen by the amounts a TJ array asks for.
 	ApplyTextAdjustment(tx, ty float32)
+
+	// ShowForm shows a form XObject from the content stream.
+	ShowForm(f *form.PDFormXObject) error
+
+	// ShowTransparencyGroup shows a transparency group from the content
+	// stream.
+	ShowTransparencyGroup(group *form.PDTransparencyGroup) error
+
+	// ShowAnnotation shows an annotation of the current page.
+	ShowAnnotation(a annotation.PDAnnotation) error
+
+	// Appearance returns the appearance stream to process for the given
+	// annotation, which an engine overrides to render one such as "hover".
+	Appearance(a annotation.PDAnnotation) *annotation.PDAppearanceStream
 }
 
 // PDFStreamEngine walks a content stream and hands each operator to the
 // processor registered for it, keeping the graphics state as it goes.
 //
 // Port of org.apache.pdfbox.contentstream.PDFStreamEngine.
-//
-// What is missing is everything that draws or measures: showText and the glyph
-// hooks, the default font, forms and transparency groups, Type 3 char procs,
-// tiling patterns and annotations. Each needs a font, an XObject or a pattern,
-// none of which this port has reached. Two consequences are worth naming:
-// shouldProcessColorOperators is always true here, because the two cases that
-// clear it are an uncoloured tiling pattern and a Type 3 char proc beginning
-// with d1; and processChildStream, which forms and annotations reach the engine
-// through, is absent with them. See migration/STATUS.md.
 //
 // An engine is not safe for concurrent use.
 type PDFStreamEngine struct {
@@ -223,8 +231,13 @@ func (e *PDFStreamEngine) processStreamOperators(contentStream PDContentStream) 
 		return err
 	}
 
+	isFirstOperator := true
 	oldShouldProcessColorOperators := e.shouldProcessColorOperators
 	e.shouldProcessColorOperators = true
+	if tilingPattern, isTiling := contentStream.(*pattern.PDTilingPattern); isTiling &&
+		tilingPattern.PaintType() == pattern.PaintUncolored {
+		e.shouldProcessColorOperators = false
+	}
 	defer func() { e.shouldProcessColorOperators = oldShouldProcessColorOperators }()
 
 	for {
@@ -236,6 +249,11 @@ func (e *PDFStreamEngine) processStreamOperators(contentStream PDContentStream) 
 			return nil
 		}
 		if op, ok := token.(*operator.Operator); ok {
+			if _, isCharProc := contentStream.(*type3CharProcStream); isFirstOperator &&
+				isCharProc && op.Name() == operator.Type3D1 {
+				e.shouldProcessColorOperators = false
+			}
+			isFirstOperator = false
 			if err := e.ProcessOperator(op, arguments); err != nil {
 				return err
 			}

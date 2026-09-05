@@ -1,6 +1,8 @@
 package pdmodel
 
 import (
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 )
 
@@ -61,3 +63,15 @@ var _ encryption.PDDocumentLike = (*PDDocument)(nil)
 // String is Java's Object.toString, which the revision 2 to 4 document ID
 // digest feeds on.
 func (d *PDDocument) String() string { return "PDDocument" }
+
+// CreateStream returns a new empty stream belonging to this document.
+//
+// Java has no such method on PDDocument: everything that wants one goes through
+// getDocument().createCOSStream(), and the constructors that take a PDDocument
+// -- new PDStream(PDDocument) among them -- do that themselves. The port's
+// COSDocument answers the narrow interface a security handler needs, so this
+// one method is what makes a PDDocument a common.COSDocumentLike, which is the
+// same "give me a document to make streams in" the Java constructors take.
+func (d *PDDocument) CreateStream() *cos.Stream { return d.document.CreateStream() }
+
+var _ common.COSDocumentLike = (*PDDocument)(nil)

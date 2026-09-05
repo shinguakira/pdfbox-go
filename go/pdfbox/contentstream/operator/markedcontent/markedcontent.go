@@ -4,8 +4,9 @@
 // each processor a file of its own; they are a few lines each, so the port
 // keeps them together.
 //
-// DrawObject, which lives in this package in Java although it draws an XObject,
-// is not here: it needs PDXObject. See migration/STATUS.md.
+// DrawObject lives in this package in Java although it draws an XObject,
+// because it is the one the marked content extractor registers: it records the
+// XObject in the sequence being collected on the way past.
 package markedcontent
 
 import (
@@ -17,11 +18,20 @@ import (
 
 // AddAll registers every processor in this package with the engine.
 func AddAll(context *contentstream.PDFStreamEngine) {
+	AddSequenceOperators(context)
+	context.AddOperator(NewMarkedContentPoint(context))
+	context.AddOperator(NewMarkedContentPointWithProperties(context))
+}
+
+// AddSequenceOperators registers the three that begin and end a marked content
+// sequence, and not the two that mark a point.
+//
+// That is the set PDFGraphicsStreamEngine and PDFTextStripper each name in
+// their constructors; nothing in PDFBox registers the marked content points.
+func AddSequenceOperators(context *contentstream.PDFStreamEngine) {
 	context.AddOperator(NewBeginMarkedContentSequence(context))
 	context.AddOperator(NewBeginMarkedContentSequenceWithProperties(context))
 	context.AddOperator(NewEndMarkedContentSequence(context))
-	context.AddOperator(NewMarkedContentPoint(context))
-	context.AddOperator(NewMarkedContentPointWithProperties(context))
 }
 
 // propertiesOf reads the second operand of a BDC or DP as a property
@@ -183,4 +193,51 @@ func (p *MarkedContentPointWithProperties) Process(op *operator.Operator, operan
 	}
 	p.Context().Overrides().MarkedContentPoint(tag, propDict)
 	return nil
+}
+
+// xobjectSink is what the marked content DrawObject hands the XObject to.
+//
+// Java casts the context to PDFMarkedContentExtractor, which lives in
+// pdfbox/text; that package imports this one, so the port names the one method
+// it calls instead.
+type xobjectSink interface {
+	XObject(xobject any)
+}
+
+// DrawObject is Do: record the XObject in the sequence being collected, and
+// walk into it where it is a form.
+//
+// Port of the markedcontent DrawObject, which is the one PDFMarkedContentExtractor
+// registers. It differs from the other two in recording the XObject, and in not
+// stepping over an image.
+type DrawObject struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewDrawObject returns the Do processor for the marked content extractor.
+func NewDrawObject(context *contentstream.PDFStreamEngine) *DrawObject {
+	return &DrawObject{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *DrawObject) Name() string { return operator.DrawObject }
+
+// Process records the XObject and walks into it where it is a form.
+func (p *DrawObject) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) == 0 {
+		return operator.MissingOperand(op, arguments)
+	}
+	name, isName := arguments[0].(*cos.Name)
+	if !isName {
+		return nil
+	}
+	context := p.Context()
+	xobject, err := context.Resources().GetXObject(name)
+	if err != nil {
+		return err
+	}
+	if sink, isSink := context.Overrides().(xobjectSink); isSink {
+		sink.XObject(xobject)
+	}
+	return contentstream.ShowFormXObject(context, xobject)
 }

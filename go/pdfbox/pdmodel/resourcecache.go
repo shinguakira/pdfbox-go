@@ -2,9 +2,11 @@ package pdmodel
 
 import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/shading"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 )
 
@@ -39,18 +41,12 @@ type DefaultResourceCache struct {
 
 	cidFonts map[*cos.Object]font.PDCIDFont
 
-	// colorSpaces is Java's colorSpaces map, keyed on the object number the
-	// way the removed-font bookkeeping above is.
-	colorSpaces map[int64]color.PDColorSpace
-
-	// extGStates is Java's extGStates map, keyed the same way.
-	extGStates map[int64]*state.PDExtendedGraphicsState
-
-	// properties is Java's properties map, with the removed and stable
-	// bookkeeping the fonts have.
-	properties        map[*cos.Object]markedcontent.PropertyList
-	removedProperties map[int64]int
-	stableProperties  map[int64]bool
+	colorSpaces *resourceMap[color.PDColorSpace]
+	xobjects    *resourceMap[common.COSObjectable]
+	shadings    *resourceMap[shading.Shading]
+	patterns    *resourceMap[any]
+	extGStates  *resourceMap[*state.PDExtendedGraphicsState]
+	properties  *resourceMap[markedcontent.PropertyList]
 }
 
 var _ ResourceCache = (*DefaultResourceCache)(nil)
@@ -71,9 +67,12 @@ func NewDefaultResourceCacheStable(enableStableCache bool) *DefaultResourceCache
 		stableFonts:        map[int64]bool{},
 		fontDescriptors:    map[*cos.Object]*font.PDFontDescriptor{},
 		cidFonts:           map[*cos.Object]font.PDCIDFont{},
-		properties:         map[*cos.Object]markedcontent.PropertyList{},
-		removedProperties:  map[int64]int{},
-		stableProperties:   map[int64]bool{},
+		colorSpaces:        newResourceMap[color.PDColorSpace](),
+		xobjects:           newResourceMap[common.COSObjectable](),
+		shadings:           newResourceMap[shading.Shading](),
+		patterns:           newResourceMap[any](),
+		extGStates:         newResourceMap[*state.PDExtendedGraphicsState](),
+		properties:         newResourceMap[markedcontent.PropertyList](),
 	}
 }
 
@@ -188,101 +187,187 @@ func (c *DefaultResourceCache) RemoveCIDFont(indirect *cos.Object) font.PDCIDFon
 //
 // Port of DefaultResourceCache.getColorSpace.
 func (c *DefaultResourceCache) GetColorSpace(indirect *cos.Object) color.PDColorSpace {
-	key, ok := c.objectKey(indirect)
-	if !ok {
-		return nil
-	}
-	return c.colorSpaces[key]
+	return c.colorSpaces.get(indirect)
 }
 
 // PutColorSpace records the colour space read from the given indirect object.
 //
 // Port of DefaultResourceCache.put(COSObject, PDColorSpace).
 func (c *DefaultResourceCache) PutColorSpace(indirect *cos.Object, space color.PDColorSpace) {
-	key, ok := c.objectKey(indirect)
-	if !ok {
-		return
-	}
-	if c.colorSpaces == nil {
-		c.colorSpaces = map[int64]color.PDColorSpace{}
-	}
-	c.colorSpaces[key] = space
+	c.colorSpaces.put(indirect, space)
 }
 
-// GetExtGState returns the cached extended graphics state of the given
-// indirect object, or nil.
+// RemoveColorSpace drops the colour space read from the given indirect object
+// and returns it.
 //
-// Java declares this on ResourceCache; the port's interface cannot name
-// PDExtendedGraphicsState, so PDResources asks the cache for these two by their
-// shape. See the extGStateCache comment in pdresources.go.
-func (c *DefaultResourceCache) GetExtGState(indirect *cos.Object) *state.PDExtendedGraphicsState {
-	key, ok := c.objectKey(indirect)
-	if !ok {
-		return nil
-	}
-	return c.extGStates[key]
+// Port of DefaultResourceCache.removeColorSpace.
+func (c *DefaultResourceCache) RemoveColorSpace(indirect *cos.Object) color.PDColorSpace {
+	return c.colorSpaces.remove(c, indirect)
 }
 
-// PutExtGState caches the extended graphics state of the given indirect object.
-func (c *DefaultResourceCache) PutExtGState(indirect *cos.Object,
-	extGState *state.PDExtendedGraphicsState) {
-	key, ok := c.objectKey(indirect)
-	if !ok {
-		return
-	}
-	if c.extGStates == nil {
-		c.extGStates = map[int64]*state.PDExtendedGraphicsState{}
-	}
-	c.extGStates[key] = extGState
-}
-
-// GetProperties returns the property list read from the given indirect object,
-// or nil.
+// resourceMap is one kind of cached resource, with the stable-cache
+// bookkeeping Java repeats for each of them.
 //
-// Port of DefaultResourceCache.getProperties.
-func (c *DefaultResourceCache) GetProperties(indirect *cos.Object) markedcontent.PropertyList {
-	return c.properties[indirect]
+// Java writes getX, put and removeX out per kind, seven times over, differing
+// only in the type and in which three maps they touch. The port writes the
+// bookkeeping once; the fonts above keep their hand-written form, since they
+// were ported before Go could express this and rewriting them would change no
+// behaviour.
+type resourceMap[T any] struct {
+	entries map[*cos.Object]T
+	removed map[int64]int
+	stable  map[int64]bool
 }
 
-// PutProperties records the property list read from the given indirect object.
-//
-// Port of DefaultResourceCache.put(COSObject, PDPropertyList).
-func (c *DefaultResourceCache) PutProperties(indirect *cos.Object,
-	propertyList markedcontent.PropertyList) {
-	if c.properties == nil {
-		c.properties = map[*cos.Object]markedcontent.PropertyList{}
+// newResourceMap returns an empty map of one kind of resource.
+func newResourceMap[T any]() *resourceMap[T] {
+	return &resourceMap[T]{
+		entries: map[*cos.Object]T{},
+		removed: map[int64]int{},
+		stable:  map[int64]bool{},
 	}
-	c.properties[indirect] = propertyList
 }
 
-// RemoveProperties drops the property list read from the given indirect object
-// and returns it, keeping one that has been dropped maxRemovals times.
+// get returns the resource read from the given indirect object, and the zero
+// value where the cache has none.
+func (m *resourceMap[T]) get(indirect *cos.Object) T {
+	return m.entries[indirect]
+}
+
+// put records the resource read from the given indirect object.
+func (m *resourceMap[T]) put(indirect *cos.Object, value T) {
+	m.entries[indirect] = value
+}
+
+// remove drops the resource read from the given indirect object and returns it.
 //
-// Port of DefaultResourceCache.removeProperties.
-func (c *DefaultResourceCache) RemoveProperties(indirect *cos.Object) markedcontent.PropertyList {
-	objectKey, hasKey := c.objectKey(indirect)
+// An object that has been dropped maxRemovals times is treated as stable: it is
+// left in the cache and nothing is returned.
+func (m *resourceMap[T]) remove(cache *DefaultResourceCache, indirect *cos.Object) T {
+	var zero T
+	objectKey, hasKey := cache.objectKey(indirect)
 	if hasKey {
-		if c.stableProperties[objectKey] {
-			return nil
+		if m.stable[objectKey] {
+			return zero
 		}
-		counter, ok := c.removedProperties[objectKey]
+		counter, ok := m.removed[objectKey]
 		if !ok {
 			counter = 1
-			c.removedProperties[objectKey] = counter
+			m.removed[objectKey] = counter
 		}
 		if counter < maxRemovals {
 			counter++
-			c.removedProperties[objectKey] = counter
+			m.removed[objectKey] = counter
 		} else {
-			c.stableProperties[objectKey] = true
-			delete(c.removedProperties, objectKey)
-			return nil
+			m.stable[objectKey] = true
+			delete(m.removed, objectKey)
+			return zero
 		}
 	}
-	propertyList, ok := c.properties[indirect]
+	value, ok := m.entries[indirect]
 	if !ok {
-		return nil
+		return zero
 	}
-	delete(c.properties, indirect)
-	return propertyList
+	delete(m.entries, indirect)
+	return value
+}
+
+// GetXObject returns the XObject read from the given indirect object, or nil
+// where the cache has none.
+//
+// Port of DefaultResourceCache.getXObject.
+func (c *DefaultResourceCache) GetXObject(indirect *cos.Object) common.COSObjectable {
+	return c.xobjects.get(indirect)
+}
+
+// PutXObject records the XObject read from the given indirect object.
+//
+// Port of DefaultResourceCache.put(COSObject, PDXObject).
+func (c *DefaultResourceCache) PutXObject(indirect *cos.Object, xobject common.COSObjectable) {
+	c.xobjects.put(indirect, xobject)
+}
+
+// RemoveXObject drops the XObject read from the given indirect object and
+// returns it.
+//
+// Port of DefaultResourceCache.removeXObject.
+func (c *DefaultResourceCache) RemoveXObject(indirect *cos.Object) common.COSObjectable {
+	return c.xobjects.remove(c, indirect)
+}
+
+// GetShading returns the shading read from the given indirect object, or nil
+// where the cache has none.
+func (c *DefaultResourceCache) GetShading(indirect *cos.Object) shading.Shading {
+	return c.shadings.get(indirect)
+}
+
+// PutShading records the shading read from the given indirect object.
+func (c *DefaultResourceCache) PutShading(indirect *cos.Object, sh shading.Shading) {
+	c.shadings.put(indirect, sh)
+}
+
+// RemoveShading drops the shading read from the given indirect object and
+// returns it.
+func (c *DefaultResourceCache) RemoveShading(indirect *cos.Object) shading.Shading {
+	return c.shadings.remove(c, indirect)
+}
+
+// GetPattern returns the pattern read from the given indirect object, or nil
+// where the cache has none.
+//
+// It answers an any, because graphics/pattern imports this package and so
+// PDAbstractPattern cannot be named here; PDResources.GetPattern says the
+// same.
+func (c *DefaultResourceCache) GetPattern(indirect *cos.Object) any {
+	return c.patterns.get(indirect)
+}
+
+// PutPattern records the pattern read from the given indirect object.
+func (c *DefaultResourceCache) PutPattern(indirect *cos.Object, pattern any) {
+	c.patterns.put(indirect, pattern)
+}
+
+// RemovePattern drops the pattern read from the given indirect object and
+// returns it.
+func (c *DefaultResourceCache) RemovePattern(indirect *cos.Object) any {
+	return c.patterns.remove(c, indirect)
+}
+
+// GetExtGState returns the extended graphics state read from the given indirect
+// object, or nil where the cache has none.
+func (c *DefaultResourceCache) GetExtGState(indirect *cos.Object) *state.PDExtendedGraphicsState {
+	return c.extGStates.get(indirect)
+}
+
+// PutExtGState records the extended graphics state read from the given indirect
+// object.
+func (c *DefaultResourceCache) PutExtGState(indirect *cos.Object,
+	extGState *state.PDExtendedGraphicsState) {
+	c.extGStates.put(indirect, extGState)
+}
+
+// RemoveExtState drops the extended graphics state read from the given indirect
+// object and returns it.
+//
+// Java names it removeExtState, not removeExtGState.
+func (c *DefaultResourceCache) RemoveExtState(indirect *cos.Object) *state.PDExtendedGraphicsState {
+	return c.extGStates.remove(c, indirect)
+}
+
+// GetProperties returns the property list read from the given indirect object,
+// or nil where the cache has none.
+func (c *DefaultResourceCache) GetProperties(indirect *cos.Object) markedcontent.PropertyList {
+	return c.properties.get(indirect)
+}
+
+// PutProperties records the property list read from the given indirect object.
+func (c *DefaultResourceCache) PutProperties(indirect *cos.Object,
+	propertyList markedcontent.PropertyList) {
+	c.properties.put(indirect, propertyList)
+}
+
+// RemoveProperties drops the property list read from the given indirect object
+// and returns it.
+func (c *DefaultResourceCache) RemoveProperties(indirect *cos.Object) markedcontent.PropertyList {
+	return c.properties.remove(c, indirect)
 }
