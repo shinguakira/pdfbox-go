@@ -206,7 +206,7 @@ And for this branch in particular:
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 ---
