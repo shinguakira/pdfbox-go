@@ -249,3 +249,37 @@ func (d *PDPageDestination) SetPageNumber(pageNumber int) {
 
 // COSObject returns the array.
 func (d *PDPageDestination) COSObject() cos.Base { return d.Array }
+
+// PageDestination is what the five page destinations share, and what an
+// instanceof PDPageDestination asks in Java.
+//
+// PDPageDestination is an abstract class there; the port keeps its state in the
+// struct above, which each concrete destination embeds, so a caller that needs
+// to know whether a destination is one of them asserts to this.
+type PageDestination interface {
+	PDDestination
+
+	// Page returns the page this destination names, or nil.
+	Page() PageLike
+
+	// SetPage sets the page this destination names.
+	SetPage(page PageLike)
+
+	// PageNumber returns the page number this destination names, or -1.
+	PageNumber() int
+
+	// RetrievePageNumber returns the page number this destination names,
+	// whether it holds one or a page dictionary, or -1.
+	RetrievePageNumber() int
+
+	// SetPageNumber sets the page number this destination names.
+	SetPageNumber(pageNumber int)
+}
+
+var (
+	_ PageDestination = (*PDPageFitDestination)(nil)
+	_ PageDestination = (*PDPageFitHeightDestination)(nil)
+	_ PageDestination = (*PDPageFitWidthDestination)(nil)
+	_ PageDestination = (*PDPageFitRectangleDestination)(nil)
+	_ PageDestination = (*PDPageXYZDestination)(nil)
+)

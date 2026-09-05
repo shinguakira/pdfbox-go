@@ -96,7 +96,7 @@ implementation, then move on. Do not open all eight at once.
 - [ ] B2. `interactive/form` — AcroForms and the field hierarchy
 - [ ] B3. `interactive/annotation` — annotations and their appearance handlers
 - [x] B4. `interactive/action`
-- [ ] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
+- [x] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
 - [ ] B6. `interactive/digitalsignature`
 - [x] B7. `interactive/measurement`, `interactive/viewerpreferences`
   - both subpackages are done: the five viewer preference enums, and the
