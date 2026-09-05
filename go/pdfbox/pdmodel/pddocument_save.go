@@ -118,7 +118,9 @@ func (d *PDDocument) SaveOfParameters(output io.Writer,
 	// object stream compression requires a cross reference stream.
 	d.document.SetIsXRefStream(compressParameters != nil &&
 		compressParameters != compress.NoCompression)
-	d.subsetDesignatedFonts()
+	if err := d.subsetDesignatedFonts(); err != nil {
+		return err
+	}
 
 	// save PDF
 	writer := pdfwriter.NewCOSWriterOfParameters(output, compressParameters)
@@ -127,10 +129,20 @@ func (d *PDDocument) SaveOfParameters(output io.Writer,
 
 // subsetDesignatedFonts subsets the fonts the document was told to subset.
 //
-// Java walks fontsToSubset and calls font.subset(). Subsetting is font
-// embedding, which slice 3 left out and which arrives with the writing font
-// work; the set is therefore always empty here. See migration/STATUS.md.
-func (d *PDDocument) subsetDesignatedFonts() {}
+// The set is filled by PDAbstractContentStream.SetFont, and only ever with a
+// font that answers WillBeSubset. Subsetting itself is font embedding, which
+// this port has not reached, so no font answers it yet and the walk is empty.
+// See migration/STATUS.md.
+func (d *PDDocument) subsetDesignatedFonts() error {
+	// subset designated fonts
+	for _, f := range d.fontsToSubset {
+		if err := f.Subset(); err != nil {
+			return err
+		}
+	}
+	d.fontsToSubset = nil
+	return nil
+}
 
 // SaveIncremental saves the PDF as an incremental update. This is only possible
 // if the PDF was loaded from a file or a stream, not if the document was created
@@ -140,7 +152,9 @@ func (d *PDDocument) subsetDesignatedFonts() {}
 //
 // Port of saveIncremental(OutputStream).
 func (d *PDDocument) SaveIncremental(output io.Writer) error {
-	d.subsetDesignatedFonts()
+	if err := d.subsetDesignatedFonts(); err != nil {
+		return err
+	}
 	if d.pdfSource == nil {
 		// Java throws IllegalStateException, which is unchecked.
 		panic("document was not loaded from a file or a stream")
@@ -161,7 +175,9 @@ func (d *PDDocument) SaveIncremental(output io.Writer) error {
 // Port of saveIncremental(OutputStream, Set<COSDictionary>).
 func (d *PDDocument) SaveIncrementalOfObjects(output io.Writer,
 	objectsToWrite []*cos.Dictionary) error {
-	d.subsetDesignatedFonts()
+	if err := d.subsetDesignatedFonts(); err != nil {
+		return err
+	}
 	if d.pdfSource == nil {
 		// Java throws IllegalStateException, which is unchecked.
 		panic("document was not loaded from a file or a stream")

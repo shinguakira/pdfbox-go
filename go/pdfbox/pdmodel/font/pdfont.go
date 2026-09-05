@@ -136,6 +136,16 @@ type PDFont interface {
 	// reader has.
 	IsStandard14() bool
 
+	// WillBeSubset reports whether this font will be subset when the document
+	// is saved.
+	WillBeSubset() bool
+
+	// AddToSubset keeps the given code point when the font is subset.
+	AddToSubset(codePoint int)
+
+	// Subset writes the font, subsetting it to the code points kept so far.
+	Subset() error
+
 	// standard14Width returns the width the metrics of a standard 14 font give
 	// for the glyph. Java's protected abstract getStandard14Width.
 	standard14Width(code int) float32

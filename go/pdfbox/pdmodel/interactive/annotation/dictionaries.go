@@ -217,6 +217,9 @@ func NewPDBorderStyleDictionaryOf(dict *cos.Dictionary) *PDBorderStyleDictionary
 // COSObject returns the dictionary.
 func (d *PDBorderStyleDictionary) COSObject() cos.Base { return d.dictionary }
 
+// Dictionary returns the dictionary, typed.
+func (d *PDBorderStyleDictionary) Dictionary() *cos.Dictionary { return d.dictionary }
+
 // SetWidth sets the /W border width.
 func (d *PDBorderStyleDictionary) SetWidth(w float32) {
 	// PDFBOX-3929 workaround

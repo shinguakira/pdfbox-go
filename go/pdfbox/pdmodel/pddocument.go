@@ -9,6 +9,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
@@ -28,6 +29,10 @@ type PDDocument struct {
 	pdfSource pdfio.RandomAccessRead
 
 	resourceCache ResourceCache
+
+	// fontsToSubset is the set of fonts to subset before saving, which the
+	// content stream writing fills in.
+	fontsToSubset []font.PDFont
 
 	documentId *int64
 
@@ -327,3 +332,18 @@ func (i *PDDocumentInformation) setString(key *cos.Name, value string) {
 
 // ErrMissingRoot is what a document with no catalogue is reported with.
 var ErrMissingRoot = errors.New("pdmodel: Missing root object specification in trailer.")
+
+// addFontToSubset records a font to subset before the document is saved.
+//
+// Java holds a Set<PDFont> and hands it out through the package-private
+// getFontsToSubset, which the content stream adds to. A Go map would walk in a
+// random order, so the port keeps the insertion order and checks for the
+// duplicate a set would drop.
+func (d *PDDocument) addFontToSubset(f font.PDFont) {
+	for _, known := range d.fontsToSubset {
+		if known == f {
+			return
+		}
+	}
+	d.fontsToSubset = append(d.fontsToSubset, f)
+}
