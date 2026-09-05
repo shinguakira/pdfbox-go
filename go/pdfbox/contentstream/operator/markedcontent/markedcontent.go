@@ -18,11 +18,20 @@ import (
 
 // AddAll registers every processor in this package with the engine.
 func AddAll(context *contentstream.PDFStreamEngine) {
+	AddSequenceOperators(context)
+	context.AddOperator(NewMarkedContentPoint(context))
+	context.AddOperator(NewMarkedContentPointWithProperties(context))
+}
+
+// AddSequenceOperators registers the three that begin and end a marked content
+// sequence, and not the two that mark a point.
+//
+// That is the set PDFGraphicsStreamEngine and PDFTextStripper each name in
+// their constructors; nothing in PDFBox registers the marked content points.
+func AddSequenceOperators(context *contentstream.PDFStreamEngine) {
 	context.AddOperator(NewBeginMarkedContentSequence(context))
 	context.AddOperator(NewBeginMarkedContentSequenceWithProperties(context))
 	context.AddOperator(NewEndMarkedContentSequence(context))
-	context.AddOperator(NewMarkedContentPoint(context))
-	context.AddOperator(NewMarkedContentPointWithProperties(context))
 }
 
 // propertiesOf reads the second operand of a BDC or DP as a property

@@ -3,10 +3,6 @@
 // Port of org.apache.pdfbox.contentstream.operator.state. Java gives each
 // processor a file of its own; they are a few lines each, so the port keeps
 // them together.
-//
-// SetGraphicsStateParameters (gs) is not here: it needs
-// PDExtendedGraphicsState, which this port has not reached. See
-// migration/STATUS.md.
 package state
 
 import (
@@ -39,6 +35,7 @@ func AddAll(context *contentstream.PDFStreamEngine) {
 	context.AddOperator(NewSetLineWidth(context))
 	context.AddOperator(NewSetMatrix(context))
 	context.AddOperator(NewSetRenderingIntent(context))
+	context.AddOperator(NewSetGraphicsStateParameters(context))
 }
 
 // matrixOf reads the first six operands as a matrix. They must all be numbers.
@@ -344,4 +341,38 @@ func (p *SetLineDashPattern) Process(op *operator.Operator, arguments []cos.Base
 	}
 	p.Context().SetLineDashPattern(dashArray, phase.IntValue())
 	return nil
+}
+
+// SetGraphicsStateParameters is gs: apply the named extended graphics state.
+type SetGraphicsStateParameters struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewSetGraphicsStateParameters returns the gs processor.
+func NewSetGraphicsStateParameters(
+	context *contentstream.PDFStreamEngine) *SetGraphicsStateParameters {
+	return &SetGraphicsStateParameters{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *SetGraphicsStateParameters) Name() string { return operator.SetGraphicsStateParams }
+
+// Process applies every parameter the named dictionary holds.
+func (p *SetGraphicsStateParameters) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) == 0 {
+		return operator.MissingOperand(op, arguments)
+	}
+	graphicsName, isName := arguments[0].(*cos.Name)
+	if !isName {
+		return nil
+	}
+	// set parameters from graphics state parameter dictionary
+	context := p.Context()
+	gs := context.Resources().ExtGState(graphicsName)
+	if gs == nil {
+		slog.Error("state: name for 'gs' operator not found in resources",
+			"name", "/"+graphicsName.Name())
+		return nil
+	}
+	return gs.CopyIntoGraphicsState(context.GraphicsState())
 }

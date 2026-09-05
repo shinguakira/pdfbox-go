@@ -49,9 +49,9 @@ func NewPDExtendedGraphicsStateOfCache(dictionary *cos.Dictionary,
 // CopyIntoGraphicsState applies every parameter this dictionary holds to the
 // given graphics state.
 //
-// The /SMask entry is not applied: PDSoftMask is not ported, for the same
-// reason the graphics state has no soft mask of its own. See
-// migration/STATUS.md.
+// The soft mask the /SMask entry names is handed the current transformation
+// matrix at the moment it is installed, which is what it is later painted
+// through.
 func (e *PDExtendedGraphicsState) CopyIntoGraphicsState(gs *PDGraphicsState) error {
 	for _, key := range e.dict.KeySet() {
 		switch key {
