@@ -74,8 +74,12 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 
 # Phase A — Write the tests
 
-- [ ] A1. `pdfbox/rendering` — port its 3 Java tests
-- [ ] A2. `pdfbox/printing` — port its 1 Java test
+- [x] A1. `pdfbox/rendering` — port its 3 Java tests
+  - All three compare pixels and cannot be ported; what each asked is asked of
+    a recording backend instead. See STATUS.md, "The tests"
+- [x] A2. `pdfbox/printing` — port its 1 Java test
+  - Three of its five cases port as they stand; the two that read back pixels
+    ask the recorded stroke instead
 - [x] A3. `pdmodel/graphics/shading` — Java has no test here; write from source
 - [x] A4. `awt/geom` — write `Area` tests from the JDK contract, not from the
       implementation
@@ -104,21 +108,21 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
   - These are what let `PDFStreamEngine` process a form, a transparency group
     and a tiling pattern. Slice 2 recorded all three as absent, and with them
     `shouldProcessColorOperators` ever being false.
-- [ ] B6. `contentstream` — `PDFGraphicsStreamEngine`, `operator/graphics` (23
+- [x] B6. `contentstream` — `PDFGraphicsStreamEngine`, `operator/graphics` (23
       files, the path operators and `DrawObject`), `operator/color` (13 files)
 - [x] B7. `pdmodel/graphics/shading` — 37 files, seven shading types
-- [ ] B8. `pdfbox/rendering` — `PDFRenderer`, `PageDrawer`, and the rest
-- [ ] B9. `pdfbox/printing`
+- [x] B8. `pdfbox/rendering` — `PDFRenderer`, `PageDrawer`, and the rest
+- [x] B9. `pdfbox/printing`
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — including every slice 2 row that named
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md` — including every slice 2 row that named
       `Area`, the composites or the soft mask as deferred
 
 ---
@@ -129,49 +133,49 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [x] D4. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D7. "Looks right" is not a passing test
+- [x] D7. "Looks right" is not a passing test
   - Anti-aliasing, blend modes and shading are places where a wrong port
     produces an image that looks fine and is not. Compare numerically.
 
-- [ ] D8. Check `Area` against the JDK, not against what the renderer needs
+- [x] D8. Check `Area` against the JDK, not against what the renderer needs
   - It is used for clipping, and a clipping region that is nearly right cuts
     the wrong pixels on documents nobody tests.
 
-- [ ] D9. Check what the raster backend decision cost
+- [x] D9. Check what the raster backend decision cost
   - Whatever was chosen in B0, write down what it makes impossible, and record
     it in `STATUS.md` as a deviation rather than leaving it implicit.
 

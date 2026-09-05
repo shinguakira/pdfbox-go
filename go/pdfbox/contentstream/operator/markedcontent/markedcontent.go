@@ -4,8 +4,9 @@
 // each processor a file of its own; they are a few lines each, so the port
 // keeps them together.
 //
-// DrawObject, which lives in this package in Java although it draws an XObject,
-// is not here: it needs PDXObject. See migration/STATUS.md.
+// DrawObject lives in this package in Java although it draws an XObject,
+// because it is the one the marked content extractor registers: it records the
+// XObject in the sequence being collected on the way past.
 package markedcontent
 
 import (

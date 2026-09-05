@@ -20,6 +20,7 @@ package rendering
 // the mask instead; and applyTransferFunction, which maps an image's pixels.
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 
@@ -210,7 +211,14 @@ func (d *PageDrawer) DrawTilingPattern(backend Backend, tilingPattern *pattern.P
 	d.flipTG = true
 
 	d.setRenderingHints()
-	err := d.ProcessTilingPatternMatrix(tilingPattern, c, colorSpace, patternMatrix)
+	if err := d.ProcessTilingPatternMatrix(tilingPattern, c, colorSpace, patternMatrix); err != nil {
+		// Java restores none of the saved fields on this path: the restores
+		// below are plain statements rather than a finally, so an IOException
+		// out of processTilingPattern leaves the drawer pointed at the tile's
+		// graphics with the tile's line path. Ported as written. See
+		// migration/JAVA-BUGS.md.
+		return err
+	}
 
 	d.flipTG = savedFlipTG
 	d.backend = savedBackend
@@ -218,7 +226,7 @@ func (d *PageDrawer) DrawTilingPattern(backend Backend, tilingPattern *pattern.P
 	d.lastClips, d.hasLastClips = savedLastClips, savedHasLastClips
 	d.initialClip = savedInitialClip
 	d.clipWindingRule = savedClipWindingRule
-	return err
+	return nil
 }
 
 // clampColor keeps a converted component inside 0..1.
@@ -313,12 +321,13 @@ func isPatternSpace(colorSpace color.PDColorSpace) bool {
 	return isPattern
 }
 
-// setClip sets the clipping path, caching it because intersecting is slow.
+// SetClip sets the clipping path, caching it because intersecting is slow. An
+// embedder that overrides the glyph hooks may need to call it; see PDFBOX-5093.
 //
 // Port of the protected final setClip. Java tracks lastClip manually because
 // Graphics2D.getClip returns a new object rather than the one setClip was
 // given; the port tracks it the same way, since a Backend may do the same.
-func (d *PageDrawer) setClip() {
+func (d *PageDrawer) SetClip() {
 	clippingPaths := d.GraphicsState().CurrentClippingPaths()
 	if !d.hasLastClips || !sameClips(clippingPaths, d.lastClips) {
 		d.TransferClip(d.backend)
@@ -363,7 +372,7 @@ func (d *PageDrawer) TransferClip(backend Backend) {
 
 // BeginText handles BT.
 func (d *PageDrawer) BeginText() error {
-	d.setClip()
+	d.SetClip()
 	d.beginTextClip()
 	return nil
 }
@@ -463,7 +472,7 @@ func (d *PageDrawer) drawGlyph(path *geom.Path2D, f font.PDFont, code int,
 				return err
 			}
 			d.backend.SetPaint(paint)
-			d.setClip()
+			d.SetClip()
 			if err := d.backend.Fill(glyph); err != nil {
 				return err
 			}
@@ -477,7 +486,7 @@ func (d *PageDrawer) drawGlyph(path *geom.Path2D, f font.PDFont, code int,
 			}
 			d.backend.SetPaint(paint)
 			d.backend.SetStroke(d.stroke())
-			d.setClip()
+			d.SetClip()
 			if err := d.backend.Draw(glyph); err != nil {
 				return err
 			}
@@ -521,18 +530,22 @@ func (d *PageDrawer) AppendRectangle(p0, p1, p2, p3 geom.Point2D) error {
 // Port of the private applySoftMaskToPaint. Java renders the mask's
 // transparency group into a gray raster here and hands it to a SoftMask paint;
 // the port names the mask, and a Backend renders it. What is ported is the
-// decision: a mask with no group is no mask at all, and an /Alpha or
-// /Luminosity subtype is required.
-func (d *PageDrawer) applySoftMaskToPaint(parentPaint Paint, softMask *state.PDSoftMask) Paint {
+// decision: a mask with no group is no mask at all, an /Alpha or /Luminosity
+// subtype is required, and anything else is an error.
+//
+// Java also answers the parent paint where the group rendered to nothing --
+// "Adobe Reader ignores empty softmasks instead of using bc color" -- which
+// only a Backend can tell. See migration/STATUS.md.
+func (d *PageDrawer) applySoftMaskToPaint(parentPaint Paint,
+	softMask *state.PDSoftMask) (Paint, error) {
 	if softMask == nil || softMask.Group() == nil {
-		return parentPaint
+		return parentPaint, nil
 	}
 	subType := softMask.SubType()
 	if subType != cos.Alpha && subType != cos.Luminosity {
-		slog.Error("rendering: invalid soft mask subtype", "subtype", subType)
-		return parentPaint
+		return nil, fmt.Errorf("rendering: invalid soft mask subtype: %v", subType)
 	}
-	return SoftMaskedPaint{Paint: parentPaint, Mask: softMask}
+	return SoftMaskedPaint{Paint: parentPaint, Mask: softMask}, nil
 }
 
 // strokingPaint returns the paint a stroke is made with.
@@ -544,7 +557,7 @@ func (d *PageDrawer) strokingPaint() (Paint, error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.applySoftMaskToPaint(paint, gs.SoftMask()), nil
+	return d.applySoftMaskToPaint(paint, gs.SoftMask())
 }
 
 // NonStrokingPaint returns the paint a fill is made with. An embedder that
@@ -557,7 +570,7 @@ func (d *PageDrawer) NonStrokingPaint() (Paint, error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.applySoftMaskToPaint(paint, gs.SoftMask()), nil
+	return d.applySoftMaskToPaint(paint, gs.SoftMask())
 }
 
 // stroke returns the stroke the current state describes, with the CTM applied.
@@ -619,9 +632,9 @@ func isAllZeroDash(dashArray []float32) bool {
 // pattern cannot be used.
 //
 // Port of the private getDashArray. Java writes the transformed widths back
-// into the pattern's own array; the port writes into a copy, because the
-// pattern is shared by every state cloned from this one and Java's aliasing
-// there is a bug in its own right. See migration/JAVA-BUGS.md.
+// into the array it was handed, which is safe because getDashArray answers a
+// clone; the port's does the same, so the loop writes into a slice of its own
+// either way.
 func (d *PageDrawer) dashArray(dashPattern *graphics.PDLineDashPattern) []float32 {
 	dashArray := dashPattern.DashArray()
 	// avoid empty, infinite and NaN values (PDFBOX-3360)
@@ -661,7 +674,7 @@ func (d *PageDrawer) StrokePath() error {
 		}
 		d.backend.SetPaint(paint)
 		d.backend.SetStroke(d.stroke())
-		d.setClip()
+		d.SetClip()
 		if err := d.backend.Draw(d.linePath); err != nil {
 			return err
 		}
@@ -674,7 +687,7 @@ func (d *PageDrawer) StrokePath() error {
 func (d *PageDrawer) FillPath(windingRule int) error {
 	gs := d.GraphicsState()
 	d.backend.SetComposite(gs.BlendMode(), gs.NonStrokeAlphaConstant())
-	d.setClip()
+	d.SetClip()
 	d.linePath.SetWindingRule(windingRule)
 
 	// disable anti-aliasing for rectangular paths, this is a workaround to avoid small stripes
@@ -962,7 +975,7 @@ func (d *PageDrawer) DrawImage(pdImage image.PDImage) error {
 	}
 
 	d.backend.SetComposite(gs.BlendMode(), gs.NonStrokeAlphaConstant())
-	d.setClip()
+	d.SetClip()
 
 	var err error
 	if pdImage.IsStencil() {
@@ -992,8 +1005,12 @@ func (d *PageDrawer) DrawImage(pdImage image.PDImage) error {
 }
 
 // absRound is Java's `Math.abs(Math.round(x))`.
+//
+// Math.round(float) is floor(x + 0.5), which rounds a half towards positive
+// infinity; Go's math.Round rounds a half away from zero, so -2.5 would come
+// out as -3 rather than -2 and the absolute value with it.
 func absRound(value float32) int {
-	return int(math.Abs(math.Round(float64(value))))
+	return int(math.Abs(math.Floor(float64(value) + 0.5)))
 }
 
 // Subsampling returns how far the given image may be subsampled and still fill
@@ -1006,7 +1023,12 @@ func (d *PageDrawer) Subsampling(pdImage image.PDImage, at *geom.AffineTransform
 
 	imageWidth := pdImage.Width()
 	imageHeight := pdImage.Height()
-	subsampling := int(math.Floor(math.Sqrt(float64(imageWidth*imageHeight) / scale)))
+	// Java multiplies two ints, which wraps at 2^31; a Go int does not, so the
+	// product is narrowed to keep the same answer for an image big enough to
+	// overflow -- there, Java's negative product makes the square root NaN and
+	// the subsampling ends up clamped to 1.
+	pixels := int32(imageWidth) * int32(imageHeight)
+	subsampling := int(math.Floor(math.Sqrt(float64(pixels) / scale)))
 	if subsampling > 8 {
 		subsampling = 8
 	}
@@ -1068,7 +1090,10 @@ func (d *PageDrawer) ShadingFill(shadingName *cos.Name) error {
 	if !area.IsEmpty() {
 		// creating Paint is sometimes a costly operation, so avoid if possible
 		var paint Paint = ShadingPaint{Shading: sh, Matrix: ctm}
-		paint = d.applySoftMaskToPaint(paint, gs.SoftMask())
+		paint, err := d.applySoftMaskToPaint(paint, gs.SoftMask())
+		if err != nil {
+			return err
+		}
 		d.backend.SetPaint(paint)
 		if err := d.backend.Fill(area); err != nil {
 			return err
@@ -1131,10 +1156,15 @@ func (d *PageDrawer) ShowAnnotation(a annotation.PDAnnotation) error {
 		rotated.Rotate(float64(d.CurrentPage().Rotation()) * math.Pi / 180)
 		rotated.Translate(float64(-rect.LowerLeftX()), float64(-rect.UpperRightY()))
 		d.backend.SetTransform(rotated)
-		err := d.PDFGraphicsStreamEngine.ShowAnnotation(a)
+		if err := d.PDFGraphicsStreamEngine.ShowAnnotation(a); err != nil {
+			// Java restores neither the transform nor the appearance on this
+			// path: the two lines below are plain statements rather than a
+			// finally. Ported as written. See migration/JAVA-BUGS.md.
+			return err
+		}
 		d.backend.SetTransform(savedTransform)
 		a.SetAppearance(appearance) // restore
-		return err
+		return nil
 	}
 	return d.PDFGraphicsStreamEngine.ShowAnnotation(a)
 }
@@ -1235,7 +1265,7 @@ func (d *PageDrawer) ShowTransparencyGroupOnBackend(group *form.PDTransparencyGr
 	needsBackdrop := !group.Group().IsIsolated() && d.hasBlendMode(group, map[cos.Base]bool{})
 
 	backend.SetComposite(gs.BlendMode(), gs.NonStrokeAlphaConstant())
-	d.setClip()
+	d.SetClip()
 
 	if err := backend.PushGroup(bbox, false, needsBackdrop, nil); err != nil {
 		return err
@@ -1249,14 +1279,20 @@ func (d *PageDrawer) ShowTransparencyGroupOnBackend(group *form.PDTransparencyGr
 	d.clipWindingRule = -1
 	savedLinePath := d.linePath
 	d.linePath = geom.NewPathFloat()
+	savedLastClips, savedHasLastClips := d.lastClips, d.hasLastClips
+	savedInitialClip := d.initialClip
 	savedBackend := d.backend
 	d.backend = backend
 
 	err := d.ProcessTransparencyGroup(group)
 
+	// Java's TransparencyGroup restores all of these in a finally, so they are
+	// put back on the error path too.
 	d.backend = savedBackend
 	d.linePath = savedLinePath
 	d.clipWindingRule = savedClipWindingRule
+	d.initialClip = savedInitialClip
+	d.lastClips, d.hasLastClips = savedLastClips, savedHasLastClips
 	d.pageSize = savedPageSize
 	d.flipTG = savedFlipTG
 	if err != nil {
@@ -1264,7 +1300,11 @@ func (d *PageDrawer) ShowTransparencyGroupOnBackend(group *form.PDTransparencyGr
 	}
 
 	if softMask := gs.SoftMask(); softMask != nil {
-		backend.SetPaint(d.applySoftMaskToPaint(nil, softMask))
+		masked, err := d.applySoftMaskToPaint(nil, softMask)
+		if err != nil {
+			return err
+		}
+		backend.SetPaint(masked)
 	}
 	return backend.PopGroup()
 }

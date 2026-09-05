@@ -18,11 +18,11 @@ Last updated: 2026-09-05
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 3, `getDataToSign` included |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common` and `graphics/optionalcontent`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19; what is left is `graphics/shading` and `graphics/pattern` |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
-| 5 | `contentstream`, `text` | 85 | in progress — the engine and every text operator; `text` has all 6 files, minus what needs a document |
-| — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
-| 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision. `rendering/RenderDestination` is ported, because `PDOptionalContentGroup` takes one |
+| 5 | `contentstream`, `text` | 85 | **done — all 85 files**, finished by slice 9: the graphics engine, all 23 graphics operators, all 13 colour operators and the three `DrawObject`s |
+| — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D`, `Ellipse2D`, `FlatteningPathIterator`, and `Area` minus curves |
+| 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
 | 7 | `cmd/pdfbox` | 26 | not started |
@@ -304,7 +304,7 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `java.awt.geom.Path2D` | `path.go` | done — one type holding `float64`, rounding on the way in when it is a Float path |
 | `java.awt.geom.Rectangle2D` | `rectangle.go` | done — one type; PDFBox only ever uses the Double form |
 | `java.awt.Rectangle` | `rectangle.go` | done — the integer bounds only |
-| `java.awt.geom.Area` | — | **not started** — constructive area geometry, needed only to combine clipping paths, which is the renderer's job |
+| `java.awt.geom.Area` | `area.go` | done in slice 9 — constructive area geometry, minus curves: an added shape is flattened first. Written from the JDK contract, not from what the renderer needs |
 
 ### `pdfbox/util`, `fontbox/util`, `internal/javafmt`
 
@@ -326,9 +326,9 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `common/PDTypedDictionaryWrapper.java` | `common/pdtypeddictionarywrapper.go` | done |
 | `common/PDStream.java` | `common/pdstream.go` | done — the reading path here, the rest in slice 8 |
 | `common/COSArrayList.java` | — | not started here — slice 8, with its Java test |
-| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing and `getFont` with its direct cache; `getColorSpace` and `getExtGState` came with slices 3 and 6, `getProperties` with slice 8; `getShading`, `getPattern` and `getXObject` still wait on the type each returns |
-| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | partial — the font and font descriptor members here, the colour space and graphics state ones later, the property list ones in slice 8; the shading, pattern and XObject members wait on their types. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package |
-| `DefaultResourceCache.java` | `resourcecache.go` | partial — the same members as the interface above, each with the stable-cache bookkeeping. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
+| `PDResources.java` | `pdresources.go`, `pdresources_colorspace.go`, `pdresources_graphics.go` | done — the dictionary plumbing and `getFont` with its direct cache here; `getColorSpace` and `getExtGState` came with slices 3 and 6, `getProperties` with slice 8, and `getShading`, `getPattern`, `getXObject` and the add and put family with slice 9 |
+| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | done — the font and font descriptor members here, the rest arriving with their types up to slice 9. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package, so the five kinds it cannot name are asked of the cache by shape from `pdmodel` instead |
+| `DefaultResourceCache.java` | `resourcecache.go` | done in slice 9 — all eight kinds, each with the stable-cache bookkeeping, which the port writes once as a generic map rather than eight times. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
 | `PDPage.java` | `pdpage.go` | partial here — boxes, rotation, resources, contents. The `PDStream` methods came with slice 7 and everything else with slice 8; only `removePageResourceFromCache` is still absent |
 | `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
 | `MissingResourceException.java` | `errors.go` | done |
@@ -345,18 +345,18 @@ of which is ported.
 | --- | --- | --- |
 | `PDLineDashPattern.java` | `graphics/pdlinedashpattern.go` | done |
 | `blend/BlendMode.java` | `graphics/blend/blendmode.go` | done — blend functions included |
-| `blend/BlendComposite.java`, `SoftMask.java` | — | not started — rendering |
+| `blend/BlendComposite.java`, `SoftMask.java` | — | not ported — both are `java.awt` raster classes, and slice 9 put the raster half behind `rendering.Backend`. The blend mode and the alpha constants a `BlendComposite` is built from are on the graphics state, and `rendering.SoftMaskedPaint` names the mask a `SoftMask` would rasterise |
 | `color/PDColor.java` | `graphics/color/pdcolor.go` | done |
 | `color/PDColorSpace.java` | `graphics/color/colorspace.go` | partial — as an interface; the static `create` methods and the two `BufferedImage` methods are absent |
 | `color/PDDeviceColorSpace.java` | `graphics/color/colorspace.go` | done |
 | `color/PDDeviceGray.java` | `graphics/color/devicegray.go` | done — minus `toRGBImage` |
-| the other 20 colour spaces | — | not started |
+| the other 20 colour spaces | `graphics/color/` | done — `PDJPXColorSpace` excepted, which only the JPX filter constructs |
 | `state/RenderingIntent.java` | `graphics/state/renderingintent.go` | done — `RenderingIntentTest` ported |
 | `state/RenderingMode.java` | `graphics/state/renderingmode.go` | done |
 | `state/PDTextState.java` | `graphics/state/pdtextstate.go` | done |
-| `state/PDGraphicsState.java` | `graphics/state/pdgraphicsstate.go` | partial — minus the soft mask, `getCurrentClippingPath` and the Area form of `intersectClippingPath`, and the two Java composites |
-| `state/PDSoftMask.java` | — | not started — needs a transparency group and a function |
-| `state/PDExtendedGraphicsState.java` | — | not started — reads fonts, soft masks and dash patterns out of a dictionary |
+| `state/PDGraphicsState.java` | `graphics/state/pdgraphicsstate.go` | done in slice 9 — the soft mask, `getCurrentClippingPath` and the Area form of `intersectClippingPath` all arrived with `Area`. The two Java composites are not here and will not be: they wrap the blend mode and an alpha constant in a `java.awt.Composite`, which is the rasteriser's half |
+| `state/PDSoftMask.java` | `graphics/state/pdsoftmask.go` | done in slice 9 — the transparency group is reached through `NewTransparencyGroup`, which `pdmodel` sets, because `graphics/form` imports this package |
+| `state/PDExtendedGraphicsState.java` | `graphics/state/pdextendedgraphicsstate.go` | done in slice 8, with the `/SMask` arm in slice 9 |
 
 ### `pdfbox/contentstream`
 
@@ -2589,3 +2589,334 @@ not exist, and `PDSignatureField.SetValue`'s panic message had lost its
 apostrophe to an editing slip. The message otherwise stays as Java writes it,
 naming `setValue(PDSignature value)`: the port copies Java's exception text, and
 the Go name it points at is on the method two lines below.
+
+---
+
+## Slice 9 — rendering
+
+Branch `slice/9-rendering`. The last slice of the plan, and the one `PLAN.md`
+left a decision in front of: PDFBox draws through `java.awt.Graphics2D`, and Go
+has nothing equivalent.
+
+**The decision, taken as B0, is `PLAN.md`'s third option: port the geometry,
+defer the raster backend behind an interface.** Everything that computes is
+ported and runs. Only the last drawing step is behind `rendering.Backend`, and
+**no implementation of that interface ships**. What that costs is written out
+under "What the raster decision costs" below, rather than left implicit.
+
+Slice 8 had not landed on `migration-base` when this branch started, and eleven
+types it ports are named directly by `pdfbox/rendering`.
+`slice/8-forms-annotations` is merged into this branch, so the content is
+byte-identical and the eventual merge has nothing to reconcile.
+
+### `java.awt.geom.Area` — the JDK, not PDFBox
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `java.awt.geom.Area` | `awt/geom/area.go` | done, minus curves |
+
+Slice 2 recorded `Area` as the one thing blocking
+`PDGraphicsState.getCurrentClippingPath`. It is constructive area geometry:
+`add`, `subtract`, `intersect`, `exclusiveOr`, `contains`, `getBounds2D`,
+`transform` and a `PathIterator` over the result. The port splits every boundary
+edge at its crossings **and at its T-junctions**, classifies each piece by
+offsetting perpendicular from its midpoint, and chains the pieces it keeps into
+rings.
+
+**The one deviation is curves: a shape is flattened when it becomes an `Area`,**
+so the result is a polygon where the JDK's would still be a curve. It is
+documented on the type. Nothing in PDFBox reads the curves back out of an
+`Area` — every use is a clip, which is rasterised — so the visible effect is the
+flattening tolerance, not a different region.
+
+The T-junction split is not a corner case.
+`PDGraphicsState.getCurrentClippingPath` starts from the bounding box of the
+clipping paths and intersects each path into it, so the **first** intersection
+is always tangent: the path touches its own bounding box on all four sides. A
+crossing test alone cannot see that, and without the split the intersection
+answers the bounding box instead of the shape. The tests written from the JDK
+contract caught it.
+
+### `pdmodel/common/function` and `graphics/color`
+
+Both were already ported when this branch started — the functions with the file
+type detector, the colour spaces across slices 2, 3 and 6 — so B2 and B3 had
+nothing left to do. The scope table in `slice-9-rendering.md` counts them
+because `PLAN.md` counts them; they are not slice 9's work.
+
+### `pdmodel/graphics/shading` — the model half of all seven types
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `PDShading.java` | `shading/pdshading.go` | done — `Shading` is the interface, `PDShading` the shared state |
+| `PDShadingType1/2/3.java` | `shading/pdshadingtype123.go` | done |
+| `PDTriangleBasedShadingType`, `PDShadingType4/5.java` | `shading/pdshadingtype45.go` | done |
+| `PDMeshBasedShadingType`, `PDShadingType6/7.java` | `shading/pdshadingtype67.go` | done |
+| `Patch`, `CoonsPatch`, `TensorPatch`, `CubicBezierCurve` | `shading/patch.go` | done — unexported, as Java's are package-private |
+| `Vertex`, `Line`, `ShadedTriangle`, `CoordinateColorPair` | `shading/triangle.go` | done — unexported |
+| the 19 `*Paint` and `*Context` classes | — | **not ported** — see below |
+
+The nineteen that are missing are `AxialShadingPaint`, `AxialShadingContext`,
+`RadialShadingPaint`, `RadialShadingContext`, `Type1ShadingPaint`,
+`Type1ShadingContext`, `Type4ShadingPaint`, `Type4ShadingContext`,
+`Type5ShadingPaint`, `Type5ShadingContext`, `Type6ShadingPaint`,
+`Type6ShadingContext`, `Type7ShadingPaint`, `Type7ShadingContext`,
+`ShadingPaint`, `ShadingContext`, `TriangleBasedShadingContext`,
+`GouraudShadingContext` and `PatchMeshesShadingContext`. Each is a
+`java.awt.Paint` or a `java.awt.PaintContext` that fills a raster. The colour
+evaluation they call into — the function, the colour space conversion, the
+patch subdivision, the triangle interpolation — is here.
+
+### `pdmodel/graphics/pattern`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `PDAbstractPattern.java`, `PDTilingPattern.java` | `pattern/pattern.go` | done |
+| `PDShadingPattern.java` | `pattern/pattern.go` | done |
+| `color/PDPattern.java` | `pattern/pdpattern.go` | done — **in this package, not `graphics/color`** |
+
+`PDPattern` is a `PDColorSpace` and Java puts it in `graphics/color`. It cannot
+go there: it reads a `PDAbstractPattern` out of the resources, so it would make
+`color` import `pattern`, which imports `color` for the underlying colour space.
+The colour space lives with the patterns it names, and `color.Create` reaches it
+through the `NewPatternColorSpace` hook this package sets from its `init`.
+
+### `contentstream` — the graphics engine and its operators
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `PDFGraphicsStreamEngine.java` | `contentstream/graphicsstreamengine.go` | done, minus the operator registrations |
+| `operator/graphics` — all 23 | `contentstream/operator/graphics/graphics.go` | done |
+| `operator/color` — all 13 | `contentstream/operator/color/color.go` | done |
+| `operator/DrawObject.java` | `contentstream/drawobject.go` | done |
+| `operator/markedcontent/DrawObject.java` | `operator/markedcontent/markedcontent.go` | done |
+| `operator/state/SetGraphicsStateParameters.java` | `operator/state/state.go` | done — slice 8 ported it, waiting on `PDExtendedGraphicsState` |
+
+`PDFGraphicsStreamEngine`'s constructor registers sixty operators by name. The
+port's cannot: every processor holds the engine, so the operator packages import
+`contentstream` and it cannot import them back. `rendering.addAllOperators` is
+that list, called from `NewPageDrawer`, the way `text.NewLegacyPDFStreamEngine`
+already registers its own.
+
+Java has **three** `DrawObject` processors, one per engine, and slice 3 deferred
+two of them on `PDXObject`. All three are here now. Without the plain one the
+text extractor never walked into a form XObject, so text inside one was silently
+lost. The plain one lives in `contentstream` rather than
+`contentstream/operator`, where Java has it: the port's `operator` package holds
+no processors, because a processor names the engine and the engine's package
+imports `operator`.
+
+`PDFStreamEngine`'s remaining half came with them: `showForm`,
+`showTransparencyGroup`, `processSoftMask`, `processTransparencyGroup`, the two
+`processTilingPattern` overloads, `processChildStream`, `showAnnotation`,
+`getAppearance` and `processAnnotation`. So did the two arms of
+`processStreamOperators` that clear `shouldProcessColorOperators` — an uncoloured
+tiling pattern, and a Type 3 char proc whose first operator is `d1` — which slice
+2 recorded as unreachable.
+
+`PDFormXObject` and `PDAppearanceStream` implement `PDContentStream` in Java and
+cannot here: `getResources` answers a `PDResources`, which lives in `pdmodel`,
+and `graphics/form` cannot import it. `contentstream` adapts both, the way it
+already adapts `PDType3CharProc`.
+
+The two `IllegalStateException`s `PDFStreamEngine` throws for a child stream
+processed without a page are errors here rather than panics: every caller of
+those methods is an operator, and an operator's errors already travel back
+through `processOperator`, which is where a PDF that asks for a form outside a
+page has to be dealt with.
+
+### `pdmodel/PDResources` and `DefaultResourceCache` — finished
+
+`getXObject` with `isAllowedCache`, `getShading` and `getPattern` are ported, and
+with `getExtGState` and `getProperties` from slice 8 the family is complete. So
+are `add` and `put` for a shading and for a pattern, which neither branch had.
+
+`DefaultResourceCache` gains its five remaining halves — XObjects, shadings,
+patterns, extended graphics states and property lists — with the stable-cache
+bookkeeping Java repeats per kind written once, as a generic map.
+
+**Two port defects were fixed on the way.** The colour space half (slice 2) and
+the extended graphics state half (slice 8) both keyed their maps on the
+stable-cache hash rather than on the `COSObject`. With the stable cache disabled
+that hash is unavailable, so neither kind was cached at all; with it enabled,
+two objects sharing a hash collided. Java keys the map on the `COSObject` and
+uses the hash only for the removal bookkeeping. All eight kinds do now.
+
+`PDDocument` gains a `CreateStream`, which is what makes it a
+`common.COSDocumentLike`. Java has no such method — everything that wants a
+stream goes through `getDocument().createCOSStream()`, and the constructors that
+take a `PDDocument` do that themselves — but the port's `COSDocument` answers the
+narrow interface a security handler needs, so the one method is what lets a
+`*PDDocument` be passed where `new PDStream(document)` takes one.
+
+### `pdfbox/rendering`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `ImageType.java` | `rendering/imagetype.go` | done — minus `toBufferedImageType` |
+| `RenderDestination.java` | `pdmodel/graphics/optionalcontent/renderdestination.go` | done — **declared there**, aliased in `rendering` |
+| `PageDrawerParameters.java` | `rendering/pagedrawerparameters.go` | done |
+| `GlyphCache.java` | `rendering/glyphcache.go` | done |
+| `PDFRenderer.java` | `rendering/pdfrenderer.go` | done — minus the `BufferedImage` it makes |
+| `PageDrawer.java` | `rendering/pagedrawer.go`, `pagedrawer_oc.go` | done — minus four raster pieces |
+| `GroupGraphics.java` | — | not ported — a `Graphics2D` subclass |
+| `SoftMask.java` | — | not ported — a `java.awt.Paint` |
+| `TilingPaint.java`, `TilingPaintFactory.java` | — | not ported — a `java.awt.Paint` and its cache |
+
+**`RenderDestination` had to move.** Java's `rendering` imports
+`graphics/optionalcontent` for the groups, and `optionalcontent` imports
+`rendering` back for `getRenderState(RenderDestination)`. Java allows the cycle
+and Go does not. Slice 8 put the enum in `rendering`, which worked while
+`rendering` held nothing else; slice 9's `rendering` must import
+`contentstream`, and through it `pdmodel` and `optionalcontent`. The enum is
+declared in `optionalcontent` and `rendering` aliases it back to the Java name in
+the Java place, the way `pdmodel.ResourceCache` aliases `pdmodel/font`'s.
+
+**`PageDrawer` keeps every decision.** Which paint applies to a colour, what the
+stroke is made of, what the clip intersects to, whether a path is rectangular,
+how thin a clip may be before it is widened, whether an optional content group is
+visible at this destination, whether an annotation is skipped, how far an image
+may be subsampled, whether a transparency group needs its backdrop.
+
+Four pieces of it are raster work end to end and are not ported:
+
+- **the `TransparencyGroup` inner class**, which makes a `BufferedImage`,
+  renders into it and composites it. `Backend.PushGroup` and `PopGroup` stand
+  for it, and the box it computes is ported as `transparencyGroupBox`.
+- **the pixel work of the stencil-mask-with-pattern arm of `drawImage`** —
+  `dilateAlpha`, the inverted lookup table, the per-pixel alpha combine of
+  PDFBOX-6077 and PDFBOX-5403. The port decides "this stencil, that paint" and
+  `Backend.DrawStencil` stands for the rest.
+- **`applySoftMaskToPaint`'s building of the mask raster**, with `adjustImage`.
+  `rendering.SoftMaskedPaint` names the mask and the matrix it was installed
+  under instead, which is what a backend needs to build the same raster. One
+  branch is lost with it: Java answers the parent paint where the group rendered
+  to nothing — "Adobe Reader ignores empty softmasks instead of using bc color"
+  — which only a backend can tell.
+- **`applyTransferFunction`**, which maps an image's pixels through the /TR
+  function.
+
+`PDFRenderer.getPageImage` goes with them: it exists so a non-isolated
+transparency group can read the page it is being composited onto, which is what
+`PushGroup`'s `needsBackdrop` says instead.
+
+`adjustClip` asks `AffineTransform.getType()` in Java, a bitmask the port does
+not have. The two tests it makes — "translation and flip only" and "no shear or
+rotation" — are written out against the matrix, with the Java bits named.
+
+### `pdfbox/printing`
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `Orientation.java`, `Scaling.java` | `printing/printing.go` | done |
+| `PDFPrintable.java` | `printing/pdfprintable.go` | done — minus rasterizing |
+| `PDFPageable.java` | `printing/pdfpageable.go` | done |
+| `java.awt.print.Paper`, `PageFormat` | `printing/pageformat.go` | the state only |
+
+Go has no print system. What is ported is what the two classes compute: the
+rotated crop and media boxes, the portrait-normalised paper of the PDFBOX-2922
+workaround, the scale-to-fit arithmetic, the centering and its negative-value
+guard, and the page border. `java.awt.print.Printable` and `Pageable` become
+plain methods taking a `rendering.Backend`.
+
+Rasterizing a page to a bitmap before printing it answers
+`ErrRasterizeUnsupported`. Java makes a `BufferedImage` of the imageable area,
+renders into it and blits it; there is nothing to make that image with.
+
+### What the raster decision costs
+
+Written down here rather than left implicit, which is what D9 asks.
+
+**The port cannot produce a rendered page.** `PDFRenderer.RenderImage` and its
+four siblings answer `ErrNoBackend` — with the size, the type and the page they
+worked out, so the error says what would have been made. It is deliberately not
+a blank image, which would look like a rendered page.
+
+**It therefore cannot rasterise, print, or run PDFBox's own image comparisons.**
+`TestPDFToImage`, `TestRendering` and `TestQuality` all compare against
+reference PNGs. `PDFPrintable` prints as vectors onto a backend and refuses to
+rasterise.
+
+**Everything above the interface runs.** A caller with a backend of their own —
+`golang.org/x/image/vector` plus a compositor, a Cairo or Skia binding, an SVG
+or PDF writer — gets a complete renderer: the whole content stream is walked,
+every operator is processed, the colours are converted, the shadings evaluate,
+the clip is computed, the optional content is resolved, the annotations are
+placed. `Backend` is fifteen methods.
+
+**What a backend has to do that the port does not describe for it:** anti-aliased
+scan conversion of a path under a winding rule; stroking a path into an outline
+with caps, joins, a miter limit and a dash pattern; sampling an image through an
+arbitrary transform with the two interpolations; compositing a layer under a
+blend mode, an alpha constant and a soft mask; and turning each of the four
+`Paint` descriptions into pixels — which for a tiling pattern means calling back
+into `PageDrawer.DrawTilingPattern` for one tile, and for a shading means asking
+the shading for the colour at a point.
+
+**What the tests compare instead of pixels** is the A5 decision: `Area` against
+the JDK's documented contract, functions and colour conversions against values
+taken from the Java, and `PageDrawer` against a backend that records every call.
+An image comparison against PDFBox's reference PNGs stays possible once a
+backend exists, and is the thing this strategy does not cover.
+
+### The tests
+
+Java's three rendering tests and one printing test do not port as they stand.
+
+- **`TestPDFToImage`** is disabled in Java itself, because different JVMs
+  produce different images.
+- **`TestRendering`** renders twenty files and asserts that nothing threw.
+  Without a rasteriser there is nothing to render.
+- **`TestQuality`** reads back four pixels of four files from `target/pdfs`,
+  which the build downloads.
+- **`TestPDFPrintable`** has five cases: three port as they stand — the page
+  index, the printer state left unchanged, and the result codes — and two read
+  back pixels to see whether the page border came out grey.
+
+What each was asking is asked instead of a backend that records every call the
+drawer makes, over real content streams through the real engine:
+`rendering/pagedrawer_test.go`, `rendering/pdfrenderer_test.go` and
+`printing/printing_test.go`. The colour a rectangle is filled in, the stroke
+parameters a line carries and the three values `getStroke` invents, the clip `W`
+leaves behind, the group a transparency form pushes, the operators a hidden
+optional content group swallows, the transform a rotated page installs, the
+scale each of the four scaling modes chooses.
+
+### The adversarial review
+
+Mechanical sweeps, each answering a question the ported tests cannot.
+
+- **Every Java type in the slice's packages against a Go counterpart.** Clean
+  apart from the raster classes named above; the package-private geometry
+  classes of `shading` are all present as unexported Go types.
+- **Public and protected method presence**, class by class, for `PDFRenderer`,
+  `PageDrawer`, `PDFPrintable` and `PDFPageable`. One gap: `PageDrawer.setClip`
+  is `protected final` in Java, and the port had it unexported. Java's javadoc
+  says an embedder overriding `showGlyph` may need it, so it is exported now.
+- **Every `COSName` used, against the Java constant** rather than against the
+  specification. Sixteen names, all matching.
+- **Every `finally`.** The five in `PageDrawer` and `PDFStreamEngine` that have
+  one are ported as unconditional restores. The two places where Java has **no**
+  `finally` and restores with plain statements are ported as written and
+  recorded as Java bugs 49 and 50.
+- **Java's narrowing conversions.** Two were wrong and are fixed:
+  `Math.round(float)` is `floor(x + 0.5)`, which rounds a half towards positive
+  infinity, where Go's `math.Round` rounds away from zero — so
+  `Math.abs(Math.round(x))` differed for a negative half; and
+  `getSubsampling`'s `imageWidth * imageHeight` is an `int` product that wraps
+  at 2^31, which a Go `int` does not.
+- **Every deferral.** Each is a `java.awt` raster type, and each is named in a
+  row above.
+
+Three things found while writing rather than by a sweep:
+
+- **`PDFRenderer.transform` concatenates onto the transform the `Graphics2D`
+  already carries.** The port built it from the identity and installed it,
+  which discarded `PDFPrintable`'s translate to the imageable area and its
+  centering — every printed page would have landed in the top left corner of
+  the paper. The scaling and centering tests catch it.
+- **`applySoftMaskToPaint` throws for a soft mask whose subtype is neither
+  `/Alpha` nor `/Luminosity`.** The port logged and carried on; it returns the
+  error now.
+- **`PDExtendedGraphicsState.CopyIntoGraphicsState`'s doc comment** still said
+  the `/SMask` arm was not applied, three commits after it was.

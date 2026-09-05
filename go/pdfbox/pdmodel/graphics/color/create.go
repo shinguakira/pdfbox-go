@@ -39,10 +39,12 @@ type ResourcesLike interface {
 // the IOException beside it.
 var ErrMissingResource = errors.New("color: missing resource")
 
-// ErrColorSpaceNotPorted is returned for the two colour spaces slice 6 leaves
-// to slice 9: /Pattern, which builds pattern dictionaries that only rendering
-// reads, and the JPX colour space, which only the JPX filter constructs and
-// which needs a JPEG 2000 decoder Go has not got.
+// ErrColorSpaceNotPorted is returned for a colour space this port cannot build.
+//
+// Two reach it. The JPX colour space is not ported at all: only the JPX filter
+// constructs one, and that needs a JPEG 2000 decoder Go has not got. /Pattern
+// is ported, in graphics/pattern, and reaches this only when that package is
+// not linked in -- see NewPatternColorSpace below.
 var ErrColorSpaceNotPorted = errors.New("color: colour space is not ported yet")
 
 // Create returns the colour space the given COS object names.
