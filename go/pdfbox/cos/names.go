@@ -147,6 +147,7 @@ var (
 	Date                      = GetPDFName("Date")
 	DCT                       = GetPDFName("DCT")
 	DCTDecode                 = GetPDFName("DCTDecode")
+	DCTDecodeAbbreviation     = GetPDFName("DCT")
 	Decode                    = GetPDFName("Decode")
 	DecodeParms               = GetPDFName("DecodeParms")
 	Default                   = GetPDFName("default")

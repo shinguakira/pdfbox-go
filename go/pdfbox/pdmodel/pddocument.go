@@ -3,13 +3,16 @@ package pdmodel
 import (
 	"errors"
 	"math"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
@@ -262,9 +265,7 @@ func (c *PDDocumentCatalog) SetVersion(version string) {
 // PDDocumentInformation is the /Info dictionary: what the document says about
 // itself.
 //
-// Port of org.apache.pdfbox.pdmodel.PDDocumentInformation. The date accessors
-// are not here: they need the COS date parsing, which slice 1 left out. See
-// migration/STATUS.md.
+// Port of org.apache.pdfbox.pdmodel.PDDocumentInformation.
 type PDDocumentInformation struct {
 	info *cos.Dictionary
 }
@@ -339,6 +340,69 @@ func (i *PDDocumentInformation) setString(key *cos.Name, value string) {
 		return
 	}
 	i.info.SetItem(key, cos.NewStringObj(value))
+}
+
+// PropertyStringValue returns the raw string under the given key, which allows
+// the low level date to be retrieved for validation purposes.
+//
+// Port of getPropertyStringValue, which Java declares as returning Object
+// although its body answers a String.
+func (i *PDDocumentInformation) PropertyStringValue(propertyKey string) string {
+	return i.info.GetString(cos.GetPDFName(propertyKey), "")
+}
+
+// CreationDate returns the creation date of the document, reporting false where
+// there is none, which is the null Java answers.
+func (i *PDDocumentInformation) CreationDate() (time.Time, bool) {
+	return util.DictionaryDate(i.info, cos.CreationDate)
+}
+
+// SetCreationDate sets the creation date of the document.
+func (i *PDDocumentInformation) SetCreationDate(date time.Time) {
+	util.SetDictionaryDate(i.info, cos.CreationDate, date)
+}
+
+// ModificationDate returns the modification date of the document, reporting
+// false where there is none.
+func (i *PDDocumentInformation) ModificationDate() (time.Time, bool) {
+	return util.DictionaryDate(i.info, cos.ModDate)
+}
+
+// SetModificationDate sets the modification date of the document.
+func (i *PDDocumentInformation) SetModificationDate(date time.Time) {
+	util.SetDictionaryDate(i.info, cos.ModDate, date)
+}
+
+// Trapped returns the trapped value for the document, or "" where there is
+// none.
+func (i *PDDocumentInformation) Trapped() string {
+	return i.info.GetNameAsString(cos.Trapped, "")
+}
+
+// SetTrapped sets the trapped value of the document, which shall be 'True',
+// 'False' or 'Unknown'.
+//
+// Java throws IllegalArgumentException for anything else, which is unchecked,
+// so the port panics. The empty string is Java's null, which it lets through.
+func (i *PDDocumentInformation) SetTrapped(value string) {
+	if value != "" && value != "True" && value != "False" && value != "Unknown" {
+		panic("Valid values for trapped are 'True', 'False', or 'Unknown'")
+	}
+	i.info.SetName(cos.Trapped, value)
+}
+
+// MetadataKeys returns the keys of all metadata information fields for the
+// document, sorted, which is what Java's TreeSet answers.
+//
+// Since Apache PDFBox 1.3.0.
+func (i *PDDocumentInformation) MetadataKeys() []string {
+	keySet := i.info.KeySet()
+	keys := make([]string, 0, len(keySet))
+	for _, key := range keySet {
+		keys = append(keys, key.Name())
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // ErrMissingRoot is what a document with no catalogue is reported with.

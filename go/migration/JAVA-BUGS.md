@@ -1862,3 +1862,52 @@ the port's `ClassCastException`. Its comment points here.
 
 **Confidence** high. The two accessors sit in the same file and differ only in
 that one call.
+
+---
+
+## 46. `PDStreamTest` builds its stop filters from `COSName.toString()`
+
+**Where** `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/PDStreamTest.java`,
+`testCreateInputStreamNullFilters` and `testCreateInputStreamEmptyFilters`.
+
+**What** Both build the stop filter list like this:
+
+```java
+List<String> stopFilters = new ArrayList<>();
+stopFilters.add(COSName.DCT_DECODE.toString());
+stopFilters.add(COSName.DCT_DECODE_ABBREVIATION.toString());
+```
+
+`COSName.toString()` is `"COSName{" + getName() + "}"`, so the two entries are
+`"COSName{DCTDecode}"` and `"COSName{DCT}"`. The method they are handed to
+compares them against the filter's plain name:
+
+```java
+for (COSName nextFilter : filters)
+{
+    if (stopFilters.contains(nextFilter.getName()))
+```
+
+`"DCTDecode"` is never equal to `"COSName{DCTDecode}"`, so the stop list can
+never match anything.
+
+**What correct would be** `COSName.DCT_DECODE.getName()`, which is what every
+caller of `createInputStream(List<String>)` in the main tree passes --
+`PDInlineImage` and `SampledImageReader` both build their lists out of
+`getName()`.
+
+**Why it matters** Only for the test. Both cases run against a stream with no
+filters at all, so the loop the stop list guards never runs a second iteration
+and the assertions pass either way; what the test does not do is exercise the
+stopping it is named after. `testCreateInputStreamNullStopFilters`, the third
+case, passes `null` and is the only one whose name matches what it checks.
+Nothing in the shipped library is affected.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/common/pdstream_external_test.go`,
+`dctStopFilters`, which builds the same two strings through `cos.Name.String()`
+and says why. The stopping the Java test does not reach is covered separately by
+`TestCreateInputStreamStoppingStops` in the same package, which slice 6 wrote
+and which is not a port.
+
+**Confidence** high. Both halves are three lines apart and `COSName.toString`
+has carried the braces since the class was written.

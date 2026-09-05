@@ -130,7 +130,7 @@ implementation, then move on. Do not open all eight at once.
 - [x] C2. `go vet ./...` clean
 - [x] C3. `go test ./...` green
 - [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — including the slice 2 `PDPage` and
+- [x] C5. Update `migration/STATUS.md` — including the slice 2 `PDPage` and
       `pdmodel/common` rows this slice closes
 
 ---
