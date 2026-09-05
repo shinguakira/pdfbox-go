@@ -174,9 +174,14 @@ func (s *PDStream) CreateOutputStream() (io.WriteCloser, error) {
 }
 
 // CreateOutputStreamOfFilter returns a writer that encodes what is written to
-// it with the given filter.
+// it with the given filter, and one that applies none for a nil filter.
 //
-// Port of createOutputStream(COSName).
+// Port of createOutputStream(COSName). Java widens a null COSName to a null
+// COSBase and COSStream.createOutputStream tests it for null; a nil *cos.Name
+// widened to a cos.Base in Go is not nil, so the nil is answered here instead.
 func (s *PDStream) CreateOutputStreamOfFilter(filter *cos.Name) (io.WriteCloser, error) {
+	if filter == nil {
+		return s.stream.CreateWriter()
+	}
 	return s.stream.CreateWriterWithFilters(filter)
 }
