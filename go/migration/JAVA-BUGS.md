@@ -1911,3 +1911,101 @@ and which is not a port.
 
 **Confidence** high. Both halves are three lines apart and `COSName.toString`
 has carried the braces since the class was written.
+
+---
+
+## 47. `SignatureOptions.close` loses the first of two close failures
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/SignatureOptions.java`,
+`close`.
+
+```java
+public void close() throws IOException
+{
+    try
+    {
+        if (visualSignature != null)
+        {
+            visualSignature.close();
+        }
+    }
+    finally
+    {
+        if (pdfSource != null)
+        {
+            pdfSource.close();
+        }
+    }
+}
+```
+
+**What** A `finally` that throws replaces the exception already in flight. Where
+`visualSignature.close()` fails and `pdfSource.close()` then fails too, the
+caller is told about the second and never hears about the first, which is the
+one that says the visual signature template was left in a bad state.
+
+**What correct would be** What PDFBox does everywhere else it closes two things:
+`IOUtils.closeAndLogException(a, LOG, "a", null)` threaded through both, which
+keeps the first failure and logs the rest. `PDDocument.close`, three classes
+away, is written that way.
+
+**Why it matters** Little, in practice. Both resources are closed either way, so
+nothing leaks; only which of two failures reaches the caller differs, and two
+failing closes in one call is already an unusual state. It is here because it is
+a difference the port does not reproduce, not because it breaks a file.
+
+**Where the Go carries it** It does not.
+`go/pdfbox/pdmodel/interactive/digitalsignature/signing.go`, `Close`, keeps the
+first error and closes both, which is the convention every other `Close` in the
+port follows and which is what the Java would do if it used its own helper. This
+is a deliberate divergence, left as it stands.
+
+**Confidence** high for the behaviour; it is how Java has always treated a
+throwing `finally`. Calling it a defect rather than a style is a judgement, and
+that is why the entry says what it costs.
+
+---
+
+## 48. `PDDocumentCatalog.getAcroForm()` changes the document it is asked to read
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentCatalog.java`,
+`getAcroForm()` and `getAcroForm(PDDocumentFixup)`.
+
+```java
+public PDAcroForm getAcroForm()
+{
+    return getAcroForm(new AcroFormDefaultFixup(document));
+}
+```
+
+**What** The no-argument accessor applies `AcroFormDefaultFixup`, which is not a
+read: it walks the form and rewrites it — generating appearance streams where
+`/NeedAppearances` is set, adopting orphan widgets into fields, adding font
+resources to `/DR`. Java's own javadoc says so:
+
+> Using `getAcroForm(PDDocumentFixup acroFormFixup)` might change the original
+> content and subsequent calls with `getAcroForm(null)` will return the changed
+> content.
+
+So a caller that reads the form and then asks for it again with `null`, wanting
+the file as it was, gets the repaired version instead. The catalogue remembers
+the fixup it applied and never unapplies it.
+
+**What correct would be** A getter that does not mutate, with the repair on a
+method that says it repairs. The shape is deliberate — it is what makes PDFBox
+read broken forms out of the box — so this is surprising behaviour rather than
+a mistake, and it is recorded for the reader who finds a document changed by a
+call that looked like a read.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/interactive/form/catalogacroform.go`,
+`AcroFormOfCatalog`, applies the same fixup and mutates the same way — **but
+only when the program has linked `pdmodel/fixup`.** `fixup` names `PDAcroForm`,
+so `form` cannot import it; it sets `form.NewAcroFormDefaultFixup` from its own
+`init`, and a program that never blank-imports the package gets no fixup at all.
+The same call therefore has two behaviours depending on the import graph, where
+Java has one. That is a divergence of the port, not of the Java, and it is left
+as it stands: closing it would mean moving the fixups out of the package Java
+puts them in. `migration/STATUS.md` says the same under the slice 8 fixup
+section.
+
+**Confidence** high. The javadoc states the mutation itself.

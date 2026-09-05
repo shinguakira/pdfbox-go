@@ -2151,12 +2151,9 @@ Without it, `form.AcroFormOfCatalog` reads the form with no fixup applied, which
 is what `getAcroForm(null)` of Java does. The package comment says so, and so
 does every test that needs the fixup.
 
-**This is a divergence from Java and it is left as it stands.** Java's
-`getAcroForm()` always applies `AcroFormDefaultFixup`; the Go's default depends
-on whether the program linked the package, so the same call can behave two ways.
-It is not a Java bug and it is not a port defect in the code -- it is what Go
-forbidding the import cycle costs, and the cost is paid here rather than by
-rearranging the packages away from the Java layout. Recorded, not fixed.
+The same call therefore has two behaviours depending on the import graph, where
+Java has one. That is a divergence of the port, left as it stands; JAVA-BUGS 48
+records it, together with what `getAcroForm()` mutates when it is applied.
 
 `AcroFormOrphanWidgetsProcessor.ensureFontResources` finds the replacement font
 but does not embed it: Java calls `PDType0Font.load`, and the font embedders are
@@ -2328,7 +2325,7 @@ type from this slice. All three are ported now, with their Java tests.
 
 ### Java bugs found, carried, and recorded
 
-Twelve, `JAVA-BUGS.md` entries 35 to 46:
+Fourteen, `JAVA-BUGS.md` entries 35 to 48:
 
 - **35** `COSName.BEAD` is `"BEAD"` where the specification says `/Bead`, so
   `PDThread.getFirstBead` reads an entry no writer produces.
@@ -2351,6 +2348,10 @@ Twelve, `JAVA-BUGS.md` entries 35 to 46:
 - **46** `PDStreamTest` builds its stop filters from `COSName.toString()`, so
   the stopping it is named after never happens. In the Java test, not the
   library.
+- **47** `SignatureOptions.close` loses the first of two close failures, because
+  its `finally` replaces the exception in flight.
+- **48** `getAcroForm()` changes the document it is asked to read, and the port
+  does so only when `pdmodel/fixup` is linked.
 
 ### The slice 8 adversarial review
 
@@ -2442,8 +2443,7 @@ the three fixup processors all match. Two divergences, both deliberate:
   `visualSignature`, and a `finally` that throws replaces the exception in
   flight, so Java surfaces the *later* failure. The port keeps the first, which
   is the convention every other `Close` in the port follows. Both are closed
-  either way; only which of two close failures is reported differs. Not a Java
-  bug; left as it stands.
+  either way; only which of two close failures is reported differs. JAVA-BUGS 47.
 - `FDFDocument.saveXFDF` closes the writer it is given and the port does not,
   because a Go `io.Writer` has nothing to close. The doc comment says so.
 
@@ -2508,17 +2508,18 @@ deferral is blocked on a type a later slice brings — `PDShading`,
 `PDTilingPattern`, the font embedders, an ICC engine, the four unported halves
 of the resource cache — none on difficulty.
 
-**D5 — the Java bugs.** All twelve of this slice's entries were re-read against
-the Go site that carries them. Eleven are carried: the `BEAD` type name, the
+**D5 — the Java bugs.** All of this slice's entries were re-read against the Go
+site that carries them. Entries 35 to 45 are carried: the `BEAD` type name, the
 `/D`-for-`/O` write, `setSuspect`'s ignored argument, the three unchecked `/P`
 reads, the `insertBefore` index of -1, the name-array read of a string array,
 the five-entry padding, the two `/Reasons` name reads, `getRotation`'s string
-read of an integer and `getPages`' unresolved reference. The twelfth, entry 42,
-is the one the port cannot carry: Java's `StandardStructureTypes` fills its list
-by reflection over its own fields and picks the list itself up, and which entry
-that adds is not defined by the JVM. `JAVA-BUGS.md` says that in its own "Where
-the Go carries it" line rather than claiming otherwise. Nothing was fixed on the
-way past.
+read of an integer and `getPages`' unresolved reference. Three are not, and each
+says so in its own "Where the Go carries it" line rather than claiming
+otherwise: entry 42, because Java's `StandardStructureTypes` fills its list by
+reflection over its own fields and picks the list itself up, and Go has no such
+reflection to reproduce; entry 47, where the port keeps the first of two close
+failures; and entry 48, where the port applies the mutating fixup only when
+`pdmodel/fixup` is linked. Nothing was fixed on the way past.
 
 **Still open.** Nothing found in this review is unfixed. What remains absent is
 the deferral list above, and this slice's tests do not cover the appearance
