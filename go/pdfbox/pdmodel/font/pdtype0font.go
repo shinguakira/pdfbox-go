@@ -432,3 +432,31 @@ func (f *PDType0Font) ToUnicodeWithGlyphList(code int,
 	customGlyphList *encoding.GlyphList) (string, error) {
 	return f.ToUnicode(code)
 }
+
+// WillBeSubset reports whether this font will be subset when the document is
+// saved, which for a font read out of a PDF is never: Java asks the embedder,
+// and a read font has none. The embedding half arrives with a later slice.
+func (f *PDType0Font) WillBeSubset() bool { return false }
+
+// AddToSubset keeps the given code point when the font is subset.
+//
+// Java throws IllegalStateException where the font is not being subset, which
+// is unchecked, so the port panics. A font read out of a PDF is never subset,
+// so this always panics until the embedding half arrives.
+func (f *PDType0Font) AddToSubset(codePoint int) {
+	panic("This font was created with subsetting disabled")
+}
+
+// AddGlyphsToSubset keeps the given glyph ids when the font is subset.
+//
+// Java throws IllegalStateException where the font is not being subset.
+func (f *PDType0Font) AddGlyphsToSubset(glyphIds map[int]bool) {
+	panic("This font was created with subsetting disabled")
+}
+
+// Subset writes the font, subsetting it to the code points kept so far.
+//
+// Java hands this to the embedder, which a font read out of a PDF has none of.
+func (f *PDType0Font) Subset() error {
+	panic("This font was created with subsetting disabled")
+}

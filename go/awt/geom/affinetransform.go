@@ -359,3 +359,13 @@ func (at *AffineTransform) TransformDoubles(src []float64, srcOff int, dst []flo
 		dstOff++
 	}
 }
+
+// NewAffineTransformOf returns a copy of the given transform.
+//
+// Port of the AffineTransform(AffineTransform) constructor.
+func NewAffineTransformOf(other *AffineTransform) *AffineTransform {
+	return &AffineTransform{
+		m00: other.m00, m10: other.m10, m01: other.m01,
+		m11: other.m11, m02: other.m02, m12: other.m12,
+	}
+}

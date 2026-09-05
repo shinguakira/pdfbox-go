@@ -2,8 +2,10 @@ package pdmodel
 
 import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 )
 
 // ResourceCache keeps the objects read out of a resource dictionary, so that
@@ -40,6 +42,15 @@ type DefaultResourceCache struct {
 	// colorSpaces is Java's colorSpaces map, keyed on the object number the
 	// way the removed-font bookkeeping above is.
 	colorSpaces map[int64]color.PDColorSpace
+
+	// extGStates is Java's extGStates map, keyed the same way.
+	extGStates map[int64]*state.PDExtendedGraphicsState
+
+	// properties is Java's properties map, with the removed and stable
+	// bookkeeping the fonts have.
+	properties        map[*cos.Object]markedcontent.PropertyList
+	removedProperties map[int64]int
+	stableProperties  map[int64]bool
 }
 
 var _ ResourceCache = (*DefaultResourceCache)(nil)
@@ -60,6 +71,9 @@ func NewDefaultResourceCacheStable(enableStableCache bool) *DefaultResourceCache
 		stableFonts:        map[int64]bool{},
 		fontDescriptors:    map[*cos.Object]*font.PDFontDescriptor{},
 		cidFonts:           map[*cos.Object]font.PDCIDFont{},
+		properties:         map[*cos.Object]markedcontent.PropertyList{},
+		removedProperties:  map[int64]int{},
+		stableProperties:   map[int64]bool{},
 	}
 }
 
@@ -193,4 +207,82 @@ func (c *DefaultResourceCache) PutColorSpace(indirect *cos.Object, space color.P
 		c.colorSpaces = map[int64]color.PDColorSpace{}
 	}
 	c.colorSpaces[key] = space
+}
+
+// GetExtGState returns the cached extended graphics state of the given
+// indirect object, or nil.
+//
+// Java declares this on ResourceCache; the port's interface cannot name
+// PDExtendedGraphicsState, so PDResources asks the cache for these two by their
+// shape. See the extGStateCache comment in pdresources.go.
+func (c *DefaultResourceCache) GetExtGState(indirect *cos.Object) *state.PDExtendedGraphicsState {
+	key, ok := c.objectKey(indirect)
+	if !ok {
+		return nil
+	}
+	return c.extGStates[key]
+}
+
+// PutExtGState caches the extended graphics state of the given indirect object.
+func (c *DefaultResourceCache) PutExtGState(indirect *cos.Object,
+	extGState *state.PDExtendedGraphicsState) {
+	key, ok := c.objectKey(indirect)
+	if !ok {
+		return
+	}
+	if c.extGStates == nil {
+		c.extGStates = map[int64]*state.PDExtendedGraphicsState{}
+	}
+	c.extGStates[key] = extGState
+}
+
+// GetProperties returns the property list read from the given indirect object,
+// or nil.
+//
+// Port of DefaultResourceCache.getProperties.
+func (c *DefaultResourceCache) GetProperties(indirect *cos.Object) markedcontent.PropertyList {
+	return c.properties[indirect]
+}
+
+// PutProperties records the property list read from the given indirect object.
+//
+// Port of DefaultResourceCache.put(COSObject, PDPropertyList).
+func (c *DefaultResourceCache) PutProperties(indirect *cos.Object,
+	propertyList markedcontent.PropertyList) {
+	if c.properties == nil {
+		c.properties = map[*cos.Object]markedcontent.PropertyList{}
+	}
+	c.properties[indirect] = propertyList
+}
+
+// RemoveProperties drops the property list read from the given indirect object
+// and returns it, keeping one that has been dropped maxRemovals times.
+//
+// Port of DefaultResourceCache.removeProperties.
+func (c *DefaultResourceCache) RemoveProperties(indirect *cos.Object) markedcontent.PropertyList {
+	objectKey, hasKey := c.objectKey(indirect)
+	if hasKey {
+		if c.stableProperties[objectKey] {
+			return nil
+		}
+		counter, ok := c.removedProperties[objectKey]
+		if !ok {
+			counter = 1
+			c.removedProperties[objectKey] = counter
+		}
+		if counter < maxRemovals {
+			counter++
+			c.removedProperties[objectKey] = counter
+		} else {
+			c.stableProperties[objectKey] = true
+			delete(c.removedProperties, objectKey)
+			return nil
+		}
+	}
+	propertyList, ok := c.properties[indirect]
+	if !ok {
+		return nil
+	}
+	delete(c.properties, indirect)
+	return propertyList
 }

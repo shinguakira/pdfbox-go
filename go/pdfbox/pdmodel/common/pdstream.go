@@ -1,15 +1,23 @@
 package common
 
 import (
+	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 )
 
 // PDStream is a stream of a PDF document.
 //
-// Port of org.apache.pdfbox.pdmodel.common.PDStream. The decode parameters, the
-// file specification and the metadata need pieces a later slice brings. See
+// Port of org.apache.pdfbox.pdmodel.common.PDStream.
+//
+// getFile and setFile are not methods here: they name PDFileSpecification, and
+// filespecification imports this package for PDEmbeddedFile. They are
+// filespecification.FileOfStream and SetFileOfStream.
+//
+// createInputStream(DecodeOptions) is not ported: cos.Stream has no reader that
+// takes decode options, because the Codec interface does not. See
 // migration/STATUS.md.
 type PDStream struct {
 	stream *cos.Stream
@@ -85,6 +93,112 @@ func (s *PDStream) DecodedStreamLength() int {
 // SetDecodedStreamLength sets the /DL entry.
 func (s *PDStream) SetDecodedStreamLength(decodedStreamLength int) {
 	s.stream.SetInt(cos.DL, decodedStreamLength)
+}
+
+// DecodeParms returns the list of decode parameters. Each entry in the list
+// will refer to an entry in the filters list, and is a COSDictionaryMap of the
+// basic types that entry holds. It answers nil where the stream has none, which
+// is Java's null.
+//
+// Port of getDecodeParms.
+func (s *PDStream) DecodeParms() (*COSArrayList[any], error) {
+	// See PDF Ref 1.5 implementation note 7, /DP is sometimes used instead.
+	return s.internalDecodeParams(cos.DecodeParms, cos.DP)
+}
+
+// FileDecodeParams returns the list of decode parameters of the external file.
+//
+// Port of getFileDecodeParams.
+func (s *PDStream) FileDecodeParams() (*COSArrayList[any], error) {
+	return s.internalDecodeParams(cos.FDecodeParms, nil)
+}
+
+// internalDecodeParams is the private internalGetDecodeParams.
+func (s *PDStream) internalDecodeParams(name1, name2 *cos.Name) (*COSArrayList[any], error) {
+	var dp cos.Base
+	if name2 == nil {
+		dp = s.stream.GetDictionaryObject(name1)
+	} else {
+		dp = s.stream.GetDictionaryObject2(name1, name2)
+	}
+
+	switch value := dp.(type) {
+	case *cos.Dictionary:
+		m, err := ConvertBasicTypesToMap(value)
+		if err != nil {
+			return nil, err
+		}
+		return NewCOSArrayListOfItem[any](m, dp, &s.stream.Dictionary, name1), nil
+	case *cos.Array:
+		actuals := make([]any, 0, value.Size())
+		for i := 0; i < value.Size(); i++ {
+			base := value.GetObject(i)
+			dictionary, isDictionary := base.(*cos.Dictionary)
+			if !isDictionary {
+				slog.Warn("common: expected COSDictionary, ignored", "got", base)
+				continue
+			}
+			m, err := ConvertBasicTypesToMap(dictionary)
+			if err != nil {
+				return nil, err
+			}
+			actuals = append(actuals, m)
+		}
+		return NewCOSArrayListOf(actuals, value), nil
+	}
+
+	return nil, nil
+}
+
+// SetDecodeParms sets the list of decode parameters.
+func (s *PDStream) SetDecodeParms(decodeParams []any) {
+	s.stream.SetItem(cos.DecodeParms, ConverterToCOSArray(decodeParams))
+}
+
+// SetFileDecodeParams sets the list of decode parameters of the external file.
+func (s *PDStream) SetFileDecodeParams(decodeParams []any) {
+	s.stream.SetItem(cos.FDecodeParms, ConverterToCOSArray(decodeParams))
+}
+
+// FileFilters returns the encoding filters of the external file, empty where
+// there are none.
+//
+// Port of getFileFilters.
+func (s *PDStream) FileFilters() []string {
+	switch filters := s.stream.GetDictionaryObject(cos.FFilter).(type) {
+	case *cos.Name:
+		return []string{filters.Name()}
+	case *cos.Array:
+		return filters.ToNameStringList()
+	}
+	return []string{}
+}
+
+// SetFileFilters sets the encoding filters of the external file.
+func (s *PDStream) SetFileFilters(filters []string) {
+	s.stream.SetItem(cos.FFilter, cos.ArrayOfNames(filters))
+}
+
+// Metadata returns the metadata of this stream, or nil where it has none.
+//
+// Java throws IllegalStateException where the entry is neither a stream nor
+// null, which is unchecked, so the port panics. A COSNull is authorized.
+func (s *PDStream) Metadata() *PDMetadata {
+	mdStream := s.stream.GetDictionaryObject(cos.Metadata)
+	switch value := mdStream.(type) {
+	case *cos.Stream:
+		return NewPDMetadataOfStream(value)
+	case nil, *cos.Null:
+		// null is authorized
+		return nil
+	default:
+		panic(fmt.Sprintf("Expected a COSStream but was a %T", value))
+	}
+}
+
+// SetMetadata sets the metadata of this stream, which may be nil.
+func (s *PDStream) SetMetadata(meta *PDMetadata) {
+	s.stream.SetItem(cos.Metadata, COSObjectOrNil(meta))
 }
 
 // CreateInputStreamStopping returns the content of this stream, decoded
@@ -163,4 +277,25 @@ func NewPDStreamOfInput(doc COSDocumentLike, input io.Reader, filters cos.Base) 
 		return nil, err
 	}
 	return &PDStream{stream: stream}, nil
+}
+
+// CreateOutputStream returns a writer that stores what is written to it in the
+// stream, without a filter.
+//
+// Port of createOutputStream().
+func (s *PDStream) CreateOutputStream() (io.WriteCloser, error) {
+	return s.stream.CreateWriter()
+}
+
+// CreateOutputStreamOfFilter returns a writer that encodes what is written to
+// it with the given filter, and one that applies none for a nil filter.
+//
+// Port of createOutputStream(COSName). Java widens a null COSName to a null
+// COSBase and COSStream.createOutputStream tests it for null; a nil *cos.Name
+// widened to a cos.Base in Go is not nil, so the nil is answered here instead.
+func (s *PDStream) CreateOutputStreamOfFilter(filter *cos.Name) (io.WriteCloser, error) {
+	if filter == nil {
+		return s.stream.CreateWriter()
+	}
+	return s.stream.CreateWriterWithFilters(filter)
 }

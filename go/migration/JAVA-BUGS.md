@@ -1411,3 +1411,601 @@ names this entry.
 **Confidence** high. Read from the two methods and confirmed by the port
 panicking with `End page is smaller than startPage` for pages 30 to 40 of the
 28 page `cweb.pdf`, which is the document `PageExtractorTest` uses.
+
+---
+
+## 35. `COSName.BEAD` is `"BEAD"`, and the specification says `/Bead`
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/cos/COSName.java` line 100:
+
+```java
+public static final COSName BEAD = getPDFName("BEAD");
+```
+
+used in one place, `PDThreadBead`'s no-argument constructor:
+
+```java
+bead.setItem(COSName.TYPE, COSName.BEAD);
+```
+
+**What correct would be** `getPDFName("Bead")`. PDF 32000-1:2008 Table 30 gives
+the thread bead dictionary a `/Type` of `Bead`, and PDF names are
+case-sensitive, so `/BEAD` is a different name.
+
+**Why it matters** a bead PDFBox creates is written with `/Type /BEAD`. Nothing
+in PDFBox reads that entry back --- `PDThreadBead` never tests it, and the
+constant has no other use --- so PDFBox round-trips its own output. A conforming
+reader looking for `/Type /Bead` does not find one. It only bites a file PDFBox
+wrote, which is why it has survived: the reading path never touches it.
+
+**Where the Go carries it** `go/pdfbox/cos/names.go` already had it as
+`BEAD = GetPDFName("BEAD")`, transcribed from the Java in slice 1, and
+`go/pdfbox/pdmodel/interactive/pagenavigation/pdthread.go`, `NewPDThreadBead`,
+writes it. The name is deliberately spelled `cos.BEAD` rather than `cos.Bead` so
+that it does not read like the correct one.
+
+**Confidence** high for the code; the specification reading is from Table 30 of
+PDF 32000-1:2008. No test resource in the repository carries a bead dictionary,
+so there is nothing to measure it against.
+
+---
+
+## 36. `PDWindowsLaunchParams.setOperation` writes the wrong key
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDWindowsLaunchParams.java`:
+
+```java
+public String getOperation()
+{
+    return params.getString(COSName.O, OPERATION_OPEN);
+}
+
+public void setOperation( String op )
+{
+    params.setString( COSName.D, op );
+}
+```
+
+The getter reads `/O` and the setter writes `/D`.
+
+**What correct would be** `params.setString(COSName.O, op)`.
+
+**Why it matters** two things go wrong at once, and neither is visible from the
+class. Setting the operation silently overwrites `/D`, which is the working
+directory that `setDirectory` wrote and `getDirectory` reads --- so a launch
+action given both a directory and an operation loses the directory. And the
+operation itself is never stored, so `getOperation` keeps returning its default,
+`"open"`, however many times it is set. A launch action built through this class
+can never say `"print"`.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/interactive/action/actions.go`, `SetOperation`, with the
+comment above it naming this entry.
+
+**Confidence** high. It is two adjacent methods reading and writing different
+constants, and `PDWindowsLaunchParams` has no other use of either key beyond
+`getDirectory` and `setDirectory`, which is what makes the collision real rather
+than harmless.
+
+---
+
+## 37. `PDMarkInfo.setSuspect` ignores its argument
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDMarkInfo.java`:
+
+```java
+public void setSuspect( boolean suspect )
+{
+    dictionary.setBoolean( "Suspects", false );
+}
+```
+
+**What correct would be** `dictionary.setBoolean("Suspects", suspect)`. The
+three setters beside it --- `setMarked`, `setUserProperties` --- all pass their
+argument through, which is what makes this one stand out as a slip rather than a
+decision.
+
+**Why it matters** `/Suspects` can never be set to true through PDFBox.
+PDF 32000-1:2008 Table 321 gives it as the flag that says the tagged-PDF
+structure may not conform to the standard, so a producer that has reason to
+raise it cannot. Reading is unaffected: `isSuspect` returns whatever the file
+holds.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdmarkinfo.go`,
+`SetSuspect`, with the comment above it naming this entry.
+
+**Confidence** high. The parameter is unused and the literal is written in its
+place; there is no reading of the method under which it is correct.
+
+## 38. `PDUserAttributeObject` reads `/P` without checking it is there
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDUserAttributeObject.java`:
+
+```java
+public List<PDUserProperty> getOwnerUserProperties()
+{
+    COSArray p = getCOSObject().getCOSArray(COSName.P);
+    List<PDUserProperty> properties = new ArrayList<>(p.size());
+    ...
+}
+```
+
+`addUserProperty` and `removeUserProperty` read `/P` the same way and use it
+without a check.
+
+**What correct would be** `getCOSArray` returns null when the entry is absent
+or is not an array, so all three need the null guard the rest of the class
+gives its entries: an empty list from the getter, and a new `COSArray` put into
+`/P` from the two setters.
+
+**Why it matters** A user attribute object with no `/P` --- which is what
+`new PDUserAttributeObject()` builds, since its constructor writes only `/O` ---
+throws a `NullPointerException` from every one of the three. So the object
+cannot be filled in through its own API: `addUserProperty` on a fresh one always
+throws, and the only way in is `setUserProperties`, which writes the array
+first. PDF 32000-1:2008 Table 328 marks `/P` required, so a malformed file
+reaches the same throw on the reading side.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdattributeobject.go`,
+`OwnerUserProperties`, `AddUserProperty` and `RemoveUserProperty`. A nil
+`*cos.Array` panics on the first method call, the way the null does in Java, and
+each carries a comment naming this entry.
+
+**Confidence** high. `COSDictionary.getCOSArray` returns null by contract, and
+none of the three tests for it.
+
+## 39. `PDStructureNode.insertBefore` inserts at -1 when the reference kid is not found
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureNode.java`:
+
+```java
+protected void insertBefore(COSBase newKid, Object refKid)
+{
+    ...
+    if (k instanceof COSArray)
+    {
+        COSArray array = (COSArray) k;
+        int refIndex = array.indexOfObject(refKidBase);
+        array.add(refIndex, newKid.getCOSObject());
+    }
+    ...
+}
+```
+
+**What correct would be** `indexOfObject` answers -1 when the kid is not in the
+array, and `COSArray.add(int, COSBase)` hands that to `List.add(int, E)`, which
+throws `IndexOutOfBoundsException`. The branch needs to check the index before
+using it --- the single-kid branch below it does exactly that, doing nothing
+when the reference kid does not match.
+
+**Why it matters** Two ordinary calls reach it. One is a `refKid` that is
+simply not a kid of this node. The other is any marked-content identifier taken
+from `getKids`, which returns those as `java.lang.Integer`: an Integer is not a
+`COSObjectable`, so `refKidBase` stays null, `indexOfObject(null)` answers -1,
+and the insert throws --- even though `PDStructureElement.insertBefore(COSInteger,
+Object)` exists to insert one identifier before another. The javadoc promises
+neither exception.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdstructurenode.go`,
+`InsertBeforeBase`, with the comment above it naming this entry. `Array.AddAt`
+at -1 panics on the slice bounds, which is the same failure.
+
+**Confidence** high. Both the -1 and the throw follow from the two library
+contracts, and the sibling branch shows the check that is missing.
+
+## 40. `PDStandardAttributeObject` writes a string array and reads a name array
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDStandardAttributeObject.java`:
+
+```java
+protected String[] getArrayOfString(String name)
+{
+    ...
+    strings[i] = ((COSName) array.getObject(i)).getName();
+    ...
+}
+
+protected void setArrayOfString(String name, String[] values)
+{
+    ...
+    array.add(new COSString(value));
+    ...
+}
+```
+
+**What correct would be** The two halves have to agree. PDF 32000-1:2008
+Table 337 gives `/Headers`, the only attribute that uses them, as an array of
+byte strings, so the setter is right and the getter should read `COSString`.
+
+**Why it matters** A round trip throws. `setHeaders(new String[] {"h1"})`
+followed by `getHeaders()` is a `ClassCastException`, on
+`PDTableAttributeObject` and on `PDExportFormatAttributeObject` alike, and
+`toString` calls the getter, so printing a table attribute object that was
+filled in through its own API throws too. Reading a conforming file throws for
+the same reason: the file holds strings.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdstandardattributeobject.go`,
+`GetArrayOfString`, with the comment above it naming this entry. The type
+assertion panics where the cast throws.
+
+**Confidence** high. The two methods are next to each other and disagree on the
+element type; only one of them can match the specification, and it is not the
+getter.
+
+## 41. `PDFourColours` pads a short array to five entries
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDFourColours.java`:
+
+```java
+public PDFourColours(COSArray array)
+{
+    this.array = array;
+    // ensure that array has 4 items
+    if (this.array.size() < 4)
+    {
+        for (int i = (this.array.size() - 1); i < 4; i++)
+        {
+            this.array.add(COSNull.NULL);
+        }
+    }
+}
+```
+
+**What correct would be** `for (int i = this.array.size(); i < 4; i++)`. The
+comment above the loop says four; the loop starts one index early, so it always
+runs one time too many.
+
+**Why it matters** Every array shorter than four comes out five long, whatever
+its length: an empty one gets five nulls, a three-entry one gets two more. The
+extra entry is written back to the file, since the constructor mutates the array
+it was handed rather than a copy --- so reading a `/BorderColor` of three
+colours through `getColorOrFourColors` cannot happen (that path needs size 3 or
+4), but any caller that builds `PDFourColours` over a short array corrupts it.
+PDF 32000-1:2008 Table 344 gives `/BorderColor` as one colour or exactly four.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdfourcolours.go`,
+`NewPDFourColoursOfArray`, with the comment above it naming this entry.
+
+**Confidence** high. The loop bound is off by one against its own comment, and
+the arithmetic is not in doubt.
+
+## 42. `StandardStructureTypes.types` collects itself
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/StandardStructureTypes.java`:
+
+```java
+public static final List<String> types = new ArrayList<>();
+static
+{
+    Field[] fields = StandardStructureTypes.class.getFields();
+    for (Field field : fields)
+    {
+        if (Modifier.isFinal(field.getModifiers()))
+        {
+            try
+            {
+                types.add(field.get(null).toString());
+            }
+            ...
+```
+
+**What correct would be** The loop wants the `String` constants, so it has to
+skip anything that is not one --- a `field.getType() == String.class` test, or
+naming the constants outright.
+
+**Why it matters** `types` is itself a public final field, so `getFields`
+answers it too and the loop adds `types.toString()` to `types`. The list
+therefore holds one entry that is not a structure type, and which entry that is
+depends on where `types` falls in `Class.getFields`, whose order the Java
+language does not define: first gives `"[]"`, last gives the whole list printed
+as one string, anything between gives a partial one. Nothing in PDFBox reads
+`types`, which is why it has gone unnoticed; a caller that does gets a list it
+cannot trust to hold only type names.
+
+**Where the Go carries it** It does not: Go has no reflection over constants,
+so there is nothing to enumerate and nothing that could pick itself up.
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/standardstructuretypes.go`
+names the forty-seven types and sorts them, and the comment above `Types` says
+that the self-referential entry is left out and why. This is the one entry in
+this file the port does not carry, because carrying it would mean inventing an
+entry whose content Java does not define either.
+
+**Confidence** high for the defect. The field is public and final and the loop
+tests only for final.
+
+---
+
+## 43. `PDSeedValue` writes strings into `/Reasons` and `/LegalAttestation` and reads them back as names
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValue.java`,
+`getReasons`/`setReasons` and `getLegalAttestation`/`setLegalAttestation`.
+
+**What** The setters write `COSString`s and the getters read `COSName`s:
+
+```java
+public List<String> getReasons()
+{
+    COSArray fields = dictionary.getCOSArray(COSName.REASONS);
+    return fields != null ? fields.toCOSNameStringList() : Collections.emptyList();
+}
+
+public void setReasons(List<String> reasons)
+{
+    dictionary.setItem(COSName.REASONS, COSArray.ofCOSStrings(reasons));
+}
+```
+
+and `COSArray.toCOSNameStringList` is
+
+```java
+return objects.stream().map(o -> ((COSName) o).getName()).collect(Collectors.toList());
+```
+
+**What correct would be** Both entries are text strings in the specification
+(PDF 32000-1 table 234: `Reasons` is "an array of text strings"; the same for
+`LegalAttestation`), so the setters are right and the getters should read
+`toCOSStringStringList`, the way `PDSeedValueCertificate.getKeyUsage` reads the
+strings it writes.
+
+**Why it matters** `getReasons` on any dictionary `setReasons` wrote throws
+`ClassCastException`, because the cast to `COSName` fails on the first entry.
+The same holds for `getLegalAttestation`. Reading a real file is no better: a
+conforming writer puts text strings there, and the getter throws on those too.
+The pair is only usable if the reader and the writer are both PDFBox and the
+entry was written by hand as names. Nothing in PDFBox calls either getter, which
+is why it has gone unnoticed. `getSubFilter` and `getDigestMethod` on the same
+class are correct, because `setSubFilter` and `setDigestMethod` write names.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/interactive/digitalsignature/pdseedvalue.go`,
+`Reasons` and `LegalAttestation` read `cos.Array.ToNameStringList`, which panics
+on an entry that is not a name — Go's answer to the `ClassCastException`. Both
+carry a comment pointing here.
+
+**Confidence** high. The cast is unconditional and the setter is right next to
+it.
+
+---
+
+## 44. `FDFAnnotationFreeText.getRotation` reads a string that `setRotation` wrote as an integer
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationFreeText.java`,
+`getRotation`/`setRotation`.
+
+**What** The setter writes an integer and the getter reads a string:
+
+```java
+public final void setRotation(int rotation)
+{
+    annot.setInt(COSName.ROTATE, rotation);
+}
+
+public String getRotation()
+{
+    return annot.getString(COSName.ROTATE);
+}
+```
+
+`COSDictionary.getString(COSName)` answers the value only when the entry is a
+`COSString`, and null otherwise.
+
+**What correct would be** `/Rotate` is an integer in the specification (PDF
+32000-1 table 30 for a page, and the XFDF `rotation` attribute the constructor
+reads is parsed with `Integer.parseInt`), so the setter is right and the getter
+should read `annot.getInt(COSName.ROTATE, 0)` — as the sibling `getJustification`
+does, which reads `getInt` and formats it.
+
+**Why it matters** `getRotation` answers null for every free text annotation the
+FDF import produced, and for every conforming file, because `/Rotate` is a
+number in both. It can only answer non-null for a file that wrote `/Rotate` as a
+string, which no writer does. Nothing inside PDFBox calls it, which is why it
+has gone unnoticed; a caller that reads the rotation of an imported annotation
+gets null and has no way to tell "no rotation" from "rotation present".
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/fdf/annotations2.go`, `FDFAnnotationFreeText.Rotation`, which
+reads `GetString` and so answers the empty string — the port's null — for
+anything `SetRotation` wrote. Its comment points here.
+
+**Confidence** high. The two methods sit five lines apart and the constructor
+right above them parses the attribute as an int.
+
+---
+
+## 45. `FDFDictionary.getPages` reads the array with `get` rather than `getObject`
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFDictionary.java`,
+`getPages`.
+
+**What** Every other list accessor of the class resolves indirect references and
+this one does not:
+
+```java
+pages.add(new FDFPage((COSDictionary) pageArray.get(i)));
+```
+
+against `getFields`, three methods above, which reads
+
+```java
+fields.add(new FDFField((COSDictionary) fieldArray.getObject(i)));
+```
+
+`COSArray.get` answers the entry as it stands, which is a `COSObject` for an
+indirect reference; `getObject` dereferences it first.
+
+**What correct would be** `getObject(i)`, as `getFields`, `getAnnotations` and
+`FDFField.getKids` all use.
+
+**Why it matters** `/Pages` holds an array of dictionaries, and a writer is free
+to make each of them an indirect object — the FDF specification places no
+restriction there, and PDFBox's own writer emits indirect objects for anything
+the trailer reaches. Reading such a file throws `ClassCastException` from
+`getPages`, because a `COSObject` is not a `COSDictionary`. Only a file whose
+pages are all direct dictionaries can be read. `getEmbeddedFDFs` on the same
+class has the same shape, but there it is harmless: `PDFileSpecification.createFS`
+takes a `COSBase` and dereferences it itself.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/fdf/fdfdictionary.go`, `Pages`,
+which reads `cos.Array.Get` and panics on an entry that is not a dictionary —
+the port's `ClassCastException`. Its comment points here.
+
+**Confidence** high. The two accessors sit in the same file and differ only in
+that one call.
+
+---
+
+## 46. `PDStreamTest` builds its stop filters from `COSName.toString()`
+
+**Where** `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/PDStreamTest.java`,
+`testCreateInputStreamNullFilters` and `testCreateInputStreamEmptyFilters`.
+
+**What** Both build the stop filter list like this:
+
+```java
+List<String> stopFilters = new ArrayList<>();
+stopFilters.add(COSName.DCT_DECODE.toString());
+stopFilters.add(COSName.DCT_DECODE_ABBREVIATION.toString());
+```
+
+`COSName.toString()` is `"COSName{" + getName() + "}"`, so the two entries are
+`"COSName{DCTDecode}"` and `"COSName{DCT}"`. The method they are handed to
+compares them against the filter's plain name:
+
+```java
+for (COSName nextFilter : filters)
+{
+    if (stopFilters.contains(nextFilter.getName()))
+```
+
+`"DCTDecode"` is never equal to `"COSName{DCTDecode}"`, so the stop list can
+never match anything.
+
+**What correct would be** `COSName.DCT_DECODE.getName()`, which is what every
+caller of `createInputStream(List<String>)` in the main tree passes --
+`PDInlineImage` and `SampledImageReader` both build their lists out of
+`getName()`.
+
+**Why it matters** Only for the test. Both cases run against a stream with no
+filters at all, so the loop the stop list guards never runs a second iteration
+and the assertions pass either way; what the test does not do is exercise the
+stopping it is named after. `testCreateInputStreamNullStopFilters`, the third
+case, passes `null` and is the only one whose name matches what it checks.
+Nothing in the shipped library is affected.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/common/pdstream_external_test.go`,
+`dctStopFilters`, which builds the same two strings through `cos.Name.String()`
+and says why. The stopping the Java test does not reach is covered separately by
+`TestCreateInputStreamStoppingStops` in the same package, which slice 6 wrote
+and which is not a port.
+
+**Confidence** high. Both halves are three lines apart and `COSName.toString`
+has carried the braces since the class was written.
+
+---
+
+## 47. `SignatureOptions.close` loses the first of two close failures
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/SignatureOptions.java`,
+`close`.
+
+```java
+public void close() throws IOException
+{
+    try
+    {
+        if (visualSignature != null)
+        {
+            visualSignature.close();
+        }
+    }
+    finally
+    {
+        if (pdfSource != null)
+        {
+            pdfSource.close();
+        }
+    }
+}
+```
+
+**What** A `finally` that throws replaces the exception already in flight. Where
+`visualSignature.close()` fails and `pdfSource.close()` then fails too, the
+caller is told about the second and never hears about the first, which is the
+one that says the visual signature template was left in a bad state.
+
+**What correct would be** What PDFBox does everywhere else it closes two things:
+`IOUtils.closeAndLogException(a, LOG, "a", null)` threaded through both, which
+keeps the first failure and logs the rest. `PDDocument.close`, three classes
+away, is written that way.
+
+**Why it matters** Little, in practice. Both resources are closed either way, so
+nothing leaks; only which of two failures reaches the caller differs, and two
+failing closes in one call is already an unusual state. It is here because it is
+a difference the port does not reproduce, not because it breaks a file.
+
+**Where the Go carries it** It does not.
+`go/pdfbox/pdmodel/interactive/digitalsignature/signing.go`, `Close`, keeps the
+first error and closes both, which is the convention every other `Close` in the
+port follows and which is what the Java would do if it used its own helper. This
+is a deliberate divergence, left as it stands.
+
+**Confidence** high for the behaviour; it is how Java has always treated a
+throwing `finally`. Calling it a defect rather than a style is a judgement, and
+that is why the entry says what it costs.
+
+---
+
+## 48. `PDDocumentCatalog.getAcroForm()` changes the document it is asked to read
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentCatalog.java`,
+`getAcroForm()` and `getAcroForm(PDDocumentFixup)`.
+
+```java
+public PDAcroForm getAcroForm()
+{
+    return getAcroForm(new AcroFormDefaultFixup(document));
+}
+```
+
+**What** The no-argument accessor applies `AcroFormDefaultFixup`, which is not a
+read: it walks the form and rewrites it — generating appearance streams where
+`/NeedAppearances` is set, adopting orphan widgets into fields, adding font
+resources to `/DR`. Java's own javadoc says so:
+
+> Using `getAcroForm(PDDocumentFixup acroFormFixup)` might change the original
+> content and subsequent calls with `getAcroForm(null)` will return the changed
+> content.
+
+So a caller that reads the form and then asks for it again with `null`, wanting
+the file as it was, gets the repaired version instead. The catalogue remembers
+the fixup it applied and never unapplies it.
+
+**What correct would be** A getter that does not mutate, with the repair on a
+method that says it repairs. The shape is deliberate — it is what makes PDFBox
+read broken forms out of the box — so this is surprising behaviour rather than
+a mistake, and it is recorded for the reader who finds a document changed by a
+call that looked like a read.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/interactive/form/catalogacroform.go`,
+`AcroFormOfCatalog`, applies the same fixup and mutates the same way — **but
+only when the program has linked `pdmodel/fixup`.** `fixup` names `PDAcroForm`,
+so `form` cannot import it; it sets `form.NewAcroFormDefaultFixup` from its own
+`init`, and a program that never blank-imports the package gets no fixup at all.
+The same call therefore has two behaviours depending on the import graph, where
+Java has one. That is a divergence of the port, not of the Java, and it is left
+as it stands: closing it would mean moving the fixups out of the package Java
+puts them in. `migration/STATUS.md` says the same under the slice 8 fixup
+section.
+
+**Confidence** high. The javadoc states the mutation itself.

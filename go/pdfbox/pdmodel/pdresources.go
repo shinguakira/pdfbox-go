@@ -11,17 +11,24 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/optionalcontent"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 )
 
 // PDResources is a set of resources available at the page/pages/stream level.
 //
 // Port of org.apache.pdfbox.pdmodel.PDResources.
 //
-// getFont and the cache it reads through are here; getColorSpace, getExtGState,
-// getShading, getPattern, getProperties and getXObject are not, because each
-// needs a type this port has not reached. They arrive with those types. See
-// migration/STATUS.md.
+// getFont, getExtGState, the add and put families and the cache they read
+// through are here; getColorSpace, getShading, getPattern, getProperties and
+// getXObject are not, and neither are add and put for a shading or a pattern,
+// because each needs a type this port has not reached. They arrive with those
+// types. See migration/STATUS.md.
 type PDResources struct {
 	resources *cos.Dictionary
 	cache     ResourceCache
@@ -53,6 +60,25 @@ func NewPDResourcesOf(resourceDictionary *cos.Dictionary) *PDResources {
 	return &PDResources{
 		resources:       resourceDictionary,
 		directFontCache: map[*cos.Name]font.PDFont{},
+	}
+}
+
+// NewPDResourcesOfCacheAndFontCache returns the resources held by the given
+// dictionary, read through the given cache and sharing the given direct font
+// cache.
+//
+// Port of the package-private PDResources(COSDictionary, ResourceCache,
+// Map<COSName, SoftReference<PDFont>>), which the AcroForm uses so that its
+// default resources keep one cache across the fields.
+func NewPDResourcesOfCacheAndFontCache(resourceDictionary *cos.Dictionary,
+	resourceCache ResourceCache, directFontCache map[*cos.Name]font.PDFont) *PDResources {
+	if resourceDictionary == nil {
+		panic("pdmodel: resourceDictionary is null")
+	}
+	return &PDResources{
+		resources:       resourceDictionary,
+		cache:           resourceCache,
+		directFontCache: directFontCache,
 	}
 }
 
@@ -251,3 +277,150 @@ func (r *PDResources) GetFont(name *cos.Name) (font.PDFont, error) {
 // Cache returns the cache the resources are read through, or nil where they are
 // read without one.
 func (r *PDResources) Cache() ResourceCache { return r.cache }
+
+// extGStateCache is the part of a resource cache that keeps extended graphics
+// states.
+//
+// Java declares getExtGState and put(COSObject, PDExtendedGraphicsState) on
+// ResourceCache itself. The port's ResourceCache is declared in pdmodel/font,
+// because it names PDFont and this package imports that one, and it cannot name
+// PDExtendedGraphicsState: graphics/state imports graphics, which imports font
+// for PDFontSetting, so font naming state would close a cycle. A cache that
+// keeps them says so by having these two methods, which DefaultResourceCache
+// does; one that does not simply reads through.
+type extGStateCache interface {
+	GetExtGState(indirect *cos.Object) *state.PDExtendedGraphicsState
+	PutExtGState(indirect *cos.Object, extGState *state.PDExtendedGraphicsState)
+}
+
+// GetExtGState returns the extended graphics state resource with the given
+// name, or nil where the resources have none.
+func (r *PDResources) GetExtGState(name *cos.Name) *state.PDExtendedGraphicsState {
+	indirect := r.getIndirect(cos.ExtGState, name)
+	cache, cacheKeepsThem := r.cache.(extGStateCache)
+	if cacheKeepsThem && indirect != nil {
+		if cached := cache.GetExtGState(indirect); cached != nil {
+			return cached
+		}
+	}
+	// get the instance
+	var extGState *state.PDExtendedGraphicsState
+	if base, isDictionary := asResourceDictionary(r.get(cos.ExtGState, name)); isDictionary {
+		extGState = state.NewPDExtendedGraphicsStateOfCache(base, r.Cache())
+	}
+	if cacheKeepsThem && indirect != nil {
+		cache.PutExtGState(indirect, extGState)
+	}
+	return extGState
+}
+
+// propertyListCache is the part of a resource cache that keeps property lists.
+//
+// Java declares getProperties, put(COSObject, PDPropertyList) and
+// removeProperties on ResourceCache itself; the port's ResourceCache is
+// declared in pdmodel/font, so this package asks the cache for them by shape,
+// the way it asks for the extended graphics states above.
+type propertyListCache interface {
+	GetProperties(indirect *cos.Object) markedcontent.PropertyList
+	PutProperties(indirect *cos.Object, propertyList markedcontent.PropertyList)
+}
+
+// GetProperties returns the property list resource with the given name, or nil
+// where the resources have none.
+//
+// Port of PDResources.getProperties.
+func (r *PDResources) GetProperties(name *cos.Name) markedcontent.PropertyList {
+	indirect := r.getIndirect(cos.Properties, name)
+	cache, cacheKeepsThem := r.cache.(propertyListCache)
+	if cacheKeepsThem && indirect != nil {
+		if cached := cache.GetProperties(indirect); cached != nil {
+			return cached
+		}
+	}
+	// get the instance
+	var propertyList markedcontent.PropertyList
+	if dict, isDictionary := asResourceDictionary(r.get(cos.Properties, name)); isDictionary {
+		propertyList = markedcontent.CreatePropertyList(dict)
+	}
+	if cacheKeepsThem && indirect != nil {
+		cache.PutProperties(indirect, propertyList)
+	}
+	return propertyList
+}
+
+// asResourceDictionary is Java's instanceof COSDictionary, which a COSStream
+// also satisfies.
+func asResourceDictionary(base cos.Base) (*cos.Dictionary, bool) {
+	switch value := base.(type) {
+	case *cos.Stream:
+		return &value.Dictionary, true
+	case *cos.Dictionary:
+		return value, true
+	}
+	return nil, false
+}
+
+// AddFont adds the given font to the resources, and returns the name it went in
+// under.
+func (r *PDResources) AddFont(value font.PDFont) *cos.Name {
+	return r.add(cos.Font, "F", value)
+}
+
+// AddColorSpace adds the given colour space to the resources.
+func (r *PDResources) AddColorSpace(colorSpace color.PDColorSpace) *cos.Name {
+	return r.add(cos.ColorSpace, "cs", colorSpace)
+}
+
+// AddExtGState adds the given extended graphics state to the resources.
+func (r *PDResources) AddExtGState(extGState *state.PDExtendedGraphicsState) *cos.Name {
+	return r.add(cos.ExtGState, "gs", extGState)
+}
+
+// AddPropertyList adds the given property list to the resources, under the
+// prefix that says whether it is an optional content group.
+func (r *PDResources) AddPropertyList(properties markedcontent.PropertyList) *cos.Name {
+	if _, isGroup := properties.(*optionalcontent.PDOptionalContentGroup); isGroup {
+		return r.add(cos.Properties, "oc", properties)
+	}
+	return r.add(cos.Properties, "Prop", properties)
+}
+
+// AddImageXObject adds the given image to the resources.
+func (r *PDResources) AddImageXObject(value *image.PDImageXObject) *cos.Name {
+	return r.add(cos.XObject, "Im", value)
+}
+
+// AddFormXObject adds the given form to the resources.
+func (r *PDResources) AddFormXObject(value *form.PDFormXObject) *cos.Name {
+	return r.add(cos.XObject, "Form", value)
+}
+
+// AddXObject adds the given XObject to the resources under the given prefix.
+func (r *PDResources) AddXObject(xobject common.COSObjectable, prefix string) *cos.Name {
+	return r.add(cos.XObject, prefix, xobject)
+}
+
+// PutFont sets the font resource with the given name.
+func (r *PDResources) PutFont(name *cos.Name, value font.PDFont) {
+	r.put(cos.Font, name, value)
+}
+
+// PutColorSpace sets the colour space resource with the given name.
+func (r *PDResources) PutColorSpace(name *cos.Name, colorSpace color.PDColorSpace) {
+	r.put(cos.ColorSpace, name, colorSpace)
+}
+
+// PutExtGState sets the extended graphics state resource with the given name.
+func (r *PDResources) PutExtGState(name *cos.Name, extGState *state.PDExtendedGraphicsState) {
+	r.put(cos.ExtGState, name, extGState)
+}
+
+// PutPropertyList sets the property list resource with the given name.
+func (r *PDResources) PutPropertyList(name *cos.Name, properties markedcontent.PropertyList) {
+	r.put(cos.Properties, name, properties)
+}
+
+// PutXObject sets the XObject resource with the given name.
+func (r *PDResources) PutXObject(name *cos.Name, xobject common.COSObjectable) {
+	r.put(cos.XObject, name, xobject)
+}

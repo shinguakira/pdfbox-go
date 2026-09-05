@@ -9,7 +9,7 @@ none". This file is where partial work and the reasons for it get recorded.
 
 Status values: `done` · `in progress` · `blocked` · `not started` · `out of scope`
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Summary
 
@@ -17,13 +17,14 @@ Last updated: 2026-09-04
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` 17 of 18; `pdfwriter` not started |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — slice 2 subset, `pdmodel/font` at 34 of 39 (the 5 left are the slice 7 embedders), all 12 encodings, and `pdmodel/encryption` at 17 of 19 |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 3, `getDataToSign` included |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common` and `graphics/optionalcontent`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19; what is left is `graphics/shading` and `graphics/pattern` |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | in progress — the engine and every text operator; `text` has all 6 files, minus what needs a document |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D` |
-| 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision |
-| — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points |
+| 6 | `rendering`, `printing`, `shading` | 60 | not started — needs a rasteriser decision. `rendering/RenderDestination` is ported, because `PDOptionalContentGroup` takes one |
+| — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
+| — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
 | 7 | `cmd/pdfbox` | 26 | not started |
 | — | `xmpbox` | 74 | not started |
 
@@ -323,15 +324,15 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `common/PDImmutableRectangle.java` | `common/pdrectangle.go` | done — as a flag, since Go has no subclassing; `PDImmutableRectangleTest` ported |
 | `common/PDDictionaryWrapper.java` | `common/pddictionarywrapper.go` | done |
 | `common/PDTypedDictionaryWrapper.java` | `common/pdtypeddictionarywrapper.go` | done |
-| `common/PDStream.java` | `common/pdstream.go` | partial — the reading path the fonts need; the writing constructors, the decode parameters, the file specification and the metadata still need `COSArrayList`, `COSDictionaryMap`, `PDMetadata` and a file specification |
-| `common/COSArrayList.java` | — | not started — its Java test needs annotations |
-| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing and `getFont` with its direct cache; `getColorSpace`, `getExtGState`, `getShading`, `getPattern`, `getProperties` and `getXObject` still wait on the type each returns |
-| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | partial — the font and font descriptor members; the colour space, graphics state, shading, pattern, property list and XObject members wait on their types. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package |
-| `DefaultResourceCache.java` | `resourcecache.go` | partial — the font and font descriptor halves, including the stable-cache bookkeeping. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
-| `PDPage.java` | `pdpage.go` | partial — boxes, rotation, resources, contents; annotations, thread beads, transitions, actions, viewports, metadata and the `PDStream` methods are absent |
+| `common/PDStream.java` | `common/pdstream.go` | done — the reading path here, the rest in slice 8 |
+| `common/COSArrayList.java` | — | not started here — slice 8, with its Java test |
+| `PDResources.java` | `pdresources.go` | partial — the dictionary plumbing and `getFont` with its direct cache; `getColorSpace` and `getExtGState` came with slices 3 and 6, `getProperties` with slice 8; `getShading`, `getPattern` and `getXObject` still wait on the type each returns |
+| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | partial — the font and font descriptor members here, the colour space and graphics state ones later, the property list ones in slice 8; the shading, pattern and XObject members wait on their types. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package |
+| `DefaultResourceCache.java` | `resourcecache.go` | partial — the same members as the interface above, each with the stable-cache bookkeeping. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
+| `PDPage.java` | `pdpage.go` | partial here — boxes, rotation, resources, contents. The `PDStream` methods came with slice 7 and everything else with slice 8; only `removePageResourceFromCache` is still absent |
 | `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
 | `MissingResourceException.java` | `errors.go` | done |
-| `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started |
+| `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started here — slice 3 for the document and its information, slice 8 for the catalogue |
 
 `PDPage.getContentsForStreamParsing` is the general path for now. Its fast path
 decodes a single flate stream as it is read, which needs
@@ -629,7 +630,7 @@ met without a file, so the work was done here as a special case.
 | `Loader.java` | `pdfbox/loader.go` | done — the reading entry points |
 | `PDDocument.java` | `pdmodel/pddocument.go` | partial — the reading path; signatures, form fields, importing a page and saving each need a package this port has not reached |
 | `PDDocumentCatalog.java` | `pdmodel/pddocument.go` | partial — the pages and the version; forms, outlines, names, threads, metadata and actions wait on their types |
-| `PDDocumentInformation.java` | `pdmodel/pddocument.go` | partial — minus the dates, which need the COS date parsing slice 1 left out |
+| `PDDocumentInformation.java` | `pdmodel/pddocument.go` | partial here — minus the dates, `getTrapped`, `getMetadataKeys` and `getPropertyStringValue`, which slice 8 added with `DateConverter` |
 | `PDFXRefStream.java`, `EndstreamFilterStream.java`, `FDFParser.java` | — | not started — the first two are the writing path, the third is FDF |
 
 Four things worth naming:
@@ -1965,3 +1966,626 @@ The same report also worried about indexing `splitted[0]` when nothing is
 extracted. That cannot happen: reaching the index means both setters accepted
 their arguments, so `1 <= startPage <= endPage <= numberOfPages`, and
 `processPages` therefore makes at least one destination document.
+
+## Slice 8 — forms, annotations, interactive features
+
+Branch `slice/8-forms-annotations`. The largest slice by file count: every
+subtree under `pdmodel/interactive`, the whole of `pdmodel/documentinterchange`
+and `pdmodel/fdf`, the document fixups, the optional content, and the half of
+`pdmodel/common` slice 2 left.
+
+Every Java class in those packages has a Go counterpart. What is missing is
+named method by method below, and each gap is a type a later slice brings.
+
+### `pdmodel/interactive` — the four classes of the package itself
+
+| Java file | Go file |
+| --- | --- |
+| `PlainText.java` | `interactive/plaintext.go` |
+| `PlainTextFormatter.java` | `interactive/plaintextformatter.go` |
+| `AppearanceStyle.java` | `interactive/appearancestyle.go` |
+| `TextAlign.java` | `interactive/textalign.go` |
+
+`PlainText` breaks a paragraph into lines with `java.text.BreakIterator`, which
+follows the Unicode line breaking algorithm. Go has no such iterator in its
+standard library. `lineBreakSegments` breaks before a run of whitespace and
+after a hyphen, which is what those rules come to for the Latin text a form
+field holds; text in a script that breaks by its own rules — Thai, Khmer,
+Japanese — is broken differently. The comment above the function says so.
+
+### `interactive/form` — all 21 files
+
+`pdacroform.go`, `pdfield.go`, `pdterminalfield.go`, `pdnonterminalfield.go`,
+`pdvariabletext.go`, `pdtextfield.go`, `pdbutton.go`, `buttons.go` (check box,
+radio button, push button), `pdchoice.go`, `choices.go` (list box, combo box),
+`pdsignaturefield.go`, `pdfieldfactory.go`, `pdfieldtree.go`, `fieldutils.go`,
+`pddefaultappearancestring.go`, `pdxfaresource.go` and
+`appearancegeneratorhelper.go`.
+
+Five files carry what Go could not put where Java has it:
+
+- **`catalogacroform.go`** — `getAcroForm`, `getAcroForm(PDDocumentFixup)` and
+  `setAcroForm` are functions over a `*pdmodel.PDDocumentCatalog`, because they
+  name `PDAcroForm` and `pdmodel` cannot import this package. The catalogue
+  keeps the two private fields they use, typed `any`, and this package narrows
+  them.
+- **`fdf.go`** — `PDField.importFDF`, `PDTerminalField.importFDF`,
+  `PDNonTerminalField.importFDF`, `PDField.exportFDF` and the two on
+  `PDAcroForm`, as functions, because putting a method naming `FDFField` on the
+  `PDField` interface would make every implementation name it too.
+  `PDXFAResource.getDocument` is here for the same reason.
+- **`widgetparent.go`** — `PDAnnotationWidget.setParent(PDField)`, which the
+  annotation package cannot declare.
+- **`documentsignatures.go`** — `PDDocument.getSignatureFields` and
+  `getSignatureDictionaries`.
+- **`handlerhooks.go`** — the two hooks `annotation/handlers` calls back into
+  the form through: `AcroFormDefaultAppearance` and
+  `AcroFormDefaultResourcesFont`.
+
+### `interactive/annotation` — all 52 files
+
+`pdannotation.go` holds the abstract base and its factory; `annotations.go` and
+`annotations2.go` the concrete annotations; `dictionaries.go` the border
+styles, the appearance dictionary and stream, the action dictionary, the
+additional actions, the markup information, the external data and the rest.
+
+`annotation/handlers` holds every appearance handler plus `cloudyborder.go` and
+`pathwriter.go`. `register.go` fills the `DefaultAppearanceHandlers` registry
+from its `init`, which is how `PDAnnotation.constructAppearances` reaches a
+handler without this package naming each one.
+
+`PDSquigglyAppearanceHandler.generateNormalAppearance` is **not ported.** It
+fills the squiggle with a tiling pattern, which needs `PDTilingPattern`,
+`PDPatternContentStream` and the `PDPattern` colour space — all slice 9's. The
+handler is here and its comment says so.
+
+### `interactive/action` — all 25 files
+
+`pdaction.go` (the abstract action and `PDActionFactory`), `actions.go` (the
+concrete actions, `PDURIDictionary` and `PDWindowsLaunchParams`) and
+`additionalactions.go` (the five additional-action dictionaries).
+
+### `interactive/documentnavigation` — all 12 files
+
+`destination/pddestination.go` and `destination/pdpagefitdestination.go` hold
+the abstract destination, the factory, the named destination and the five page
+destinations. `PDPageDestination` is an abstract class in Java; the port keeps
+its state in a struct the five concrete destinations embed, and declares the
+`PageDestination` interface for what `instanceof PDPageDestination` asks.
+
+`outline/` holds `PDOutlineNode`, `PDDocumentOutline`, `PDOutlineItem` and
+`PDOutlineItemIterator`.
+
+`destination` cannot name `PDPage`: `PDPage` reaches this package through the
+annotations. `PageLike` names what is used, and `pdmodel` sets
+`NewPageFromDictionary` and `IndexOfPageInTree` from its `init`.
+
+### `interactive/pagenavigation`, `measurement`, `viewerpreferences` — all 12 files
+
+`pdthread.go` (thread and bead), `pdtransition.go` (transition, style,
+dimension, direction, motion), `measurement/measurement.go` (viewport, measure,
+rectilinear measure, number format) and
+`viewerpreferences/pdviewerpreferences.go` with its five enums.
+
+### `interactive/digitalsignature` — all 18 files
+
+| Java file | Go file |
+| --- | --- |
+| `PDSignature.java` | `pdsignature.go` |
+| `COSFilterInputStream.java` | `cosfilterinputstream.go` |
+| `PDPropBuild.java`, `PDPropBuildDataDict.java` | `pdpropbuild.go` |
+| `PDSeedValue.java` | `pdseedvalue.go` |
+| `PDSeedValueCertificate.java`, `PDSeedValueMDP.java`, `PDSeedValueTimeStamp.java` | `pdseedvaluecertificate.go` |
+| `SignatureInterface.java`, `ExternalSigningSupport.java`, `SigningSupport.java`, `SignatureOptions.java` | `signing.go` |
+| `visible/*.java` — all 6 | `visible/` — 6 files |
+
+`SigningSupport` needs the writer, and `pdfwriter` cannot import `pdmodel`.
+`COSWriterLike` names the two methods it uses and the writer satisfies it.
+`SignatureInterface` itself stays in `pdfwriter`, where slice 7 declared it.
+
+**This closes slice 7's `getDataToSign` gap.** `COSWriter.DataToSign` is
+ported, and with it the real signing path: `PDDocument.saveIncremental` with a
+`SignatureInterface` now signs rather than returning the error slice 7 left.
+`COSFilterInputStream` is what it needed.
+
+### `pdmodel/documentinterchange` — all 24 files
+
+`logicalstructure/` — `PDStructureNode`, `PDStructureElement`,
+`PDStructureTreeRoot`, `PDAttributeObject`, `PDUserAttributeObject`,
+`PDMarkInfo`, `PDMarkedContentReference`, `PDObjectReference`, `Revisions`,
+`PDParentTreeValue`. `markedcontent/` — `PDMarkedContent`, `PDPropertyList`.
+`taggedpdf/` — the standard attribute objects and `StandardStructureTypes`.
+`prepress/` — `PDBoxStyle`.
+
+`PDArtifactMarkedContent` is folded into `markedcontent/pdmarkedcontent.go` as
+the constructor `NewPDArtifactMarkedContent`: Java's subclass adds accessors for
+the artifact's own properties, and only its tag reaches the text extractor.
+
+`PDStructureElementNameTreeNode` lives in top-level `pdmodel`, where Java has
+it, because it is the `/IDTree` of the structure tree root.
+
+### `pdmodel/fdf` — all 31 files, and `pdfparser/FDFParser`
+
+`fdfdocument.go` (document and catalogue), `fdfdictionary.go`, `fdffield.go`,
+`fdfannotation.go` (the abstract annotation and its two factories),
+`annotations.go` and `annotations2.go` (the concrete FDF annotations),
+`small.go` (page, template, named page reference, icon fit and its enums,
+`FDFOptionElement`, `FDFJavaScript`).
+
+`FDFParser` answers a `*cos.Document` rather than an `FDFDocument`:
+`pdfparser` sits below `pdmodel`, exactly as it does for `PDFParser`. The
+wrapping is in `pdfbox/loader_fdf.go` — `LoadFDF`, `LoadFDFReader`,
+`LoadFDFFrom`, `LoadXFDF` and `LoadXFDFReader`.
+
+`COSWriter.write(FDFDocument)` inverts the same way: `pdfwriter.WriteFDF` takes
+the COS document, and `FDFDocument.Save` calls it.
+
+Reading XFDF needs a DOM, and Go has none. `go/w3c/dom` is a small reading DOM
+built for this — `Parse(reader, namespaceAware)`, `TextContent`,
+`FirstElementByTagName`, `ElementsByPath`. `encoding/xml` erases the difference
+between a CDATA section and ordinary text, which `FDFAnnotationFreeText` and
+`FDFAnnotationText` depend on, so the parser records byte offsets and looks back
+at the source to tell them apart. PDFBox's four XPath expressions are replaced
+by the two child-element helpers, because every one of them is a direct child
+lookup.
+
+`pdfbox/util/xmlutil.go` is `XMLUtil`, `pdfbox/util/hex.go` the two `Hex`
+methods FDF needs, and `go/awt/color.go` is `java.awt.Color` — a colour built
+from a packed integer or three components, which is all PDFBox uses of it, plus
+the named constants it references.
+
+### `pdmodel/fixup` and `fixup/processor` — all 8 files
+
+`fixup/fixup.go` holds `PDDocumentFixup`, `AbstractFixup`,
+`AcroFormDefaultFixup` and `AcroFormOrphanWidgetsFixup`; `fixup/processor/`
+holds the four processors.
+
+**The fixups can only be linked in by the program itself.** `form` cannot import
+`fixup` — `fixup` names `PDAcroForm` — so `fixup`'s `init` sets
+`form.NewAcroFormDefaultFixup`. A program that wants the default fixup applied
+must blank-import the package:
+
+    import _ "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/fixup"
+
+Without it, `form.AcroFormOfCatalog` reads the form with no fixup applied, which
+is what `getAcroForm(null)` of Java does. The package comment says so, and so
+does every test that needs the fixup.
+
+The same call therefore has two behaviours depending on the import graph, where
+Java has one. That is a divergence of the port, left as it stands; JAVA-BUGS 48
+records it, together with what `getAcroForm()` mutates when it is applied.
+
+`AcroFormOrphanWidgetsProcessor.ensureFontResources` finds the replacement font
+but does not embed it: Java calls `PDType0Font.load`, and the font embedders are
+not ported. The lookup and its logging are here so the shape is right when they
+land.
+
+### `pdmodel/graphics/optionalcontent` — all 3 files, and `PDPropertyList` with them
+
+`pdoptionalcontentgroup.go`, `pdoptionalcontentmembershipdictionary.go` and
+`pdoptionalcontentproperties.go`.
+
+`PDPropertyList` lives in `documentinterchange/markedcontent`, where Java has
+it, and its static `create` names the two optionalcontent subclasses. Go forbids
+that direction, so `markedcontent` keeps a registry and `optionalcontent` fills
+it from its `init` — `CreatePropertyList` then dispatches exactly as Java's
+chain of `if`s does.
+
+`PDOptionalContentGroup.getRenderState` takes a `RenderDestination`, which lives
+in `org.apache.pdfbox.rendering` — slice 9's package. `go/pdfbox/rendering`
+holds that one type and nothing else, and its package comment says why.
+
+**This closes the slice 2 `PDResources.getProperties` gap**, and with it the
+`BDC` and `DP` operators: a properties operand that names a property list in the
+resources is now resolved, which is what `operator/markedcontent` said was
+missing. `ResourceCache` gained its three property list members, and
+`DefaultResourceCache` the map and stable-cache bookkeeping behind them.
+
+### `pdmodel/common` — what slice 2 left
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `COSArrayList.java` | `common/cosarraylist.go` | done |
+| `COSDictionaryMap.java` | `common/cosdictionarymap.go` | done |
+| `PDStream.java` | `common/pdstream.go` | done — the writing constructors, the decode parameters, the file specification and the metadata |
+| `PDMetadata.java` | `common/pdmetadata.go` | done |
+| `PDNameTreeNode.java` | `common/pdnametreenode.go` | done |
+| `PDNumberTreeNode.java` | `common/pdnumbertreenode.go` | done |
+| `PDObjectStream.java` | `common/pdobjectstream.go` | done |
+| `PDPageLabels.java`, `PDPageLabelRange.java` | `common/pdpagelabels.go`, `common/pdpagelabelrange.go` | done |
+| `filespecification/*.java` | `common/filespecification/` | done |
+
+`PDEmbeddedFile`'s four date accessors are here too: `DateConverter` is this
+slice's, taken in dependency order, and they read through it.
+
+### Top-level `pdmodel` — the holes the interactive types were blocking
+
+- **`PDPage`.** `getThreadBeads`, `setThreadBeads`, `getMetadata`,
+  `setMetadata`, `getActions`, `setActions`, `getTransition`, the two
+  `setTransition`, `getAnnotations`, `getAnnotations(AnnotationFilter)`,
+  `setAnnotations`, `getViewports`, `setViewports`, `getUserUnit` and
+  `setUserUnit` are ported. Only `removePageResourceFromCache` is left: it
+  purges the colour space, ext gstate, pattern, shading and XObject halves of
+  the resource cache, and four of those five still have no type.
+- **`PDDocumentCatalog`.** Every accessor is ported. `getAcroForm` and
+  `setAcroForm` are in `interactive/form` (see above); the other 36 are in
+  `pddocumentcatalog.go`, kept out of `pddocument.go` so that the file next to
+  `PDDocument` names no interactive type.
+- **`PageMode`, `PageLayout`** — `pagemode.go`. Java's `fromString` throws
+  `IllegalArgumentException` for a value that is not one of the constants; the
+  value comes out of a PDF rather than from the library, so the port answers an
+  error. `getPageMode` and `getPageLayout` check it exactly where Java catches.
+- **`PDDestinationNameTreeNode`, `PDEmbeddedFilesNameTreeNode`,
+  `PDJavascriptNameTreeNode`, `PDDocumentNameDictionary`,
+  `PDDocumentNameDestinationDictionary`** — `nametreenodes.go`.
+- **`PDDocumentInformation`.** Its four date accessors were waiting on
+  `DateConverter`, which is this slice's; `getTrapped`, `setTrapped`,
+  `getMetadataKeys` and `getPropertyStringValue` came with them, and the class
+  is complete.
+- **`PDAbstractContentStream`, `PDPageContentStream`,
+  `PDAppearanceContentStream`, `PDFormContentStream`.** None of the four is
+  named in any slice's scope table; they are here because
+  `AppearanceGeneratorHelper` cannot exist without them. `shadingFill` is not
+  ported — it names `PDShading` — and neither is `PDPatternContentStream`, which
+  names `PDTilingPattern`. Both are slice 9's.
+  `PDPageContentStream`'s five deprecated `appendRawCommands` methods are not
+  ported either, and that one is a choice rather than a gap: they write bytes
+  into the stream unchecked, Java marks every one `@Deprecated`, and nothing in
+  the main tree calls them.
+- **`PDStream.createInputStream(DecodeOptions)`** is not ported. `cos.Stream`
+  has no reader that takes decode options, because the `Codec` interface does
+  not; the options exist and `filter.DCT` honours them, so closing this needs a
+  change to that interface rather than to `PDStream`.
+- **`PDOutputIntent`** is in `graphics/color`, where Java has it, because the
+  catalogue's three output intent accessors name it. Its
+  `PDOutputIntent(PDDocument, InputStream)` constructor is **not ported**: it
+  reads the ICC profile with `java.awt.color.ICC_Profile`, and Go has no ICC
+  engine — the same gap `PDICCBased` records. It also takes a `PDDocument`,
+  which `graphics/color` cannot name.
+
+### Which Java tests are ported, and which are not
+
+Every Java test in this slice's packages is ported except the eight named below.
+
+| Java test | Go test |
+| --- | --- |
+| `PDActionURITest` | `interactive/action/pdactionuri_test.go` |
+| `PDTransitionTest`, `PDTransitionDirectionTest` | `interactive/pagenavigation/pdtransition_test.go` |
+| `PDDocumentOutlineTest`, `PDOutlineItemTest`, `PDOutlineItemIteratorTest` | `interactive/documentnavigation/outline/outline_test.go` |
+| `PDOutlineNodeTest` | `interactive/documentnavigation/outline/pdoutlinenode_test.go` |
+| `PDAnnotationTest`, `PDSquareAnnotationTest`, `PDCircleAnnotationTest` | `interactive/annotation/pdannotation_external_test.go` |
+| `AppearanceGenerationTest` | `interactive/annotation/appearancegeneration_external_test.go` |
+| `PDAcroFormTest` | `interactive/form/pdacroform_external_test.go` |
+| `PDFieldTest`, `PDTextFieldTest`, `PDSignatureFieldTest`, `PDDefaultAppearanceStringTest`, `PlainTextTest`, `TestUtils` | `interactive/form/pdfield_test.go`, `interactive/form/form_test.go` |
+| `TestFields`, `PDChoiceTest`, `TestCheckBox`, `HandleDifferentDALevelsTest` | `interactive/form/fields_external_test.go` |
+| `ControlCharacterTest` | `interactive/form/controlcharacter_external_test.go` |
+| `AlignmentTest`, `CombAlignmentTest`, `AcroFormsRotationTest`, `MultilineFieldsTest` | `interactive/form/multiline_external_test.go` |
+| `TestListBox` | `interactive/form/listbox_test.go` |
+| `PDButtonTest` | `interactive/form/button_external_test.go` |
+| `TestRadioButtons` | `interactive/form/radiobutton_external_test.go` |
+| `PDStructureElementTest` | `documentinterchange/logicalstructure/pdstructureelement_external_test.go` |
+| `COSArrayListTest` | `common/cosarraylist_external_test.go` |
+| `PDStreamTest`, `TestEmbeddedFiles` | `common/pdstream_external_test.go` |
+| `TestOptionalContentGroups` | `graphics/optionalcontent/optionalcontent_external_test.go` |
+| `TestPDDocumentCatalog` | `pdmodel/pddocumentcatalog_external_test.go` |
+| `TestPDPageAnnotationsFiltering`, `TestPDPageTransitions` | `pdmodel/pdpageannotations_external_test.go` |
+| `TestPDPageContentStream` | `pdmodel/pdpagecontentstream_external_test.go` |
+| `PageModeTest`, `PageLayoutTest` | `pdmodel/pagemode_test.go` |
+| `TestFDF` | `pdmodel/fdf/fdf_external_test.go` |
+| `TestPDDocumentInformation` | `pdmodel/pddocumentinformation_external_test.go` |
+
+Not ported, each because the Maven build fetches its input or because it
+compares rendered images:
+
+| Java test | Why |
+| --- | --- |
+| `PDFieldTreeTest` | reads PDFs the build downloads into `target/pdfs` |
+| `PDAcroFormGenerateAppearancesTest` | the same |
+| `PDAcroFormFromAnnotsTest` | the same |
+| `PDAcroFormFlattenTest` | downloads its PDFs and compares `PDFRenderer` output pixel by pixel |
+| `AppearanceGenerationTest` — the two rendering cases | they compare rendered images; the rest of the class is ported |
+| `TestOptionalContentGroups` — two cases | `testOCGsWithSameNameCanHaveDifferentVisibility` and `testOCGGenerationSameNameCanHaveSameVisibilityOff` read pixels out of a `PDFRenderer` image |
+| `TestFDF.testPDFBox5894` | reads `target/pdfs/PDFBOX-5894.fdf` |
+| `TestPDDocumentCatalog.handleOutputIntents` | builds a `PDOutputIntent` from `sRGB.icc` through the constructor that needs `ICC_Profile`; the half that does not is ported |
+
+`interactive/digitalsignature`, `interactive/measurement` and
+`interactive/viewerpreferences` have no Java test directory at all.
+
+### Port defects found while porting slice 8, fixed
+
+**`PDStream.createOutputStream(COSName)` crashed on a null filter.** Java's
+`stream.createOutputStream(filter)` accepts null and means "no filter". The port
+passed the `*cos.Name` straight into `CreateWriterWithFilters`, where a nil
+name widened to a `cos.Base` is not `nil` — Go's typed-nil trap — and
+`filter.ByName` dereferenced it. Found by porting `PDSquareAnnotationTest`,
+which is the first caller that passes no filter.
+
+**`COSArrayList` compared by Go pointer identity.** Java's `contains`,
+`indexOf`, `lastIndexOf` and `remove` use `equals`, and
+`PDDictionaryWrapper.equals` compares the COS dictionary. Each accessor of the
+port builds a fresh wrapper, so two wrappers over one dictionary are different
+pointers and `retainAll` kept the wrong entries.
+`COSArrayListTest.testRetainIndirectObject` left one element where Java leaves
+three. `equalsAny` now asks the element for an `Equals` method first.
+
+**`PDFont` had no `Equals`.** Java's `PDFont.equals` compares the font
+dictionary, and `PDDefaultAppearanceStringTest` asserts that the font it put in
+the resources is the font that comes back. Added, along with
+`PDType1Font.getType1Font`, which the same test reads.
+
+**`COSArray.toCOSNameStringList` answered the wrong thing.** It now returns
+`[]string` and panics on an entry that is not a name, which is the
+`ClassCastException` Java's cast throws.
+
+**Three units of this slice's scope were not ported at all**, found by phase C
+rather than by a test: `PDOptionalContentProperties`, the third file of the
+optional content package; `PDResources.getProperties`, which the B9 note
+promised; and 36 of `PDDocumentCatalog`'s 40 methods, every one of which names a
+type from this slice. All three are ported now, with their Java tests.
+
+### Java bugs found, carried, and recorded
+
+Fourteen, `JAVA-BUGS.md` entries 35 to 48:
+
+- **35** `COSName.BEAD` is `"BEAD"` where the specification says `/Bead`, so
+  `PDThread.getFirstBead` reads an entry no writer produces.
+- **36** `PDWindowsLaunchParams.setOperation` writes `/D` and `getOperation`
+  reads `/O`.
+- **37** `PDMarkInfo.setSuspect` ignores its argument and always writes false.
+- **38** `PDUserAttributeObject` reads `/P` without checking it is there.
+- **39** `PDStructureNode.insertBefore` inserts at -1 when the reference kid is
+  not in the array.
+- **40** `PDStandardAttributeObject` writes a string array and reads a name
+  array.
+- **41** `PDFourColours` pads a short array to five entries.
+- **42** `StandardStructureTypes.types` collects itself.
+- **43** `PDSeedValue` writes strings into `/Reasons` and `/LegalAttestation`
+  and reads them back as names.
+- **44** `FDFAnnotationFreeText.getRotation` reads a string that `setRotation`
+  wrote as an integer.
+- **45** `FDFDictionary.getPages` reads the array with `get` rather than
+  `getObject`, so an indirect page throws `ClassCastException`.
+- **46** `PDStreamTest` builds its stop filters from `COSName.toString()`, so
+  the stopping it is named after never happens. In the Java test, not the
+  library.
+- **47** `SignatureOptions.close` loses the first of two close failures, because
+  its `finally` replaces the exception in flight.
+- **48** `getAcroForm()` changes the document it is asked to read, and the port
+  does so only when `pdmodel/fixup` is linked.
+
+### The slice 8 adversarial review
+
+The slice touches about 200 Java files, too many to read one after another and
+stay honest about it. So the review was run as a set of sweeps, each of which
+asks one question of every file at once and names the files it cannot answer
+for. Where a sweep flagged something, that file was read against its Java.
+
+**D7 — the keys.** Every `COSName` constant of `go/pdfbox/cos/names.go` was
+compared against `COSName.java` by value. The two sets are identical: 586 Java
+declarations, 588 Go constants, every Go value present in the Java and every
+Java value present in the Go. The pairs that differ only in case — `CA`/`ca`,
+`FL`/`Fl`, `OFF`/`Off`, `OP`/`op` — were then checked one at a time against
+their Java declarations, since those are the ones a swap would hide in; all
+four are right. `DCTDecodeAbbreviation` was removed: it was added during phase C
+next to the `DCT` the port already had, and `DCT` is the convention its six
+sibling filter abbreviations follow.
+
+Then, for each slice 8 package, the set of keys the Go reads or writes was
+compared against the set its Java counterpart uses, **both directions**. No
+package uses a key its Java does not, apart from `interactive/form`'s
+`/AcroForm`, which comes from the catalogue accessors demoted into it. No
+package fails to use a key its Java does, apart from `documentinterchange`'s
+`/OCG` and `/OCMD`, which moved with `PDPropertyList.create` into the
+`optionalcontent` registry, and `common`'s five, which found the `PDStream` gap
+below.
+
+**D8 — `COSArrayList`.** Java sets `isFiltered` in one place, the
+`(List, COSArray)` constructor when the two sizes differ, and refuses in six:
+`remove(Object)`, `addAll(Collection)`, `addAll(int, Collection)`,
+`set(int, E)`, `add(int, E)` and `remove(int)`. The port sets the flag in the
+same place and refuses in the same six, with the same messages, as panics.
+`add(E)`, `removeAll`, `retainAll` and `clear` carry no guard on either side —
+so a filtered list still accepts a plain append in the Go exactly as it does in
+the Java. Both filtered cases of `COSArrayListTest` are ported.
+
+**Missing methods.** Every `public` or `protected` method of every Java class in
+this slice was looked for in the Go tree. Twenty-three were not found; twenty-one
+are renames the port made deliberately — `getRenderState` to `RenderStateFor`,
+`valueOf` to `BaseStateValueOf`, the `getStringOrStream` and `createShortStyles`
+kind that Java declares `protected` and the port keeps unexported, the two
+`hashCode`s that Go has no contract for. Two were real: `PDStream`'s ten (below)
+and `PDAcroForm.getFieldIterator`, now `FieldIterator`.
+
+**Found: `PDStream` was missing ten public methods.** `getDecodeParms`,
+`getFileDecodeParams`, `setDecodeParms`, `setFileDecodeParams`, `getFileFilters`,
+`setFileFilters`, `getFile`, `setFile`, `getMetadata` and `setMetadata`, although
+this file recorded the class as whole. All ten are ported.
+`getFile` and `setFile` are `filespecification.FileOfStream` and
+`SetFileOfStream`: `PDFileSpecification` is in `common/filespecification`, which
+imports `common` for `PDEmbeddedFile`, so `common` cannot name it.
+
+**Found: `PDDocument.addSignature` was not ported at all.** D9 asks whether
+digital signatures verify or they do not, and the answer was that they could not
+be attached. The signature model, `COSWriter.getDataToSign`, `SigningSupport`
+and `SignatureOptions` were all here; the four `addSignature` overloads, their
+five private helpers and `saveIncrementalForExternalSigning` were not, so
+nothing could reach any of it. All of them are ported, as functions in
+`interactive/form` — they name `PDAcroForm`, `PDSignatureField` and
+`PDAnnotationWidget`.
+
+`signverify_test.go` answers D9. It is not a port: PDFBox has no signing test in
+the `pdfbox` module. It checks the two things that can be checked without a CMS
+implementation, and checks them against the output file rather than against the
+port's own arithmetic:
+
+- the `/ByteRange` in the written file starts at 0, ends at the file length, and
+  leaves a hole whose first byte is `<` and whose last is `>` — that is, the
+  hole is the `/Contents` hex string and nothing else;
+- the bytes the signer was handed are byte for byte the written file with that
+  hole removed, and `PDSignature.getSignedContent` on the output answers the
+  same bytes.
+
+Both the `SignatureInterface` path and the external signing path pass. What the
+test does not say is anything about the CMS blob: the port has no signature
+algorithm and does not pretend to.
+
+**D2 — dropped behaviour.** All 46 `catch` blocks and all three `finally` blocks
+in the slice were read against their Go. Every one of the seventeen appearance
+handlers logs its `IOException` and carries on in Java; every Go
+`GenerateNormalAppearance` logs and returns nil, and none of them propagates an
+error the Java would have swallowed. `PDNameTreeNode.calculateLimits`,
+`PDStructureTreeRoot.getRoleMap`, `PDObjectReference.getReferencedObject`,
+`PDAnnotationPopup.getParent`, `PDButton`'s `NumberFormatException`,
+`PDAcroForm.exportFDF`'s close-and-rethrow, the four `FDFDictionary` parses and
+the three fixup processors all match. Two divergences, both deliberate:
+
+- `SignatureOptions.close`. Java's `finally` closes `pdfSource` after
+  `visualSignature`, and a `finally` that throws replaces the exception in
+  flight, so Java surfaces the *later* failure. The port keeps the first, which
+  is the convention every other `Close` in the port follows. Both are closed
+  either way; only which of two close failures is reported differs. JAVA-BUGS 47.
+- `FDFDocument.saveXFDF` closes the writer it is given and the port does not,
+  because a Go `io.Writer` has nothing to close. The doc comment says so.
+
+The 71 unchecked `throw` sites were counted per package against the port's
+`panic` sites. The Go count is greater than or equal to the Java count in every
+package, which is what it should be: the port also panics where Java's implicit
+casts throw `ClassCastException`. Two `panic`s in `fixup` have no Java throw
+behind them and say why — `PDType1Font(FontName)` declares no exception, so a
+missing standard 14 metric is a library bug there too.
+
+Java's narrowing casts were checked where they matter. `CloudyBorder`'s two
+`(int) Math.ceil(...)` and every `(float)(double expression)` in the line, free
+text, polyline and strikeout handlers narrow at exactly the same point in the Go
+— `float32(float64(y) * math.Sin(angle))`, not `float32(y) * float32(...)`. The
+one difference that remains is at the edges: Java's `(int)` of an out-of-range
+double saturates and Go's conversion is undefined. Every such site here is a
+count derived from a page geometry and guarded by the caller.
+
+Java has no inclusive-bound `for` loop anywhere in this slice; the port has one
+`for fs <= appearanceDefaultFontSize`, which is
+`AppearanceGeneratorHelper.calculateFontSize`'s `while (fs <= DEFAULT_FONT_SIZE)`.
+
+Every `TODO` in the ported code is Java's own, carried across.
+
+**D3 — the tests.** Every test file in this slice names the Java test it came
+from in its header, or says that it is not a port. Every `@Test` method of every
+Java test class in the slice was looked for in the Go; twenty-three were not
+found, and each was accounted for:
+
+- Fourteen belong to the four classes recorded above as not ported.
+- Six are covered by a Go table test under one name —
+  `PDImmutableRectangleTest`'s four setters, the two tree-node limit pairs.
+- `PDOutlineNodeTest.openNodeAndAppend` has an empty `// TODO` body in the Java.
+- `PDFieldTest.testHashCode` asserts equal hash codes, and Go has no `hashCode`
+  contract; `Equals` is ported and `TestFieldEquals` covers it.
+- `TestCheckBox.testPDFBox6207` reads `target/pdfs`, which the Maven build
+  downloads.
+- **`PDChoiceTest.getOptionsFromMixed` was simply missing**, and is ported now.
+
+The three that stay unported now say so in the header of the file a reader would
+look in.
+
+Then every string literal of five characters or more in every slice 8 test was
+looked for in the Java test tree, to catch an assertion whose expected value had
+been read off the port rather than copied from the Java. Every literal that is
+an asserted value is in the Java; the ones that are not are Go method names used
+as labels and assertion messages. `ControlCharacterTest`'s two separators are
+the real U+2028 and U+2029, not the spaces they look like.
+
+`AppearanceGenerationTest` deserves its own line, because it is the test in this
+slice most able to become a tautology: it does not assert any value at all. It
+generates appearances for the annotations of a fixture, and compares the token
+stream against the appearance PDFBox itself wrote into the same file. Numbers
+are compared to within a tolerance the Java sets; operators must match exactly.
+
+**D4 — the deferrals.** Every "not ported" and "is not here" in the slice's doc
+comments was checked against this file. All were recorded except two, now added:
+`PDStream.createInputStream(DecodeOptions)`, which needs `cos.Stream` to have an
+options-taking reader, and `PDPageContentStream`'s five deprecated
+`appendRawCommands`, which is a choice rather than a gap. Every remaining
+deferral is blocked on a type a later slice brings — `PDShading`,
+`PDTilingPattern`, the font embedders, an ICC engine, the four unported halves
+of the resource cache — none on difficulty.
+
+**D5 — the Java bugs.** All of this slice's entries were re-read against the Go
+site that carries them. Entries 35 to 45 are carried: the `BEAD` type name, the
+`/D`-for-`/O` write, `setSuspect`'s ignored argument, the three unchecked `/P`
+reads, the `insertBefore` index of -1, the name-array read of a string array,
+the five-entry padding, the two `/Reasons` name reads, `getRotation`'s string
+read of an integer and `getPages`' unresolved reference. Three are not, and each
+says so in its own "Where the Go carries it" line rather than claiming
+otherwise: entry 42, because Java's `StandardStructureTypes` fills its list by
+reflection over its own fields and picks the list itself up, and Go has no such
+reflection to reproduce; entry 47, where the port keeps the first of two close
+failures; and entry 48, where the port applies the mutating fixup only when
+`pdmodel/fixup` is linked. Nothing was fixed on the way past.
+
+**Still open.** Nothing found in this review is unfixed. What remains absent is
+the deferral list above, and this slice's tests do not cover the appearance
+handlers' output against a renderer — that comparison is slice 9's, and
+`AppearanceGenerationTest`'s two rendering cases wait for it.
+
+### The slice 8 feedback
+
+Six items, all from the pull request review. Two were typos in text the port
+wrote; four were behaviour. Three of the four were port defects and are fixed,
+each behind a test that fails without the fix. The fourth is a deviation that
+turns out to be unreachable, and is recorded here rather than changed.
+
+**Fixed — `PDNameTreeNode.getValue` could not tell an absent limit from an
+empty one.** Java's `getUpperLimit` and `getLowerLimit` answer `null` where the
+child has no `/Limits`, and `getValue` treats a null limit as "this child may
+hold anything": it descends and returns whatever the child answers, without
+looking at the children after it. The port's accessors answer `""` for an
+absent limit *and* for the empty name, which is a legal limit and sorts before
+every other. A tree whose first child covers `["" "a"]` therefore swallowed
+every lookup, so a name in a later child came back as not found. `Value` now
+reads the `/Limits` array through `limitOf`, which reports presence separately.
+`TestValueSkipsAChildWhoseLowerLimitIsTheEmptyName`.
+
+**Fixed — `DateConverter` accepted a second of 60 or 61.** `parseBigEndianDate`
+builds its result on a `GregorianCalendar` with leniency off, whose maximum for
+`SECOND` is 59; the 0-to-61 leap-second range belongs to `java.util.Date`, not
+to `Calendar`. The port's bound was 61, and `time.Date` normalises rather than
+refusing, so `D:20200101120060Z` was read as 12:01:00 — a malformed date
+silently becoming a different valid instant. The bound is 59.
+`TestSecondsBeyond59AreRefused`.
+
+**Fixed — `PlainText` kept one paragraph too many.** The constructor is
+`textValue.replace('\t',' ').split("\R")`, and `String.split` with a limit of
+zero drops *every* trailing empty result, not all but one: `Pattern.split`
+builds `["", ""]` for `"\n"` and strips both, leaving no paragraphs. The port
+stopped stripping at one entry and kept an empty paragraph, which the
+constructor then turns into a space — drawing a space where PDFBox draws
+nothing. The strip now runs to zero, and the branch above it answers the value
+whole where the regex never matched, which is what `Pattern.split` returns
+before it strips anything. `TestValueOfOnlyLineBreaksHasNoParagraphs` and
+`TestTrailingLineBreaksAreDropped`.
+
+**Recorded, not changed — the comb field walks runes where Java walks UTF-16
+code units.** `insertGeneratedCombAppearance` takes each cell with
+`value.substring(i, i+1)` in Java and one rune in the port, and counts the cells
+with `value.length()` against `len([]rune(value))`. The two agree for every
+character in the basic plane and differ for one outside it, where Java splits
+the surrogate pair across two cells — a different cell count, a different
+alignment for a centred or right-aligned field, and two half-glyphs instead of
+one.
+
+It is not reachable. Both sides measure each cell through
+`PDFont.getStringWidth` before drawing it, Java asking the font for the lone
+surrogate `U+D83D` and the port for the whole `U+1F600`, and no font this port
+can build has either — the embedders that would produce one are not ported. Both
+refuse the value rather than laying it out.
+`TestCombFieldRefusesASupplementaryCharacter` asserts that the port refuses, so
+that the claim fails loudly rather than silently if the encoder ever starts
+accepting such a character. Changing the walk would mean decoding each UTF-16
+unit back to a Go string, and a lone surrogate becomes U+FFFD there because a Go
+string cannot hold one — a behaviour Java does not have, bought for a case
+neither side reaches.
+
+**The two typos.** `PDListAttributeObject`'s doc comment named a type that does
+not exist, and `PDSignatureField.SetValue`'s panic message had lost its
+apostrophe to an editing slip. The message otherwise stays as Java writes it,
+naming `setValue(PDSignature value)`: the port copies Java's exception text, and
+the Go name it points at is on the method two lines below.

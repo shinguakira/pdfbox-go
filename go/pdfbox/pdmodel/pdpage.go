@@ -7,6 +7,10 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/action"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/measurement"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/pagenavigation"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
@@ -18,11 +22,10 @@ var delimiter = []byte{'\n'}
 //
 // Port of org.apache.pdfbox.pdmodel.PDPage.
 //
-// The parts that reach into subtrees this port has not covered are not here:
-// annotations, thread beads, transitions, additional actions, viewports, the
-// metadata stream, and the two setContents methods and getContentStreams, which
-// are typed on PDStream. The ResourceCache the reading constructor takes is
-// absent for the same reason. See migration/STATUS.md.
+// removePageResourceFromCache is not here: it purges the colour space, ext
+// gstate, pattern, properties, shading and XObject halves of the resource
+// cache, and the ported ResourceCache holds only fonts. See
+// migration/STATUS.md.
 type PDPage struct {
 	page      *cos.Dictionary
 	resources *PDResources
@@ -385,4 +388,195 @@ func (p *PDPage) SetContentsOfList(contents []*common.PDStream) {
 		array.Add(stream.COSObject())
 	}
 	p.page.SetItem(cos.Contents, array)
+}
+
+// ThreadBeads returns the article threads on this page, which is empty where
+// there are none.
+//
+// The list is backed by the beads array, so adding to it or deleting from it
+// changes the document too.
+func (p *PDPage) ThreadBeads() *common.COSArrayList[*pagenavigation.PDThreadBead] {
+	beads := p.page.GetCOSArray(cos.B)
+	if beads == nil {
+		beads = cos.NewArray()
+	}
+	pdObjects := make([]*pagenavigation.PDThreadBead, 0, beads.Size())
+	for i := 0; i < beads.Size(); i++ {
+		base := beads.GetObject(i)
+		var bead *pagenavigation.PDThreadBead
+		// in some cases the bead is null
+		if dic, isDictionary := base.(*cos.Dictionary); isDictionary {
+			bead = pagenavigation.NewPDThreadBeadOf(dic)
+		}
+		pdObjects = append(pdObjects, bead)
+	}
+	return common.NewCOSArrayListOf(pdObjects, beads)
+}
+
+// SetThreadBeads sets the article threads on this page, and removes them for a
+// nil list.
+func (p *PDPage) SetThreadBeads(beads []*pagenavigation.PDThreadBead) {
+	if beads == nil {
+		p.page.RemoveItem(cos.B)
+		return
+	}
+	p.page.SetItem(cos.B, common.NewCOSArrayOfObjectables(beads))
+}
+
+// Metadata returns the metadata of this page, or nil where it has none.
+func (p *PDPage) Metadata() *common.PDMetadata {
+	metadata := p.page.GetCOSStream(cos.Metadata)
+	if metadata != nil {
+		return common.NewPDMetadataOfStream(metadata)
+	}
+	return nil
+}
+
+// SetMetadata sets the metadata of this page, which may be nil.
+func (p *PDPage) SetMetadata(meta *common.PDMetadata) {
+	p.page.SetItem(cos.Metadata, common.COSObjectOrNil(meta))
+}
+
+// Actions returns the additional actions of this page.
+//
+// Java adds the dictionary to the page when it is absent, so reading the
+// actions of a page that has none writes an empty /AA to it. The port carries
+// that. See migration/JAVA-BUGS.md.
+func (p *PDPage) Actions() *action.PDPageAdditionalActions {
+	addAct := p.page.GetCOSDictionary(cos.AA)
+	if addAct == nil {
+		addAct = cos.NewDictionary()
+		p.page.SetItem(cos.AA, addAct)
+	}
+	return action.NewPDPageAdditionalActionsOf(addAct)
+}
+
+// SetActions sets the additional actions of this page.
+func (p *PDPage) SetActions(actions *action.PDPageAdditionalActions) {
+	p.page.SetItem(cos.AA, common.COSObjectOrNil(actions))
+}
+
+// Transition returns the transition of this page, or nil where it has none.
+func (p *PDPage) Transition() *pagenavigation.PDTransition {
+	transition := p.page.GetCOSDictionary(cos.Trans)
+	if transition != nil {
+		return pagenavigation.NewPDTransitionOf(transition)
+	}
+	return nil
+}
+
+// SetTransition sets the transition of this page.
+func (p *PDPage) SetTransition(transition *pagenavigation.PDTransition) {
+	p.page.SetItem(cos.Trans, common.COSObjectOrNil(transition))
+}
+
+// SetTransitionOfDuration sets the transition of this page along with the
+// longest time, in seconds, the page is shown during a presentation before the
+// viewer moves on by itself.
+//
+// Port of setTransition(PDTransition, float).
+func (p *PDPage) SetTransitionOfDuration(transition *pagenavigation.PDTransition, duration float32) {
+	p.page.SetItem(cos.Trans, common.COSObjectOrNil(transition))
+	p.page.SetItem(cos.Dur, cos.NewFloat(duration))
+}
+
+// Annotations returns the annotations of this page, never nil.
+//
+// The list is backed by the annotations array, so adding to it or deleting from
+// it changes the document too.
+func (p *PDPage) Annotations() *common.COSArrayList[annotation.PDAnnotation] {
+	return p.AnnotationsOfFilter(func(annotation.PDAnnotation) bool { return true })
+}
+
+// AnnotationsOfFilter returns the annotations of this page the given filter
+// accepts, never nil.
+//
+// Port of getAnnotations(AnnotationFilter).
+func (p *PDPage) AnnotationsOfFilter(
+	annotationFilter annotation.AnnotationFilter) *common.COSArrayList[annotation.PDAnnotation] {
+	annots := p.page.GetCOSArray(cos.Annots)
+	if annots == nil {
+		return common.NewCOSArrayListOfDictionary[annotation.PDAnnotation](p.page, cos.Annots)
+	}
+
+	actuals := []annotation.PDAnnotation{}
+	for i := 0; i < annots.Size(); i++ {
+		item := annots.GetObject(i)
+		if item == nil {
+			continue
+		}
+		createdAnnotation, err := annotation.CreateAnnotation(item)
+		if err != nil {
+			slog.Error("pdmodel: annotation not read", slog.Any("err", err))
+			continue
+		}
+		if annotationFilter(createdAnnotation) {
+			actuals = append(actuals, createdAnnotation)
+		}
+	}
+	return common.NewCOSArrayListOf(actuals, annots)
+}
+
+// SetAnnotations sets the annotations of this page.
+//
+// This is optional, but take care that any annotation newly created links back
+// to this page, by calling SetPage on it. Not doing it can cause trouble when
+// PDFs get signed; see https://stackoverflow.com/questions/74836898/.
+func (p *PDPage) SetAnnotations(annotations []annotation.PDAnnotation) {
+	p.page.SetItem(cos.Annots, common.NewCOSArrayOfObjectables(annotations))
+}
+
+// ResourceCache returns the cache this page reads its resources through, or nil
+// where it has none.
+func (p *PDPage) ResourceCache() ResourceCache { return p.resourceCache }
+
+// Viewports returns the viewports of this page, or nil where it has no /VP.
+func (p *PDPage) Viewports() []*measurement.PDViewportDictionary {
+	array := p.page.GetCOSArray(cos.VP)
+	if array == nil {
+		return nil
+	}
+	viewports := make([]*measurement.PDViewportDictionary, 0, array.Size())
+	for i := 0; i < array.Size(); i++ {
+		base2 := array.GetObject(i)
+		if dic, isDictionary := base2.(*cos.Dictionary); isDictionary {
+			viewports = append(viewports, measurement.NewPDViewportDictionaryOf(dic))
+		} else {
+			slog.Warn("pdmodel: array element is skipped, must be a (viewport) dictionary",
+				slog.Any("element", base2))
+		}
+	}
+	return viewports
+}
+
+// SetViewports sets the viewports of this page, and removes them for a nil
+// list.
+func (p *PDPage) SetViewports(viewports []*measurement.PDViewportDictionary) {
+	if viewports == nil {
+		p.page.RemoveItem(cos.VP)
+		return
+	}
+	p.page.SetItem(cos.VP, common.NewCOSArrayOfObjectables(viewports))
+}
+
+// UserUnit returns the size of a default user space unit in multiples of 1/72
+// inch, which is 1 where it has not been set. PDF 1.6 and higher support it.
+func (p *PDPage) UserUnit() float32 {
+	userUnit := p.page.GetFloat(cos.UserUnit, 1.0)
+	if userUnit > 0 {
+		return userUnit
+	}
+	return 1.0
+}
+
+// SetUserUnit sets the size of a default user space unit in multiples of 1/72
+// inch. PDF 1.6 and higher support it.
+//
+// Java throws IllegalArgumentException where the unit is not positive, which is
+// unchecked, so the port panics.
+func (p *PDPage) SetUserUnit(userUnit float32) {
+	if userUnit <= 0 {
+		panic("User unit must be positive")
+	}
+	p.page.SetFloat(cos.UserUnit, userUnit)
 }

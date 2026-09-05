@@ -99,6 +99,9 @@ type PDFont interface {
 	// Dictionary returns the font dictionary, typed.
 	Dictionary() *cos.Dictionary
 
+	// Equals reports whether the other font is written by the same dictionary.
+	Equals(other PDFontLike) bool
+
 	// Displacement returns how far the pen moves after the given glyph, in
 	// text space.
 	Displacement(code int) (util.Vector, error)
@@ -135,6 +138,16 @@ type PDFont interface {
 	// IsStandard14 reports whether the font is one of the fourteen every
 	// reader has.
 	IsStandard14() bool
+
+	// WillBeSubset reports whether this font will be subset when the document
+	// is saved.
+	WillBeSubset() bool
+
+	// AddToSubset keeps the given code point when the font is subset.
+	AddToSubset(codePoint int)
+
+	// Subset writes the font, subsetting it to the code points kept so far.
+	Subset() error
 
 	// standard14Width returns the width the metrics of a standard 14 font give
 	// for the glyph. Java's protected abstract getStandard14Width.
@@ -307,6 +320,15 @@ func (f *pdFont) COSObject() cos.Base { return f.dict }
 
 // Dictionary returns the font dictionary, typed.
 func (f *pdFont) Dictionary() *cos.Dictionary { return f.dict }
+
+// Equals reports whether the other font is written by the same dictionary.
+//
+// Port of PDFont.equals, which compares the COS objects by identity. Java also
+// overrides hashCode to that of the dictionary; Go has no hash to override.
+func (f *pdFont) Equals(other PDFontLike) bool {
+	otherFont, isFont := other.(PDFont)
+	return isFont && otherFont.COSObject() == cos.Base(f.dict)
+}
 
 // base returns the shared part of the font.
 func (f *pdFont) base() *pdFont { return f }

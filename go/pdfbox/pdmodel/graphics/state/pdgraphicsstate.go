@@ -309,3 +309,10 @@ func (s *PDGraphicsState) Clone() *PDGraphicsState {
 	}
 	return &clone
 }
+
+// SetRenderingIntentOrNil sets the rendering intent, or clears it where the
+// value is nil, which is what Java's setRenderingIntent does when it is handed
+// the null an extended graphics state can carry.
+func (s *PDGraphicsState) SetRenderingIntentOrNil(value *RenderingIntent) {
+	s.renderingIntent = value
+}
