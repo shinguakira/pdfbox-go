@@ -332,15 +332,28 @@ func (l *COSArrayList[E]) actualRetainAll(c []E) bool {
 	return changed
 }
 
-// containsAny is Collection.contains over a slice, comparing the way Java's
-// Object.equals does for the types that reach here: by identity.
+// containsAny is Collection.contains over a slice.
 func containsAny[E any](list []E, want E) bool {
 	for _, e := range list {
-		if any(e) == any(want) {
+		if equalsAny(e, want) {
 			return true
 		}
 	}
 	return false
+}
+
+// equalsAny is Object.equals: the equals the element declares where it has one,
+// and identity otherwise.
+//
+// Every wrapper that reaches a COSArrayList overrides equals to compare the COS
+// objects -- PDAnnotation and PDField both do -- so comparing by Go identity
+// would answer false for two wrappers over one dictionary, which the list is
+// full of.
+func equalsAny(e, want any) bool {
+	if equatable, hasEquals := e.(interface{ Equals(other any) bool }); hasEquals {
+		return equatable.Equals(want)
+	}
+	return e == want
 }
 
 // Clear removes every element.
@@ -408,7 +421,7 @@ func (l *COSArrayList[E]) removeAt(index int) E {
 // IndexOf returns the index of the first element equal to o, or -1.
 func (l *COSArrayList[E]) IndexOf(o any) int {
 	for i, e := range l.actual {
-		if any(e) == o {
+		if equalsAny(e, o) {
 			return i
 		}
 	}
@@ -418,7 +431,7 @@ func (l *COSArrayList[E]) IndexOf(o any) int {
 // LastIndexOf returns the index of the last element equal to o, or -1.
 func (l *COSArrayList[E]) LastIndexOf(o any) int {
 	for i := len(l.actual) - 1; i >= 0; i-- {
-		if any(l.actual[i]) == o {
+		if equalsAny(l.actual[i], o) {
 			return i
 		}
 	}
