@@ -36,7 +36,10 @@ func TestClassMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer doc.Close()
-	structureTreeRoot := structureTreeRootOf(t, doc.DocumentCatalog().Dictionary())
+	structureTreeRoot := doc.DocumentCatalog().StructureTreeRoot()
+	if structureTreeRoot == nil {
+		t.Fatal("StructureTreeRoot() = nil, want the structure tree root")
+	}
 	checkElement(t, structureTreeRoot.K(), &attributeSet, structureTreeRoot.ClassMap(), classSet)
 
 	for _, r := range attributeSet {
@@ -116,22 +119,6 @@ type layoutAttributeObject interface {
 	Height() any
 	InlineAlign() string
 	BlockAlign() string
-}
-
-// structureTreeRootOf answers the structure tree root of the given catalogue
-// dictionary.
-//
-// Java reads it through PDDocumentCatalog.getStructureTreeRoot; that accessor
-// is not ported, because the catalogue cannot name PDStructureTreeRoot -- this
-// package imports pdmodel through its injected constructors. See
-// migration/STATUS.md.
-func structureTreeRootOf(t *testing.T, catalog *cos.Dictionary) *logicalstructure.PDStructureTreeRoot {
-	t.Helper()
-	root := catalog.GetCOSDictionary(cos.StructTreeRoot)
-	if root == nil {
-		t.Fatal("/StructTreeRoot = nil, want the structure tree root")
-	}
-	return logicalstructure.NewPDStructureTreeRootOf(root)
 }
 
 // checkElement is the private checkElement of the Java test. Each element can be

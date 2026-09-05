@@ -67,3 +67,19 @@ func (c Color) Blue() int { return int(c.b*255 + 0.5) }
 func (c Color) RGB() int {
 	return 0xFF000000 | c.Red()<<16 | c.Green()<<8 | c.Blue()
 }
+
+// The colour constants of java.awt.Color that PDFBox names. Java declares
+// thirteen; these are the ones the port has a caller for, each built the way
+// Java builds it, with `new Color(r, g, b)` over three 8-bit components.
+var (
+	// Red is Color.RED, 255, 0, 0.
+	Red = NewColorOfRGB(0xFF0000)
+	// Green is Color.GREEN, 0, 255, 0.
+	Green = NewColorOfRGB(0x00FF00)
+	// Blue is Color.BLUE, 0, 0, 255.
+	Blue = NewColorOfRGB(0x0000FF)
+	// Black is Color.BLACK, 0, 0, 0.
+	Black = NewColorOfRGB(0x000000)
+	// White is Color.WHITE, 255, 255, 255.
+	White = NewColorOfRGB(0xFFFFFF)
+)

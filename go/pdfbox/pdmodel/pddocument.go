@@ -195,9 +195,12 @@ func (d *PDDocument) Close() error {
 
 // PDDocumentCatalog is the root of the object graph of a document.
 //
-// Port of org.apache.pdfbox.pdmodel.PDDocumentCatalog. The form, outline,
-// names, threads, metadata, actions and viewer preference accessors are not
-// here: each needs a type this port has not reached. See migration/STATUS.md.
+// Port of org.apache.pdfbox.pdmodel.PDDocumentCatalog. Everything that names a
+// type from pdmodel/interactive, pdmodel/documentinterchange or
+// graphics/optionalcontent is in pddocumentcatalog.go, so that this file stays
+// next to PDDocument; getAcroForm and setAcroForm are in interactive/form,
+// which is the only package that can name both sides. See the comment on
+// acroFormFixupApplied.
 type PDDocumentCatalog struct {
 	root     *cos.Dictionary
 	document *PDDocument

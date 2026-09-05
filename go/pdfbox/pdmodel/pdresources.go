@@ -314,6 +314,40 @@ func (r *PDResources) GetExtGState(name *cos.Name) *state.PDExtendedGraphicsStat
 	return extGState
 }
 
+// propertyListCache is the part of a resource cache that keeps property lists.
+//
+// Java declares getProperties, put(COSObject, PDPropertyList) and
+// removeProperties on ResourceCache itself; the port's ResourceCache is
+// declared in pdmodel/font, so this package asks the cache for them by shape,
+// the way it asks for the extended graphics states above.
+type propertyListCache interface {
+	GetProperties(indirect *cos.Object) markedcontent.PropertyList
+	PutProperties(indirect *cos.Object, propertyList markedcontent.PropertyList)
+}
+
+// GetProperties returns the property list resource with the given name, or nil
+// where the resources have none.
+//
+// Port of PDResources.getProperties.
+func (r *PDResources) GetProperties(name *cos.Name) markedcontent.PropertyList {
+	indirect := r.getIndirect(cos.Properties, name)
+	cache, cacheKeepsThem := r.cache.(propertyListCache)
+	if cacheKeepsThem && indirect != nil {
+		if cached := cache.GetProperties(indirect); cached != nil {
+			return cached
+		}
+	}
+	// get the instance
+	var propertyList markedcontent.PropertyList
+	if dict, isDictionary := asResourceDictionary(r.get(cos.Properties, name)); isDictionary {
+		propertyList = markedcontent.CreatePropertyList(dict)
+	}
+	if cacheKeepsThem && indirect != nil {
+		cache.PutProperties(indirect, propertyList)
+	}
+	return propertyList
+}
+
 // asResourceDictionary is Java's instanceof COSDictionary, which a COSStream
 // also satisfies.
 func asResourceDictionary(base cos.Base) (*cos.Dictionary, bool) {

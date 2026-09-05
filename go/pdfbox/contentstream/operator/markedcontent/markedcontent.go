@@ -5,15 +5,14 @@
 // keeps them together.
 //
 // DrawObject, which lives in this package in Java although it draws an XObject,
-// is not here: it needs PDXObject. Where a properties operand names a property
-// list in the resources rather than giving one inline, that lookup is missing
-// too, since PDResources cannot resolve one yet. See migration/STATUS.md.
+// is not here: it needs PDXObject. See migration/STATUS.md.
 package markedcontent
 
 import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 )
 
 // AddAll registers every processor in this package with the engine.
@@ -26,15 +25,22 @@ func AddAll(context *contentstream.PDFStreamEngine) {
 }
 
 // propertiesOf reads the second operand of a BDC or DP as a property
-// dictionary, returning nil when it is neither a dictionary nor something this
-// port can resolve.
-func propertiesOf(op1 cos.Base) *cos.Dictionary {
-	if dict, ok := op1.(*cos.Dictionary); ok {
+// dictionary, returning nil where it is neither a dictionary nor a name the
+// resources hold a property list under.
+//
+// Java writes the two branches out in each of the two processors; they are the
+// same seven lines, so the port has them once.
+func propertiesOf(resources *pdmodel.PDResources, op1 cos.Base) *cos.Dictionary {
+	if name, isName := op1.(*cos.Name); isName {
+		// PDFBOX-5980 and SO79549651
+		if prop := resources.GetProperties(name); prop != nil {
+			return prop.PropertyDictionary()
+		}
+		return nil
+	}
+	if dict, isDictionary := op1.(*cos.Dictionary); isDictionary {
 		return dict
 	}
-	// PDFBOX-5980 and SO79549651: a name here refers to a property list in the
-	// resources. Resolving it needs PDResources.getProperties and the
-	// PDPropertyList it returns, neither of which is ported.
 	return nil
 }
 
@@ -90,7 +96,7 @@ func (p *BeginMarkedContentSequenceWithProperties) Process(op *operator.Operator
 	if !ok {
 		return nil
 	}
-	propDict := propertiesOf(operands[1])
+	propDict := propertiesOf(p.Context().Resources(), operands[1])
 	if propDict == nil {
 		// wrong type or property not found
 		return nil
@@ -170,7 +176,7 @@ func (p *MarkedContentPointWithProperties) Process(op *operator.Operator, operan
 	if !ok {
 		return nil
 	}
-	propDict := propertiesOf(operands[1])
+	propDict := propertiesOf(p.Context().Resources(), operands[1])
 	if propDict == nil {
 		// wrong type or property not found
 		return nil

@@ -71,15 +71,20 @@ Subpackages: `action`, `annotation`, `digitalsignature`,
 Take one subpackage at a time. For each: port its Java tests first, then its
 implementation, then move on. Do not open all eight at once.
 
-- [ ] A1. `interactive/form` — port its Java tests
-- [ ] A2. `interactive/annotation` — port its Java tests
-- [ ] A3. `interactive/action` — port its Java tests
-- [ ] A4. `interactive/documentnavigation` — port its Java tests
-- [ ] A5. `interactive/pagenavigation` — port its Java tests
-- [ ] A6. `interactive/digitalsignature` — port its Java tests
-- [ ] A7. `interactive/measurement`, `interactive/viewerpreferences`
-- [ ] A8. `documentinterchange` — port its Java tests
-- [ ] A9. `pdmodel/common` — port `COSArrayListTest`, which slice 2 could not
+- [x] A1. `interactive/form` — port its Java tests
+  - PDFieldTreeTest, PDAcroFormGenerateAppearancesTest and PDAcroFormFromAnnotsTest
+    download their PDFs from the issue tracker, so none of the three is ported
+- [x] A2. `interactive/annotation` — port its Java tests
+  - the two rendering comparisons of AppearanceGenerationTest wait for slice 9
+- [x] A3. `interactive/action` — port its Java tests
+- [x] A4. `interactive/documentnavigation` — port its Java tests
+- [x] A5. `interactive/pagenavigation` — port its Java tests
+- [x] A6. `interactive/digitalsignature` — port its Java tests
+  - there are none: the subpackage has no test directory
+- [x] A7. `interactive/measurement`, `interactive/viewerpreferences`
+  - there are none: neither subpackage has a test directory
+- [x] A8. `documentinterchange` — port its Java tests
+- [x] A9. `pdmodel/common` — port `COSArrayListTest`, which slice 2 could not
       port because it needs annotations
 
 ---
@@ -93,11 +98,12 @@ implementation, then move on. Do not open all eight at once.
       `DateConverter`, which is this slice's and is taken in dependency order
   - `migration/STATUS.md` records these as blocking `PDPage.getContentStreams`
     and `setContents` since slice 2
-- [ ] B2. `interactive/form` — AcroForms and the field hierarchy
-- [ ] B3. `interactive/annotation` — annotations and their appearance handlers
+- [x] B2. `interactive/form` — AcroForms and the field hierarchy
+- [x] B3. `interactive/annotation` — annotations and their appearance handlers
+  - the squiggly handler draws with a tiling pattern, which waits for slice 9
 - [x] B4. `interactive/action`
 - [x] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
-- [ ] B6. `interactive/digitalsignature`
+- [x] B6. `interactive/digitalsignature`
 - [x] B7. `interactive/measurement`, `interactive/viewerpreferences`
   - both subpackages are done: the five viewer preference enums, and the
     measure, number format, rectlinear measure and viewport dictionaries
@@ -109,21 +115,21 @@ implementation, then move on. Do not open all eight at once.
   - `PDPropertyList` lives here, and `PDResources.getProperties` returns it.
     Slice 2 recorded that lookup as absent, and BDC and DP in
     `operator/markedcontent` cannot resolve a named property list without it.
-- [ ] B10. `pdmodel/fdf` — 31 files, and `pdfparser/FDFParser`
+- [x] B10. `pdmodel/fdf` — 31 files, and `pdfparser/FDFParser`
   - Forms Data Format: the import and export half of AcroForms
-- [ ] B11. `pdmodel/fixup` and `fixup/processor` — 8 files
+- [x] B11. `pdmodel/fixup` and `fixup/processor` — 8 files
   - The document fixups AcroForm reading applies before it trusts a file
-- [ ] B12. Close the `PDPage` holes slice 2 left: annotations, thread beads,
+- [x] B12. Close the `PDPage` holes slice 2 left: annotations, thread beads,
       transitions, additional actions, viewports, metadata
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
 - [ ] C5. Update `migration/STATUS.md` — including the slice 2 `PDPage` and
       `pdmodel/common` rows this slice closes
 
