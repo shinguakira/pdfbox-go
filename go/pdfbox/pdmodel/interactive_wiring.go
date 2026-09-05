@@ -4,6 +4,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
+	_ "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation/handlers"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/documentnavigation/destination"
 )
 
@@ -26,4 +27,22 @@ func init() {
 		return NewPDResourcesOfCache(dict, resourceCache)
 	}
 	form.NewEmptyResources = func() form.ResourcesLike { return NewPDResources() }
+}
+
+// The appearance handlers write through PDAppearanceContentStream, which lives
+// here; annotation names what they use and takes this constructor.
+func init() {
+	annotation.NewAppearanceContentStream = func(appearance *annotation.PDAppearanceStream,
+		compress bool) (annotation.AppearanceContentStream, error) {
+		return NewPDAppearanceContentStreamCompressed(appearance, compress)
+	}
+}
+
+// The highlight handler draws into a form XObject, which PDFormContentStream
+// writes; annotation names what it uses and takes this constructor.
+func init() {
+	annotation.NewFormContentStream = func(
+		formXObject *form.PDFormXObject) (annotation.FormContentStream, error) {
+		return NewPDFormContentStream(formXObject)
+	}
 }

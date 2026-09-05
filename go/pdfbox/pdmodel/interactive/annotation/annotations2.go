@@ -239,7 +239,13 @@ func (a *PDAnnotationLine) CaptionVerticalOffset() float32 {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationLine) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationLine) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationPolygon is a closed polygon.
@@ -326,7 +332,13 @@ func arrayOfFloatArrays(array *cos.Array, absent [][]float32) [][]float32 {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationPolygon) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationPolygon) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationPolyline is an open polyline.
@@ -395,7 +407,13 @@ func (a *PDAnnotationPolyline) SetVertices(points []float32) {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationPolyline) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationPolyline) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationInk is a freehand scribble.
@@ -441,7 +459,13 @@ func (a *PDAnnotationInk) InkList() [][]float32 {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationInk) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationInk) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // The free text intents.
@@ -561,7 +585,13 @@ func (a *PDAnnotationFreeText) BorderEffect() *PDBorderEffectDictionary {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationFreeText) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationFreeText) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationWidget is the appearance of a form field on a page.

@@ -69,7 +69,8 @@ type PDAppearanceHandler interface {
 // handlers subpackage fills it; until it does, ConstructAppearances on an
 // annotation with no custom handler does nothing, which is what Java does for
 // the subtypes that have none.
-var DefaultAppearanceHandlers = map[string]func(annotation PDAnnotation) PDAppearanceHandler{}
+var DefaultAppearanceHandlers = map[string]func(annotation PDAnnotation,
+	document common.COSDocumentLike) PDAppearanceHandler{}
 
 // customHandler is the `private PDAppearanceHandler customAppearanceHandler`
 // that fourteen of the annotations declare, and the constructAppearances pair
@@ -85,12 +86,13 @@ func (c *customHandler) SetCustomAppearanceHandler(appearanceHandler PDAppearanc
 
 // constructAppearances is the body every constructAppearances shares: the
 // custom handler where there is one, the subtype's default otherwise.
-func (c *customHandler) constructAppearances(annotation PDAnnotation) error {
+func (c *customHandler) constructAppearances(annotation PDAnnotation,
+	document common.COSDocumentLike) error {
 	if c.customAppearanceHandler != nil {
 		return c.customAppearanceHandler.GenerateAppearanceStreams()
 	}
 	if factory := DefaultAppearanceHandlers[annotation.Subtype()]; factory != nil {
-		return factory(annotation).GenerateAppearanceStreams()
+		return factory(annotation, document).GenerateAppearanceStreams()
 	}
 	return nil
 }
@@ -416,7 +418,13 @@ func (a *PDAnnotationCaret) RectDifferences() []float32 {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationCaret) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationCaret) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationCircle is an ellipse.
@@ -444,7 +452,13 @@ func NewPDAnnotationCircleOf(field *cos.Dictionary) *PDAnnotationCircle {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationCircle) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationCircle) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationSquare is a rectangle.
@@ -472,7 +486,13 @@ func NewPDAnnotationSquareOf(field *cos.Dictionary) *PDAnnotationSquare {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationSquare) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationSquare) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationHighlight highlights a run of text.
@@ -499,7 +519,13 @@ func NewPDAnnotationHighlightOf(dict *cos.Dictionary) *PDAnnotationHighlight {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationHighlight) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationHighlight) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationUnderline underlines a run of text.
@@ -526,7 +552,13 @@ func NewPDAnnotationUnderlineOf(dict *cos.Dictionary) *PDAnnotationUnderline {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationUnderline) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationUnderline) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationStrikeout strikes out a run of text.
@@ -553,7 +585,13 @@ func NewPDAnnotationStrikeoutOf(dict *cos.Dictionary) *PDAnnotationStrikeout {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationStrikeout) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationStrikeout) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationSquiggly underlines a run of text with a wavy line.
@@ -580,7 +618,13 @@ func NewPDAnnotationSquigglyOf(dict *cos.Dictionary) *PDAnnotationSquiggly {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationSquiggly) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationSquiggly) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // PDAnnotationPopup is the window that shows a markup annotation's text.
@@ -663,7 +707,13 @@ func NewPDAnnotationSoundOf(field *cos.Dictionary) *PDAnnotationSound {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationSound) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationSound) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // The stamp names, PDF 32000-1:2008 Table 181.
@@ -787,7 +837,13 @@ func (a *PDAnnotationFileAttachment) SetAttachmentName(name string) {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationFileAttachment) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationFileAttachment) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // The text annotation icon names, PDF 32000-1:2008 Table 172.
@@ -891,7 +947,13 @@ func (a *PDAnnotationText) SetStateModel(stateModel string) {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationText) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationText) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }
 
 // The link highlight modes, PDF 32000-1:2008 Table 173.
@@ -942,6 +1004,21 @@ func (a *PDAnnotationLink) SetAction(act action.Action) {
 	setAnnotationItem(a.AnnotationDictionary(), cos.A, act)
 }
 
+// SetQuadPoints sets the /QuadPoints that say where this annotation is
+// activated.
+func (a *PDAnnotationLink) SetQuadPoints(quadPoints []float32) {
+	a.AnnotationDictionary().SetItem(cos.QuadPoints, cos.ArrayOfFloats(quadPoints))
+}
+
+// QuadPoints returns the /QuadPoints that say where this annotation is
+// activated, or nil.
+func (a *PDAnnotationLink) QuadPoints() []float32 {
+	if array := a.AnnotationDictionary().GetCOSArray(cos.QuadPoints); array != nil {
+		return array.ToFloatArray()
+	}
+	return nil
+}
+
 // SetBorderStyle sets the /BS border style.
 func (a *PDAnnotationLink) SetBorderStyle(bs *PDBorderStyleDictionary) {
 	setAnnotationItem(a.AnnotationDictionary(), cos.BS, bs)
@@ -990,5 +1067,11 @@ func (a *PDAnnotationLink) PreviousURI() *action.PDActionURI {
 
 // ConstructAppearances builds the appearance of this annotation.
 func (a *PDAnnotationLink) ConstructAppearances() error {
-	return a.constructAppearances(a)
+	return a.constructAppearances(a, nil)
+}
+
+// ConstructAppearancesInDocument builds the appearance of this annotation, with
+// the document its streams belong to.
+func (a *PDAnnotationLink) ConstructAppearancesInDocument(document common.COSDocumentLike) error {
+	return a.constructAppearances(a, document)
 }

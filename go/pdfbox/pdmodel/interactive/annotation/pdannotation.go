@@ -11,7 +11,11 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
 // The annotation flags, bit by bit.
@@ -57,9 +61,34 @@ type PDAnnotation interface {
 	// Subtype returns the /Subtype of the annotation.
 	Subtype() string
 
+	// ConstructAppearancesInDocument builds the appearance stream of this
+	// annotation, with the document its streams belong to.
+	ConstructAppearancesInDocument(document common.COSDocumentLike) error
+
 	// ConstructAppearances builds the appearance stream of this annotation
 	// where it has an appearance handler. The base does nothing.
 	ConstructAppearances() error
+
+	// Rectangle returns the /Rect of the annotation.
+	Rectangle() *common.PDRectangle
+
+	// SetRectangle sets the /Rect of the annotation.
+	SetRectangle(rectangle *common.PDRectangle)
+
+	// Color returns the /C colour of the annotation.
+	Color() *color.PDColor
+
+	// Border returns the /Border of the annotation.
+	Border() *cos.Array
+
+	// Appearance returns the /AP appearance dictionary, or nil.
+	Appearance() *PDAppearanceDictionary
+
+	// SetAppearance sets the /AP appearance dictionary.
+	SetAppearance(appearance *PDAppearanceDictionary)
+
+	// NormalAppearanceStream returns the normal appearance stream, or nil.
+	NormalAppearanceStream() *PDAppearanceStream
 }
 
 // annotationFactories maps a /Subtype to the constructor that builds it.
@@ -432,6 +461,13 @@ func (a *PDAnnotationBase) Page() PageLike {
 // base does nothing; the subclasses with a handler override it.
 func (a *PDAnnotationBase) ConstructAppearances() error { return nil }
 
+// ConstructAppearancesInDocument builds the appearance stream of this
+// annotation. The base does nothing; the subclasses with a handler override it.
+func (a *PDAnnotationBase) ConstructAppearancesInDocument(
+	document common.COSDocumentLike) error {
+	return nil
+}
+
 // CreateAnnotation returns the annotation the given object holds.
 //
 // Port of the static createAnnotation(COSBase).
@@ -508,3 +544,166 @@ func asDictionary(base cos.Base) (*cos.Dictionary, bool) {
 // Port of the interface AnnotationFilter, whose single method Go writes as a
 // function.
 type AnnotationFilter func(annotation PDAnnotation) bool
+
+// AppearanceContentStream is what an appearance handler writes an annotation's
+// appearance through.
+//
+// Java names PDAppearanceContentStream, which lives in pdmodel; pdmodel imports
+// this package for the page's annotations, so the dependency cannot run both
+// ways. The port names what the handlers use and takes the constructor below,
+// which pdmodel sets from its init.
+type AppearanceContentStream interface {
+	// MoveTo begins a new subpath at the given point.
+	MoveTo(x, y float32) error
+
+	// LineTo appends a straight line to the current path.
+	LineTo(x, y float32) error
+
+	// CurveTo appends a cubic Bezier curve to the current path.
+	CurveTo(x1, y1, x2, y2, x3, y3 float32) error
+
+	// AddRect adds a rectangle to the current path.
+	AddRect(x, y, width, height float32) error
+
+	// ClosePath closes the current subpath.
+	ClosePath() error
+
+	// Clip intersects the clipping path with the current path.
+	Clip() error
+
+	// Fill fills the current path.
+	Fill() error
+
+	// Stroke strokes the current path.
+	Stroke() error
+
+	// FillAndStroke fills and strokes the current path.
+	FillAndStroke() error
+
+	// CloseAndFillAndStroke closes, fills and strokes the current path.
+	CloseAndFillAndStroke() error
+
+	// DrawShape closes the current path the way the given stroke and fill ask.
+	DrawShape(lineWidth float32, hasStroke, hasFill bool) error
+
+	// Transform concatenates the given matrix onto the current transformation
+	// matrix.
+	Transform(matrix *util.Matrix) error
+
+	// SaveGraphicsState pushes the graphics state.
+	SaveGraphicsState() error
+
+	// RestoreGraphicsState pops the graphics state.
+	RestoreGraphicsState() error
+
+	// SetGraphicsStateParameters sets the graphics state from the given
+	// extended graphics state.
+	SetGraphicsStateParameters(extGState *state.PDExtendedGraphicsState) error
+
+	// SetLineWidth sets the line width.
+	SetLineWidth(lineWidth float32) error
+
+	// SetLineWidthOnDemand sets the line width unless it is the default of one.
+	SetLineWidthOnDemand(lineWidth float32) error
+
+	// SetLineCapStyle sets the line cap style.
+	SetLineCapStyle(lineCapStyle int) error
+
+	// SetLineJoinStyle sets the line join style.
+	SetLineJoinStyle(lineJoinStyle int) error
+
+	// SetMiterLimit sets the miter limit.
+	SetMiterLimit(miterLimit float32) error
+
+	// SetLineDashPattern sets the line dash pattern.
+	SetLineDashPattern(pattern []float32, phase float32) error
+
+	// SetBorderLine sets the dash pattern and the width of a border.
+	SetBorderLine(lineWidth float32, bs *PDBorderStyleDictionary, border *cos.Array) error
+
+	// SetStrokingColor sets the colour to stroke with.
+	SetStrokingColor(value *color.PDColor) error
+
+	// SetStrokingColorComponents sets the colour to stroke with from its
+	// components.
+	SetStrokingColorComponents(components []float32) error
+
+	// SetStrokingColorOnDemand sets the stroking colour where there is one, and
+	// reports whether it did.
+	SetStrokingColorOnDemand(value *color.PDColor) (bool, error)
+
+	// SetNonStrokingColor sets the colour to fill with.
+	SetNonStrokingColor(value *color.PDColor) error
+
+	// SetNonStrokingColorGray sets the colour to fill with, in device gray.
+	SetNonStrokingColorGray(g float32) error
+
+	// SetNonStrokingColorComponents sets the colour to fill with from its
+	// components.
+	SetNonStrokingColorComponents(components []float32) error
+
+	// SetNonStrokingColorOnDemand sets the non-stroking colour where there is
+	// one, and reports whether it did.
+	SetNonStrokingColorOnDemand(value *color.PDColor) (bool, error)
+
+	// BeginText begins a text object.
+	BeginText() error
+
+	// EndText ends a text object.
+	EndText() error
+
+	// SetFont sets the font and size to draw text with.
+	SetFont(f font.PDFont, fontSize float32) error
+
+	// ShowText writes the given text.
+	ShowText(text string) error
+
+	// NewLineAtOffset moves to the start of the next line of text.
+	NewLineAtOffset(tx, ty float32) error
+
+	// DrawForm draws the given form XObject.
+	DrawForm(formXObject *form.PDFormXObject) error
+
+	// Close closes the stream.
+	Close() error
+}
+
+// NewAppearanceContentStream writes into the given appearance, deflating the
+// content where compress is true. pdmodel sets it.
+var NewAppearanceContentStream func(appearance *PDAppearanceStream,
+	compress bool) (AppearanceContentStream, error)
+
+// FormContentStream is what an appearance handler writes the content of a form
+// XObject through.
+//
+// Java names PDFormContentStream, which lives in pdmodel for the same reason
+// PDAppearanceContentStream does; this is the part of it the handlers use, and
+// pdmodel sets the constructor below from its init.
+type FormContentStream interface {
+	// MoveTo begins a new subpath at the given point.
+	MoveTo(x, y float32) error
+
+	// LineTo appends a straight line to the current path.
+	LineTo(x, y float32) error
+
+	// CurveTo appends a cubic Bezier curve to the current path.
+	CurveTo(x1, y1, x2, y2, x3, y3 float32) error
+
+	// AddRect adds a rectangle to the current path.
+	AddRect(x, y, width, height float32) error
+
+	// Fill fills the current path.
+	Fill() error
+
+	// DrawForm draws the given form XObject.
+	DrawForm(formXObject *form.PDFormXObject) error
+
+	// SetNonStrokingColor sets the colour to fill with.
+	SetNonStrokingColor(value *color.PDColor) error
+
+	// Close closes the stream.
+	Close() error
+}
+
+// NewFormContentStream writes into the given form XObject. pdmodel sets it.
+var NewFormContentStream func(formXObject *form.PDFormXObject) (FormContentStream, error)
