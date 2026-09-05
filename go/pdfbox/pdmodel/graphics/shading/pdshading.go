@@ -16,7 +16,6 @@
 package shading
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
@@ -26,13 +25,6 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
-
-// ErrPatchMeshNotPorted is what NewPDShading answers for a Coons or a
-// tensor-product patch mesh, which are the two shading types this slice has not
-// reached. It is named rather than anonymous so that a caller can tell "this
-// port does not do that yet" from "this file says something I do not
-// understand".
-var ErrPatchMeshNotPorted = errors.New("shading: the patch mesh shadings are not ported yet")
 
 // The seven shading types.
 const (
@@ -360,13 +352,10 @@ func NewPDShading(shadingBase cos.Base) (Shading, error) {
 		return newPDShadingType4(shadingDictionary, shadingStream), nil
 	case ShadingType5:
 		return newPDShadingType5(shadingDictionary, shadingStream), nil
-	case ShadingType6, ShadingType7:
-		// Java builds a PDShadingType6 or a PDShadingType7 here. Neither is
-		// ported yet: both need the patch machinery -- Patch, CoonsPatch,
-		// TensorPatch and CubicBezierCurve -- which is the rest of B7. The
-		// error names the gap rather than letting the caller read a type 6
-		// mesh as an unknown one. See migration/STATUS.md.
-		return nil, fmt.Errorf("%w: shading type %d", ErrPatchMeshNotPorted, shadingType)
+	case ShadingType6:
+		return newPDShadingType6(shadingDictionary, shadingStream), nil
+	case ShadingType7:
+		return newPDShadingType7(shadingDictionary, shadingStream), nil
 	}
 	return nil, fmt.Errorf("Error: Unknown shading type %d", shadingType)
 }

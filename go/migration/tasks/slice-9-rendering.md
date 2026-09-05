@@ -76,7 +76,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 
 - [ ] A1. `pdfbox/rendering` — port its 3 Java tests
 - [ ] A2. `pdfbox/printing` — port its 1 Java test
-- [ ] A3. `pdmodel/graphics/shading` — Java has no test here; write from source
+- [x] A3. `pdmodel/graphics/shading` — Java has no test here; write from source
 - [x] A4. `awt/geom` — write `Area` tests from the JDK contract, not from the
       implementation
 - [x] A5. Rendered output needs a comparison strategy — decided, see Blocked
@@ -106,7 +106,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
     `shouldProcessColorOperators` ever being false.
 - [ ] B6. `contentstream` — `PDFGraphicsStreamEngine`, `operator/graphics` (23
       files, the path operators and `DrawObject`), `operator/color` (13 files)
-- [ ] B7. `pdmodel/graphics/shading` — 37 files, seven shading types
+- [x] B7. `pdmodel/graphics/shading` — 37 files, seven shading types
 - [ ] B8. `pdfbox/rendering` — `PDFRenderer`, `PageDrawer`, and the rest
 - [ ] B9. `pdfbox/printing`
 
