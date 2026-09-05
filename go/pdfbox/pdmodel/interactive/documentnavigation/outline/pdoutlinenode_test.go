@@ -2,6 +2,8 @@ package outline
 
 // Ported from
 // pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDOutlineNodeTest.java.
+//
+// openNodeAndAppend is not here: its Java body is an empty // TODO.
 
 import "testing"
 

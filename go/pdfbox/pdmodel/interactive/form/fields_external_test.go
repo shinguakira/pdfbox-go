@@ -1,8 +1,12 @@
 package form_test
 
 // Ported from
-// pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestFields.java
-// and PDChoiceTest.java.
+// pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestFields.java,
+// PDChoiceTest.java, TestCheckBox.java and HandleDifferentDALevelsTest.java.
+//
+// TestCheckBox.testPDFBox6207 is not here: it reads target/pdfs/PDFBOX-6207.pdf,
+// which the Maven build downloads from the issue tracker, and returns early
+// where the file is absent. See migration/STATUS.md.
 
 import (
 	"slices"
@@ -260,6 +264,35 @@ func TestGetOptionsFromCOSArray(t *testing.T) {
 		entry.Add(cos.NewStringObj(value))
 		choiceFieldOptions.Add(entry)
 	}
+
+	// add the options using the low level COS model as the PD model will
+	// abstract the COSArray
+	choiceField.FieldDictionary().SetItem(cos.Opt, choiceFieldOptions)
+	if got := choiceField.Options(); !slices.Equal(got, choiceOptions) {
+		t.Errorf("Options() = %v, want %v", got, choiceOptions)
+	}
+}
+
+// TestGetOptionsFromMixed is PDChoiceTest.getOptionsFromMixed: an /Opt array
+// whose first entry is a string and whose other two are one-element arrays.
+func TestGetOptionsFromMixed(t *testing.T) {
+	document := pdmodel.NewPDDocument()
+	acroForm := form.NewPDAcroForm(document)
+	choiceField := form.NewPDComboBox(acroForm)
+	choiceFieldOptions := cos.NewArray()
+
+	// add string entry to options
+	choiceFieldOptions.Add(cos.NewStringObj(" "))
+
+	// add array entry to options
+	entry := cos.NewArray()
+	entry.Add(cos.NewStringObj("A"))
+	choiceFieldOptions.Add(entry)
+
+	// add array entry to options
+	entry = cos.NewArray()
+	entry.Add(cos.NewStringObj("B"))
+	choiceFieldOptions.Add(entry)
 
 	// add the options using the low level COS model as the PD model will
 	// abstract the COSArray

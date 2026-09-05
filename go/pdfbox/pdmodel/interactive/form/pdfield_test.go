@@ -5,6 +5,11 @@ package form
 //
 // testSetPartialNameNull is not here: Java has its @Test commented out, and its
 // own comment says the behaviour is undecided.
+//
+// testHashCode is not here either. It asserts that two PDTextField over one
+// dictionary have equal hash codes, and Go has no hashCode contract: a map key
+// is compared with ==, which for these is pointer identity. Equals is ported
+// and TestFieldEquals covers it.
 
 import (
 	"strings"
