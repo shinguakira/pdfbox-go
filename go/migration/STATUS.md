@@ -2151,6 +2151,13 @@ Without it, `form.AcroFormOfCatalog` reads the form with no fixup applied, which
 is what `getAcroForm(null)` of Java does. The package comment says so, and so
 does every test that needs the fixup.
 
+**This is a divergence from Java and it is left as it stands.** Java's
+`getAcroForm()` always applies `AcroFormDefaultFixup`; the Go's default depends
+on whether the program linked the package, so the same call can behave two ways.
+It is not a Java bug and it is not a port defect in the code -- it is what Go
+forbidding the import cycle costs, and the cost is paid here rather than by
+rearranging the packages away from the Java layout. Recorded, not fixed.
+
 `AcroFormOrphanWidgetsProcessor.ensureFontResources` finds the replacement font
 but does not embed it: Java calls `PDType0Font.load`, and the font embedders are
 not ported. The lookup and its logging are here so the shape is right when they
@@ -2435,7 +2442,8 @@ the three fixup processors all match. Two divergences, both deliberate:
   `visualSignature`, and a `finally` that throws replaces the exception in
   flight, so Java surfaces the *later* failure. The port keeps the first, which
   is the convention every other `Close` in the port follows. Both are closed
-  either way; only which of two close failures is reported differs.
+  either way; only which of two close failures is reported differs. Not a Java
+  bug; left as it stands.
 - `FDFDocument.saveXFDF` closes the writer it is given and the port does not,
   because a Go `io.Writer` has nothing to close. The doc comment says so.
 
