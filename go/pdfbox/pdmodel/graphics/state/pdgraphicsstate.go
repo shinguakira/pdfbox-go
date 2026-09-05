@@ -32,6 +32,9 @@ const (
 // combining them is the renderer's job; and the two Java composites, which are
 // rendering as well. See migration/STATUS.md.
 type PDGraphicsState struct {
+	// softMask is the mask paint reaches the page through, or nil.
+	softMask *PDSoftMask
+
 	isClippingPathDirty         bool
 	clippingPaths               []*geom.Path2D
 	currentTransformationMatrix *util.Matrix
@@ -316,3 +319,10 @@ func (s *PDGraphicsState) Clone() *PDGraphicsState {
 func (s *PDGraphicsState) SetRenderingIntentOrNil(value *RenderingIntent) {
 	s.renderingIntent = value
 }
+
+// SoftMask returns the soft mask paint is reaching the page through, or nil
+// where there is none.
+func (s *PDGraphicsState) SoftMask() *PDSoftMask { return s.softMask }
+
+// SetSoftMask sets the soft mask paint reaches the page through.
+func (s *PDGraphicsState) SetSoftMask(softMask *PDSoftMask) { s.softMask = softMask }

@@ -103,11 +103,16 @@ func (e *PDExtendedGraphicsState) CopyIntoGraphicsState(gs *PDGraphicsState) err
 		case cos.TK:
 			gs.TextState().SetKnockoutFlag(e.TextKnockoutFlag())
 		case cos.SMask:
-			// Java reads a PDSoftMask here and hands it the current
-			// transformation matrix. PDSoftMask needs a transparency group and
-			// a function, neither of which this port has reached, so the entry
-			// is left alone. See migration/STATUS.md.
-			continue
+			softmask := e.SoftMask()
+			if softmask != nil {
+				// Softmask must know the CTM at the time the ExtGState is
+				// activated. Read
+				// https://bugs.ghostscript.com/show_bug.cgi?id=691157#c7 for a
+				// good explanation.
+				softmask.SetInitialTransformationMatrix(
+					gs.CurrentTransformationMatrix().Clone())
+			}
+			gs.SetSoftMask(softmask)
 		case cos.BM:
 			gs.SetBlendMode(e.BlendMode())
 		case cos.TR:
@@ -398,4 +403,15 @@ func (e *PDExtendedGraphicsState) Transfer2() cos.Base {
 // SetTransfer2 sets the /TR2 transfer function.
 func (e *PDExtendedGraphicsState) SetTransfer2(transfer2 cos.Base) {
 	e.dict.SetItem(cos.TR2, transfer2)
+}
+
+// SoftMask returns the /SMask entry, or nil where there is none.
+//
+// Port of getSoftMask.
+func (e *PDExtendedGraphicsState) SoftMask() *PDSoftMask {
+	smask := e.dict.GetDictionaryObject(cos.SMask)
+	if smask == nil {
+		return nil
+	}
+	return NewPDSoftMaskOfCache(smask, e.cache)
 }

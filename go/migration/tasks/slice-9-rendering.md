@@ -91,14 +91,14 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
       options. Write the decision down before B1.
 - [x] B1. `awt/geom.Area` — constructive area geometry. Slice 2 recorded this
       as the one thing blocking `PDGraphicsState.getCurrentClippingPath`.
-- [ ] B2. `pdmodel/common/function` and `function/type4` — 17 files
+- [x] B2. `pdmodel/common/function` and `function/type4` — 17 files
   - Everything below evaluates these. `type4` is a PostScript calculator
     interpreter in its own right.
-- [ ] B3. `pdmodel/graphics/color` — the 20 colour spaces slice 2 left, and
+- [x] B3. `pdmodel/graphics/color` — the 20 colour spaces slice 2 left, and
       `PDColorSpace.create`
-- [ ] B4. `pdmodel/graphics/state` — `PDSoftMask`,
+- [x] B4. `pdmodel/graphics/state` — `PDSoftMask`,
       `PDExtendedGraphicsState`, the two Java composites, `BlendComposite`
-- [~] B5. `pdmodel/graphics/form` — `PDFormXObject`, `PDTransparencyGroup`,
+- [x] B5. `pdmodel/graphics/form` — `PDFormXObject`, `PDTransparencyGroup`,
       `PDTransparencyGroupAttributes`, and `pdmodel/graphics/pattern` —
       `PDAbstractPattern`, `PDTilingPattern`, `PDShadingPattern`
   - These are what let `PDFStreamEngine` process a form, a transparency group
