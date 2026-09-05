@@ -74,3 +74,20 @@ func (s *PDSimpleFileSpecification) SetFile(fileName string) {
 
 // COSObject returns the string.
 func (s *PDSimpleFileSpecification) COSObject() cos.Base { return s.file }
+
+// FileOfStream returns the file specification of the given stream, which is
+// only required for external files.
+//
+// Port of PDStream.getFile, which is a function here because PDStream lives in
+// pdmodel/common and this package imports that one for PDEmbeddedFile.
+func FileOfStream(stream *common.PDStream) (PDFileSpecification, error) {
+	return CreateFS(stream.Stream().GetDictionaryObject(cos.F))
+}
+
+// SetFileOfStream sets the file specification of the given stream; see
+// FileOfStream for why it is a function.
+//
+// Port of PDStream.setFile.
+func SetFileOfStream(stream *common.PDStream, f PDFileSpecification) {
+	stream.Stream().SetItem(cos.F, common.COSObjectOrNil(f))
+}

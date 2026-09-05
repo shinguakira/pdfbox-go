@@ -1,6 +1,7 @@
 package form
 
 import (
+	"iter"
 	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
@@ -277,6 +278,12 @@ func (a *PDAcroForm) SetFields(fields []PDField) {
 	}
 	a.dictionary.SetItem(cos.Fields, array)
 }
+
+// FieldIterator returns an iterator which walks all fields in the field tree,
+// in order.
+//
+// Port of getFieldIterator, which is `new PDFieldTree(this).iterator()`.
+func (a *PDAcroForm) FieldIterator() iter.Seq[PDField] { return NewPDFieldTree(a).All() }
 
 // FieldTree returns a walk over every field of the form.
 func (a *PDAcroForm) FieldTree() *PDFieldTree { return NewPDFieldTree(a) }

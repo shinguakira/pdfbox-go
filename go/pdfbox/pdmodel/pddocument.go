@@ -2,6 +2,8 @@ package pdmodel
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"math"
 	"sort"
 	"strconv"
@@ -40,9 +42,20 @@ type PDDocument struct {
 	documentId *int64
 
 	// signInterface signs an incremental save. Java holds a SignatureInterface;
-	// the writer declares the same contract, and the signature model that fills
-	// this in arrives with slice 8.
+	// the writer declares the same contract, which digitalsignature's satisfies
+	// structurally.
 	signInterface pdfwriter.SignatureInterface
+
+	// signatureAdded is Java's flag of the same name: only one signature may be
+	// added in a document.
+	signatureAdded bool
+
+	// signingSupport is the ExternalSigningSupport of the last
+	// saveIncrementalForExternalSigning, which Close closes. It is typed on the
+	// closer it is used through, because SigningSupport lives in
+	// interactive/digitalsignature and that package would then have to be
+	// imported here for one field; interactive/form sets it.
+	signingSupport io.Closer
 
 	encryption             *encryption.PDEncryption
 	accessPermission       *encryption.AccessPermission
@@ -181,8 +194,15 @@ func (d *PDDocument) Close() error {
 	// - all IO resources are closed
 	// - there's a way to see which errors occurred
 	var firstException error
+	// close resources and COSWriter
+	if d.signingSupport != nil {
+		if err := d.signingSupport.Close(); err != nil {
+			slog.Warn("pdmodel: closing SigningSupport", "err", err)
+			firstException = err
+		}
+	}
 	// close all intermediate I/O streams
-	if err := d.document.Close(); err != nil {
+	if err := d.document.Close(); err != nil && firstException == nil {
 		firstException = err
 	}
 	// close the source PDF stream, if we read from one
@@ -451,3 +471,35 @@ func (c *PDDocumentCatalog) SetCachedAcroForm(acroForm any) { c.cachedAcroForm =
 // is here because that method lives in interactive/form. See
 // AcroFormFixupApplied.
 func (c *PDDocumentCatalog) Document() *PDDocument { return c.document }
+
+// SignatureAdded reports whether a signature has already been added to the
+// document.
+//
+// Java holds this in a private field of PDDocument, which addSignature reads
+// and writes. That method names PDSignatureField and PDAcroForm and so lives in
+// interactive/form; this is how it reaches the field. See AcroFormFixupApplied
+// for the same device on the catalogue.
+func (d *PDDocument) SignatureAdded() bool { return d.signatureAdded }
+
+// SetSignatureAdded records that a signature has been added.
+func (d *PDDocument) SetSignatureAdded(added bool) { d.signatureAdded = added }
+
+// SetSignInterface records the interface that signs the next incremental save,
+// which SaveIncremental hands to the writer. Java's addSignature sets the
+// private field directly; see SignatureAdded.
+func (d *PDDocument) SetSignInterface(signInterface pdfwriter.SignatureInterface) {
+	d.signInterface = signInterface
+}
+
+// SetSigningSupport records the external signing support Close is to close; see
+// SignatureAdded.
+func (d *PDDocument) SetSigningSupport(signingSupport io.Closer) {
+	d.signingSupport = signingSupport
+}
+
+// PDFSource returns the file the document was read from, or nil where it was
+// built in memory.
+//
+// Java reads the private pdfSource field in saveIncrementalForExternalSigning,
+// which lives in interactive/form here; see SignatureAdded.
+func (d *PDDocument) PDFSource() pdfio.RandomAccessRead { return d.pdfSource }

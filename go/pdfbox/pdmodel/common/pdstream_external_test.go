@@ -31,7 +31,7 @@ const commonFixture = "../../../../pdfbox/src/test/resources/org/apache/pdfbox/p
 // not in PDStream. The port copies the strings the Java builds rather than the
 // ones it meant to; see migration/JAVA-BUGS.md.
 func dctStopFilters() []string {
-	return []string{cos.DCTDecode.String(), cos.DCTDecodeAbbreviation.String()}
+	return []string{cos.DCTDecode.String(), cos.DCT.String()}
 }
 
 // TestCreateInputStreamNullFilters is PDStreamTest.testCreateInputStreamNullFilters,
