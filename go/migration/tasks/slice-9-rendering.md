@@ -77,7 +77,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 - [ ] A1. `pdfbox/rendering` — port its 3 Java tests
 - [ ] A2. `pdfbox/printing` — port its 1 Java test
 - [ ] A3. `pdmodel/graphics/shading` — Java has no test here; write from source
-- [ ] A4. `awt/geom` — write `Area` tests from the JDK contract, not from the
+- [x] A4. `awt/geom` — write `Area` tests from the JDK contract, not from the
       implementation
 - [x] A5. Rendered output needs a comparison strategy — decided, see Blocked
   - Java's tests compare against reference images. Decide what the Go compares
@@ -89,7 +89,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
 
 - [x] B0. **Take the raster backend decision first.** `PLAN.md` lists the three
       options. Write the decision down before B1.
-- [ ] B1. `awt/geom.Area` — constructive area geometry. Slice 2 recorded this
+- [x] B1. `awt/geom.Area` — constructive area geometry. Slice 2 recorded this
       as the one thing blocking `PDGraphicsState.getCurrentClippingPath`.
 - [ ] B2. `pdmodel/common/function` and `function/type4` — 17 files
   - Everything below evaluates these. `type4` is a PostScript calculator
