@@ -9,8 +9,7 @@ package contentstream
 // them.
 //
 // showAnnotation, getAppearance and processAnnotation are the fourth kind of
-// child stream and are not here. They need PDAnnotation and
-// PDAppearanceStream, which slice 8 ports. See migration/STATUS.md.
+// child stream, and are here too.
 
 import (
 	"errors"
@@ -22,6 +21,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/pattern"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
@@ -203,5 +203,94 @@ func (e *PDFStreamEngine) ProcessChildStream(contentStream PDContentStream,
 	e.initPage(page)
 	err := e.processStream(contentStream)
 	e.currentPage = nil
+	return err
+}
+
+// appearanceContentStream adapts an appearance stream to PDContentStream, for
+// the reason formContentStream gives.
+type appearanceContentStream struct{ *annotation.PDAppearanceStream }
+
+var _ PDContentStream = appearanceContentStream{}
+
+// Resources returns the appearance's resources, or nil where it has none.
+func (a appearanceContentStream) Resources() *pdmodel.PDResources {
+	resources, isResources := a.PDAppearanceStream.Resources().(*pdmodel.PDResources)
+	if !isResources {
+		return nil
+	}
+	return resources
+}
+
+// ShowAnnotation shows the given annotation, which must be one on the current
+// page.
+func (e *PDFStreamEngine) ShowAnnotation(a annotation.PDAnnotation) error {
+	appearanceStream := e.Overrides().Appearance(a)
+	if appearanceStream != nil {
+		return e.ProcessAnnotation(a, appearanceStream)
+	}
+	return nil
+}
+
+// Appearance returns the appearance stream to process for the given
+// annotation. An engine overrides it to render a particular appearance, such
+// as "hover".
+//
+// Port of getAppearance, which Java names for the getter it is; the port drops
+// the prefix as it does elsewhere.
+func (e *PDFStreamEngine) Appearance(a annotation.PDAnnotation) *annotation.PDAppearanceStream {
+	return a.NormalAppearanceStream()
+}
+
+// ProcessAnnotation runs the given appearance stream of the given annotation.
+func (e *PDFStreamEngine) ProcessAnnotation(a annotation.PDAnnotation,
+	appearance *annotation.PDAppearanceStream) error {
+	bbox := appearance.BBox()
+	rect := a.Rectangle()
+
+	// PDFBOX-4783: zero-sized rectangles are not valid
+	if rect == nil || rect.Width() <= 0 || rect.Height() <= 0 ||
+		bbox == nil || bbox.Width() <= 0 || bbox.Height() <= 0 {
+		return nil
+	}
+	matrix := appearance.Matrix()
+
+	// transformed appearance box  fixme: may be an arbitrary shape
+	transformedBox := bbox.Transform(matrix).Bounds2D()
+	if transformedBox.IsEmpty() {
+		// PDFBOX-6095: zero-sized rectangles are not valid
+		return nil
+	}
+
+	// compute a matrix which scales and translates the transformed appearance box to align
+	// with the edges of the annotation's rectangle
+	transform := util.TranslateInstance(rect.LowerLeftX(), rect.LowerLeftY())
+	transform.Scale(float32(float64(rect.Width())/transformedBox.Width),
+		float32(float64(rect.Height())/transformedBox.Height))
+	transform.Translate(float32(-transformedBox.X), float32(-transformedBox.Y))
+
+	// Matrix shall be concatenated with A to form a matrix AA that maps from the appearance's
+	// coordinate system to the annotation's rectangle in default user space
+	//
+	// HOWEVER only the opposite order works for rotated pages with
+	// filled fields / annotations that have a matrix in the appearance stream, see PDFBOX-3083
+	aa := util.Concatenate(transform, matrix)
+
+	contentStream := appearanceContentStream{appearance}
+	parent := e.pushResources(contentStream)
+	savedStack := e.SaveGraphicsStack()
+
+	// make matrix AA the CTM
+	e.GraphicsState().SetCurrentTransformationMatrix(aa)
+
+	// clip to bounding box
+	e.clipToRect(bbox)
+
+	// needed for patterns in appearance streams, e.g. PDFBOX-2182
+	e.initialMatrix = aa.Clone()
+
+	err := e.processStreamOperators(contentStream)
+
+	e.RestoreGraphicsStack(savedStack)
+	e.popResources(parent)
 	return err
 }

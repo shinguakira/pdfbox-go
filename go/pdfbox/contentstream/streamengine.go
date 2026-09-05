@@ -18,6 +18,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/pattern"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
@@ -110,16 +111,19 @@ type StreamEngineOverrides interface {
 	// ShowTransparencyGroup shows a transparency group from the content
 	// stream.
 	ShowTransparencyGroup(group *form.PDTransparencyGroup) error
+
+	// ShowAnnotation shows an annotation of the current page.
+	ShowAnnotation(a annotation.PDAnnotation) error
+
+	// Appearance returns the appearance stream to process for the given
+	// annotation, which an engine overrides to render one such as "hover".
+	Appearance(a annotation.PDAnnotation) *annotation.PDAppearanceStream
 }
 
 // PDFStreamEngine walks a content stream and hands each operator to the
 // processor registered for it, keeping the graphics state as it goes.
 //
 // Port of org.apache.pdfbox.contentstream.PDFStreamEngine.
-//
-// What is missing is the annotation half: showAnnotation, getAppearance and
-// processAnnotation. They need PDAnnotation and PDAppearanceStream, which slice
-// 8 ports. See migration/STATUS.md.
 //
 // An engine is not safe for concurrent use.
 type PDFStreamEngine struct {

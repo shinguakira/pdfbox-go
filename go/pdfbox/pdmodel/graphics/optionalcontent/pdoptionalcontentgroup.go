@@ -10,7 +10,6 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 )
 
 func init() {
@@ -114,15 +113,15 @@ func (g *PDOptionalContentGroup) SetName(name string) {
 //
 // Port of getRenderState(RenderDestination). The /Intent support Java marks
 // with a TODO is not here either.
-func (g *PDOptionalContentGroup) RenderStateFor(destination rendering.RenderDestination) RenderState {
+func (g *PDOptionalContentGroup) RenderStateFor(destination RenderDestination) RenderState {
 	var state *cos.Name
 	usage := g.Dict.GetCOSDictionary(cos.Usage)
 	if usage != nil {
-		if destination == rendering.Print {
+		if destination == Print {
 			if print := usage.GetCOSDictionary(cos.Print); print != nil {
 				state = print.GetCOSName(cos.PrintState)
 			}
-		} else if destination == rendering.View {
+		} else if destination == View {
 			if view := usage.GetCOSDictionary(cos.View); view != nil {
 				state = view.GetCOSName(cos.ViewState)
 			}
