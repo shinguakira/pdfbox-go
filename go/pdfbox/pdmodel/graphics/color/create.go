@@ -122,7 +122,7 @@ func createFromName(name *cos.Name, resources ResourcesLike,
 	case cos.DeviceGray:
 		return DeviceGray, nil
 	case cos.Pattern:
-		return nil, fmt.Errorf("%w: /Pattern", ErrColorSpaceNotPorted)
+		return patternColorSpaceOf(resources, nil)
 	}
 	if resources != nil {
 		if !resources.HasColorSpace(name) {
@@ -162,7 +162,16 @@ func createFromArray(array *cos.Array, resources ResourcesLike,
 	case cos.Lab:
 		return NewPDLabOfArray(array), nil
 	case cos.Pattern:
-		return nil, fmt.Errorf("%w: /Pattern", ErrColorSpaceNotPorted)
+		if array.Size() == 1 {
+			return patternColorSpaceOf(resources, nil)
+		}
+		// Java reads the entry with get rather than getObject, so an indirect
+		// underlying colour space reaches create as a COSObject.
+		underlying, err := Create(array.Get(1))
+		if err != nil {
+			return nil, err
+		}
+		return patternColorSpaceOf(resources, underlying)
 	case cos.DeviceCMYK, cos.DeviceRGB, cos.DeviceGray:
 		// not allowed in an array, but we sometimes encounter these regardless
 		return createFromName(name, resources, wasDefault)
@@ -185,4 +194,28 @@ func createFromCOSObject(colorSpace *cos.Object, resources ResourcesLike) (PDCol
 		resources.CacheColorSpace(colorSpace, cs)
 	}
 	return cs, nil
+}
+
+// NewPatternColorSpace builds the /Pattern colour space. graphics/pattern sets
+// it from its init.
+//
+// Java's PDPattern lives in this package and imports
+// graphics.pattern.PDAbstractPattern and pdmodel.PDResources. Go forbids that
+// direction -- pattern imports pdmodel, which imports this package -- so the
+// class lives in graphics/pattern and reaches Create through here, which is
+// the registry device migration/conventions/java-to-go.md describes.
+//
+// resources is the PDResources the pattern is looked up in, which Create is
+// handed as a ResourcesLike; underlying is the colour space of an uncoloured
+// tiling pattern, and nil for a coloured one.
+var NewPatternColorSpace func(resources ResourcesLike, underlying PDColorSpace) PDColorSpace
+
+// patternColorSpaceOf is the two /Pattern arms of Create, which answer the
+// registered colour space where graphics/pattern is linked in and say so
+// where it is not.
+func patternColorSpaceOf(resources ResourcesLike, underlying PDColorSpace) (PDColorSpace, error) {
+	if NewPatternColorSpace == nil {
+		return nil, fmt.Errorf("%w: /Pattern", ErrColorSpaceNotPorted)
+	}
+	return NewPatternColorSpace(resources, underlying), nil
 }

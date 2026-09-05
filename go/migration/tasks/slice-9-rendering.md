@@ -98,7 +98,7 @@ outcome — PdfPig shipped no renderer and became the standard .NET choice.
       `PDColorSpace.create`
 - [ ] B4. `pdmodel/graphics/state` — `PDSoftMask`,
       `PDExtendedGraphicsState`, the two Java composites, `BlendComposite`
-- [ ] B5. `pdmodel/graphics/form` — `PDFormXObject`, `PDTransparencyGroup`,
+- [~] B5. `pdmodel/graphics/form` — `PDFormXObject`, `PDTransparencyGroup`,
       `PDTransparencyGroupAttributes`, and `pdmodel/graphics/pattern` —
       `PDAbstractPattern`, `PDTilingPattern`, `PDShadingPattern`
   - These are what let `PDFStreamEngine` process a form, a transparency group

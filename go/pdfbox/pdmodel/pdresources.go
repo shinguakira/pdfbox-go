@@ -251,3 +251,70 @@ func (r *PDResources) GetFont(name *cos.Name) (font.PDFont, error) {
 // Cache returns the cache the resources are read through, or nil where they are
 // read without one.
 func (r *PDResources) Cache() ResourceCache { return r.cache }
+
+// NewPatternOfDictionary builds a pattern resource. graphics/pattern sets it
+// from its init.
+//
+// Java's PDResources.getPattern returns a PDAbstractPattern, which lives in
+// graphics/pattern; that package imports this one, so the constructor is
+// reached through here rather than named. It answers an any, because this
+// package cannot name the return type either.
+var NewPatternOfDictionary func(dictionary *cos.Dictionary, stream *cos.Stream,
+	cache ResourceCache) (any, error)
+
+// patternCache is the part of a resource cache that keeps patterns.
+//
+// Java declares getPattern, put(COSObject, PDAbstractPattern) and
+// removePattern on ResourceCache itself; the port's ResourceCache is declared
+// in pdmodel/font, so this package asks the cache for them by shape, the way it
+// asks for the extended graphics states.
+type patternCache interface {
+	GetPattern(indirect *cos.Object) any
+	PutPattern(indirect *cos.Object, pattern any)
+}
+
+// PatternOfName returns the pattern resource with the given name, or nil where
+// the resources have none.
+//
+// Port of PDResources.getPattern. It answers an any for the reason
+// NewPatternOfDictionary gives; a caller narrows it to what it expects.
+func (r *PDResources) PatternOfName(name *cos.Name) (any, error) {
+	if NewPatternOfDictionary == nil {
+		// graphics/pattern is not linked in, so there is nothing to build a
+		// pattern with. See migration/STATUS.md.
+		return nil, nil
+	}
+	indirect := r.getIndirect(cos.Pattern, name)
+	cache, cacheKeepsThem := r.cache.(patternCache)
+	if cacheKeepsThem && indirect != nil {
+		if cached := cache.GetPattern(indirect); cached != nil {
+			return cached, nil
+		}
+	}
+	base := r.get(cos.Pattern, name)
+	dict, isDictionary := asResourceDictionary(base)
+	if !isDictionary {
+		return nil, nil
+	}
+	stream, _ := base.(*cos.Stream)
+	pattern, err := NewPatternOfDictionary(dict, stream, r.Cache())
+	if err != nil {
+		return nil, err
+	}
+	if cacheKeepsThem && indirect != nil {
+		cache.PutPattern(indirect, pattern)
+	}
+	return pattern, nil
+}
+
+// asResourceDictionary is Java's `instanceof COSDictionary`, which a COSStream
+// also satisfies.
+func asResourceDictionary(base cos.Base) (*cos.Dictionary, bool) {
+	switch value := base.(type) {
+	case *cos.Stream:
+		return &value.Dictionary, true
+	case *cos.Dictionary:
+		return value, true
+	}
+	return nil, false
+}
