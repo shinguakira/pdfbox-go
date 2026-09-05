@@ -276,3 +276,39 @@ func TestPDFBOX5784(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestCombFieldRefusesASupplementaryCharacter pins the one place where the
+// port's comb layout could differ from PDFBox's. It is not a port: PDFBox has
+// no test for it, and the slice 8 review feedback asked for the deviation to be
+// pinned down rather than left as a comment.
+//
+// insertGeneratedCombAppearance walks the value one cell at a time. Java takes
+// a cell with value.substring(i, i+1), which is one UTF-16 code unit, and the
+// port takes one rune; the two differ only for a character outside the basic
+// plane, where Java splits the surrogate pair across two cells and the port
+// keeps it in one.
+//
+// The difference is not reachable. Java draws each cell through
+// PDFont.getStringWidth, so its first half-a-pair cell asks the font for
+// U+D83D; the port asks for U+1F600. Neither is in a standard 14 font, so both
+// refuse the value rather than laying it out. This test asserts that the port
+// refuses, so that the claim stops being true loudly rather than silently if
+// the encoder ever starts accepting such a character.
+func TestCombFieldRefusesASupplementaryCharacter(t *testing.T) {
+	document, err := pdfbox.LoadPDF(formFixture + "CombTest.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer document.Close()
+	acroForm := form.AcroFormOfCatalog(document.DocumentCatalog())
+	field := acroForm.Field("PDFBoxCombRight")
+	if field == nil {
+		t.Fatal(`Field("PDFBoxCombRight") = nil, want the comb field`)
+	}
+	// U+1F600 GRINNING FACE, one rune and two UTF-16 code units.
+	if err := field.SetValue("12\U0001F60034"); err == nil {
+		t.Error("SetValue with a supplementary character was accepted, " +
+			"so the comb layout is now reachable for one and the rune walk " +
+			"in insertGeneratedCombAppearance differs from PDFBox")
+	}
+}

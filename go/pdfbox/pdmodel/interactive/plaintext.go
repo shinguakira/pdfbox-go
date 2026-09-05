@@ -85,10 +85,18 @@ func splitOnLineBreaks(text string) []string {
 		}
 		current = append(current, r)
 	}
+	if len(parts) == 0 {
+		// Pattern.split returns the input whole where the regex never matched,
+		// before it strips anything, so a value with no line break in it is one
+		// paragraph even when it is empty or only whitespace.
+		return []string{string(current)}
+	}
 	parts = append(parts, string(current))
-	// String.split with a limit of zero drops the trailing empty strings.
+	// String.split with a limit of zero drops every trailing empty string, not
+	// all but one: for "\n" Pattern.split builds ["", ""] and strips both, so
+	// the result is empty and the value has no paragraphs at all.
 	last := len(parts)
-	for last > 1 && parts[last-1] == "" {
+	for last > 0 && parts[last-1] == "" {
 		last--
 	}
 	return parts[:last]

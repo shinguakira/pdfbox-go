@@ -393,3 +393,33 @@ func TestFormatTZoffset(t *testing.T) {
 	checkFormatOffset(t, 14, "+14:00")
 	checkFormatOffset(t, -14, "-14:00")
 }
+
+// TestSecondsBeyond59AreRefused pins a defect the slice 8 review feedback
+// found. It is not a port: PDFBox has no test for it. It asserts what the Java
+// does.
+//
+// parseBigEndianDate builds its result on a GregorianCalendar with leniency
+// off, whose maximum for SECOND is 59 -- the leap-second range belongs to
+// java.util.Date, not to Calendar -- so getTimeInMillis throws
+// IllegalArgumentException for a second of 60 or 61 and the parse answers null.
+// The port accepted up to 61 and handed them to time.Date, which normalises
+// rather than refusing, so "D:20200101120060Z" came back as 12:01:00: a
+// malformed date read as a different valid instant.
+func TestSecondsBeyond59AreRefused(t *testing.T) {
+	for _, text := range []string{
+		"D:20200101120060Z",
+		"D:20200101120061Z",
+	} {
+		if got, ok := ToCalendar(text); ok {
+			t.Errorf("ToCalendar(%q) = %v, want it refused", text, got.Format(time.RFC3339))
+		}
+	}
+	// 59 is still accepted, and is not normalised.
+	got, ok := ToCalendar("D:20200101120059Z")
+	if !ok {
+		t.Fatal(`ToCalendar("D:20200101120059Z") was refused`)
+	}
+	if got.Second() != 59 || got.Minute() != 0 || got.Hour() != 12 {
+		t.Errorf("ToCalendar = %v, want 12:00:59", got.Format(time.RFC3339))
+	}
+}

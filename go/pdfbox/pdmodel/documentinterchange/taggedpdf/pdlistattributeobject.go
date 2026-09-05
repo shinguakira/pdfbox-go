@@ -34,7 +34,7 @@ func init() {
 		})
 }
 
-// PDPDListAttributeObject is the list attribute object of a structure element.
+// PDListAttributeObject is the list attribute object of a structure element.
 //
 // Port of PDListAttributeObject.
 type PDListAttributeObject struct {

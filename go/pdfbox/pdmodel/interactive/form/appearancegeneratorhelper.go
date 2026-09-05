@@ -748,8 +748,18 @@ func (h *appearanceGeneratorHelper) shallComb() bool {
 // insertGeneratedCombAppearance draws the value one cell at a time. Java
 // declares it private.
 //
-// Java walks the value by UTF-16 code unit; the port walks it by rune, which is
-// what the rest of the text layout here does.
+// Java takes each comb cell with value.substring(i, i+1), one UTF-16 code
+// unit, and counts the cells with value.length(); the port takes one rune and
+// counts runes. The two agree for every character in the basic plane and
+// differ for one outside it, where Java splits the surrogate pair across two
+// cells and the port keeps it in one.
+//
+// That difference is not reachable. Both sides measure each cell through
+// PDFont.getStringWidth before drawing it -- Java asks the font for the lone
+// surrogate U+D83D, the port for the whole U+1F600 -- and no font this port can
+// build has either, so both refuse the value instead of laying it out.
+// TestCombFieldRefusesASupplementaryCharacter pins that, and
+// migration/STATUS.md records it.
 func (h *appearanceGeneratorHelper) insertGeneratedCombAppearance(
 	contents *pdmodel.PDAppearanceContentStream,
 	appearanceStream *annotation.PDAppearanceStream,

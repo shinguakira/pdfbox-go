@@ -215,9 +215,14 @@ func (n *PDNameTreeNode[T]) Value(name string) (T, error) {
 	}
 	for i := 0; i < kids.Size(); i++ {
 		childNode := kids.Get(i)
-		upperLimit := childNode.UpperLimit()
-		lowerLimit := childNode.LowerLimit()
-		if upperLimit == "" || lowerLimit == "" || upperLimit < lowerLimit ||
+		// Java compares against null, which getUpperLimit and getLowerLimit
+		// answer only where the child has no /Limits array or its entry is not a
+		// string. The empty name is a legal limit and is not null there, so it
+		// must not be read as an absent one: a child whose range is ["" "a"]
+		// would otherwise look unlimited and end the search.
+		upperLimit, hasUpperLimit := limitOf(childNode, 1)
+		lowerLimit, hasLowerLimit := limitOf(childNode, 0)
+		if !hasUpperLimit || !hasLowerLimit || upperLimit < lowerLimit ||
 			(lowerLimit <= name && upperLimit >= name) {
 			return childNode.Value(name)
 		}
@@ -325,4 +330,23 @@ func (n *PDNameTreeNode[T]) setLowerLimit(lower string) {
 		n.node.SetItem(cos.Limits, arr)
 	}
 	arr.SetString(0, lower)
+}
+
+// limitOf returns one entry of a node's /Limits array, and reports whether it
+// is there and is a string.
+//
+// Java's getUpperLimit and getLowerLimit answer null in either of those cases
+// and the string otherwise; the port's accessors answer "" for both, which
+// cannot tell an absent limit from the empty name. Value needs to, so it reads
+// the array through this.
+func limitOf[T COSObjectable](node NameTreeNode[T], index int) (string, bool) {
+	arr := node.Dictionary().GetCOSArray(cos.Limits)
+	if arr == nil || index >= arr.Size() {
+		return "", false
+	}
+	str, isString := arr.GetObject(index).(*cos.StringObj)
+	if !isString {
+		return "", false
+	}
+	return str.Value(), true
 }

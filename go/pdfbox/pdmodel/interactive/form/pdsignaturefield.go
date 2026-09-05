@@ -72,7 +72,7 @@ func (f *PDSignatureField) SetSignatureValue(value *digitalsignature.PDSignature
 // SetValue panics: a signature field holds a signature dictionary rather than a
 // string, which is the UnsupportedOperationException Java throws.
 func (f *PDSignatureField) SetValue(value string) error {
-	panic("Signature fields don.t support setting the value as String " +
+	panic("Signature fields don't support setting the value as String " +
 		"- use setValue(PDSignature value) instead")
 }
 

@@ -299,9 +299,14 @@ func parseBigEndianDate(text []rune, initialWhere *parsePosition) (time.Time, bo
 
 // strictDate builds a date and reports whether the fields were in range, which
 // is what a GregorianCalendar with leniency off answers.
+//
+// Its maximum for SECOND is 59: the leap-second range of 0 to 61 belongs to
+// java.util.Date, not to Calendar. The bound matters because time.Date
+// normalises rather than refusing, so a second of 60 would otherwise be read as
+// the next minute instead of as the malformed date Java rejects.
 func strictDate(year, month, day, hour, minute, second int) (time.Time, bool) {
 	if month < 1 || month > 12 || day < 1 || day > 31 ||
-		hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 61 {
+		hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59 {
 		return time.Time{}, false
 	}
 	date := time.Date(year, time.Month(month), day, hour, minute, second, 0, time.UTC)

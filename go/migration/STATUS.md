@@ -2525,3 +2525,67 @@ failures; and entry 48, where the port applies the mutating fixup only when
 the deferral list above, and this slice's tests do not cover the appearance
 handlers' output against a renderer — that comparison is slice 9's, and
 `AppearanceGenerationTest`'s two rendering cases wait for it.
+
+### The slice 8 feedback
+
+Six items, all from the pull request review. Two were typos in text the port
+wrote; four were behaviour. Three of the four were port defects and are fixed,
+each behind a test that fails without the fix. The fourth is a deviation that
+turns out to be unreachable, and is recorded here rather than changed.
+
+**Fixed — `PDNameTreeNode.getValue` could not tell an absent limit from an
+empty one.** Java's `getUpperLimit` and `getLowerLimit` answer `null` where the
+child has no `/Limits`, and `getValue` treats a null limit as "this child may
+hold anything": it descends and returns whatever the child answers, without
+looking at the children after it. The port's accessors answer `""` for an
+absent limit *and* for the empty name, which is a legal limit and sorts before
+every other. A tree whose first child covers `["" "a"]` therefore swallowed
+every lookup, so a name in a later child came back as not found. `Value` now
+reads the `/Limits` array through `limitOf`, which reports presence separately.
+`TestValueSkipsAChildWhoseLowerLimitIsTheEmptyName`.
+
+**Fixed — `DateConverter` accepted a second of 60 or 61.** `parseBigEndianDate`
+builds its result on a `GregorianCalendar` with leniency off, whose maximum for
+`SECOND` is 59; the 0-to-61 leap-second range belongs to `java.util.Date`, not
+to `Calendar`. The port's bound was 61, and `time.Date` normalises rather than
+refusing, so `D:20200101120060Z` was read as 12:01:00 — a malformed date
+silently becoming a different valid instant. The bound is 59.
+`TestSecondsBeyond59AreRefused`.
+
+**Fixed — `PlainText` kept one paragraph too many.** The constructor is
+`textValue.replace('\t',' ').split("\R")`, and `String.split` with a limit of
+zero drops *every* trailing empty result, not all but one: `Pattern.split`
+builds `["", ""]` for `"\n"` and strips both, leaving no paragraphs. The port
+stopped stripping at one entry and kept an empty paragraph, which the
+constructor then turns into a space — drawing a space where PDFBox draws
+nothing. The strip now runs to zero, and the branch above it answers the value
+whole where the regex never matched, which is what `Pattern.split` returns
+before it strips anything. `TestValueOfOnlyLineBreaksHasNoParagraphs` and
+`TestTrailingLineBreaksAreDropped`.
+
+**Recorded, not changed — the comb field walks runes where Java walks UTF-16
+code units.** `insertGeneratedCombAppearance` takes each cell with
+`value.substring(i, i+1)` in Java and one rune in the port, and counts the cells
+with `value.length()` against `len([]rune(value))`. The two agree for every
+character in the basic plane and differ for one outside it, where Java splits
+the surrogate pair across two cells — a different cell count, a different
+alignment for a centred or right-aligned field, and two half-glyphs instead of
+one.
+
+It is not reachable. Both sides measure each cell through
+`PDFont.getStringWidth` before drawing it, Java asking the font for the lone
+surrogate `U+D83D` and the port for the whole `U+1F600`, and no font this port
+can build has either — the embedders that would produce one are not ported. Both
+refuse the value rather than laying it out.
+`TestCombFieldRefusesASupplementaryCharacter` asserts that the port refuses, so
+that the claim fails loudly rather than silently if the encoder ever starts
+accepting such a character. Changing the walk would mean decoding each UTF-16
+unit back to a Go string, and a lone surrogate becomes U+FFFD there because a Go
+string cannot hold one — a behaviour Java does not have, bought for a case
+neither side reaches.
+
+**The two typos.** `PDListAttributeObject`'s doc comment named a type that does
+not exist, and `PDSignatureField.SetValue`'s panic message had lost its
+apostrophe to an editing slip. The message otherwise stays as Java writes it,
+naming `setValue(PDSignature value)`: the port copies Java's exception text, and
+the Go name it points at is on the method two lines below.

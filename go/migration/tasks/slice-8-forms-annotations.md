@@ -192,15 +192,15 @@ And for this branch in particular:
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
