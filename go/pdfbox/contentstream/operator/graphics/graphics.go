@@ -19,7 +19,6 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
 )
 
@@ -594,7 +593,7 @@ func (p *DrawObject) Process(op *operator.Operator, operands []cos.Base) error {
 		return nil
 	}
 	context := p.GraphicsContext()
-	xobject, err := context.Resources().XObject(objectName)
+	xobject, err := context.Resources().GetXObject(objectName)
 	if err != nil {
 		return err
 	}
@@ -606,24 +605,8 @@ func (p *DrawObject) Process(op *operator.Operator, operands []cos.Base) error {
 			return nil
 		}
 		return p.drawing().DrawImage(object)
-	case *form.PDTransparencyGroup:
-		context.IncreaseLevel()
-		defer context.DecreaseLevel()
-		if context.Level() > 50 {
-			slog.Error("graphics: recursion is too deep, skipping form XObject")
-			return nil
-		}
-		return context.Overrides().ShowTransparencyGroup(object)
-	case *form.PDFormXObject:
-		context.IncreaseLevel()
-		defer context.DecreaseLevel()
-		if context.Level() > 50 {
-			slog.Error("graphics: recursion is too deep, skipping form XObject")
-			return nil
-		}
-		return context.Overrides().ShowForm(object)
 	}
-	return nil
+	return contentstream.ShowFormXObject(context.PDFStreamEngine, xobject)
 }
 
 // BeginInlineImage is BI: draw the image the operator carries with it.

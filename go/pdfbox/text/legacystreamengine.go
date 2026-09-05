@@ -74,6 +74,7 @@ func NewLegacyPDFStreamEngine() *LegacyPDFStreamEngine {
 	statepr.AddAll(e.PDFStreamEngine)
 	textpr.AddAll(e.PDFStreamEngine)
 	markedcontent.AddAll(e.PDFStreamEngine)
+	e.AddOperator(contentstream.NewDrawObject(e.PDFStreamEngine))
 	return e
 }
 

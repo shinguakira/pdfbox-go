@@ -316,7 +316,7 @@ func (c *DefaultResourceCache) RemoveShading(indirect *cos.Object) shading.Shadi
 // where the cache has none.
 //
 // It answers an any, because graphics/pattern imports this package and so
-// PDAbstractPattern cannot be named here; PDResources.PatternOfName says the
+// PDAbstractPattern cannot be named here; PDResources.GetPattern says the
 // same.
 func (c *DefaultResourceCache) GetPattern(indirect *cos.Object) any {
 	return c.patterns.get(indirect)

@@ -34,8 +34,8 @@ func AddAll(context *contentstream.PDFStreamEngine) {
 	context.AddOperator(NewSetLineMiterLimit(context))
 	context.AddOperator(NewSetLineWidth(context))
 	context.AddOperator(NewSetMatrix(context))
-	context.AddOperator(NewSetRenderingIntent(context))
 	context.AddOperator(NewSetGraphicsStateParameters(context))
+	context.AddOperator(NewSetRenderingIntent(context))
 }
 
 // matrixOf reads the first six operands as a matrix. They must all be numbers.
@@ -343,35 +343,35 @@ func (p *SetLineDashPattern) Process(op *operator.Operator, arguments []cos.Base
 	return nil
 }
 
-// SetGraphicsStateParameters is gs: apply the named extended graphics state.
+// SetGraphicsStateParameters is gs: set the graphics state parameters from an
+// /ExtGState resource.
 type SetGraphicsStateParameters struct {
 	contentstream.BaseOperatorProcessor
 }
 
 // NewSetGraphicsStateParameters returns the gs processor.
-func NewSetGraphicsStateParameters(
-	context *contentstream.PDFStreamEngine) *SetGraphicsStateParameters {
+func NewSetGraphicsStateParameters(context *contentstream.PDFStreamEngine) *SetGraphicsStateParameters {
 	return &SetGraphicsStateParameters{contentstream.NewBaseOperatorProcessor(context)}
 }
 
 // Name returns the operator this processes.
 func (p *SetGraphicsStateParameters) Name() string { return operator.SetGraphicsStateParams }
 
-// Process applies every parameter the named dictionary holds.
-func (p *SetGraphicsStateParameters) Process(op *operator.Operator, arguments []cos.Base) error {
-	if len(arguments) == 0 {
-		return operator.MissingOperand(op, arguments)
+// Process applies the named extended graphics state to the graphics state.
+func (p *SetGraphicsStateParameters) Process(op *operator.Operator, operands []cos.Base) error {
+	if len(operands) == 0 {
+		return operator.MissingOperand(op, operands)
 	}
-	graphicsName, isName := arguments[0].(*cos.Name)
+	graphicsName, isName := operands[0].(*cos.Name)
 	if !isName {
 		return nil
 	}
 	// set parameters from graphics state parameter dictionary
 	context := p.Context()
-	gs := context.Resources().ExtGState(graphicsName)
+	gs := context.Resources().GetExtGState(graphicsName)
 	if gs == nil {
 		slog.Error("state: name for 'gs' operator not found in resources",
-			"name", "/"+graphicsName.Name())
+			slog.String("name", "/"+graphicsName.Name()))
 		return nil
 	}
 	return gs.CopyIntoGraphicsState(context.GraphicsState())

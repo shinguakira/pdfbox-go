@@ -5,15 +5,14 @@
 // keeps them together.
 //
 // DrawObject, which lives in this package in Java although it draws an XObject,
-// is not here: it needs PDXObject. Where a properties operand names a property
-// list in the resources rather than giving one inline, that lookup is missing
-// too, since PDResources cannot resolve one yet. See migration/STATUS.md.
+// is not here: it needs PDXObject. See migration/STATUS.md.
 package markedcontent
 
 import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 )
 
 // AddAll registers every processor in this package with the engine.
@@ -35,15 +34,22 @@ func AddSequenceOperators(context *contentstream.PDFStreamEngine) {
 }
 
 // propertiesOf reads the second operand of a BDC or DP as a property
-// dictionary, returning nil when it is neither a dictionary nor something this
-// port can resolve.
-func propertiesOf(op1 cos.Base) *cos.Dictionary {
-	if dict, ok := op1.(*cos.Dictionary); ok {
+// dictionary, returning nil where it is neither a dictionary nor a name the
+// resources hold a property list under.
+//
+// Java writes the two branches out in each of the two processors; they are the
+// same seven lines, so the port has them once.
+func propertiesOf(resources *pdmodel.PDResources, op1 cos.Base) *cos.Dictionary {
+	if name, isName := op1.(*cos.Name); isName {
+		// PDFBOX-5980 and SO79549651
+		if prop := resources.GetProperties(name); prop != nil {
+			return prop.PropertyDictionary()
+		}
+		return nil
+	}
+	if dict, isDictionary := op1.(*cos.Dictionary); isDictionary {
 		return dict
 	}
-	// PDFBOX-5980 and SO79549651: a name here refers to a property list in the
-	// resources. Resolving it needs PDResources.getProperties and the
-	// PDPropertyList it returns, neither of which is ported.
 	return nil
 }
 
@@ -99,7 +105,7 @@ func (p *BeginMarkedContentSequenceWithProperties) Process(op *operator.Operator
 	if !ok {
 		return nil
 	}
-	propDict := propertiesOf(operands[1])
+	propDict := propertiesOf(p.Context().Resources(), operands[1])
 	if propDict == nil {
 		// wrong type or property not found
 		return nil
@@ -179,11 +185,58 @@ func (p *MarkedContentPointWithProperties) Process(op *operator.Operator, operan
 	if !ok {
 		return nil
 	}
-	propDict := propertiesOf(operands[1])
+	propDict := propertiesOf(p.Context().Resources(), operands[1])
 	if propDict == nil {
 		// wrong type or property not found
 		return nil
 	}
 	p.Context().Overrides().MarkedContentPoint(tag, propDict)
 	return nil
+}
+
+// xobjectSink is what the marked content DrawObject hands the XObject to.
+//
+// Java casts the context to PDFMarkedContentExtractor, which lives in
+// pdfbox/text; that package imports this one, so the port names the one method
+// it calls instead.
+type xobjectSink interface {
+	XObject(xobject any)
+}
+
+// DrawObject is Do: record the XObject in the sequence being collected, and
+// walk into it where it is a form.
+//
+// Port of the markedcontent DrawObject, which is the one PDFMarkedContentExtractor
+// registers. It differs from the other two in recording the XObject, and in not
+// stepping over an image.
+type DrawObject struct {
+	contentstream.BaseOperatorProcessor
+}
+
+// NewDrawObject returns the Do processor for the marked content extractor.
+func NewDrawObject(context *contentstream.PDFStreamEngine) *DrawObject {
+	return &DrawObject{contentstream.NewBaseOperatorProcessor(context)}
+}
+
+// Name returns the operator this processes.
+func (p *DrawObject) Name() string { return operator.DrawObject }
+
+// Process records the XObject and walks into it where it is a form.
+func (p *DrawObject) Process(op *operator.Operator, arguments []cos.Base) error {
+	if len(arguments) == 0 {
+		return operator.MissingOperand(op, arguments)
+	}
+	name, isName := arguments[0].(*cos.Name)
+	if !isName {
+		return nil
+	}
+	context := p.Context()
+	xobject, err := context.Resources().GetXObject(name)
+	if err != nil {
+		return err
+	}
+	if sink, isSink := context.Overrides().(xobjectSink); isSink {
+		sink.XObject(xobject)
+	}
+	return contentstream.ShowFormXObject(context, xobject)
 }

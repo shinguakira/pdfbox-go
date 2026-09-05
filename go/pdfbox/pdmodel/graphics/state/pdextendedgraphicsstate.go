@@ -12,8 +12,8 @@ import (
 //
 // Java names ResourceCache, which lives in pdmodel; pdmodel imports this
 // package through the graphics state, so the dependency cannot run both ways.
-// The port names what is used, which is nothing yet: the soft mask is the one
-// entry this class does not read, since PDSoftMask is not ported.
+// The port names what is used, which is nothing: the cache is read only to be
+// handed on to the soft mask, which reads its transparency group through it.
 type CacheLike any
 
 // PDExtendedGraphicsState is an /ExtGState dictionary: a set of graphics state

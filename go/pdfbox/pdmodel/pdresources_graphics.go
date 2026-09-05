@@ -1,19 +1,17 @@
 package pdmodel
 
-// The drawing half of PDResources: the XObjects, shadings, extended graphics
-// states and property lists a content stream draws through.
+// The drawing half of PDResources: the XObjects and shadings a content stream
+// draws through.
 //
-// Port of PDResources.getXObject, getShading, getExtGState and getProperties,
-// kept out of pdresources.go the way the colour space half is. Each waited on
-// the type it returns; slice 9 brings the last of them.
+// Port of PDResources.getXObject and getShading, kept out of pdresources.go the
+// way the colour space half is. Each waited on the type it returns; slice 9
+// brings both.
 
 import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/shading"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 )
 
 // xobjectCache is the part of a resource cache that keeps XObjects.
@@ -21,7 +19,7 @@ import (
 // Java declares getXObject, put(COSObject, PDXObject) and removeXObject on
 // ResourceCache itself; the port's ResourceCache is declared in pdmodel/font,
 // which cannot name an XObject, so this package asks the cache for them by
-// shape, the way it asks for the patterns.
+// shape, the way it asks for the extended graphics states.
 type xobjectCache interface {
 	GetXObject(indirect *cos.Object) common.COSObjectable
 	PutXObject(indirect *cos.Object, xobject common.COSObjectable)
@@ -33,25 +31,12 @@ type shadingCache interface {
 	PutShading(indirect *cos.Object, sh shading.Shading)
 }
 
-// extGStateCache is the part of a resource cache that keeps extended graphics
-// states.
-type extGStateCache interface {
-	GetExtGState(indirect *cos.Object) *state.PDExtendedGraphicsState
-	PutExtGState(indirect *cos.Object, extGState *state.PDExtendedGraphicsState)
-}
-
-// propertiesCache is the part of a resource cache that keeps property lists.
-type propertiesCache interface {
-	GetProperties(indirect *cos.Object) markedcontent.PropertyList
-	PutProperties(indirect *cos.Object, propertyList markedcontent.PropertyList)
-}
-
-// XObject returns the XObject resource with the given name, or nil where the
+// GetXObject returns the XObject resource with the given name, or nil where the
 // resources have none.
 //
 // Port of getXObject. Java's return type is PDXObject; the port has no
 // interface over the four kinds, so it answers what CreateXObject does.
-func (r *PDResources) XObject(name *cos.Name) (common.COSObjectable, error) {
+func (r *PDResources) GetXObject(name *cos.Name) (common.COSObjectable, error) {
 	indirect := r.getIndirect(cos.XObject, name)
 	cache, cacheKeepsThem := r.cache.(xobjectCache)
 	if cacheKeepsThem && indirect != nil {
@@ -114,11 +99,11 @@ func (r *PDResources) isAllowedCache(xobject common.COSObjectable) bool {
 	return true
 }
 
-// Shading returns the shading resource with the given name, or nil where the
+// GetShading returns the shading resource with the given name, or nil where the
 // resources have none.
 //
 // Port of getShading.
-func (r *PDResources) Shading(name *cos.Name) (shading.Shading, error) {
+func (r *PDResources) GetShading(name *cos.Name) (shading.Shading, error) {
 	indirect := r.getIndirect(cos.Shading, name)
 	cache, cacheKeepsThem := r.cache.(shadingCache)
 	if cacheKeepsThem && indirect != nil {
@@ -143,52 +128,35 @@ func (r *PDResources) Shading(name *cos.Name) (shading.Shading, error) {
 	return sh, nil
 }
 
-// ExtGState returns the extended graphics state resource with the given name,
-// or nil where the resources have none.
+// AddShading adds the given shading to the resources, and returns the name it
+// went in under.
 //
-// Port of getExtGState.
-func (r *PDResources) ExtGState(name *cos.Name) *state.PDExtendedGraphicsState {
-	indirect := r.getIndirect(cos.ExtGState, name)
-	cache, cacheKeepsThem := r.cache.(extGStateCache)
-	if cacheKeepsThem && indirect != nil {
-		if cached := cache.GetExtGState(indirect); cached != nil {
-			return cached
-		}
-	}
-
-	// get the instance
-	var extGState *state.PDExtendedGraphicsState
-	if dict, isDictionary := asResourceDictionary(r.get(cos.ExtGState, name)); isDictionary {
-		extGState = state.NewPDExtendedGraphicsStateOfCache(dict, r.Cache())
-	}
-
-	if cacheKeepsThem && indirect != nil {
-		cache.PutExtGState(indirect, extGState)
-	}
-	return extGState
+// Port of add(PDShading).
+func (r *PDResources) AddShading(sh shading.Shading) *cos.Name {
+	return r.add(cos.Shading, "sh", sh)
 }
 
-// Properties returns the property list resource with the given name, or nil
-// where the resources have none.
+// AddPattern adds the given pattern to the resources, and returns the name it
+// went in under.
 //
-// Port of getProperties.
-func (r *PDResources) Properties(name *cos.Name) markedcontent.PropertyList {
-	indirect := r.getIndirect(cos.Properties, name)
-	cache, cacheKeepsThem := r.cache.(propertiesCache)
-	if cacheKeepsThem && indirect != nil {
-		if cached := cache.GetProperties(indirect); cached != nil {
-			return cached
-		}
-	}
+// Port of add(PDAbstractPattern). It takes the objectable rather than the
+// pattern, because graphics/pattern imports this package; GetPattern says the
+// same.
+func (r *PDResources) AddPattern(pattern common.COSObjectable) *cos.Name {
+	return r.add(cos.Pattern, "p", pattern)
+}
 
-	// get the instance
-	var propertyList markedcontent.PropertyList
-	if dict, isDictionary := asResourceDictionary(r.get(cos.Properties, name)); isDictionary {
-		propertyList = markedcontent.CreatePropertyList(dict)
-	}
+// PutShading sets the shading resource with the given name.
+//
+// Port of put(COSName, PDShading).
+func (r *PDResources) PutShading(name *cos.Name, sh shading.Shading) {
+	r.put(cos.Shading, name, sh)
+}
 
-	if cacheKeepsThem && indirect != nil {
-		cache.PutProperties(indirect, propertyList)
-	}
-	return propertyList
+// PutPattern sets the pattern resource with the given name.
+//
+// Port of put(COSName, PDAbstractPattern), taking the objectable for the reason
+// AddPattern gives.
+func (r *PDResources) PutPattern(name *cos.Name, pattern common.COSObjectable) {
+	r.put(cos.Pattern, name, pattern)
 }

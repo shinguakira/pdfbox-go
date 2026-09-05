@@ -130,7 +130,7 @@ func (p *PDPattern) Pattern(c *color.PDColor) (Pattern, error) {
 	if !canLookUp {
 		return nil, fmt.Errorf("pattern %v was not found", c.PatternName())
 	}
-	found, err := lookup.PatternOfName(c.PatternName())
+	found, err := lookup.GetPattern(c.PatternName())
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +151,8 @@ func (p *PDPattern) Pattern(c *color.PDColor) (Pattern, error) {
 // device PDResources already uses for its extended graphics state and property
 // list caches.
 type patternResources interface {
-	// PatternOfName returns the pattern resource of the given name, or nil.
-	PatternOfName(name *cos.Name) (any, error)
+	// GetPattern returns the pattern resource of the given name, or nil.
+	GetPattern(name *cos.Name) (any, error)
 }
 
 // UnderlyingColorSpace returns the underlying colour space where this is an

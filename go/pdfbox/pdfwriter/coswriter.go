@@ -17,6 +17,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfparser/xref"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter/compress"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/digitalsignature"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
@@ -109,21 +110,15 @@ type PDDocumentLike interface {
 
 // SignatureInterface signs the bytes of an incremental update.
 //
-// Java's is org.apache.pdfbox.pdmodel.interactive.digitalsignature.
-// SignatureInterface, which slice 8 brings with the rest of the signature
-// model; this stands for it so that the writer's signature path can be ported
-// now. See migration/STATUS.md.
+// Java names org.apache.pdfbox.pdmodel.interactive.digitalsignature.
+// SignatureInterface; the port declares the same method here rather than
+// importing it, because that package imports this one for SigningSupport. Go
+// matches interfaces structurally, so a digitalsignature.SignatureInterface is
+// one of these.
 type SignatureInterface interface {
 	// Sign returns the CMS signature of the given content.
 	Sign(content io.Reader) ([]byte, error)
 }
-
-// errSigningNeedsSlice8 is what the writer reports where Java would build the
-// data to sign. getDataToSign needs COSFilterInputStream, which lives in
-// pdmodel/interactive/digitalsignature and arrives with slice 8; an externally
-// created signature can still be written with WriteExternalSignature.
-var errSigningNeedsSlice8 = errors.New(
-	"pdfwriter: signing through a SignatureInterface needs COSFilterInputStream, which slice 8 brings")
 
 // COSWriter writes a COS document out as a PDF file.
 //
@@ -170,8 +165,14 @@ type COSWriter struct {
 	willEncrypt      bool
 
 	// incrementalUpdate and the fields below it drive an incremental save.
-	incrementalUpdate  bool
-	reachedSignature   bool
+	incrementalUpdate bool
+	reachedSignature  bool
+	// writingFDF says whether the document being written is an FDF one, which
+	// makes the header say %FDF- rather than %PDF-. Java holds the FDFDocument
+	// itself in a field and tests it for null; the writer cannot name that type
+	// here, so the port holds the answer to the one question it asks of it.
+	writingFDF bool
+
 	signatureOffset    int64
 	signatureLength    int64
 	byteRangeOffset    int64
@@ -516,9 +517,10 @@ func (w *COSWriter) doWriteHeader(doc *cos.Document) error {
 		doc.SetVersion(max(doc.Version(), compress.MinimumSupportedVersion))
 	}
 
-	// Java writes "%FDF-" for an FDF document; FDF is not ported, so this is
-	// always a PDF header. See migration/STATUS.md.
 	headerString := "%PDF-" + formatVersion(doc.Version())
+	if w.writingFDF {
+		headerString = "%FDF-" + formatVersion(doc.Version())
+	}
 
 	if _, err := w.standardOutput.Write([]byte(headerString)); err != nil {
 		return err
@@ -801,14 +803,56 @@ func (w *COSWriter) doWriteSignature() error {
 
 	if w.signatureInterface != nil {
 		// data to be signed
-		//
-		// Java builds it with COSFilterInputStream, which slice 8 brings; until
-		// then a signature has to be made externally and written with
-		// WriteExternalSignature.
-		return errSigningNeedsSlice8
+		dataToSign, err := w.DataToSign()
+		if err != nil {
+			return err
+		}
+
+		// sign the bytes
+		signatureBytes, err := w.signatureInterface.Sign(dataToSign)
+		if err != nil {
+			return err
+		}
+		return w.WriteExternalSignature(signatureBytes)
 	}
 	// else signature should be created externally and set via writeSignature()
 	return nil
+}
+
+// DataToSign returns the stream of PDF data to be signed. Clients should use
+// this method only to create signatures externally. Write should have been
+// called prior. The created signature should be set using
+// WriteExternalSignature.
+//
+// When a SignatureInterface is used, COSWriter obtains and writes the signature
+// itself.
+//
+// Java throws IllegalStateException where the PDF is not prepared for external
+// signing, which is unchecked, so the port panics.
+func (w *COSWriter) DataToSign() (io.Reader, error) {
+	if w.incrementPart == nil || w.incrementalInput == nil {
+		panic("PDF not prepared for signing")
+	}
+	// range of incremental bytes to be signed (includes /ByteRange but not /Contents)
+	inLength, err := w.incrementalInput.Length()
+	if err != nil {
+		return nil, err
+	}
+	incPartSigOffset := int(w.signatureOffset - inLength)
+	afterSigOffset := incPartSigOffset + int(w.signatureLength)
+	byteRange := []int{
+		0, incPartSigOffset,
+		afterSigOffset, len(w.incrementPart) - afterSigOffset,
+	}
+
+	if err := pdfio.SeekTo(w.incrementalInput, 0); err != nil {
+		return nil, err
+	}
+	filtered, err := digitalsignature.NewCOSFilterInputStreamOfBytes(w.incrementPart, byteRange)
+	if err != nil {
+		return nil, err
+	}
+	return io.MultiReader(pdfio.NewReader(w.incrementalInput), filtered), nil
 }
 
 // WriteExternalSignature writes an externally created signature of the PDF data
@@ -1347,6 +1391,24 @@ func (w *COSWriter) VisitObject(obj *cos.Object) error {
 		return w.VisitNull(cos.NullObject)
 	}
 	return base.Accept(w)
+}
+
+// WriteFDF writes the given FDF document out.
+//
+// Port of write(FDFDocument). The writer cannot name FDFDocument, because
+// pdmodel/fdf imports this package for this method; it takes instead the COS
+// document the FDF document holds, which is all write(FDFDocument) reads out of
+// it.
+func (w *COSWriter) WriteFDF(cosDoc *cos.Document) error {
+	w.writingFDF = true
+	if w.incrementalUpdate {
+		trailer := cosDoc.Trailer()
+		for _, base := range trailer.ToIncrement().Exclude(trailer).Objects() {
+			w.objectsToWrite = append(w.objectsToWrite, base)
+		}
+	}
+	w.willEncrypt = false
+	return cosDoc.Accept(w)
 }
 
 // Write writes the given document out.
