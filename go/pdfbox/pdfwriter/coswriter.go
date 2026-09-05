@@ -165,8 +165,14 @@ type COSWriter struct {
 	willEncrypt      bool
 
 	// incrementalUpdate and the fields below it drive an incremental save.
-	incrementalUpdate  bool
-	reachedSignature   bool
+	incrementalUpdate bool
+	reachedSignature  bool
+	// writingFDF says whether the document being written is an FDF one, which
+	// makes the header say %FDF- rather than %PDF-. Java holds the FDFDocument
+	// itself in a field and tests it for null; the writer cannot name that type
+	// here, so the port holds the answer to the one question it asks of it.
+	writingFDF bool
+
 	signatureOffset    int64
 	signatureLength    int64
 	byteRangeOffset    int64
@@ -511,9 +517,10 @@ func (w *COSWriter) doWriteHeader(doc *cos.Document) error {
 		doc.SetVersion(max(doc.Version(), compress.MinimumSupportedVersion))
 	}
 
-	// Java writes "%FDF-" for an FDF document; FDF is not ported, so this is
-	// always a PDF header. See migration/STATUS.md.
 	headerString := "%PDF-" + formatVersion(doc.Version())
+	if w.writingFDF {
+		headerString = "%FDF-" + formatVersion(doc.Version())
+	}
 
 	if _, err := w.standardOutput.Write([]byte(headerString)); err != nil {
 		return err
@@ -1384,6 +1391,24 @@ func (w *COSWriter) VisitObject(obj *cos.Object) error {
 		return w.VisitNull(cos.NullObject)
 	}
 	return base.Accept(w)
+}
+
+// WriteFDF writes the given FDF document out.
+//
+// Port of write(FDFDocument). The writer cannot name FDFDocument, because
+// pdmodel/fdf imports this package for this method; it takes instead the COS
+// document the FDF document holds, which is all write(FDFDocument) reads out of
+// it.
+func (w *COSWriter) WriteFDF(cosDoc *cos.Document) error {
+	w.writingFDF = true
+	if w.incrementalUpdate {
+		trailer := cosDoc.Trailer()
+		for _, base := range trailer.ToIncrement().Exclude(trailer).Objects() {
+			w.objectsToWrite = append(w.objectsToWrite, base)
+		}
+	}
+	w.willEncrypt = false
+	return cosDoc.Accept(w)
 }
 
 // Write writes the given document out.

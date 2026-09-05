@@ -1775,3 +1775,90 @@ carry a comment pointing here.
 
 **Confidence** high. The cast is unconditional and the setter is right next to
 it.
+
+---
+
+## 44. `FDFAnnotationFreeText.getRotation` reads a string that `setRotation` wrote as an integer
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationFreeText.java`,
+`getRotation`/`setRotation`.
+
+**What** The setter writes an integer and the getter reads a string:
+
+```java
+public final void setRotation(int rotation)
+{
+    annot.setInt(COSName.ROTATE, rotation);
+}
+
+public String getRotation()
+{
+    return annot.getString(COSName.ROTATE);
+}
+```
+
+`COSDictionary.getString(COSName)` answers the value only when the entry is a
+`COSString`, and null otherwise.
+
+**What correct would be** `/Rotate` is an integer in the specification (PDF
+32000-1 table 30 for a page, and the XFDF `rotation` attribute the constructor
+reads is parsed with `Integer.parseInt`), so the setter is right and the getter
+should read `annot.getInt(COSName.ROTATE, 0)` — as the sibling `getJustification`
+does, which reads `getInt` and formats it.
+
+**Why it matters** `getRotation` answers null for every free text annotation the
+FDF import produced, and for every conforming file, because `/Rotate` is a
+number in both. It can only answer non-null for a file that wrote `/Rotate` as a
+string, which no writer does. Nothing inside PDFBox calls it, which is why it
+has gone unnoticed; a caller that reads the rotation of an imported annotation
+gets null and has no way to tell "no rotation" from "rotation present".
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/fdf/annotations2.go`, `FDFAnnotationFreeText.Rotation`, which
+reads `GetString` and so answers the empty string — the port's null — for
+anything `SetRotation` wrote. Its comment points here.
+
+**Confidence** high. The two methods sit five lines apart and the constructor
+right above them parses the attribute as an int.
+
+---
+
+## 45. `FDFDictionary.getPages` reads the array with `get` rather than `getObject`
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFDictionary.java`,
+`getPages`.
+
+**What** Every other list accessor of the class resolves indirect references and
+this one does not:
+
+```java
+pages.add(new FDFPage((COSDictionary) pageArray.get(i)));
+```
+
+against `getFields`, three methods above, which reads
+
+```java
+fields.add(new FDFField((COSDictionary) fieldArray.getObject(i)));
+```
+
+`COSArray.get` answers the entry as it stands, which is a `COSObject` for an
+indirect reference; `getObject` dereferences it first.
+
+**What correct would be** `getObject(i)`, as `getFields`, `getAnnotations` and
+`FDFField.getKids` all use.
+
+**Why it matters** `/Pages` holds an array of dictionaries, and a writer is free
+to make each of them an indirect object — the FDF specification places no
+restriction there, and PDFBox's own writer emits indirect objects for anything
+the trailer reaches. Reading such a file throws `ClassCastException` from
+`getPages`, because a `COSObject` is not a `COSDictionary`. Only a file whose
+pages are all direct dictionaries can be read. `getEmbeddedFDFs` on the same
+class has the same shape, but there it is harmless: `PDFileSpecification.createFS`
+takes a `COSBase` and dereferences it itself.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/fdf/fdfdictionary.go`, `Pages`,
+which reads `cos.Array.Get` and panics on an entry that is not a dictionary —
+the port's `ClassCastException`. Its comment points here.
+
+**Confidence** high. The two accessors sit in the same file and differ only in
+that one call.

@@ -16,13 +16,13 @@ type NodeType int
 
 // The node kinds this DOM builds.
 const (
-	ElementNode       NodeType = 1
-	AttributeNode     NodeType = 2
-	TextNode          NodeType = 3
-	CDATASectionNode  NodeType = 4
+	ElementNode               NodeType = 1
+	AttributeNode             NodeType = 2
+	TextNode                  NodeType = 3
+	CDATASectionNode          NodeType = 4
 	ProcessingInstructionNode NodeType = 7
-	CommentNode       NodeType = 8
-	DocumentNode      NodeType = 9
+	CommentNode               NodeType = 8
+	DocumentNode              NodeType = 9
 )
 
 // Node is one node of the tree.
@@ -332,3 +332,77 @@ func (p *ProcessingInstruction) Target() string { return p.target }
 
 // Data returns the data of the instruction.
 func (p *ProcessingInstruction) Data() string { return p.data }
+
+// TextContent returns the text of the node and of everything below it, with
+// every element and attribute left out.
+//
+// Port of Node.getTextContent. Java puts it on the interface; Go writes it as a
+// function over one, because the nodes here share no base struct that could
+// carry it.
+func TextContent(n Node) string {
+	switch typed := n.(type) {
+	case *Text:
+		return typed.data
+	case *Comment, *ProcessingInstruction:
+		// getTextContent answers null for a document, a document type and a
+		// notation, and the data itself for a comment or a processing
+		// instruction.
+		return n.NodeValue()
+	case *Attr:
+		return typed.value
+	}
+	out := ""
+	for _, child := range n.ChildNodes() {
+		switch child.(type) {
+		case *Comment, *ProcessingInstruction:
+			// getTextContent leaves comments and processing instructions out
+			// when it walks the children of an element or a document.
+			continue
+		}
+		out += TextContent(child)
+	}
+	return out
+}
+
+// FirstElementByTagName returns the first child element of the given node with
+// the given name, or nil where it has none.
+//
+// The XPath expressions PDFBox evaluates over an XFDF annotation are
+// "contents[1]" and "contents-richtext[1]", both of which are this. Go has no
+// XPath engine in its standard library, and the two steps are the whole of what
+// PDFBox asks for, so the port answers them directly.
+func FirstElementByTagName(n Node, tagName string) *Element {
+	for _, child := range n.ChildNodes() {
+		if element, isElement := child.(*Element); isElement && element.tagName == tagName {
+			return element
+		}
+	}
+	return nil
+}
+
+// ElementsByPath returns every element the given path of child element names
+// reaches from the given node, in document order.
+//
+// The XPath expressions PDFBox evaluates as node sets are "inklist/gesture" and
+// "OnActivation/Action/URI", both of which are this. Go has no XPath engine in
+// its standard library, and these two steps are the whole of what PDFBox asks
+// for, so the port answers them directly.
+func ElementsByPath(n Node, path ...string) []*Element {
+	current := []Node{n}
+	for _, name := range path {
+		next := []Node{}
+		for _, node := range current {
+			for _, child := range node.ChildNodes() {
+				if element, isElement := child.(*Element); isElement && element.tagName == name {
+					next = append(next, element)
+				}
+			}
+		}
+		current = next
+	}
+	out := make([]*Element, 0, len(current))
+	for _, node := range current {
+		out = append(out, node.(*Element))
+	}
+	return out
+}
