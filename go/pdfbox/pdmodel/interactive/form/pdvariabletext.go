@@ -125,3 +125,22 @@ func (f *PDVariableText) stringOrStream(base cos.Base) string {
 	}
 	return ""
 }
+
+// variableText answers this field, which AsVariableText finds through the
+// interface every field embedding PDVariableText carries because of it.
+func (f *PDVariableText) variableText() *PDVariableText { return f }
+
+// AsVariableText returns the variable text part of the given field, and nil
+// where the field is not one.
+//
+// Java writes this as `field instanceof PDVariableText`. Go cannot ask that of
+// an embedded struct from another package, so the test goes through the
+// unexported method above, which only a field embedding PDVariableText has.
+func AsVariableText(field PDField) *PDVariableText {
+	if variableText, isVariableText := field.(interface {
+		variableText() *PDVariableText
+	}); isVariableText {
+		return variableText.variableText()
+	}
+	return nil
+}

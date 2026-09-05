@@ -201,6 +201,14 @@ func (d *PDDocument) Close() error {
 type PDDocumentCatalog struct {
 	root     *cos.Dictionary
 	document *PDDocument
+
+	// acroFormFixupApplied and cachedAcroForm are the two private fields of
+	// getAcroForm. That accessor names PDAcroForm, which lives in
+	// interactive/form, and that package imports this one, so getAcroForm is a
+	// function there over these two. They are typed on any because this package
+	// cannot name either type; see AcroFormOfCatalog in interactive/form.
+	acroFormFixupApplied any
+	cachedAcroForm       any
 }
 
 var _ common_COSObjectable = (*PDDocumentCatalog)(nil)
@@ -347,3 +355,32 @@ func (d *PDDocument) addFontToSubset(f font.PDFont) {
 	}
 	d.fontsToSubset = append(d.fontsToSubset, f)
 }
+
+// AcroFormFixupApplied returns the fixup getAcroForm has already applied, or
+// nil where it has applied none.
+//
+// Java holds this in a private field of PDDocumentCatalog. getAcroForm lives in
+// interactive/form, because it names PDAcroForm; this is how it reaches the
+// field.
+func (c *PDDocumentCatalog) AcroFormFixupApplied() any { return c.acroFormFixupApplied }
+
+// SetAcroFormFixupApplied records the fixup getAcroForm has applied.
+func (c *PDDocumentCatalog) SetAcroFormFixupApplied(fixup any) { c.acroFormFixupApplied = fixup }
+
+// CachedAcroForm returns the form getAcroForm last built, or nil where it has
+// built none since the cache was last cleared.
+//
+// Java holds this in a private field of PDDocumentCatalog; see
+// AcroFormFixupApplied.
+func (c *PDDocumentCatalog) CachedAcroForm() any { return c.cachedAcroForm }
+
+// SetCachedAcroForm records the form getAcroForm built, and clears the cache
+// for a nil one.
+func (c *PDDocumentCatalog) SetCachedAcroForm(acroForm any) { c.cachedAcroForm = acroForm }
+
+// Document returns the document the catalogue is part of.
+//
+// Java holds it in a private field, which its getAcroForm reads; the accessor
+// is here because that method lives in interactive/form. See
+// AcroFormFixupApplied.
+func (c *PDDocumentCatalog) Document() *PDDocument { return c.document }
