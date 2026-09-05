@@ -244,7 +244,7 @@ func (r *PDFRenderer) RenderImageTo(pageIndex int, scale float32, imageType Imag
 	}
 
 	// use a transparent background if the image type supports alpha
-	r.backend.SetTransform(transformOfPage(rotationAngle, cropBox, scale, scale))
+	r.backend.SetTransform(transformOfPage(r.backend.Transform(), rotationAngle, cropBox, scale, scale))
 	return r.drawPage(page, destination, cropBox)
 }
 
@@ -262,7 +262,7 @@ func (r *PDFRenderer) RenderPageToBackend(pageIndex int, backend Backend,
 	page := r.pageTree.Get(pageIndex)
 	// TODO need width/height calculations? should these be in PageDrawer?
 	cropBox := page.CropBox()
-	backend.SetTransform(transformOfPage(page.Rotation(), cropBox, scaleX, scaleY))
+	backend.SetTransform(transformOfPage(backend.Transform(), page.Rotation(), cropBox, scaleX, scaleY))
 
 	saved := r.backend
 	r.backend = backend
@@ -308,14 +308,16 @@ func (r *PDFRenderer) IsGroupEnabled(group *optionalcontent.PDOptionalContentGro
 }
 
 // transformOfPage returns the scale, rotate and translate a page is drawn
-// through.
+// through, concatenated onto the transform already in force.
 //
 // Port of the private transform(Graphics2D, int, PDRectangle, float, float),
 // which mutates the Graphics2D; the port builds the transform and lets the
-// caller install it.
-func transformOfPage(rotationAngle int, cropBox *common.PDRectangle,
-	scaleX, scaleY float32) *geom.AffineTransform {
-	at := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
+// caller install it. Java concatenates onto what the Graphics2D already has,
+// which is what keeps PDFPrintable's own translate to the imageable area, so
+// base is that transform and not the identity.
+func transformOfPage(base *geom.AffineTransform, rotationAngle int,
+	cropBox *common.PDRectangle, scaleX, scaleY float32) *geom.AffineTransform {
+	at := base.Clone()
 	at.Scale(float64(scaleX), float64(scaleY))
 	// TODO should we be passing the scale to PageDrawer rather than messing with Graphics?
 	if rotationAngle != 0 {
