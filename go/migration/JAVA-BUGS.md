@@ -1724,3 +1724,54 @@ entry whose content Java does not define either.
 
 **Confidence** high for the defect. The field is public and final and the loop
 tests only for final.
+
+---
+
+## 43. `PDSeedValue` writes strings into `/Reasons` and `/LegalAttestation` and reads them back as names
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValue.java`,
+`getReasons`/`setReasons` and `getLegalAttestation`/`setLegalAttestation`.
+
+**What** The setters write `COSString`s and the getters read `COSName`s:
+
+```java
+public List<String> getReasons()
+{
+    COSArray fields = dictionary.getCOSArray(COSName.REASONS);
+    return fields != null ? fields.toCOSNameStringList() : Collections.emptyList();
+}
+
+public void setReasons(List<String> reasons)
+{
+    dictionary.setItem(COSName.REASONS, COSArray.ofCOSStrings(reasons));
+}
+```
+
+and `COSArray.toCOSNameStringList` is
+
+```java
+return objects.stream().map(o -> ((COSName) o).getName()).collect(Collectors.toList());
+```
+
+**What correct would be** Both entries are text strings in the specification
+(PDF 32000-1 table 234: `Reasons` is "an array of text strings"; the same for
+`LegalAttestation`), so the setters are right and the getters should read
+`toCOSStringStringList`, the way `PDSeedValueCertificate.getKeyUsage` reads the
+strings it writes.
+
+**Why it matters** `getReasons` on any dictionary `setReasons` wrote throws
+`ClassCastException`, because the cast to `COSName` fails on the first entry.
+The same holds for `getLegalAttestation`. Reading a real file is no better: a
+conforming writer puts text strings there, and the getter throws on those too.
+The pair is only usable if the reader and the writer are both PDFBox and the
+entry was written by hand as names. Nothing in PDFBox calls either getter, which
+is why it has gone unnoticed. `getSubFilter` and `getDigestMethod` on the same
+class are correct, because `setSubFilter` and `setDigestMethod` write names.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/interactive/digitalsignature/pdseedvalue.go`,
+`Reasons` and `LegalAttestation` read `cos.Array.ToNameStringList`, which panics
+on an entry that is not a name — Go's answer to the `ClassCastException`. Both
+carry a comment pointing here.
+
+**Confidence** high. The cast is unconditional and the setter is right next to
+it.
