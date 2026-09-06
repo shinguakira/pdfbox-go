@@ -79,8 +79,10 @@ func (l NodeList) Item(index int) Node {
 // NamedNodeMap is a collection of nodes reachable by name.
 //
 // Port of the interface org.w3c.dom.NamedNodeMap. It holds the attributes of an
-// element, in the order they were written, which is the order Xerces keeps them
-// in too.
+// element **sorted by qualified name**, not in the order they were written:
+// Xerces keeps them sorted so it can search the map with a binary search, and
+// anything that walks getAttributes() therefore sees that order. See
+// Element.addAttribute, which is the only thing that fills this.
 type NamedNodeMap []*Attr
 
 // Length returns how many nodes the map holds.
@@ -198,6 +200,31 @@ func (e *Element) TagName() string { return e.tagName }
 
 // Attributes returns the attributes of the element.
 func (e *Element) Attributes() NamedNodeMap { return e.attributes }
+
+// addAttribute puts an attribute in the list, in order of its written name.
+//
+// Xerces keeps an element's attributes in a NamedNodeMap it searches by name
+// with a binary search, so they are held -- and walked, and written out -- in
+// that order rather than the order they were read in. Anything that walks
+// getAttributes() sees the sorted order, which
+// FDFAnnotation.richContentsToString does, and FDFAnnotationTest asserts the
+// result of byte for byte.
+//
+// The xmpbox DOM found the same thing separately and does the same; the two
+// cannot be folded together, for the reason STATUS.md gives.
+func (e *Element) addAttribute(attribute *Attr) {
+	name := attribute.NodeName()
+	at := len(e.attributes)
+	for i, held := range e.attributes {
+		if held.NodeName() > name {
+			at = i
+			break
+		}
+	}
+	e.attributes = append(e.attributes, nil)
+	copy(e.attributes[at+1:], e.attributes[at:])
+	e.attributes[at] = attribute
+}
 
 // GetAttribute returns the value of the named attribute, or the empty string
 // where the element has none -- which is what Java answers here, rather than

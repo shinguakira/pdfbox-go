@@ -6,9 +6,11 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 )
 
-// Written from org.apache.pdfbox.pdmodel.graphics.blend.BlendMode; the Java
-// suite covers the blend functions through rendered images, which this port has
-// not reached.
+// Written from org.apache.pdfbox.pdmodel.graphics.blend.BlendMode.
+//
+// The header here used to say the Java suite covered the blend functions only
+// through rendered images. It does not: BlendModeTest calls blendChannel with
+// exact values. It is ported at the end of this file.
 
 func TestGetInstance(t *testing.T) {
 	cases := []struct {
@@ -136,5 +138,152 @@ func TestBlendModeString(t *testing.T) {
 	}
 	if got, want := Hue.String(), "BlendMode{name=Hue, isSeparable=false}"; got != want {
 		t.Errorf("String = %q, want %q", got, want)
+	}
+}
+
+// --- Port of org.apache.pdfbox.pdmodel.graphics.blend.BlendModeTest -------
+//
+// The header above says the Java suite covers the blend functions through
+// rendered images. It does not: BlendModeTest calls blendChannel directly with
+// exact values, seventeen cases of it. Ported below; see
+// migration/tasks/track-test-backfill.md.
+
+// TestInstances is testInstances: every name maps to its mode, /Compatible maps
+// to Normal, an array is read through to its first element, and an array of
+// something that is not a name falls back to Normal.
+func TestInstances(t *testing.T) {
+	for _, row := range []struct {
+		name *cos.Name
+		want *BlendMode
+	}{
+		{cos.Normal, Normal},
+		{cos.Compatible, Normal},
+		{cos.Multiply, Multiply},
+		{cos.Screen, Screen},
+		{cos.Overlay, Overlay},
+		{cos.Darken, Darken},
+		{cos.Lighten, Lighten},
+		{cos.ColorDodge, ColorDodge},
+		{cos.ColorBurn, ColorBurn},
+		{cos.HardLight, HardLight},
+		{cos.SoftLight, SoftLight},
+		{cos.Difference, Difference},
+		{cos.Exclusion, Exclusion},
+		{cos.Hue, Hue},
+		{cos.Saturation, Saturation},
+		{cos.Luminosity, Luminosity},
+		{cos.Color, Color},
+	} {
+		t.Run(row.name.Name(), func(t *testing.T) {
+			if got := GetInstance(row.name); got != row.want {
+				t.Errorf("GetInstance(%s) = %v, want %v", row.name.Name(), got, row.want)
+			}
+		})
+	}
+
+	t.Run("an array of one name", func(t *testing.T) {
+		array := cos.NewArray()
+		array.Add(cos.Overlay)
+		if got := GetInstance(array); got != Overlay {
+			t.Errorf("GetInstance([/Overlay]) = %v, want Overlay", got)
+		}
+	})
+
+	t.Run("an array of something else", func(t *testing.T) {
+		array := cos.NewArray()
+		array.Add(cos.GetInteger(0))
+		if got := GetInstance(array); got != Normal {
+			t.Errorf("GetInstance([0]) = %v, want Normal", got)
+		}
+	})
+}
+
+// TestSeparableBlendModes is the twelve separable testBlendMode* cases: each
+// has a channel function and no whole-colour one, and answers a fixed value.
+//
+// The inputs are outside 0..1 in several cases -- blendChannel(3, 5) -- which
+// is deliberate in the Java: the functions are pure arithmetic and are not
+// asked to clamp.
+func TestSeparableBlendModes(t *testing.T) {
+	for _, row := range []struct {
+		name string
+		mode *BlendMode
+		want *cos.Name
+		// each pair is src, dest, expected
+		values [][3]float32
+	}{
+		{"Normal", Normal, cos.Normal, [][3]float32{{3, 5, 3}}},
+		{"Multiply", Multiply, cos.Multiply, [][3]float32{{3, 5, 15}}},
+		{"Screen", Screen, cos.Screen, [][3]float32{{3, 5, -7}}},
+		{"Overlay", Overlay, cos.Overlay, [][3]float32{{1, 0, 0}, {0.5, 0.3, 0.3}}},
+		{"Darken", Darken, cos.Darken, [][3]float32{{3, 5, 3}}},
+		{"Lighten", Lighten, cos.Lighten, [][3]float32{{3, 5, 5}}},
+		{"ColorDodge", ColorDodge, cos.ColorDodge, [][3]float32{{1, 0, 0}, {0.3, 0.7, 1}}},
+		{"ColorBurn", ColorBurn, cos.ColorBurn, [][3]float32{{0, 1, 1}, {0.7, 0.3, 0}}},
+		{"HardLight", HardLight, cos.HardLight,
+			[][3]float32{{0, 0.5, 0}, {0.2, 0.5, 0.2}, {0.6, 0.4, 0.52}}},
+		{"SoftLight", SoftLight, cos.SoftLight,
+			[][3]float32{{0, 0.5, 0.25}, {0.2, 0.5, 0.35}, {0.5, 0.2, 0.2}}},
+		{"Difference", Difference, cos.Difference, [][3]float32{{3, 5, 2}}},
+		{"Exclusion", Exclusion, cos.Exclusion, nil},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if !row.mode.IsSeparableBlendMode() {
+				t.Error("IsSeparableBlendMode() = false, want true")
+			}
+			if row.mode.BlendFunction() != nil {
+				t.Error("BlendFunction() is set, want nil for a separable mode")
+			}
+			blend := row.mode.BlendChannelFunction()
+			if blend == nil {
+				t.Fatal("BlendChannelFunction() = nil, want the channel function")
+			}
+			if got := row.mode.COSName(); got != row.want {
+				t.Errorf("COSName() = %v, want %v", got, row.want)
+			}
+			for _, v := range row.values {
+				if got := blend(v[0], v[1]); got != v[2] {
+					t.Errorf("blendChannel(%v, %v) = %v, want %v",
+						v[0], v[1], got, v[2])
+				}
+			}
+		})
+	}
+
+	// Compatible is Normal but keeps its own name in Java's getCOSName, which
+	// testBlendModeNormal checks at the end.
+	if got := GetInstance(cos.Compatible).COSName(); got != cos.Normal {
+		t.Errorf("Compatible's COSName() = %v, want /Normal", got)
+	}
+}
+
+// TestNonSeparableBlendModes is the four non-separable cases: they have a
+// whole-colour function and no channel one.
+func TestNonSeparableBlendModes(t *testing.T) {
+	for _, row := range []struct {
+		name string
+		mode *BlendMode
+		want *cos.Name
+	}{
+		{"Hue", Hue, cos.Hue},
+		{"Saturation", Saturation, cos.Saturation},
+		{"Luminosity", Luminosity, cos.Luminosity},
+		{"Color", Color, cos.Color},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if row.mode.IsSeparableBlendMode() {
+				t.Error("IsSeparableBlendMode() = true, want false")
+			}
+			if row.mode.BlendFunction() == nil {
+				t.Error("BlendFunction() = nil, want the whole-colour function")
+			}
+			if row.mode.BlendChannelFunction() != nil {
+				t.Error("BlendChannelFunction() is set, want nil for a " +
+					"non-separable mode")
+			}
+			if got := row.mode.COSName(); got != row.want {
+				t.Errorf("COSName() = %v, want %v", got, row.want)
+			}
+		})
 	}
 }

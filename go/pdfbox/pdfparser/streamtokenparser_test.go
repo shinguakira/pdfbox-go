@@ -1,6 +1,7 @@
 package pdfparser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator"
@@ -278,5 +279,159 @@ func TestStreamTokenParserNestedInlineImage(t *testing.T) {
 	}
 	if _, err := p.Parse(); err == nil {
 		t.Error("a nested BI operator was accepted, want an error")
+	}
+}
+
+// --- Port of org.apache.pdfbox.pdfparser.PDFStreamParserTest -------------
+//
+// The Java class is PDFStreamParser, which is this file's StreamTokenParser.
+// Both of its cases are about finding where an inline image ends, which is the
+// hardest thing this parser does: EI is not a delimiter, it is two bytes that
+// can appear inside the image data.
+
+// inlineImageTokens is the Java helper parseTokenString.
+func inlineImageTokens(t *testing.T, s string) []any {
+	t.Helper()
+	parser, err := NewStreamTokenParser([]byte(s))
+	if err != nil {
+		t.Fatalf("NewStreamTokenParser(%q): %v", s, err)
+	}
+	tokens, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("Parse(%q): %v", s, err)
+	}
+	return tokens
+}
+
+// wantInlineImage is testInlineImage2ops and testInlineImage1op together: the
+// first token is always the image, and opName is empty where Java expects the
+// one-operator form.
+func wantInlineImage(t *testing.T, s, imageData, opName string) {
+	t.Helper()
+	tokens := inlineImageTokens(t, s)
+
+	want := 1
+	if opName != "" {
+		want = 2
+	}
+	if len(tokens) != want {
+		t.Fatalf("%q gave %d tokens, want %d", s, len(tokens), want)
+	}
+
+	image, ok := tokens[0].(*operator.Operator)
+	if !ok {
+		t.Fatalf("%q: first token is %T, want an operator", s, tokens[0])
+	}
+	if image.Name() != operator.BeginInlineImageData {
+		t.Errorf("%q: first operator is %q, want %q", s, image.Name(),
+			operator.BeginInlineImageData)
+	}
+	if got := string(image.ImageData()); got != imageData {
+		t.Errorf("%q: image data = %q, want %q", s, got, imageData)
+	}
+
+	if opName == "" {
+		return
+	}
+	next, ok := tokens[1].(*operator.Operator)
+	if !ok {
+		t.Fatalf("%q: second token is %T, want an operator", s, tokens[1])
+	}
+	if next.Name() != opName {
+		t.Errorf("%q: second operator is %q, want %q", s, next.Name(), opName)
+	}
+}
+
+// TestInlineImages is testInlineImages.
+//
+// Its comment says the point of the long runs of spaces is
+// hasNoFollowingBinData: the parser looks ahead maxBinCharTestLength bytes
+// after an EI to decide whether what follows is an operator or more image data.
+func TestInlineImages(t *testing.T) {
+	for _, row := range []struct {
+		input     string
+		imageData string
+		op        string
+	}{
+		{"ID\n12345EI Q", "12345", "Q"},
+		{"ID\n12345EI EMC", "12345", "EMC"},
+		{"ID\n12345EI Q ", "12345", "Q"},
+		{"ID\n12345EI EMC ", "12345", "EMC"},
+		{"ID\n12345EI  Q", "12345", "Q"},
+		{"ID\n12345EI  EMC", "12345", "EMC"},
+		{"ID\n12345EI  Q ", "12345", "Q"},
+		{"ID\n12345EI  EMC ", "12345", "EMC"},
+
+		{"ID\n12345EI \000Q", "12345", "Q"},
+
+		{"ID\n12345EI Q                             ", "12345", "Q"},
+		{"ID\n12345EI EMC                           ", "12345", "EMC"},
+
+		{"ID\n12345EI", "12345", ""},
+		{"ID\n12345EI                               ", "12345", ""},
+
+		{"ID\n12345EI                               Q ", "12345", "Q"},
+		{"ID\n12345EI                               EMC ", "12345", "EMC"},
+		{"ID\n12345EI                               Q", "12345", "Q"},
+		{"ID\n12345EI                               EMC", "12345", "EMC"},
+
+		// an EI inside the data is not the end of it
+		{"ID\n12EI5EI", "12EI5", ""},
+		{"ID\n12EI5EI ", "12EI5", ""},
+		{"ID\n12EI5EIQEI", "12EI5EIQ", ""},
+		{"ID\n12EI5EIQEI Q", "12EI5EIQ", "Q"},
+		{"ID\n12EI5EI Q", "12EI5", "Q"},
+		{"ID\n12EI5EI Q ", "12EI5", "Q"},
+		{"ID\n12EI5EI EMC", "12EI5", "EMC"},
+		{"ID\n12EI5EI EMC ", "12EI5", "EMC"},
+		{"ID\n12EI5EI                                Q", "12EI5", "Q"},
+		{"ID\n12EI5EI                                Q ", "12EI5", "Q"},
+		{"ID\n12EI5EI                                EMC", "12EI5", "EMC"},
+		{"ID\n12EI5EI                                EMC ", "12EI5", "EMC"},
+
+		// maxBinCharTestLength is 10; these walk its boundary
+		//                    1234567890
+		{"ID\n12EI5EI       EMC ", "12EI5", "EMC"},
+		{"ID\n12EI5EI        EMC ", "12EI5", "EMC"},
+		{"ID\n12EI5EI         EMC ", "12EI5", "EMC"},
+		{"ID\n12EI5EI          EMC ", "12EI5", "EMC"},
+		{"ID\n12EI5EI       Q   ", "12EI5", "Q"},
+		{"ID\n12EI5EI        Q   ", "12EI5", "Q"},
+		{"ID\n12EI5EI         Q   ", "12EI5", "Q"},
+		{"ID\n12EI5EI          Q   ", "12EI5", "Q"},
+	} {
+		t.Run(row.input, func(t *testing.T) {
+			wantInlineImage(t, row.input, row.imageData, row.op)
+		})
+	}
+}
+
+// TestNestedBI is testNestedBI, PDFBOX-6038: a BI inside an inline image is
+// refused, and the failure names where both of them are.
+//
+// Java asserts the whole message:
+//
+//	Nested 'BI' operator not allowed at offset 11, first: 2
+//
+// The port's reads `pdfparser: nested "BI" operator not allowed at offset 11,
+// first: 2` — the same two offsets, in the lower-case package-prefixed form
+// every error in this package uses. The offsets are the substance and are
+// asserted; the prose is a house convention applied throughout, and asserting
+// it here would only pin the convention.
+func TestNestedBI(t *testing.T) {
+	parser, err := NewStreamTokenParser([]byte("BI/IB/IB BI/ BI"))
+	if err != nil {
+		t.Fatalf("NewStreamTokenParser: %v", err)
+	}
+	_, err = parser.Parse()
+	if err == nil {
+		t.Fatal("Parse reported nothing, want the nested-BI error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "at offset 11") || !strings.Contains(got, "first: 2") {
+		t.Errorf("Parse = %q, want it to name offset 11 and first 2", got)
+	}
+	if !strings.Contains(got, "BI") {
+		t.Errorf("Parse = %q, want it to name the BI operator", got)
 	}
 }

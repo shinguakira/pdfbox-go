@@ -1,22 +1,12 @@
 # Implementation Plan
 
-Track — `pdfbox-layout-*`. Glyph layout, one interface against two backends.
+Track — writing a font into a document: TrueType embedding and subsetting.
 
-**Branch: `track/pdfbox-layout`** — from and back to `migration-base`.
+**Branch: `track/font-embedding`** — from and back to `migration-base`.
 
-The branch is settled; `BRANCHING.md` carries a row for it. What is **not**
-settled is A0, and that is a bigger decision than the branch was — see below.
-
-Depends on `slice/4` — it needs fonts to shape, and that is merged. `PLAN.md`
-says it is worth reading before `slice/9` for its backend-interface shape.
-
-**Take this one last, of the four open tracks.** The AWT backend is
-`java.awt.font.TextLayout` and the FOP backend is Apache FOP; Go has neither, so
-A0 is choosing a Go text shaper — a harfbuzz binding, `x/image/font/shaping`, or
-something written here. That choice is very likely to constrain, or be
-constrained by, whatever eventually implements `rendering.Backend`, which is the
-other undecided substitution in the project. Deciding the shaper alone, ahead of
-the rasteriser, risks doing both twice.
+Not a slice: `slice/4` ported the fonts a document is *read* with and `slice/7`
+ported writing, and the embedding half fell between them. Both are merged, so
+this depends on nothing that does not exist.
 
 ## Rules — do not break these
 
@@ -59,38 +49,51 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-`PLAN.md` counts 5 main files across two Maven modules.
+The five files `STATUS.md` records as `pdmodel/font at 34 of 39`, and the half
+of two ported classes that was deferred with them.
 
-| Java module | Main files | Java tests |
-| --- | ---: | ---: |
-| `pdfbox-layout-awt` | 3 | 7 |
-| `pdfbox-layout-fop` | 4 | 6 |
+| Java source | Lines | What it does |
+| --- | ---: | --- |
+| `pdmodel/font/TrueTypeEmbedder.java` | 401 | reads a TTF, writes `/FontFile2` and the descriptor, drives the subsetter |
+| `pdmodel/font/PDCIDFontType2Embedder.java` | 738 | the CID half — `/CIDToGIDMap`, `/W`, the descendant font |
+| `pdmodel/font/PDTrueTypeFontEmbedder.java` | 135 | the simple-font half, with its encoding |
+| `pdmodel/font/ToUnicodeWriter.java` | 228 | the `/ToUnicode` CMap the embedded font needs |
+| `pdmodel/font/Subsetter.java` | 40 | the interface `addToSubset`/`subset` are declared on |
 
-Java package is `org.apache.pdfbox.glyphlayout.*`;
-`migration/mapping/packages.tsv` maps it to `pdfbox/glyphlayout/awt`.
+And the embedding halves the read-side port left as holes, which are named in
+the Go already:
 
-Two of the main files are examples — `GlyphLayoutHelloWorldAWT` and
-`GlyphLayoutHelloWorldFOP`. `PLAN.md` puts `examples` out of scope; decide
-whether these two count, since they sit inside an in-scope module.
+- `PDType0Font` — `load`, `loadVertical`, `addToSubset`, `subset`. The Go says
+  so at `pdtype0font.go:23`, and **three of its methods panic today** rather
+  than answer: the comment at line 445 reads "so this always panics until the
+  embedding half arrives."
+- `PDTrueTypeFont.load` — the simple-font factory.
 
-**The AWT backend is `java.awt.font.TextLayout` and the FOP backend is Apache
-FOP.** Go has neither. This track is the clearest case in the project where a
-port means choosing a Go equivalent rather than transliterating, and that
-choice is the work — not the 7 files around it.
+**`fontbox`'s side is already done.** `TTFSubsetter` is ported at
+`go/fontbox/ttf/ttfsubsetter.go`, which is the machinery the whole track leans
+on. This branch is the `pdmodel` layer over it.
+
+Java test: `pdmodel/font/TestFontEmbedding.java`, 17 cases, 914 lines.
+
+### Why this is worth a branch of its own
+
+It is not five files of tidying. **A Go program cannot today write a PDF with an
+embedded font**, which is most of what writing a PDF is for: `slice/7` can merge
+and rewrite documents whose fonts are already embedded, and can write text in
+the 14 standard fonts, and nothing else. The Java class that would do it is
+reached, in the Go, by a method that panics.
 
 ---
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what the Go backend is** before writing any test. The tests
-      assert shaped glyph runs; without a shaper there is nothing to assert
-      against.
-- [ ] A1. Port the shared cases both backends run
-  - `GlyphLayoutBidiTest`, `GlyphLayoutDin91379Test`,
-    `GlyphLayoutDin91379FormTest`, `GlyphLayoutLigaturesAndKerningTest`,
-    `GlyphLayoutSMPTest` — each exists twice, once per backend
-- [ ] A2. Port `TestBase` — the AWT side's shared fixture
-- [ ] A3. Port the hello-world tests, if A0 leaves them meaningful
+- [ ] A1. Port `TestFontEmbedding` — 17 cases
+  - It writes documents and reads them back. Where a case needs
+    `PDFTextStripper` to verify the round trip, that is ported and available
+  - Where a case needs a font file, check `pdfbox/src/test/resources` carries
+    it before assuming the case must be dropped
+- [ ] A2. Note every case not ported, and why. Font files this repository does
+      not have is a reason; "it was awkward" is not
 
 ---
 
@@ -107,12 +110,28 @@ helper rather than patching each call site. See
 [`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
 port has already paid for more than once.
 
-- [ ] B1. The interface both backends implement
-  - `GlyphLayoutProcessor` and `GlyphLayoutFontLoader` in the core, whichever
-    slice ported them, and the contract they define
-- [ ] B2. One backend, chosen in A0
-- [ ] B3. `FopStringTextFragment` and whatever the second backend needs, if a
-      second backend is in scope at all
+In dependency order — the interface, then the shared base, then the two halves.
+
+- [ ] B1. `Subsetter`
+  - 40 lines of interface. In Go it is the method set `PDType0Font` and
+    `TrueTypeEmbedder` satisfy; check what the port already names before adding
+    a second name for it
+- [ ] B2. `ToUnicodeWriter`
+  - **JAVA-BUGS entry 33 is about this class** — `allowDestinationRange` checks
+    only one of its two strings. It was found while reading, from the Java, when
+    nothing was ported. Port it as written and check the entry still describes
+    what the Go does
+- [ ] B3. `TrueTypeEmbedder`
+  - The descriptor, `/FontFile2`, the subsetting drive. Leans on
+    `fontbox/ttf.TTFSubsetter`, which is ported
+- [ ] B4. `PDTrueTypeFontEmbedder`, and `PDTrueTypeFont.load`
+- [ ] B5. `PDCIDFontType2Embedder`, and `PDType0Font.load` / `loadVertical`
+  - The largest file in the branch. `/CIDToGIDMap`, the `/W` widths array, the
+    descendant font
+- [ ] B6. Replace the panics
+  - `pdtype0font.go` has methods that panic where the embedding half was
+    missing. Each one is a promise this branch is here to keep; leaving one is
+    leaving the branch unfinished
 
 ---
 
@@ -121,16 +140,19 @@ port has already paid for more than once.
 - [ ] C1. `gofmt -l .` clean
 - [ ] C2. `go vet ./...` clean
 - [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [ ] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
 - [ ] C5. Update `migration/STATUS.md`
+  - The `pdmodel/font` row, from `34 of 39` to what it becomes
+  - The `PDType0Font` and `PDTrueTypeFont` rows, which say the embedding half is
+    deferred
+  - The summary phase 3 row
 
 ---
 
 # Phase D — Adversarial review
 
 敵対的レビュー. Green tests prove the port passes the tests, not that it is a
-faithful migration. Go in assuming it is wrong. Every check below is a question
-the ported tests cannot answer.
+faithful migration. Go in assuming it is wrong.
 
 - [ ] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
@@ -146,9 +168,7 @@ the ported tests cannot answer.
 
 - [ ] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
-    running the Go? A value read off the port proves nothing.
-  - Does each test take the real path, with the real types? A test over a
-    stand-in can pass while the path it stands for is broken.
+    running the Go?
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
 - [ ] D4. Check every function phase B touched has a test
@@ -159,28 +179,26 @@ the ported tests cannot answer.
     evidence. Write the test, and take whatever it says
 
 - [ ] D5. Check every deferral is real and recorded
-  - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
-  - Every deferral — is it deferred because the type is absent, or because it
-    was hard? The second is not a deferral.
 
 - [ ] D6. Check the Java bugs
-  - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
-    what correct would be, where the Go carries it, and how confident?
-  - Was any of them "fixed" on the way past? Revert it.
+  - Every bug found — with where, what, what correct would be, where the Go
+    carries it, and how confident?
 
 - [ ] D7. Write the review down
-  - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D8. This is a substitution, not a transliteration — say so plainly
-  - Whatever Go shaper was chosen, it is not `java.awt.font.TextLayout`.
-    Record every case where it shapes differently, in `STATUS.md`, as a
-    deviation. Do not let "the test passes" stand in for "it shapes the same".
+- [ ] D8. Check the bytes, not just the structure
+  - A subsetted font that parses is not a font that is right. Read a document
+    this branch writes back with the port's own `fontbox` parser, and check the
+    glyphs the subset kept are the glyphs that were asked for
+  - Where practical, write the same document from the running Java and compare
+    the two `/FontFile2` streams. Identical is the strong result; a difference
+    needs a reason
 
-- [ ] D9. Check bidi and the supplementary plane against the Java output
-  - `GlyphLayoutBidiTest` and `GlyphLayoutSMPTest` are the two that will expose
-    a shaper difference first.
+- [ ] D9. Check `/ToUnicode` against JAVA-BUGS 33
+  - The entry says the Java checks one of two strings. Confirm the port
+    reproduces that and that the entry's "where the Go carries it" is now true
 
 ---
 
@@ -207,7 +225,5 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] The branch itself. `PLAN.md` names this track, `BRANCHING.md` gives it no
-      branch. Nothing here starts until that is settled.
-- [ ] A0. The backend choice blocks every task in this file.
-- [ ] `slice/4`. Without fonts there is nothing to shape.
+Nothing. `slice/4` gave this branch `fontbox`, including `TTFSubsetter`, and
+`slice/7` gave it the writer. Both are in `migration-base`.

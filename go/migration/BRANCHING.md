@@ -65,6 +65,12 @@ graph LR
   S3 --> S9["slice/9<br/>rendering"]
   S6 --> S9
   X["track/xmpbox<br/>no dependencies"]
+  S0 --> TS["track/scratchfile"]
+  S4 --> TF["track/font-embedding"]
+  S7 --> TF
+  S4 --> TL["track/pdfbox-layout"]
+  S9 --> TT["track/tools"]
+  TB["track/test-backfill<br/>no dependencies"]
 ```
 
 **`slice/1` is the bottleneck, and the only one.** It carries the COS object
@@ -88,6 +94,20 @@ plus the raster backend decision `PLAN.md` says to take before starting.
 | --- | --- | --- |
 | `track/xmpbox` | **nothing** | today, in parallel with any slice |
 | `track/scratchfile` | `slice/0` | whenever memory pressure matters |
+| `track/test-backfill` | **nothing** | today — it ports tests, not classes |
+| `track/font-embedding` | `slice/4`, `slice/7` | once both are merged |
+| `track/tools` | every slice | once they are all merged |
+| `track/pdfbox-layout` | `slice/4`, and a decision | after the text shaper is chosen |
+
+The last four were added once every slice had merged, from a survey that
+compared all 891 in-scope Java classes and 237 Java test classes against the Go
+tree. They cover what `PLAN.md` counts in scope and no slice claimed. Each has a
+file in [`tasks/`](tasks/README.md); the order to take them in is there too, and
+the short version is **`track/test-backfill` first**, because it is the only one
+that can find defects in work already merged rather than adding more of it.
+
+`PLAN.md` was not changed to add them. It already counted the work; what was
+missing was a branch, and branches are this file's business.
 
 `xmpbox` is worth calling out: 74 files, 12.3k lines, and `pdfbox` does not
 depend on it — metadata comes back as a raw stream that `xmpbox` parses

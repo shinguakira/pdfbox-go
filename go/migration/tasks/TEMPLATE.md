@@ -69,6 +69,17 @@ and write from source.>
 
 # Phase B — Port the implementation
 
+**Every function this phase touches needs a test that says it works.** Where
+porting one site makes you notice a second with the same defect, the second one
+needs its own test before it is touched: without it nobody can say whether that
+code works, before the change or after, and the suite stays green either way.
+Either write the test, or leave the site alone and record it.
+
+If the defect is a Java standard-library contract, port the contract once into a
+helper rather than patching each call site. See
+[`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
+port has already paid for more than once.
+
 <One task per package, in dependency order. Name the Java classes.>
 
 - [ ] B1.
@@ -109,17 +120,24 @@ the ported tests cannot answer.
     running the Go? A value read off the port proves nothing.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [ ] D4. Check every function phase B touched has a test
+  - Name the test that covers it. Not "the suite is green" -- green says the
+    code is not broken in a way something already checks, which is a different
+    claim from "this works"
+  - Where there is none, the function was changed on an argument rather than on
+    evidence. Write the test, and take whatever it says
+
+- [ ] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [ ] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [ ] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 ---

@@ -93,7 +93,7 @@ func (a *FDFAnnotationBase) initFDFAnnotationOfXML(element *dom.Element) error {
 	a.SetDate(element.GetAttribute("date"))
 
 	flags := element.GetAttribute("flags")
-	for _, flagToken := range strings.Split(flags, ",") {
+	for _, flagToken := range splitJava(flags, ",") {
 		switch flagToken {
 		case "invisible":
 			a.SetInvisible(true)
@@ -194,7 +194,7 @@ func (a *FDFAnnotationBase) initFDFAnnotationOfXML(element *dom.Element) error {
 		}
 		dashes := element.GetAttribute("dashes")
 		if dashes != "" {
-			dashesValues := strings.Split(dashes, ",")
+			dashesValues := splitJava(dashes, ",")
 			dashPattern := cos.NewArray()
 			for _, dashesValue := range dashesValues {
 				number, err := cos.GetNumber(dashesValue)
@@ -223,7 +223,7 @@ func parseFloat(value string) float32 {
 // parseRectangleAttributes reads four numbers out of a comma separated
 // attribute. Java declares it final and package-private.
 func parseRectangleAttributes(rect string, errorMessage string) ([]float32, error) {
-	rectValues := strings.Split(rect, ",")
+	rectValues := splitJava(rect, ",")
 	if len(rectValues) != 4 {
 		return nil, errors.New(errorMessage)
 	}
@@ -248,7 +248,7 @@ func parseFloats(srcValues []string) []float32 {
 // createRectangleFromAttributes reads a rectangle out of a comma separated
 // attribute. Java declares it final and package-private.
 func createRectangleFromAttributes(rect string, errorMessage string) (*common.PDRectangle, error) {
-	rectValues := strings.Split(rect, ",")
+	rectValues := splitJava(rect, ",")
 	if len(rectValues) != 4 {
 		return nil, errors.New(errorMessage)
 	}

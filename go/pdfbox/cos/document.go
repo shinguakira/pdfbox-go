@@ -439,6 +439,31 @@ func (d *Document) PutXRefOffset(key *ObjectKey, offset int64) {
 	d.AddXRefTable(map[*ObjectKey]int64{key: offset})
 }
 
+// RemoveXRefOffset drops an object from the cross-reference table, and reports
+// whether there was one to drop.
+//
+// Java writes document.getXrefTable().remove(objKey) on the live map; XRefTable
+// hands back a copy, so removal is a method of its own.
+//
+// It matters for more than tidiness. AddXRefTable keeps the first key object it
+// saw for an entry and only updates the offset, because that is what
+// HashMap.put does — so putting a key that differs only in its stream index
+// does *not* replace the index. Removing first is how Java changes one, and
+// PDFObjectStreamParserTest.testParseAllObjectsIndexed says so in a comment.
+func (d *Document) RemoveXRefOffset(key *ObjectKey) bool {
+	if key == nil {
+		had := d.nilKeyEntry != nil
+		d.nilKeyEntry = nil
+		return had
+	}
+	hash := key.InternalHash()
+	if _, ok := d.xrefTable[hash]; !ok {
+		return false
+	}
+	delete(d.xrefTable, hash)
+	return true
+}
+
 // ClearXRefTable empties the cross-reference table.
 //
 // Java writes document.getXrefTable().clear() on the live map; XRefTable hands

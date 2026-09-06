@@ -9,10 +9,14 @@ import (
 )
 
 // Written from the object-parsing half of
-// pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java. The Java
-// suite exercises these only through whole documents, so per
-// migration/conventions/tdd.md the tests are written from the source, and the
+// pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java, and the
 // recovery paths its comments name are pinned individually.
+//
+// The header here used to say the Java suite exercised these only through whole
+// documents, which is why they were written from the source rather than ported.
+// That was not true -- TestCOSParser calls parseCOSName and
+// parseCOSLiteralString directly. It is ported at the end of this file, and the
+// cases above are kept because they cover shapes it does not.
 
 func newObjectParser(input string) *ObjectParser {
 	return NewObjectParser(pdfio.NewReadBufferBytes([]byte(input)), nil)
@@ -388,5 +392,185 @@ func TestObjectKeyCache(t *testing.T) {
 	}
 	if first.Number() != 12 || first.Generation() != 0 {
 		t.Errorf("ObjectKey(12, 0) = %v, want 12 0 R", first)
+	}
+}
+
+// --- Port of org.apache.pdfbox.pdfparser.TestCOSParser -------------------
+//
+// Slice 1 wrote the cases above from the source, on the stated grounds that
+// "the Java suite exercises these only through whole documents". That was
+// wrong: TestCOSParser calls parseCOSName and parseCOSLiteralString directly,
+// twenty-one times. The cases below are that file, ported. See
+// migration/tasks/track-test-backfill.md.
+
+// parseName is `new COSParser(new RandomAccessReadBuffer(bytes)).parseCOSName()`.
+func parseName(t *testing.T, input string) *cos.Name {
+	t.Helper()
+	name, err := newObjectParser(input).ParseCOSName()
+	if err != nil {
+		t.Fatalf("ParseCOSName(%q): %v", input, err)
+	}
+	return name
+}
+
+// parseLiteralString is the same for parseCOSLiteralString.
+func parseLiteralString(t *testing.T, input []byte) *cos.StringObj {
+	t.Helper()
+	parser := NewObjectParser(pdfio.NewReadBufferBytes(input), nil)
+	s, err := parser.ParseCOSLiteralString()
+	if err != nil {
+		t.Fatalf("ParseCOSLiteralString(%q): %v", input, err)
+	}
+	return s
+}
+
+// TestCheckForEndOfString is testCheckForEndOfString.
+//
+// A literal string holding an unbalanced '(' runs to the end of the buffer
+// unless the parser finds a line break followed by a delimiter, which is how
+// Java recovers from a string that was never closed.
+func TestCheckForEndOfString(t *testing.T) {
+	// (Test)
+	if got := parseLiteralString(t, []byte{40, 84, 101, 115, 116, 41}); got.Value() != "Test" {
+		t.Errorf("(Test) = %q, want %q", got.Value(), "Test")
+	}
+
+	const want = "(Test"
+	for _, row := range []struct {
+		name  string
+		input []byte
+	}{
+		{"LF then a name", []byte{'(', '(', 'T', 'e', 's', 't', ')', 10, '/', ' '}},
+		{"CR then a name", []byte{'(', '(', 'T', 'e', 's', 't', ')', 13, '/', ' '}},
+		{"CRLF then a name", []byte{'(', '(', 'T', 'e', 's', 't', ')', 13, 10, '/'}},
+		{"LF then a dictionary end", []byte{'(', '(', 'T', 'e', 's', 't', ')', 10, '>', ' '}},
+		{"CR then a dictionary end", []byte{'(', '(', 'T', 'e', 's', 't', ')', 13, '>', ' '}},
+		{"CRLF then a dictionary end", []byte{'(', '(', 'T', 'e', 's', 't', ')', 13, 10, '>'}},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if got := parseLiteralString(t, row.input); got.Value() != want {
+				t.Errorf("= %q, want %q", got.Value(), want)
+			}
+		})
+	}
+}
+
+// TestTable4Examples is the twelve testTable4Example_* cases, which are the
+// examples of PDF 32000-1:2008 table 4, section 7.3.5.
+func TestTable4Examples(t *testing.T) {
+	for _, row := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"Name1", "/Name1 ", "Name1"},
+		{"ASomewhatLongerName", "/ASomewhatLongerName ", "ASomewhatLongerName"},
+		{"WithSpecialCharacters", "/A;Name_With-Various***Characters? ",
+			"A;Name_With-Various***Characters?"},
+		{"Numeric", "/1.2 ", "1.2"},
+		{"DollarSigns", "/$$ ", "$$"},
+		{"AtPattern", "/@pattern ", "@pattern"},
+		{"DotNotdef", "/#2Enotdef ", ".notdef"},
+		{"HexEncodedSpace", "/lime#20Green ", "lime Green"},
+		{"HexEncodedParentheses", "/paired#28#29parentheses ", "paired()parentheses"},
+		{"HexEncodedNumberSign", "/The_Key_of_F#23_Minor ", "The_Key_of_F#_Minor"},
+		{"HexEncodedLetter", "/A#42 ", "AB"},
+		{"EmptyName", "/ ", ""},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if got := parseName(t, row.input).Name(); got != row.want {
+				t.Errorf("%q = %q, want %q", row.input, got, row.want)
+			}
+		})
+	}
+}
+
+// TestNullCharacterTermination is testNullCharacterTermination: a NUL ends the
+// name, and what follows it is left in the buffer.
+func TestNullCharacterTermination(t *testing.T) {
+	input := []byte{'/', 'N', 'a', 'm', 'e', 0, 'E', 'x', 't', 'r', 'a', ' '}
+	parser := NewObjectParser(pdfio.NewReadBufferBytes(input), nil)
+	name, err := parser.ParseCOSName()
+	if err != nil {
+		t.Fatalf("ParseCOSName: %v", err)
+	}
+	if name.Name() != "Name" {
+		t.Errorf("= %q, want %q", name.Name(), "Name")
+	}
+}
+
+// TestNameHexEscapes is testInvalidHexSequence, testHexEscapeLowercase and
+// testHexEscapeUppercase.
+func TestNameHexEscapes(t *testing.T) {
+	for _, row := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		// '#' is an escape only when two valid hex digits follow, so both
+		// characters stay as they are
+		{"invalid hex sequence", "/Name#GG ", "Name#GG"},
+		{"lowercase hex", "/Name#2fTest ", "Name/Test"},
+		{"uppercase hex", "/Name#2FTest ", "Name/Test"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if got := parseName(t, row.input).Name(); got != row.want {
+				t.Errorf("%q = %q, want %q", row.input, got, row.want)
+			}
+		})
+	}
+}
+
+// TestNameTerminationByDelimiters is testNameTerminationByDelimiters: each of
+// the eight PDF delimiters ends a name.
+func TestNameTerminationByDelimiters(t *testing.T) {
+	for _, row := range []struct {
+		input string
+		want  string
+	}{
+		{"/Name1>", "Name1"},
+		{"/Name2<", "Name2"},
+		{"/Name3[", "Name3"},
+		{"/Name4]", "Name4"},
+		{"/Name5(", "Name5"},
+		{"/Name6)", "Name6"},
+		{"/Name7/", "Name7"},
+		{"/Name8%", "Name8"},
+	} {
+		t.Run(row.input, func(t *testing.T) {
+			if got := parseName(t, row.input).Name(); got != row.want {
+				t.Errorf("%q = %q, want %q", row.input, got, row.want)
+			}
+		})
+	}
+}
+
+// TestASCIIRegularCharacters is testASCIIRegularCharacters: every ASCII
+// character that is not a delimiter belongs in a name.
+func TestASCIIRegularCharacters(t *testing.T) {
+	const input = `/!"$'*+-._:;=@~^` + "`" + `|\`
+	const want = `!"$'*+-._:;=@~^` + "`" + `|\`
+	if got := parseName(t, input).Name(); got != want {
+		t.Errorf("= %q, want %q", got, want)
+	}
+}
+
+// TestUTF8InNames is testUTF8InNames: a name keeps the bytes it was built from.
+func TestUTF8InNames(t *testing.T) {
+	const nameStr = "Test中国"
+	name := cos.GetPDFNameBytes([]byte(nameStr))
+	if got := string(name.Bytes()); got != nameStr {
+		t.Errorf("= %q, want %q", got, nameStr)
+	}
+}
+
+// TestNameCanonicalisation is testNameCanonicaliation: the same bytes give the
+// same name. Java asserts equality of two getPDFName results, which its cache
+// makes identity.
+func TestNameCanonicalisation(t *testing.T) {
+	name1 := cos.GetPDFNameBytes([]byte("TestName"))
+	name2 := cos.GetPDFNameBytes([]byte("TestName"))
+	if !name1.Equals(name2) {
+		t.Errorf("%v and %v are not equal", name1, name2)
 	}
 }

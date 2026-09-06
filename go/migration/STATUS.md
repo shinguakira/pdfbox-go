@@ -16,17 +16,108 @@ Last updated: 2026-09-06
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | **done — all 18 files**, finished by `track/scratchfile` |
-| 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 3, `getDataToSign` included |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
+| 1 | `pdfbox/cos` | 24 | **done — 22 of 24 ported**. Slice 7 closed the incremental-save deferral: `COSIncrement`, `COSUpdateInfo` and `COSUpdateState` are in. The two left are deliberate — `COSInputStream`, which exists in Java only to carry a `DecodeResult`, and `COSOutputStream`, folded into `streamWriter` |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | **done — all 48**. `filter` 23 of 23, finished by slice 6, `DecodeOptions` included; `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 7, `getDataToSign` included |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders, which `track/font-embedding` claims), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | **done — all 85 files**, finished by slice 9: the graphics engine, all 23 graphics operators, all 13 colour operators and the three `DrawObject`s |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D`, `Ellipse2D`, `FlatteningPathIterator`, and `Area` minus curves |
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `cmd/pdfbox` | 26 | not started |
+| 7 | `tools` | 26 | not started — `track/tools` claims it. The Go directory is settled in that branch A0; this row used to say `cmd/pdfbox`, which `PLAN.md` never said |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
+| — | `pdfbox/glyphlayout` | 7 | not started — `track/pdfbox-layout` claims it, and its A0 is choosing a Go text shaper |
+
+
+## What is left, and the four tracks that claim it
+
+Every slice in [`PLAN.md`](PLAN.md) is merged into `migration-base`, and so are
+`track/xmpbox` and `track/scratchfile`. This section is the answer to "what is
+actually left", taken from a survey that compared **all 891 in-scope Java main
+classes and 237 Java test classes** against the Go tree, class by class.
+
+Method, because the numbers here are only as good as it: every Java class name
+and fully-qualified name was matched against every identifier and comment in
+`go/`, and every class that did not match was then read on both sides. A name
+appearing in the Go tree is **not** evidence of a port — the survey's first pass
+was wrong twice for exactly that reason, matching a class named in a Go comment
+that said the class was *not* ported. A `Port of <FQN>` comment, or a type, is
+evidence; a name is not.
+
+### 64 of 891 classes are unported. 24 of those are settled.
+
+| Group | Files | Verdict |
+| --- | ---: | --- |
+| `graphics/shading` `Paint` and `PaintContext` implementations | 19 | deliberate — slice 9 put the raster half behind `rendering.Backend` |
+| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | deliberate — same reason |
+| `cos/COSInputStream`, `cos/COSOutputStream` | 2 | deliberate — one carries a `DecodeResult` Go returns directly, one is folded into `streamWriter` |
+| `encryption/MessageDigests`, `SecurityProvider` | 2 | deliberate — JCE lookups Go answers with `crypto/*` |
+| `graphics/color/PDJPXColorSpace` | 1 | deliberate — only the JPX filter constructs it |
+
+Every one of those was already recorded here with a reason. Nothing in that
+group is a gap.
+
+### 40 are real, and each now has a branch
+
+| Group | Files | Branch |
+| --- | ---: | --- |
+| `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | `track/font-embedding` |
+| `pdmodel` resource cache factory | 3 | `track/test-backfill`, which is already in those files |
+| `pdmodel/AbstractGlyphLayoutProcessor` | 1 | `track/pdfbox-layout` |
+| `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | `track/pdfbox-layout` |
+| `tools`, `tools/imageio` | 26 | `track/tools` |
+
+`io`, `fontbox` and `xmpbox` have no unported class at all.
+
+### The test gap is the finding that mattered
+
+36 Java test classes are unported. Twenty of them are recorded here with a
+reason — a corpus this repository does not carry, a network fetch, `java.awt`.
+**Sixteen are not recorded anywhere**: they sit in packages a merged slice calls
+done, and were missed rather than deferred.
+
+107 `@Test` methods, 2,557 lines. Five of the sixteen and 47 of the 107 are the
+parser — `TestCOSParser` and `TestPDFParser` are the recovery suite for broken
+cross-reference tables and truncated objects, and nothing in the port has run
+them.
+
+`track/test-backfill` is that list, and it is the first of the four to take. It
+is the only one that can find a defect in work already merged; the other three
+add surface on top of a base whose test coverage has a known hole.
+
+### Order
+
+1. **`track/test-backfill`** — 16 test classes, the resource cache factory, and
+   the stale rows below. Depends on nothing.
+2. **`track/font-embedding`** — a capability gap, not tidying: nothing in the
+   port can write a PDF with an embedded font, and `PDType0Font`'s embedding
+   methods panic where the half is missing.
+3. **`track/tools`** — 22 commands, whose libraries all exist now. Seven are
+   held for the raster backend.
+4. **`track/pdfbox-layout`** — last. Its A0 is choosing a Go text shaper, which
+   is entangled with whatever eventually implements `rendering.Backend`.
+
+### Rows this file had wrong
+
+Corrected above, and listed here because the cause will recur: **a later slice
+closed a deferral and wrote it down only in its own section.** The summary row
+and the deferring slice's table were left saying the work was outstanding.
+
+- Phase 1 said `19 of 24` with four deferred to slice 7. Slice 7 ported three of
+  them.
+- Phase 2 said `filter has the slice 1 subset`. Slice 6 finished all 23, and the
+  slice 2 section still listed `the other 15 filters` and `DecodeOptions` as
+  outstanding while slice 6's own section, 1,200 lines further down, recorded
+  them as done.
+- Phase 7 said `cmd/pdfbox`, a directory `PLAN.md` never named.
+
+Two rows were checked and are **right**, so they are not to be "corrected"
+later: `pdmodel/font at 34 of 39` with five embedders left, and `4 of rendering`
+being `java.awt`.
+
+The lesson for every branch from here: **C5 means the summary row and the row
+that deferred the work, not only your own section.**
 
 ## Phase 0 — `pdfio`
 
@@ -182,8 +273,8 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done |
 | `IdentityFilter.java` | `filter.go` | done |
 | `DecodeResult.java` | `filter.go` | partial — the JPX colour space and soft mask fields arrive with that filter |
-| `DecodeOptions.java` | — | not started — image subsampling only |
-| the other 15 filters | — | slice 6 |
+| `DecodeOptions.java` | `decodeoptions.go` | done in slice 6 |
+| the other 15 filters | `dct.go`, `ccittfax.go`, `lzw.go`, `runlength.go`, `asciihex.go`, `ascii85.go`, `imagereader.go` and the rest | done in slice 6 |
 
 | Java test | Go test | Notes |
 | --- | --- | --- |
@@ -3703,3 +3794,229 @@ exists to preserve rather than tidy.
   cases. They are thorough — `testRewindAcrossBuffers2` and PDFBOX-5158 and
   5161 all live in the awkward corners — but the class is new to the port and
   has no corpus behind it yet.
+
+## Track `test-backfill` — the Java tests merged slices missed
+
+Branch `track/test-backfill`. Not a slice: it ported no new Java class. It ran
+sixteen Java test classes that already-merged slices left behind, against Go
+that already existed.
+
+**87 of their 107 cases are ported. Twenty are not, each for a reason recorded
+below. Every one of the 87 that failed, failed because of a defect in the port —
+not one turned out to be the Java behaving oddly.**
+
+### What it found
+
+Six defects, in four families. None of them is a Java bug; `JAVA-BUGS.md` gains
+no entry from this branch.
+
+**Three things `String.split` does that no function in `strings` does** — the
+same trap in unrelated packages, and the review round found a fourth face of it:
+
+- `java.lang.String.split` with the default limit drops **trailing** empty
+  strings. Every `String.split` site in `pdmodel/fdf` kept them, and
+  `xfdf-test-document-annotations.xml` — a file in this repository, which Java
+  reads without complaint — has a `coords` attribute ending in a comma. The port
+  handed `parseFloat` an empty string and **panicked**. `splitJava` now drops
+  trailing empties and keeps interior ones, which is Java's rule;
+  `splitOnCommaOrSemicolon` had used `strings.FieldsFunc`, which drops all of
+  them, and is fixed too.
+- `Pattern.split` answers the whole input untrimmed **only when the pattern
+  never matched**, which is why an empty input gives one empty string. When it
+  did match it drops every trailing empty, so an all-separator input gives an
+  empty array. `StringUtil.SplitOnSpace("   ")` answered `[""]` where Java
+  answers `[]`; the port's loop stopped at one element, conflating the two
+  rules. `StringUtilTest` asserts both shapes.
+
+**A cast that saturates in Java and does not in Go.** `FormatFloatFast` guards
+with `value > Long.MAX_VALUE`, and `Long.MAX_VALUE` widened to a float is 2^63
+exactly — so that value passes the guard and is then cast to `long`. Java's
+float-to-long cast saturates to 9223372036854775807; Go's is
+implementation-defined and gives -9223372036854775808 on amd64. The port wrote
+one byte where Java writes nineteen. `int64OfFloat` is Java's cast.
+
+**A Xerces ordering the `w3c/dom` did not have.** `FDFAnnotation.richContentsToString`
+walks `getAttributes()`, and Xerces holds a `NamedNodeMap` sorted by qualified
+name for binary search — so the `/RC` it writes has its attributes in that
+order, not source order. `FDFAnnotationTest` asserts the string byte for byte.
+`w3c/dom` now inserts attributes in name order. **The `xmpbox` DOM found this
+independently and already did it**; the two still cannot be folded together, for
+the reason the `track/xmpbox` section gives.
+
+**Two missing pieces of API**, each found because a Java test needed it:
+
+- `Document.RemoveXRefOffset`. Java hands out the live cross-reference map, so
+  every map operation is available; the port had put, add and clear and no
+  remove. `PDFObjectStreamParserTest.testParseAllObjectsIndexed` changes an
+  object's stream index by removing the entry and putting a new one — "remove
+  the old entry first to be sure it is replaced" — because `HashMap.put` keeps
+  the key object it already has and only updates the value. `AddXRefTable`
+  reproduces that faithfully, so without a remove the case could not be
+  expressed at all.
+- `PDDocument.RemovePage` and `RemovePageAt`. `PDPageTree` had both halves;
+  the two document-level methods were simply absent.
+
+### What it added beyond the tests
+
+`ResourceCacheFactory`, `ResourceCacheCreateFunction` and
+`DefaultResourceCacheCreateImpl` — the three `pdmodel` classes the coverage
+survey found unported and unrecorded. They are the process-wide override point
+`PDDocument` reads its cache from; without them a document could neither be
+given a different cache nor be told to keep none, which the factory's own
+javadoc offers by setting the function to null. Java is a class of statics with
+a static initialiser; the port is a package variable, guarded, because the
+setter is called from one thread while documents open on others.
+
+### Three test headers that were not true
+
+Each said the Java suite did not exercise something directly, which is why the
+Go test had been written from the source instead. Each was wrong, and each is
+now corrected and followed by the ported cases:
+
+| File | Claimed | Actually |
+| --- | --- | --- |
+| `pdfparser/objectparser_test.go` | "the Java suite exercises these only through whole documents" | `TestCOSParser` calls `parseCOSName` and `parseCOSLiteralString` directly, 21 times |
+| `graphics/blend/blendmode_test.go` | "the Java suite covers the blend functions through rendered images" | `BlendModeTest` calls `blendChannel` with exact values |
+| `pdfparser/streamparser_test.go` | (kept — its subject really is only reached through documents) | — |
+
+That pattern is worth naming: **a header asserting what the Java suite does not
+cover is a claim, and it was wrong two times out of three.** Check before
+writing one.
+
+### The twenty cases not ported
+
+| Java case | Why |
+| --- | --- |
+| `TestPDFParser`, 17 of 18 | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetches nothing in a test. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
+| `TestCOSIncrement.testConcurrentModification` | Downloads a PDF from `issues.apache.org` |
+| `TestCOSIncrement.testSubsetting` | Needs `PDType0Font.load`, which is font embedding. Unported, and `track/font-embedding` names this case |
+| `TestNumberFormatUtil.testFormattingInRange` | A property test comparing against `BigDecimal` with `HALF_UP` rounding. Go has no arbitrary-precision decimal in its standard library, and re-implementing one to check a formatter would be checking the re-implementation. The five example-based cases it is built on are ported, with the exact bytes |
+
+`TestPDFParser.testPDFParserMissingCatalog` is the one of its eighteen whose
+fixture is checked in, and it is ported.
+
+### Two assertions deliberately narrowed
+
+Both are assertions on prose rather than on behaviour, and both say so where
+they are:
+
+- `PDFStreamParserTest.testNestedBI` asserts Java's whole message. The port's
+  carries the same two offsets in the lower-case package-prefixed form every
+  error in `pdfparser` uses, so the offsets are asserted and the wording is not.
+- `TestCOSIncrement` ends with `System.out.println(dash)` in
+  `PDLineDashPatternTest`; the port checks `String()` answers something rather
+  than printing it, which is all that line proves.
+
+### The adversarial review — phase D
+
+**D1, every case accounted for.** The sixteen Java classes hold 107 `@Test`
+methods; 87 are ported and 20 are dropped with the reasons above. Counted class
+by class against the Java, including the places where several Java cases became
+one Go table: `TestCOSParser`'s 21 are 8 Go functions, `BlendModeTest`'s 17 are
+3, `FDFUtilsTest`'s 13 are one table of 13 rows.
+
+Every assertion value was read out of the Java file. The two places where the
+port asserts something different say so where they are, and both are assertions
+on prose rather than behaviour — the nested-BI message and the `println` at the
+end of `PDLineDashPatternTest`.
+
+**D4, every fix demonstrated.** Each of the six defects had a test that failed
+before it and passed after. Three were found by a test that would not compile or
+would not run at all — the missing `RemoveXRefOffset`, the missing `RemovePage`,
+and the `parseFloat` panic — and three by a wrong value.
+
+**D3 found something the tests do not do.** `PDFStreamParserTest.testInlineImages`
+carries this comment before its last eight cases:
+
+```java
+// MAX_BIN_CHAR_TEST_LENGTH is currently 10, test boundaries
+//                              1234567890
+testInlineImage2ops("ID\n12EI5EI       EMC ", "12EI5", "EMC");
+```
+
+**The 39 cases do not constrain that constant.** Setting the port's
+`maxBinCharTestLength` to 3, 5, 9, 15 or 40 leaves every one of them passing.
+The reason is visible in the code: those cases put nothing but spaces inside the
+look-ahead window, so `startOpIdx` never leaves -1, both of the checks that use
+the window length are skipped, and the answer is the same whatever the window
+is.
+
+This is the Java's, not the port's. `hasNoFollowingBinData` and
+`atEndOfInlineImage` are line-for-line ports, signed-byte comparison included,
+and the window is read with the same length. So the comment describes an intent
+the cases do not achieve, in Java as much as here.
+
+The claim is bounded: **the cases do not pin the constant**, not "no case
+could". A distinguishing input was looked for — operators of several lengths at
+several distances past the `EI` — and none of the shapes tried told 9 from 10.
+
+**D2, what the tests actually reach.** All of them run the real types.
+`TestIncrementallyCreateDocument` is the strongest of the sixteen: six
+incremental saves with a reload and a re-check between each, exercising slice
+7's incremental writer end to end for the first time. `TestLoadXFDFAnnotations`
+guards against passing vacuously — it sets a flag when it finds the annotation
+it is looking for and fails if the flag is still false.
+
+Three test doubles are used, all of them standing in for a *source* while the
+code under test is real: `stutteringReader`, `failingCloser` and
+`bytesThenError` in `pdfio`, which are that package's own from an earlier
+branch.
+
+**A caching trap worth naming.** The first mutation run reported `ok (cached)`
+— Go had not re-run the test at all, because only a non-test file had changed
+in a way the cache did not notice on that invocation. A mutation check is
+worthless without `-count=1`. Every result above was taken with it.
+
+**D7, the survey re-run.** The enumeration that produced this branch was run
+again: 54 Java test classes had no trace in the Go tests, and 38 do now. All
+sixteen are gone, and nothing new appeared. Of the 38, every one in `pdfbox` or
+`fontbox` is recorded here with a reason except three, which are recorded now
+because **none of them is a test**:
+
+| Java file | What it is |
+| --- | --- |
+| `fontbox/ttf/GSUBTableDebugger` | one `` that asserts nothing. It reads a font and prints the GSUB table; its own javadoc says "to be used mainly for debugging purposes" |
+| `fontbox/ttf/gsub/GSUBTablePrintUtil` | no `` at all — the printer the above calls |
+| `pdmodel/interactive/annotation/package-info` | a package declaration |
+
+The remaining 20 are `tools` and `pdfbox-layout`, which belong to
+`track/tools` and `track/pdfbox-layout`.
+
+### Review feedback
+
+Two items, both right, and the first of them was the branch's own fix left half
+done.
+
+**`splitOnCommaOrSemicolon` still dropped leading and interior empty fields.**
+Reported by Copilot and by Codex, independently and identically. Phase B had
+wrapped `strings.FieldsFunc` in a trailing-empty trim, which fixes nothing that
+`FieldsFunc` breaks: it drops *every* empty field, so `"1,,2"` came back as two
+numbers where Java gives three and then rejects the middle one. That is worse
+than the panic this branch started by fixing — **the port silently accepted a
+coordinate list Java rejects, and read the remaining numbers into the wrong
+positions.**
+
+Writing the test first found a third rule broken as well, which neither
+reviewer mentioned: `splitJava("")` answered `[]` where Java answers `[""]`,
+because `Pattern.split` returns the input untrimmed when the separator never
+occurs at all. That is the same rule `StringUtil.SplitOnSpace` was fixed for
+earlier in this branch, missed here.
+
+Both helpers now go through one `splitJavaFunc` that writes all three rules
+out, with `split_test.go` covering leading, interior, trailing, all-separator
+and empty inputs for both separators.
+
+**The `NamedNodeMap` doc comment was left saying the opposite of what the code
+now does.** Reported by Copilot, and correct: sorting the attributes made "in
+the order they were written" false for every caller reading it. Corrected, and
+it now points at `addAttribute` as the only thing that fills the map.
+
+### Still open
+
+- `maxBinCharTestLength` is unpinned, above. Writing a case that pins it would
+  be writing a test the Java does not have, which is not this branch's job; it
+  is worth doing by whoever next touches the inline image parser.
+- The seventeen `TestPDFParser` cases stay unported until this repository has a
+  corpus. They are the whole-document recovery suite, and they are the largest
+  single block of Java testing the port has no answer to.
+- `testSubsetting` is waiting on `track/font-embedding`, which names it.

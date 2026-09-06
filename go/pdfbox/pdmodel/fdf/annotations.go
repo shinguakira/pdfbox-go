@@ -307,7 +307,7 @@ func (a *FDFAnnotationTextMarkup) initTextMarkupOfXML(element *dom.Element) erro
 	if coords == "" {
 		return errors.New("Error: missing attribute 'coords'")
 	}
-	coordsValues := strings.Split(coords, ",")
+	coordsValues := splitJava(coords, ",")
 	if len(coordsValues) < 8 {
 		return errors.New("Error: too little numbers in attribute 'coords'")
 	}
@@ -694,9 +694,57 @@ func (a *FDFAnnotationInk) InkList() [][]float32 {
 	return retval
 }
 
-// splitOnCommaOrSemicolon is String.split("[,;]").
+// splitOnCommaOrSemicolon is String.split("[,;]"), which the ink, polygon and
+// polyline annotations read their coordinates with.
 func splitOnCommaOrSemicolon(text string) []string {
-	return strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ';' })
+	return splitJavaFunc(text, func(r rune) bool { return r == ',' || r == ';' })
+}
+
+// splitJava is String.split(sep) for a one-character separator.
+func splitJava(text, sep string) []string {
+	sepRune := []rune(sep)[0]
+	return splitJavaFunc(text, func(r rune) bool { return r == sepRune })
+}
+
+// splitJavaFunc is java.lang.String.split with the default limit of zero, for a
+// separator described by a predicate.
+//
+// Three of its rules have to be written out, because no function in `strings`
+// has the same set:
+//
+//   - a leading or interior empty field is **kept**. strings.FieldsFunc drops
+//     every empty field, so it cannot be used: dropping an interior one does
+//     not merely lose a field, it makes the port accept a coordinate list Java
+//     rejects and read the rest into the wrong positions.
+//   - every *trailing* empty field is dropped. strings.Split keeps them, and
+//     real XFDF ends these attributes with a separator -- the coords of
+//     xfdf-test-document-annotations.xml do -- so keeping one hands parseFloat
+//     an empty string, which panics on a file Java reads.
+//   - where the separator never occurs the whole input comes back untrimmed,
+//     which is why an empty input gives one empty string rather than none.
+func splitJavaFunc(text string, isSeparator func(rune) bool) []string {
+	parts := []string{}
+	current := &strings.Builder{}
+	matched := false
+	for _, r := range text {
+		if isSeparator(r) {
+			matched = true
+			parts = append(parts, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if !matched {
+		return []string{text}
+	}
+	parts = append(parts, current.String())
+
+	end := len(parts)
+	for end > 0 && parts[end-1] == "" {
+		end--
+	}
+	return parts[:end]
 }
 
 // FDFAnnotationLink is a link annotation of an FDF document.

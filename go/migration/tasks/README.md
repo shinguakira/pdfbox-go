@@ -12,39 +12,56 @@ change it to suit one branch — change the copy.
 
 | Branch | File | State |
 | --- | --- | --- |
-| `slice/0-*` | — | done, predates these files |
-| `slice/1-open-document` | — | done, predates these files |
-| `slice/2-content-streams` | — | done, predates these files |
-| `slice/3-*` | [`slice-3-text-simple-fonts.md`](slice-3-text-simple-fonts.md) | next |
-| `slice/4-*` | [`slice-4-text-cid-cff.md`](slice-4-text-cid-cff.md) | after 3 |
-| `slice/5-*` | [`slice-5-encryption.md`](slice-5-encryption.md) | open — needs only slice 1 |
-| `slice/6-*` | [`slice-6-filters-images.md`](slice-6-filters-images.md) | open — needs only slice 1 |
-| `slice/7-*` | [`slice-7-write-merge.md`](slice-7-write-merge.md) | open — needs only slice 1 |
-| `slice/8-*` | [`slice-8-forms-annotations.md`](slice-8-forms-annotations.md) | open — needs only slice 1 |
-| `slice/9-*` | [`slice-9-rendering.md`](slice-9-rendering.md) | needs 3 and 6, and a decision |
-| `track/xmpbox` | [`track-xmpbox.md`](track-xmpbox.md) | open — depends on nothing |
-| `track/scratchfile` | [`track-scratchfile.md`](track-scratchfile.md) | open — needs only slice 0 |
-| **no branch** | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | **gap** — see below |
-| **no branch, no slice** | [`tools-unassigned.md`](tools-unassigned.md) | **gap** — see below |
+| `slice/0-*` | — | **merged**, predates these files |
+| `slice/1-open-document` | — | **merged**, predates these files |
+| `slice/2-content-streams` | — | **merged**, predates these files |
+| `slice/3-text-simple-fonts` | [`slice-3-text-simple-fonts.md`](slice-3-text-simple-fonts.md) | **merged** |
+| `slice/4-text-cid-cff` | [`slice-4-text-cid-cff.md`](slice-4-text-cid-cff.md) | **merged** |
+| `slice/5-encryption` | [`slice-5-encryption.md`](slice-5-encryption.md) | **merged** |
+| `slice/6-filters-images` | [`slice-6-filters-images.md`](slice-6-filters-images.md) | **merged** |
+| `slice/7-write-merge` | [`slice-7-write-merge.md`](slice-7-write-merge.md) | **merged** |
+| `slice/8-forms-annotations` | [`slice-8-forms-annotations.md`](slice-8-forms-annotations.md) | **merged** |
+| `slice/9-rendering` | [`slice-9-rendering.md`](slice-9-rendering.md) | **merged** — minus the raster half, behind `rendering.Backend` |
+| `track/xmpbox` | [`track-xmpbox.md`](track-xmpbox.md) | **merged** |
+| `track/scratchfile` | [`track-scratchfile.md`](track-scratchfile.md) | **merged** |
+| `track/test-backfill` | [`track-test-backfill.md`](track-test-backfill.md) | open — depends on nothing |
+| `track/font-embedding` | [`track-font-embedding.md`](track-font-embedding.md) | open — needs 4 and 7, both merged |
+| `track/tools` | [`track-tools.md`](track-tools.md) | open — needs every slice, all merged |
+| `track/pdfbox-layout` | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | open — **take last**, see its A0 |
 
-The branch names above are the pattern `slice/N-name` from
-[`../BRANCHING.md`](../BRANCHING.md). Only `slice/1-open-document` and
-`slice/2-content-streams` have literal names so far, because those branches
-exist. **The rest are not decided — do not invent one.**
+Every slice in `PLAN.md` is merged. The four open branches are tracks: work
+`PLAN.md` counts in scope that no slice claimed.
 
-## Two gaps in the plan
+## Order for the four open tracks
 
-Both need a decision from the user. Neither is closed here, because closing one
-means adding a branch to the plan.
+**`track/test-backfill` first.** It is the only one that can find defects in
+work already merged; the other three add surface area on top of a base whose
+test coverage has a known hole. Sixteen Java test classes, 107 cases, sitting in
+packages a merged slice calls done and mentioned nowhere in
+[`../STATUS.md`](../STATUS.md) — not deferred with a reason, missed.
 
-- **`pdfbox-layout-*`.** [`../PLAN.md`](../PLAN.md) gives it a "Parallel track"
-  section; [`../BRANCHING.md`](../BRANCHING.md)'s track table lists only
-  `track/xmpbox` and `track/scratchfile`. The plan names the work and the branch
-  document gives it no branch.
-- **`tools`.** [`../PLAN.md`](../PLAN.md) counts it in scope at 26 files and
-  deliberately keeps it out of the out-of-scope list — then never mentions it
-  again. No slice, no track, no branch. [`../STATUS.md`](../STATUS.md) carries
-  it as "phase 7 `cmd/pdfbox`", which the plan does not say.
+Then `track/font-embedding`, which closes a capability gap: nothing in the port
+can write a PDF with an embedded font today, and the method that would is a
+panic. Then `track/tools`, whose 22 commands finally all have their libraries.
+Then `track/pdfbox-layout`, last, because its A0 is a substitution decision
+entangled with `rendering.Backend`.
+
+## The two gaps, and how they were closed
+
+This file used to carry two rows marked **gap** — work `PLAN.md` counted in
+scope with no branch anywhere. Both were closed by the user, in the survey that
+also produced `track/test-backfill` and `track/font-embedding`:
+
+- **`pdfbox-layout-*`** now has `track/pdfbox-layout`, and a row in
+  [`../BRANCHING.md`](../BRANCHING.md).
+- **`tools`** now has `track/tools`. Its file was `tools-unassigned.md`, whose
+  whole purpose was to make the gap visible rather than close it; it is renamed
+  and rewritten, and the argument it made — that `tools` is not one unit of work
+  — is kept, because it is still why this is a track and not a slice.
+
+`PLAN.md` is **not** changed by any of this. It counted both in scope already;
+what was missing was a branch, and branches live in
+[`../BRANCHING.md`](../BRANCHING.md).
 
 ## Coverage
 
@@ -82,16 +99,16 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `contentstream/operator/markedcontent` | 6 | slice 2 — done bar `DrawObject` |
 | `contentstream/operator/state` | 13 | slice 2 — done bar `gs` |
 | `contentstream/operator/text` | 16 | slice 2 (11), slice 3 (5) |
-| `pdfbox/cos` | 24 | slice 1 — done; slice 7 for the 4 update-state files |
-| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) |
-| `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` — **no branch** |
-| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) |
+| `pdfbox/cos` | 24 | slice 1, slice 7 for the update-state files — **done** |
+| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) — **done** |
+| `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` |
+| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) — **done** |
 | `pdfbox/multipdf` | 6 | slice 7 |
 | `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 conditionally, slice 8 for `FDFParser` |
 | `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
 | `pdfbox/pdfwriter` | 3 | slice 7 |
 | `pdfbox/pdfwriter/compress` | 4 | slice 7 |
-| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7 |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio) |
 | `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
 | `pdmodel/common/filespecification` | 4 | slice 8 |
 | `pdmodel/common/function` | 6 | slice 9 |
@@ -100,7 +117,7 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdmodel/encryption` | 19 | slice 5 |
 | `pdmodel/fdf` | 31 | slice 8 |
 | `pdmodel/fixup`, `fixup/processor` | 8 | slice 8 |
-| `pdmodel/font` | 39 | slice 3 (~12), slice 4 (rest) |
+| `pdmodel/font` | 39 | slice 3 (~12), slice 4 (rest), `track/font-embedding` (the 5 embedders) |
 | `pdmodel/font/encoding` | 12 | slice 3 |
 | `pdmodel/graphics` | 4 | slice 2 (1), slice 6 (2), slice 9 (`PDFontSetting`) |
 | `pdmodel/graphics/blend` | 2 | slice 2 (1), slice 9 (1) |
@@ -115,7 +132,7 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdfbox/printing` | 4 | slice 9 |
 | `pdfbox/rendering` | 10 | slice 9 |
 | `pdfbox/text` | 6 | slice 3 |
-| `pdfbox/tools`, `tools/imageio` | 26 | **nothing** — see the gaps below |
+| `pdfbox/tools`, `tools/imageio` | 26 | `track/tools` |
 | `pdfbox/util` | 9 | slice 2 (2), slice 3 (2), slice 6 (1), slice 7 (2), slice 8 (1), `tools` (1) — see below |
 | `pdfbox/util/filetypedetector` | 3 | slice 6 |
 | `xmpbox/*` | 74 | `track/xmpbox` |
@@ -132,7 +149,7 @@ branch that first needs it. Found by grepping for each import:
 | `NumberFormatUtil` | `PDAbstractContentStream` | slice 7 | `TestNumberFormatUtil` |
 | `StringUtil` | `PDAbstractContentStream` | slice 7 | `StringUtilTest` |
 | `XMLUtil` | `Loader`, `FDFField`, `FDFAnnotationStamp` | slice 8, with `fdf` | — |
-| `Version` | `tools` only | unassigned, with `tools` | — |
+| `Version` | `tools` only | `track/tools` | — |
 
 `Hex` is a special case: `cos.ParseHexString` already exists in the port, so
 slice 1 folded part of it away. Check what is left of the Java class before

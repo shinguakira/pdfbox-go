@@ -79,7 +79,7 @@ func firstElementText(element *dom.Element, tagName string) string {
 func (a *FDFAnnotationFreeText) initCallout(element *dom.Element) {
 	callout := element.GetAttribute("callout")
 	if callout != "" {
-		calloutValues := strings.Split(callout, ",")
+		calloutValues := splitJava(callout, ",")
 		a.SetCallout(parseFloats(calloutValues))
 	}
 }
