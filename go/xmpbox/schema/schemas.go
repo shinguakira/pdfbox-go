@@ -47,7 +47,7 @@ const (
 
 var adobePDFInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "pdf",
-	Namespace:      "http://ns.adobe.com/pdf/1.3/",
+	Namespace:      AdobePDFNamespace,
 }
 
 var adobePDFProperties = describe(map[string]xmptype.PropertyType{
@@ -156,7 +156,7 @@ const (
 
 var dublinCoreInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "dc",
-	Namespace:      "http://purl.org/dc/elements/1.1/",
+	Namespace:      DublinCoreNamespace,
 }
 
 var dublinCoreProperties = describe(map[string]xmptype.PropertyType{
@@ -504,7 +504,7 @@ const PDFAExtensionSchemas = "schemas"
 
 var pdfaExtensionInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "pdfaExtension",
-	Namespace:      "http://www.aiim.org/pdfa/ns/extension/",
+	Namespace:      PDFAExtensionNamespace,
 }
 
 var pdfaExtensionProperties = describe(map[string]xmptype.PropertyType{
@@ -560,7 +560,7 @@ const (
 
 var pdfaIdentificationInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "pdfaid",
-	Namespace:      "http://www.aiim.org/pdfa/ns/id/",
+	Namespace:      PDFAIdentificationNamespace,
 }
 
 var pdfaIdentificationProperties = describe(map[string]xmptype.PropertyType{
@@ -754,7 +754,7 @@ const (
 
 var rightsManagementInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "xmpRights",
-	Namespace:      "http://ns.adobe.com/xap/1.0/rights/",
+	Namespace:      RightsManagementNamespace,
 }
 
 var rightsManagementProperties = describe(map[string]xmptype.PropertyType{
@@ -954,7 +954,7 @@ const (
 
 var pageTextInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "xmpTPg",
-	Namespace:      "http://ns.adobe.com/xap/1.0/t/pg/",
+	Namespace:      PageTextNamespace,
 }
 
 var pageTextProperties = describe(map[string]xmptype.PropertyType{
@@ -999,7 +999,7 @@ const JobTicketJobRef = "JobRef"
 
 var jobTicketInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "xmpBJ",
-	Namespace:      "http://ns.adobe.com/xap/1.0/bj/",
+	Namespace:      JobTicketNamespace,
 }
 
 var jobTicketProperties = describe(map[string]xmptype.PropertyType{

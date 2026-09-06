@@ -12,6 +12,7 @@
 package xmpbox
 
 import (
+	"github.com/shinguakira/pdfbox-go/go/xmpbox/schema"
 	"github.com/shinguakira/pdfbox-go/go/xmpbox/xmptype"
 )
 
@@ -26,6 +27,7 @@ type XMPMetadata struct {
 	xpacketEncoding string
 	xpacketEndData  string
 
+	schemas     []schema.Schema
 	typeMapping *xmptype.TypeMapping
 }
 

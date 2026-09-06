@@ -37,7 +37,7 @@ const (
 
 var xmpBasicInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "xmp",
-	Namespace:      "http://ns.adobe.com/xap/1.0/",
+	Namespace:      XMPBasicNamespace,
 }
 
 var xmpBasicProperties = describe(map[string]xmptype.PropertyType{

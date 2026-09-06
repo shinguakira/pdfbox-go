@@ -45,7 +45,7 @@ const (
 
 var photoshopInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "photoshop",
-	Namespace:      "http://ns.adobe.com/photoshop/1.0/",
+	Namespace:      PhotoshopNamespace,
 }
 
 var photoshopProperties = describe(map[string]xmptype.PropertyType{
@@ -520,7 +520,7 @@ const (
 
 var mediaManagementInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "xmpMM",
-	Namespace:      "http://ns.adobe.com/xap/1.0/mm/",
+	Namespace:      MediaManagementNamespace,
 }
 
 var mediaManagementProperties = describe(map[string]xmptype.PropertyType{

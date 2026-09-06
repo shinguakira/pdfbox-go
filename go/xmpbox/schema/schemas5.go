@@ -97,7 +97,7 @@ const (
 
 var exifInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "exif",
-	Namespace:      "http://ns.adobe.com/exif/1.0/",
+	Namespace:      ExifNamespace,
 }
 
 var exifProperties = describe(map[string]xmptype.PropertyType{

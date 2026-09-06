@@ -44,7 +44,7 @@ const (
 
 var tiffInfo = xmptype.StructuredTypeInfo{
 	PreferedPrefix: "tiff",
-	Namespace:      "http://ns.adobe.com/tiff/1.0/",
+	Namespace:      TiffNamespace,
 }
 
 var tiffProperties = describe(map[string]xmptype.PropertyType{
