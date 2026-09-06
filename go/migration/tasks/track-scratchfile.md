@@ -65,24 +65,24 @@ records that as the reason it takes the general path instead.
 
 # Phase A — Write the tests
 
-- [ ] A1. Port `ScratchFileBufferTest`, which `slice/0` could not
-- [ ] A2. Port `NonSeekableRandomAccessReadInputStreamTest`
-- [ ] A3. Port `RandomAccessReadMemoryMappedFileTest`
-- [ ] A4. Write from source for `ScratchFile` and `MemoryUsageSetting` if Java
+- [x] A1. Port `ScratchFileBufferTest`, which `slice/0` could not
+- [x] A2. Port `NonSeekableRandomAccessReadInputStreamTest`
+- [x] A3. Port `RandomAccessReadMemoryMappedFileTest`
+- [x] A4. Write from source for `ScratchFile` and `MemoryUsageSetting` if Java
       has no test for them — check before assuming
 
 ---
 
 # Phase B — Port the implementation
 
-- [ ] B0. **Take the memory-mapping decision first.** `STATUS.md` names it:
+- [x] B0. **Take the memory-mapping decision first.** `STATUS.md` names it:
       `golang.org/x/exp/mmap` or `syscall`. Adding a dependency is a decision,
       not an implementation detail.
-- [ ] B1. `MemoryUsageSetting`
-- [ ] B2. `ScratchFile` and `ScratchFileBuffer`
-- [ ] B3. `NonSeekableRandomAccessReadInputStream`
-- [ ] B4. `RandomAccessReadMemoryMappedFile`
-- [ ] B5. Wire the flate fast path back into
+- [x] B1. `MemoryUsageSetting`
+- [x] B2. `ScratchFile` and `ScratchFileBuffer`
+- [x] B3. `NonSeekableRandomAccessReadInputStream`
+- [x] B4. `RandomAccessReadMemoryMappedFile`
+- [x] B5. Wire the flate fast path back into
       `PDPage.ContentsForStreamParsing`, and update the slice 2 note in
       `STATUS.md`
 
@@ -90,11 +90,11 @@ records that as the reason it takes the general path instead.
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — the phase 0 rows and the slice 2 note
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md` — the phase 0 rows and the slice 2 note
 
 ---
 
@@ -104,50 +104,50 @@ records that as the reason it takes the general path instead.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [x] D4. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D7. Check the temporary files are cleaned up
+- [x] D7. Check the temporary files are cleaned up
   - Java uses `File.deleteOnExit` and explicit close. Go has neither
     automatically. A scratch file left behind on a crash is a real defect.
 
-- [ ] D8. Check concurrency honestly
+- [x] D8. Check concurrency honestly
   - `slice/0` already deviated once here: `CreateView` hands each caller its
     own cursor where Java caches one per thread id. Whatever this track does,
     document the contract on every exported type.
 
-- [ ] D9. Re-read the `slice/0` note in `STATUS.md`
+- [x] D9. Re-read the `slice/0` note in `STATUS.md`
   - `pdfio` was not ported test-first. It is the one package where a later
     re-read against the Java is worth doing on its own, and this track is
     already in that code.
@@ -156,21 +156,21 @@ And for this branch in particular:
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 ---

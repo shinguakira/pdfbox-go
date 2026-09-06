@@ -15,7 +15,10 @@ type ReadView struct {
 	closed     bool
 }
 
-var _ RandomAccessRead = (*ReadView)(nil)
+var (
+	_ RandomAccessRead = (*ReadView)(nil)
+	_ rewinder         = (*ReadView)(nil)
+)
 
 // NewReadView clips source to the given section. Closing the view leaves source
 // open; use NewReadViewOwned when the view should own its source.
@@ -78,6 +81,28 @@ func (v *ReadView) Seek(offset int64, whence int) (int64, error) {
 	}
 	v.position = abs
 	return v.position, nil
+}
+
+// Rewind seeks backwards within the view.
+//
+// Port of the overridden rewind(int), which rewinds the underlying source
+// rather than seeking the view -- and which, unlike Seek, checks nothing. A
+// rewind of more bytes than the view has read lands the source before the
+// view's own start and leaves Position negative, so the view goes on to read
+// bytes it does not cover. Ported as written; see migration/JAVA-BUGS.md
+// entry 67.
+func (v *ReadView) Rewind(bytes int64) error {
+	if err := v.checkClosed(); err != nil {
+		return err
+	}
+	if err := v.restorePosition(); err != nil {
+		return err
+	}
+	if err := Rewind(v.source, bytes); err != nil {
+		return err
+	}
+	v.position -= bytes
+	return nil
 }
 
 // ReadByte returns the next byte of the view, or io.EOF at its end.

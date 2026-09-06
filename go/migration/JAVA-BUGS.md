@@ -104,16 +104,40 @@ until the total falls to `-1` or below.
 
 **What correct would be** treat a non-positive inner read as the end.
 
-**Why it matters** the returned count can be negative, and the offset arithmetic
-inside the loop goes backwards with it.
+**Why it matters** **the read can never return.** The `track/scratchfile` D9
+re-read found the loop is not merely wrong but non-terminating: `bytesRead`
+oscillates. Where an inner source hands back fewer bytes than its `length()`
+promises, one pass reads some bytes, the next adds a `-1` and puts `bytesRead`
+back below where it was, the pass after that reads them again, and the loop
+never reaches `maxAvailBytes` and never falls to `-1` either. Beyond that, the
+returned count is one low per `-1` and `currentPosition += bytesRead` moves the
+cursor backwards.
+
+A `RandomAccessReadView` whose `streamLength` is longer than its source is such
+a source, and it needs no corruption to build — the view takes the length it is
+told.
+
+**What correct would be** as above: stop on a non-positive inner read.
 
 **Where the Go carries it** `go/pdfio/sequenceread.go`, `SequenceRead.Read`.
 The helper `readOrMinusOne` stands in for Java's read() returning -1, so the
-same accumulation happens. An earlier draft stopped on a non-positive read;
-that was corrected once this rule was adopted.
+same accumulation, the same backwards cursor and the same spin all happen. An
+earlier draft stopped on a non-positive read; that was corrected once this rule
+was adopted, and the backwards cursor was added by the D9 re-read, which found
+the port had been keeping the position where Java loses a byte from it.
 
-**Confidence** high on the defect, and it is worse than #2 because the loop can
-iterate.
+No test pins the spin. A test that hangs when it succeeds is worse than no test;
+this entry is the record.
+
+**Confidence** reproduced. A `SequenceRandomAccessRead` over a single
+`RandomAccessReadView(source, 0, 100)` whose source holds 10 bytes hung on the
+first `read(b, 0, 20)`, and the thread dump named the loop:
+
+```
+at org.apache.pdfbox.io.SequenceRandomAccessRead.read(SequenceRandomAccessRead.java:132)
+```
+
+which is `bytesRead += randomAccessRead.read(b, offset + bytesRead, maxAvailBytes - bytesRead);`.
 
 ---
 
@@ -2527,3 +2551,600 @@ where it is and in [`STATUS.md`](STATUS.md).
 
 **Confidence** high. Reproduced against JDK 17: a sequence holding a date and an
 empty date prints `[java.util.GregorianCalendar[...], null]`.
+
+---
+
+## 62. `ScratchFile.markPagesAsFree` walks to `count` rather than `off + count`
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/ScratchFile.java`,
+`markPagesAsFree`
+
+```java
+void markPagesAsFree(int[] pageIndexes, int off, int count) {
+    synchronized (freePages)
+    {
+        for (int aIdx = off; aIdx < count; aIdx++)
+```
+
+The loop starts at `off` and stops at `count`, so it visits `count - off`
+entries rather than `count`.
+
+Its two callers are in `ScratchFileBuffer`. `close(boolean)` passes `off` 0, and
+`0 + count == count`, so it is right by coincidence. `clear()` passes
+
+```java
+pageHandler.markPagesAsFree(pageIndexes, 1, pageCount - 1);
+```
+
+which visits indices 1 to `pageCount - 2` and never the last one.
+
+**What correct would be** `aIdx < off + count`, or passing an end index rather
+than a count.
+
+**Why it matters** every `clear()` leaks one page, and the pages are a fixed
+allowance. A buffer that filled its allowance cannot be refilled after being
+cleared: the next write fails with "Maximum allowed scratch file memory
+exceeded." Repeated clears leak a page each time, so a long-lived
+`ScratchFile` loses a page per clear until it can hand out none.
+
+**Where the Go carries it** `go/pdfio/scratchfile.go`, `markPagesAsFree`, walks
+to `count` and says so.
+`TestClearLeaksTheLastPage` in `go/pdfio/scratchfilebuffer_test.go` pins it and
+names this entry.
+
+**Confidence** high. Reproduced by compiling the `io` module against JDK 17 and
+running it: a `ScratchFile` of three pages of main memory, three pages written,
+`clear()`, and the second write fails with
+
+```
+second write failed: Maximum allowed scratch file memory exceeded.
+```
+
+---
+
+## 63. `PDPage.getContentsForStreamParsing` skips the predictor
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPage.java`,
+`getContentsForStreamParsing`
+
+```java
+COSStream contentStream = page.getCOSStream(COSName.CONTENTS);
+if (contentStream != null && COSName.FLATE_DECODE.equals(contentStream.getFilters()))
+{
+    // for now only streams using a flate filter are supported
+    FlateFilterDecoderStream decoderStream = new FlateFilterDecoderStream(
+            contentStream.createRawInputStream());
+    return new NonSeekableRandomAccessReadInputStream(decoderStream);
+}
+return getContentsForRandomAccess();
+```
+
+The guard tests the filter and says nothing about `/DecodeParms`.
+`FlateFilterDecoderStream` is an `Inflater` and eleven lines of buffering: it
+carries no predictor. The general path this one skips,
+`getContentsForRandomAccess`, goes through `COSStream.createView` and the whole
+filter chain, predictor included.
+
+**What correct would be** taking the fast path only where the stream declares no
+predictor, which is one more term in the guard.
+
+**Why it matters** a content stream written as
+`/Filter /FlateDecode /DecodeParms <</Predictor 12 /Columns n>>` is legal. Read
+through `getContentsForStreamParsing` it yields the raw PNG-filtered bytes,
+which are not content stream operators; read through
+`getContentsForRandomAccess` it yields the right ones. The same page then parses
+differently depending on which accessor the caller reached for.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/pdpage.go`,
+`ContentsForStreamParsing`, takes the same fast path on the same condition and
+says so, and `go/pdfbox/filter/flate.go`'s `NewFlateDecoderReader` says it
+applies no predictor.
+
+**Confidence** high for the shape, which is plain in the two methods and in
+`FlateFilterDecoderStream`. Not run: no PDF in the test corpus has a predictored
+content stream, which is also why no PDFBox test covers it.
+
+---
+
+## 64. `MemoryUsageSetting.setupMixed`'s javadoc names two equivalences, and neither holds
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/MemoryUsageSetting.java`, both
+`setupMixed` overloads
+
+```java
+ * @param maxMainMemoryBytes maximum number of main-memory to be used; if <code>-1</code> this is the same as
+ * {@link #setupMainMemoryOnly()}; if <code>0</code> this is the same as {@link #setupTempFileOnly()}
+```
+
+Neither claim survives the private constructor.
+
+`setupMixed(-1)` is `new MemoryUsageSetting(true, true, -1, -1)` and
+`setupMainMemoryOnly()` is `new MemoryUsageSetting(true, false, -1, -1)`. The
+constructor copies `useTempFile` through untouched, so the first answers `true`
+from `useTempFile()` and the second `false`.
+
+`setupMixed(0)` is `new MemoryUsageSetting(true, true, 0, -1)`, and
+`locUseMainMemory && locMaxMainMemoryBytes == 0` with a temporary file turns
+`useMainMemory` off — but only after `locMaxMainMemoryBytes` has been set from
+the argument, so it stays 0. `setupTempFileOnly()` passes `useMainMemory` false
+from the start, and `useMainMemory ? maxMainMemoryBytes : -1` makes it -1. So
+the first answers 0 from `getMaxMainMemoryBytes()` and `true` from
+`isMainMemoryRestricted()`, the second -1 and `false`.
+
+**What correct would be** the javadoc saying what these setups do rather than
+naming another setup they are not equal to, or `setupMixed` delegating to the
+setup it names.
+
+**Why it matters** the four getters are public API, and the javadoc is what a
+caller reads before choosing a setup. A caller who believes the -1 equivalence
+and later branches on `useTempFile()` gets the other branch. Inside `ScratchFile`
+neither difference changes behaviour — `setupMixed(-1)` leaves
+`maxMainMemoryIsRestricted` false so no scratch file is opened either way, and
+both zero cases leave `inMemoryMaxPageCount` at 0 — so nothing in PDFBox itself
+notices, which is presumably why the javadoc has stood.
+
+**Where the Go carries it** `go/pdfio/memoryusagesetting.go`,
+`newMemoryUsageSetting`, is the same arithmetic, and `SetupMixed` says the two
+claims are false rather than repeating them.
+`TestMemoryUsageSettingSetupMethods` in `go/pdfio/memoryusagesetting_test.go`
+holds the four settings apart.
+
+**Confidence** high. Read out of the running Java, `io` compiled against JDK 17:
+
+```
+setupMixed(-1)         mainMem=true  tempFile=true  memRestricted=false maxMem=-1 maxStore=-1
+setupMainMemoryOnly()  mainMem=true  tempFile=false memRestricted=false maxMem=-1 maxStore=-1
+setupMixed(0)          mainMem=false tempFile=true  memRestricted=true  maxMem=0  maxStore=-1
+setupTempFileOnly()    mainMem=false tempFile=true  memRestricted=false maxMem=-1 maxStore=-1
+```
+
+---
+
+## 65. `RandomAccessReadMemoryMappedFile.createView` checks nothing and reaches through the released buffer
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadMemoryMappedFile.java`,
+`createView`
+
+```java
+@Override
+public RandomAccessReadView createView(long startPosition, long streamLength)
+{
+    return new RandomAccessReadView(new RandomAccessReadMemoryMappedFile(this), startPosition,
+            streamLength, true);
+}
+```
+
+The private copy constructor it calls begins `mappedByteBuffer = parent.mappedByteBuffer.duplicate()`,
+and `close()` sets `mappedByteBuffer` to null. So `createView` on a closed
+source dereferences null. The method does not even declare `throws IOException`,
+which is the tell: every other method of the class calls `checkClosed` first,
+and this one has nothing to throw.
+
+**What correct would be** `checkClosed()` as the first line, which is exactly
+what the sibling `RandomAccessReadBufferedFile.createView` does.
+
+**Why it matters** the two sources are interchangeable behind `RandomAccessRead`
+and a caller cannot tell which it holds. Closing one and then asking for a view
+raises `IOException` from one and `NullPointerException` from the other — and an
+unchecked exception out of a method that declares no checked one will not be
+caught by a caller handling `IOException`.
+
+**Where the Go carries it** it does not: `go/pdfio/mappedfile.go`, `CreateView`,
+calls `checkClosed` and answers `ErrClosed`, which is what the sibling answers
+and what every other method on a closed `MappedFile` answers. The alternative
+was a nil dereference — a panic — for a caller error the rest of the package
+reports cleanly. Said where it is, in [`STATUS.md`](STATUS.md), and pinned by
+`TestMappedFileViewOfAClosedSource`.
+
+**Confidence** high. Read out of the running Java, JDK 17:
+
+```
+mapped createView on closed:       java.lang.NullPointerException: Cannot invoke
+    "java.nio.ByteBuffer.duplicate()" because "<parameter1>.mappedByteBuffer" is null
+bufferedfile createView on closed: java.io.IOException:
+    org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed
+```
+
+---
+
+## 66. `ScratchFile` takes its two locks in both orders, and deadlocks
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/ScratchFile.java`. The class
+synchronizes on three things: `ioLock`, `freePages` and `buffers`. Two of them
+are taken nested, in both orders.
+
+`getNewPage` holds `freePages` and asks for `ioLock`:
+
+```java
+int getNewPage() throws IOException {
+    synchronized (freePages) {
+        ...
+        enlarge();          // -> synchronized (ioLock)
+```
+
+`close` holds `ioLock` and asks for `freePages`:
+
+```java
+public void close() throws IOException {
+    synchronized (ioLock) {
+        ...
+        for (ScratchFileBuffer buffer : buffers) {
+            if (buffer != null && !buffer.isClosed()) buffer.close(false);
+            // -> ScratchFile.markPagesAsFree -> synchronized (freePages)
+```
+
+**What correct would be** one order, kept everywhere. `close` does not need to
+hold `ioLock` while it walks the buffers: it could set `isClosed`, take a copy
+of the list, release `ioLock`, and close them outside it.
+
+**Why it matters** one thread writing to a buffer while another closes the
+scratch file is not an exotic pattern — it is a document being written while
+something else decides to shut down, and `ScratchFile` is the class whose whole
+job is to be shared. When the two windows overlap, both threads block forever,
+and because they are not daemon threads the JVM will not exit either.
+
+**Where the Go carries it** `go/pdfio/scratchfile.go` keeps the same three
+locks, taken in the same two orders — `getNewPage` holds `pagesLock` and
+`enlarge` takes `ioLock`; `Close` holds `ioLock` and `closeBuffer` reaches
+`markPagesAsFree`, which takes `pagesLock`. Ported as written and said at both
+sites. Go's mutexes are not reentrant where Java's monitors are, but that
+changes nothing here: the two locks are distinct, so this is the same
+cross-goroutine hold-and-wait and not a new self-deadlock.
+
+**Confidence** reproduced. A probe that ran a writer and a `close()` against the
+same `ScratchFile` deadlocked in round 215 of 400, and the JVM's own detector
+named it:
+
+```
+Found one Java-level deadlock:
+"writer-215":
+  waiting to lock monitor (object 0x0000000530e985d0, a java.lang.Object),
+  which is held by "closer-215"
+"closer-215":
+  waiting to lock monitor (object 0x0000000530e985e0, a java.util.BitSet),
+  which is held by "writer-215"
+
+  at org.apache.pdfbox.io.ScratchFile.enlarge(ScratchFile.java:244)
+  at org.apache.pdfbox.io.ScratchFile.getNewPage(ScratchFile.java:206)
+  - locked <0x0000000530e985e0> (a java.util.BitSet)
+  ...
+  at org.apache.pdfbox.io.ScratchFile.markPagesAsFree(ScratchFile.java:475)
+  at org.apache.pdfbox.io.ScratchFileBuffer.close(ScratchFileBuffer.java:431)
+  at org.apache.pdfbox.io.ScratchFile.close(ScratchFile.java:517)
+  - locked <0x0000000530e985d0> (a java.lang.Object)
+```
+
+No test pins this one. A test for it would have to lose a race on purpose, and
+a test that hangs when it succeeds is worse than no test; the probe and this
+entry are the record.
+
+---
+
+## 67. `RandomAccessReadView.rewind` checks nothing, and reads outside the view
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadView.java`,
+`rewind`
+
+```java
+@Override
+public void rewind(int bytes) throws IOException
+{
+    checkClosed();
+    restorePosition();
+    randomAccessRead.rewind(bytes);
+    currentPosition -= bytes;
+}
+```
+
+`seek` in the same class refuses a negative offset — `if (newOffset < 0) throw
+new IOException("Invalid position " + newOffset)`. `rewind` never asks. It
+points the source at the view's position and then rewinds **the source**, so a
+rewind longer than the view has read lands the source before `startPosition`.
+`currentPosition` goes negative, and every later read comes out of bytes the
+view exists to exclude.
+
+**What correct would be** the same check `seek` makes, or `seek(getPosition() -
+bytes)` — which is what the interface's own default does, and which the override
+exists only to avoid.
+
+**Why it matters** a view is the port's boundary around an embedded stream. Any
+parser that rewinds further than it has read silently starts reading its
+neighbour's bytes, with nothing to signal it: no exception, and a position that
+merely looks odd.
+
+**Where the Go carries it** `go/pdfio/readview.go`, `ReadView.Rewind`, which
+exists so the package function `Rewind` dispatches to it the way Java's virtual
+call does. Pinned by `TestReadViewRewindPastItsOwnStart`.
+
+**Confidence** reproduced. Read out of the running Java, JDK 17: a view of
+`data[4..7]` over the bytes `0..9`, seeked to 2 and read once, so its position
+is 3:
+
+```
+after seek(2): position=2 read=6
+rewind(5) ok: position=-2 read=2 (source now at 0)
+```
+
+2 is `data[2]` — two bytes before the view begins.
+
+---
+
+## 68. The default `available()` has no lower bound, and answers a negative count
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessRead.java`,
+`available`
+
+```java
+default int available() throws IOException
+{
+    return (int) Math.min(length() - getPosition(), Integer.MAX_VALUE);
+}
+```
+
+The `min` bounds the value above and nothing bounds it below. A source whose
+position has been put past its length answers a negative count, and the `int`
+cast narrows rather than clamps.
+
+`RandomAccessReadView` reaches that state through an ordinary seek: its `seek`
+clamps the position it passes down to the source but records `newOffset`
+verbatim, so `getPosition()` can exceed `length()` by any amount.
+
+**What correct would be** the `Math.max(0, ...)` that
+`RandomAccessInputStream.available()`, twelve files away, already has:
+
+```java
+return (int) Math.max(0, Math.min(input.length() - position, Integer.MAX_VALUE));
+```
+
+Two implementations of the same idea in the same package, one with the bound and
+one without.
+
+**Why it matters** it is latent rather than live: the only caller of
+`RandomAccessRead.available()` in the whole tree is
+`DataInputRandomAccessRead.hasRemaining`, which asks `available() > 0` — false
+for a negative and false for a zero. Anything that sized an array by it, which
+is what `available()` is for in `java.io`, would get
+NegativeArraySizeException.
+
+**Where the Go carries it** `go/pdfio/randomaccess.go`, `Available`, narrows
+through int32 so the cast is reproduced too. Pinned by
+`TestAvailableGoesNegativePastTheEnd`.
+
+**Confidence** reproduced. Read out of the running Java, JDK 17, a four-byte
+view seeked to 20:
+
+```
+ReadView seek(20) ok, position=20 length=4 available=-16 isEOF=true
+```
+
+---
+
+## 69. A write at an exact chunk boundary lands on the first byte of the chunk
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadBuffer.java`,
+`seek`, and `RandomAccessReadWriteBuffer.write`
+
+```java
+else
+{
+    // it is allowed to jump beyond the end of the file
+    // jump to the end of the buffer
+    pointer = size;
+    bufferListIndex = bufferListMaxIndex;
+    currentBuffer = bufferList.get(bufferListIndex);
+    currentBufferPointer = chunkSize > 0 ? (int) (size % chunkSize) : 0;
+}
+```
+
+`size % chunkSize` is 0 whenever the buffer holds an exact multiple of the chunk
+size — which is the normal state of a buffer that has just been filled. So the
+"jump to the end" branch parks the cursor at the **start** of the last chunk
+rather than past its end.
+
+Reading recovers, because every read path seeks first or checks `pointer >=
+size`. Writing does not: `write` uses `currentBufferPointer` as it stands.
+
+**What correct would be** treating a full last chunk as full —
+`currentBufferPointer = chunkSize` where `size > 0 && size % chunkSize == 0`,
+which the read path already knows how to step past — or deriving the index as
+`size / chunkSize` and letting the pointer be 0 in a fresh chunk.
+
+**Why it matters** it corrupts data and then hides the corruption behind a
+length that no longer matches the contents. Writing one byte at the end of a
+full buffer overwrites byte 0, and `size` counts the byte anyway, so the buffer
+claims a length its chunks cannot supply and a full read fails outright.
+`RandomAccessReadWriteBuffer` is the default stream cache — this is where
+`COSStream` data lives.
+
+**Where the Go carries it** `go/pdfio/readbuffer.go`, `ReadBuffer.Seek`, and
+`go/pdfio/readwritebuffer.go`, `ReadWriteBuffer.Write`. Pinned by
+`TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`.
+
+**Confidence** reproduced. Read out of the running Java, JDK 17, an 8-byte chunk
+written full, seeked to 8, and written one more byte:
+
+```
+size=9 position=9
+first 8 bytes: 99 2 3 4 5 6 7 8 (read 8)
+readFully(9) threw java.io.IOException: No more chunks available, end of buffer reached
+```
+
+The 99 was written at position 8 and landed on byte 0.
+
+---
+
+## 70. `SequenceRandomAccessRead` checks its list is not empty before emptying it
+
+**Where**
+`io/src/main/java/org/apache/pdfbox/io/SequenceRandomAccessRead.java`, the
+constructor
+
+```java
+if (randomAccessReadList.isEmpty())
+{
+    throw new IllegalArgumentException("Empty list");
+}
+readerList = randomAccessReadList.stream()
+        .filter(r -> { ... return r.length() > 0; ... })
+        .collect(Collectors.toList());
+currentRandomAccessRead = readerList.get(currentIndex);
+```
+
+The check is made against the argument and the filter is applied afterwards, so
+a list that is not empty but holds only zero-length sources passes the check and
+then indexes an empty list.
+
+**What correct would be** checking `readerList` after the filter, which is the
+list the constructor actually goes on to use.
+
+**Why it matters** the caller gets `IndexOutOfBoundsException` — unchecked, and
+about an index — instead of the `IllegalArgumentException("Empty list")` the
+constructor plainly means to raise. A list of empty sources is a perfectly
+ordinary thing to assemble from a document with empty content streams.
+
+**Where the Go carries it** it does not: `go/pdfio/sequenceread.go`,
+`NewSequenceRead`, checks after filtering as well and answers "empty list". An
+index panic for an input the constructor already has an error for was the worse
+of the two. Said where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** reproduced. Read out of the running Java, JDK 17:
+
+```
+all-empty list threw java.lang.IndexOutOfBoundsException: Index 0 out of bounds for length 0
+empty list threw java.lang.IllegalArgumentException: Empty list
+```
+
+---
+
+## 71. `SequenceRandomAccessRead.close` leaks every source after the first failure
+
+**Where**
+`io/src/main/java/org/apache/pdfbox/io/SequenceRandomAccessRead.java`, `close`
+
+```java
+for (RandomAccessRead randomAccessRead : readerList)
+{
+    randomAccessRead.close();
+}
+readerList.clear();
+currentRandomAccessRead = null;
+isClosed = true;
+```
+
+Nothing catches. The first source whose `close` fails ends the loop, so the
+sources after it are never closed, the list is never cleared and `isClosed`
+stays false.
+
+**What correct would be** closing all of them and reporting the first failure
+afterwards — what `IOUtils.closeAndLogException` in the same package exists for.
+
+**Why it matters** the sources are files and scratch buffers. A single failing
+close leaks every handle behind it, and the sequence then answers `isClosed()`
+false, so a caller retrying the close closes the first ones twice and still
+never reaches the rest.
+
+**Where the Go carries it** it does not: `go/pdfio/sequenceread.go`,
+`SequenceRead.Close`, closes every source, keeps the first error and marks
+itself closed. Leaking handles to reproduce a `finally` that Java does not have
+was the worse of the two. Said where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** reproduced. Read out of the running Java, JDK 17, a sequence of a
+source whose close throws followed by an ordinary one:
+
+```
+close threw java.io.IOException: nope | isClosed=false | second reader closed=false
+```
+
+---
+
+## 72. `ScratchFile.close` walks the buffer list without the lock the list has
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/ScratchFile.java`. Every other
+touch of `buffers` takes the monitor on it:
+
+```java
+public RandomAccess createBuffer() throws IOException {
+    ScratchFileBuffer newBuffer = new ScratchFileBuffer(this);
+    synchronized (buffers) { buffers.add(newBuffer); }
+    return newBuffer;
+}
+
+void removeBuffer(ScratchFileBuffer buffer) {
+    synchronized (buffers) { buffers.remove(buffer); }
+}
+```
+
+`close` does not:
+
+```java
+synchronized (ioLock) {
+    ...
+    for (ScratchFileBuffer buffer : buffers) { ... buffer.close(false); }
+    buffers.clear();
+```
+
+It holds `ioLock`, which is a different monitor, and reads and then clears the
+list under it.
+
+**What correct would be** `synchronized (buffers)` around the walk and the
+clear, like its two neighbours — or a copy taken under that monitor and walked
+outside it, which would also settle the lock-order inversion of entry 66.
+
+**Why it matters** `createBuffer` running against `close` is a plain
+`ArrayList` being appended to while it is iterated:
+`ConcurrentModificationException` out of `close`, or a buffer added just after
+the walk and never closed, left reporting itself open over a scratch file that
+is gone. Three fields guard this class and the fourth thing it owns is guarded
+by whichever lock happened to be held.
+
+**Where the Go carries it** `go/pdfio/scratchfile.go`, `Close`, reads and clears
+`s.buffers` under `ioLock` while `CreateBuffer` and `removeBuffer` take
+`buffersLock`, so the same window is open. Go has no
+ConcurrentModificationException; it is a data race on the slice, which the race
+detector would name. Ported as written and said at the site.
+
+**Confidence** high, from the source: the three methods are twenty lines apart
+and two of them synchronize on the field that the third does not. Not
+reproduced — it needs the two threads to interleave inside the window, and a
+test that loses a race on purpose is not a test.
+
+---
+
+## 73. `RandomAccessReadMemoryMappedFile` leaks its channel on a file it refuses
+
+**Where**
+`io/src/main/java/org/apache/pdfbox/io/RandomAccessReadMemoryMappedFile.java`,
+the `Path` constructor
+
+```java
+fileChannel = FileChannel.open(path, EnumSet.of(StandardOpenOption.READ));
+size = fileChannel.size();
+// TODO only ints are allowed -> implement paging
+if (size > Integer.MAX_VALUE)
+{
+    throw new IOException(getClass().getName() + " doesn't yet support files bigger than "
+            + Integer.MAX_VALUE);
+}
+```
+
+The channel is opened and then the constructor throws without closing it. No
+object is returned, so no caller can close it either; the handle is held until
+the `FileChannel` is finalised.
+
+**What correct would be** closing the channel on the way out, or asking
+`Files.size(path)` before opening anything.
+
+**Why it matters** every attempt at a PDF over 2 GB leaks a file handle, and
+the caller's natural response — catch, log, try the next file — leaks one per
+attempt. On Windows the file also stays locked against deletion and renaming
+for as long as the handle is held.
+
+**Where the Go carries it** it does not: `go/pdfio/mappedfile.go`,
+`NewMappedFile`, stats the file and refuses before anything is opened or
+mapped, which is also the order Java means to be in — it wants the size first
+and only opens the channel because that is how it asks. Nothing is left open to
+leak. Said where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high, from the source: the `throw` sits between the open and the
+only `close` the class has, and the class has no `finally`. Not reproduced —
+observing a leaked handle needs a file over 2 GB.

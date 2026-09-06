@@ -15,7 +15,7 @@ Last updated: 2026-09-06
 
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
-| 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
+| 0 | `pdfio` | 18 | **done — all 18 files**, finished by `track/scratchfile` |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 3, `getDataToSign` included |
 | 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
@@ -44,12 +44,12 @@ Last updated: 2026-09-06
 | `RandomAccessOutputStream.java` | `adapters.go` | done |
 | `RandomAccessStreamCache.java` | `streamcache.go` | done |
 | `RandomAccessStreamCacheImpl.java` | `streamcache.go` | done |
-| `IOUtils.java` | `ioutils.go` | done — most of it maps to the Go stdlib instead, see the file header |
-| `ScratchFile.java` | — | not started — deferred to phase 2, see PLAN.md |
-| `ScratchFileBuffer.java` | — | not started — deferred to phase 2 |
-| `MemoryUsageSetting.java` | — | not started — only meaningful once `ScratchFile` exists |
-| `RandomAccessReadMemoryMappedFile.java` | — | not started — needs a decision on `golang.org/x/exp/mmap` vs `syscall` |
-| `NonSeekableRandomAccessReadInputStream.java` | — | not started |
+| `IOUtils.java` | `ioutils.go`, `tempfile.go` | done — most of it maps to the Go stdlib instead, and the temporary file half arrived with `track/scratchfile`; see the file header. `createProtectedTempDir` is not ported: only `PDFDebugger` calls it, and it is a JVM shutdown hook |
+| `ScratchFile.java` | `scratchfile.go` | done in `track/scratchfile` |
+| `ScratchFileBuffer.java` | `scratchfilebuffer.go` | done in `track/scratchfile` |
+| `MemoryUsageSetting.java` | `memoryusagesetting.go` | done in `track/scratchfile` |
+| `RandomAccessReadMemoryMappedFile.java` | `mappedfile.go` | done in `track/scratchfile` — mapped through `golang.org/x/exp/mmap`, which is the decision B0 settled; see the file header for what it buys and what it costs |
+| `NonSeekableRandomAccessReadInputStream.java` | `nonseekablestream.go` | done in `track/scratchfile` |
 
 ## Slice 1 — `pdfbox/cos`
 
@@ -246,10 +246,38 @@ What that does and does not mean:
 - But they did not **drive** the implementation, so they cannot rule out a
   mistranslation that the Java suite happens not to cover.
 
-Everything from `slice/1` onward follows the rule. `pdfio` is the one package
-where a later re-read against the Java is worth doing on its own — the chunk
-arithmetic in `ReadBuffer` and the page-boundary handling in `BufferedFile` are
-the parts where a silent mistranslation would be easiest to miss.
+Everything from `slice/1` onward follows the rule, and so did the five files
+`track/scratchfile` added here: phase A ported the three Java test files before
+any implementation was written.
+
+That left the thirteen files of `slice/0` itself. **The re-read this note asked
+for has been done, over all thirteen**, by `track/scratchfile`'s D9.
+
+The Go held up. Not one of the thirteen turned out to mistranslate its Java, the
+two places this note named least of all — `ReadBuffer`'s chunk arithmetic and
+`BufferedFile`'s page-boundary handling are both faithful, `-1` accumulation and
+redundant clamp included.
+
+What the re-read found instead was **five defects in the Java that nobody had
+noticed**, JAVA-BUGS 67 to 71, and one already-recorded defect that is worse
+than it was written up as:
+
+- **69** is the one that matters. `RandomAccessReadBuffer.seek` past the end
+  parks the cursor at the *start* of the last chunk whenever the buffer holds an
+  exact multiple of the chunk size, so a write at the end of a full buffer
+  destroys byte 0 and leaves a length the chunks cannot supply.
+  `RandomAccessReadWriteBuffer` is the default stream cache.
+- **67** lets a view rewind before its own start and read bytes it exists to
+  exclude. **68** lets `available()` answer a negative count. **70** and **71**
+  are a wrong exception type and a handle leak in `SequenceRandomAccessRead`.
+- **3**, the `-1` accumulation, does not merely under-report the byte count:
+  the loop oscillates and the read never returns. A sequence over a view whose
+  `streamLength` exceeds its source hung, and the thread dump named the loop.
+
+So the answer to the question this note has been asking is that the risk was
+real but it was not where it was expected. The implementation-first ordering did
+not leave a mistranslation behind; what it left behind was five pieces of Java
+nobody had read closely enough to be surprised by.
 
 ### Ported tests
 
@@ -261,10 +289,11 @@ the parts where a silent mistranslation would be easiest to miss.
 | `SequenceRandomAccessReadTest` | `sequenceread_test.go` | complete |
 | `RandomAccessReadBufferedFileTest` | `bufferedfile_test.go` | fixtures written to `t.TempDir()` instead of read from the source tree |
 | `RandomAccessInputStreamTest` | `adapters_test.go` | complete |
-| `ScratchFileBufferTest` | — | waiting on `ScratchFile` |
-| `NonSeekableRandomAccessReadInputStreamTest` | — | waiting on that type |
-| `RandomAccessReadMemoryMappedFileTest` | — | waiting on that type |
-| `TestIOUtils` | — | mostly covers methods that map to the Go stdlib |
+| `ScratchFileBufferTest` | `scratchfilebuffer_test.go` | complete, plus `TestClearLeaksTheLastPage`, which pins JAVA-BUGS 62 |
+| `NonSeekableRandomAccessReadInputStreamTest` | `nonseekablestream_test.go` | complete |
+| `RandomAccessReadMemoryMappedFileTest` | `mappedfile_test.go` | complete |
+| `TestIOUtils` | `streamcache_test.go` | mostly covers methods that map to the Go stdlib; the two stream cache factory cases are ported |
+| — | `memoryusagesetting_test.go` | written from source: Java has no test for `MemoryUsageSetting`. Every expected value was read out of the running Java rather than reasoned about |
 
 ### Deviations from Java recorded so far
 
@@ -273,14 +302,42 @@ Each of these carries a comment at the point of difference in the Go source.
 - `CreateView` hands every caller its own cursor instead of caching one clone
   per thread id. Go has no stable goroutine identity, and the result is safe for
   concurrent use where the Java version is not.
-- `ReadBuffer.Read` stops when a chunk read returns nothing rather than adding
-  `-1` to its running count, which the Java loop does.
+- `BufferedFile.Length` reports `ErrClosed` on a closed source, where Java's
+  `length()` calls no `checkClosed` and answers the file length. Its sibling
+  `RandomAccessReadMemoryMappedFile.length()` does check, so the Java is
+  inconsistent between the two; the port follows the checking one in both.
+  Found by the `track/scratchfile` D9 re-read, and slice 0's to settle.
 - `BufferedFile` shares one mutex-guarded page cache across all cursors, where
   Java reopens the file per thread.
 - The evicted page buffer is not reused for the next page read, so a cursor
   still holding an evicted page keeps reading valid bytes.
 - `BufferedFile.IsEOF` compares offset against length instead of `peek() == -1`.
 - End of input is `io.EOF` throughout, not a `-1` return.
+- `MappedFile.CreateView` answers `ErrClosed` on a closed source, where Java
+  reaches through the released buffer and raises NullPointerException.
+  JAVA-BUGS 65, pinned by `TestMappedFileViewOfAClosedSource`.
+- `NewSequenceRead` answers "empty list" for a list holding only zero-length
+  sources, where Java checks `isEmpty()` before it filters and so raises
+  IndexOutOfBoundsException. JAVA-BUGS 70.
+- `SequenceRead.Close` closes every source and reports the first failure, where
+  Java lets the first failure out of the loop and leaks the rest. JAVA-BUGS 71.
+- `NewReadBufferSize` reads a chunk size of zero or less as the default. Java
+  keeps a zero — `seek` carries `chunkSize > 0 ?` guards for exactly that state
+  — and throws IllegalArgumentException for a negative one. The port drops those
+  guards and forbids the state instead, because its chunk arithmetic divides by
+  the chunk size. Slice 0's to settle.
+
+And two the `track/scratchfile` D9 re-read confirmed are **not** deviations,
+against an earlier note here that said the first one was:
+
+- `ReadBuffer.Read` does add the `-1` its chunk helper answers to the running
+  count, exactly as the Java loop does. JAVA-BUGS 2 always said the port
+  carried it and the code always did; the line here claiming a deviation was
+  wrong and is gone.
+- `BufferedFile.Read` stops at the page boundary and clamps to the file length,
+  which reads differently from Java only because Java guards its second clamp
+  with `fileLength - fileOffset < PAGE_SIZE`. Where that guard is false the
+  clamp cannot bite, so the two are the same function.
 
 ## Slice 2 — walk content streams
 
@@ -334,10 +391,12 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `MissingResourceException.java` | `errors.go` | done |
 | `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started here — slice 3 for the document and its information, slice 8 for the catalogue |
 
-`PDPage.getContentsForStreamParsing` is the general path for now. Its fast path
-decodes a single flate stream as it is read, which needs
-`FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`, neither
-of which is ported.
+`PDPage.getContentsForStreamParsing` took the general path for the length of
+this slice: its fast path decodes a single flate stream as it is read, which
+needs `FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`,
+neither of which was ported then. `track/scratchfile` ported both and wired the
+fast path back in, so `ContentsForStreamParsing` now branches the way Java does
+-- including onto the predictor bug the fast path carries, JAVA-BUGS 63.
 
 ### `pdfbox/pdmodel/graphics`
 
@@ -3404,3 +3463,243 @@ more than two values today, so it could not bite yet; `strconv.Itoa` now.
 
 Nothing in this track. Four differences are deliberate and pinned, and are listed
 above: the two the review found, and the two the feedback round added.
+
+## Track `scratchfile` — the five files slice 0 deferred
+
+Branch `track/scratchfile`. A parallel track rather than a slice: `slice/0` left
+five `pdfio` files unported, three of them because `ScratchFile` was deferred to
+phase 2 and two because they needed a decision. Nothing since has needed them
+badly enough to stop, and one of them — `NonSeekableRandomAccessReadInputStream`
+— is what `PDPage.getContentsForStreamParsing` has been doing without since
+slice 2.
+
+With these five, **phase 0 is done: all 18 files.**
+
+Ported test-first. Phase A ported `ScratchFileBufferTest`,
+`NonSeekableRandomAccessReadInputStreamTest` and
+`RandomAccessReadMemoryMappedFileTest` — 38 cases, every one Java has for these
+types, none dropped — before phase B wrote a line of implementation.
+`MemoryUsageSetting` and `ScratchFile` have no Java test at all, so A4's
+from-source cases were written against the **running** Java instead of against
+reasoning: `io` compiles with only `log4j-api` on the classpath, and every
+expected value in `memoryusagesetting_test.go` was read out of `jshell`. That
+caught one row where the port was right and the test was wrong.
+
+### The memory mapping decision — B0
+
+`RandomAccessReadMemoryMappedFile` maps the whole file with `FileChannel.map`.
+Go has no mapping in its standard library, and `STATUS.md` recorded the choice
+as open: `golang.org/x/exp/mmap` or `syscall`.
+
+**Settled on `golang.org/x/exp/mmap`.** It carries the per-platform work the
+port would otherwise write twice, once against `syscall.Mmap` and once against
+`CreateFileMapping`, and it is reached from one file, so replacing it later
+touches nothing else. Its cost is that `x/exp` promises no compatibility. That
+trade is written into the header of `mappedfile.go` so the next reader does not
+have to reconstruct it.
+
+`RandomAccessReadMemoryMappedFileTest.testUnmapping` is the case that made the
+decision worth taking seriously — it exists because of JDK-4724038, Windows
+refusing to delete a mapped file — and it passes.
+
+### The flate fast path — B5
+
+`PDPage.getContentsForStreamParsing` now branches the way Java's does. Its fast
+path needed two things: `FlateFilterDecoderStream` and
+`NonSeekableRandomAccessReadInputStream`. Both are here now.
+
+This file contradicted itself about the first of them. The phase 2 table said
+`FlateFilterDecoderStream.java` was done in `flate.go`, and the slice 2 note six
+sections later said it was not ported — and the note was right: `flate.go`
+reproduced the class's *behaviour* inside the buffered `Decode` and had no
+streaming reader at all. `NewFlateDecoderReader` is the class itself, so the
+table row is true now, but it was not when it was written.
+
+Checked against the corpus with and without the fast path: 37 of 40 documents
+unsorted and 36 of 40 sorted, identical either way.
+
+### Java bugs found
+
+Five, of which four are new defects and one is a javadoc that promises what the
+code does not do. Numbered 62 to 66 in [`JAVA-BUGS.md`](JAVA-BUGS.md).
+
+Three were reproduced by running the Java rather than argued from it:
+
+- **62**, `markPagesAsFree` walking to `count` instead of `off + count`, so
+  every `clear()` leaks the buffer's last page. Three pages of main memory,
+  three written, cleared, and the second write fails. Pinned by
+  `TestClearLeaksTheLastPage`.
+- **65**, `RandomAccessReadMemoryMappedFile.createView` raising
+  NullPointerException on a closed source where its sibling raises IOException.
+- **66**, `ScratchFile` taking `ioLock` and `freePages` in both orders. A probe
+  running a writer against a `close()` deadlocked in round 215 of 400, and the
+  JVM's own detector named both threads and both monitors.
+
+**66 is the one worth knowing about.** It is not a rounding error or a wrong
+message: two threads doing ordinary things stop forever, and because they are
+not daemon threads the JVM will not exit either. The port carries it, because
+the port carries Java's bugs — but it is said at all three sites and in the
+concurrency contract on `ScratchFile` itself.
+
+### The adversarial review — phase D
+
+Reading each file against its Java found three mistranslations, all in the same
+family: **a Java contract that Go's interface does not have.**
+
+- `NonSeekableRead.fetch` treated a `(0, nil)` read as the end of the stream.
+  Correct for `java.io.InputStream.read(byte[])`, which blocks until it holds a
+  byte or the stream ends, so `<= 0` there really is the end. `io.Reader` may
+  answer `(0, nil)` at any time and it is not the end — the port would have
+  truncated a stream silently, mid-content.
+- `NonSeekableRead.Close` marked the source closed even when the underlying
+  close failed. Java assigns `isClosed` *after* `is.close()` returns, so a close
+  that throws leaves the source usable.
+- `NewFlateDecoderReader` propagated inflate errors. `FlateFilterDecoderStream`
+  catches the `DataFormatException`, logs it, keeps what inflated and reports
+  the end — "don't throw an exception, use the already read data or an empty
+  stream". That tolerance is the whole reason PDFBox inflates raw rather than
+  through a zlib reader (PDFBOX-1232), and without it a truncated content stream
+  failed to parse at all rather than parsing up to the damage.
+
+Each has a test that fails without its fix. The flate one carries the numbers
+Java produced for the same three inputs, measured before it was written.
+
+The review also found two log lines Java writes and the port had dropped, and
+put them back.
+
+**Deferrals checked (D4).** `IOUtils.createTempFileOnlyStreamCache` was blocked
+on `ScratchFile` and is now ported, with the two `TestIOUtils` cases for it.
+`createProtectedTempDir` is **not** ported and will not be: its only caller in
+the tree is `PDFDebugger`, which is not in the plan, and its substance is a JVM
+shutdown hook — porting it would mean inventing a lifetime rather than
+reproducing one. Said in the header of `ioutils.go`.
+
+**Temporary files (D7).** The task file assumed Java uses `File.deleteOnExit`
+here. It does not, and says so: `createProtectedTempFile`'s javadoc reads "this
+method does NOT automatically delete the file on JVM shutdown. The caller is
+responsible". The only shutdown hook in `IOUtils` belongs to
+`createProtectedTempDir`. So the scratch file is deleted in `ScratchFile.close()`
+and nowhere else, a crash or a missed close leaves it behind, and the port does
+exactly the same — including deleting it under `ioLock` in `Close`. Faithful,
+and the hazard is Java's.
+
+**Concurrency (D8).** All four exported types now say what they promise.
+`ScratchFile` is safe for concurrent use, with bug 66's hazard named.
+`ScratchFileBuffer`, `NonSeekableRead` and `MappedFile` are not safe for
+concurrent use, which is Java: none of the three synchronizes anything, and each
+holds a single cursor. `MemoryUsageSetting` is safe to read once built, and
+`SetTempDir` writes, so the directory belongs set before the setting is shared.
+
+**Int width.** Go's `int` is 64 bits, so two overflow guards ported from Java —
+`pageCount + ENLARGE_PAGE_COUNT > pageCount` in `enlarge` and
+`newSize < pageIndexes.length` in `addPage` — cannot fire here. They are kept,
+because they do fire where `int` is 32 bits, and both now say so.
+
+### D9 — the `slice/0` re-read
+
+`pdfio` is the one package not ported test-first, and this note asked for a
+later re-read of two places in particular. Done, over both:
+
+- `ReadBuffer`'s chunk arithmetic is faithful, `-1` accumulation and all.
+- `BufferedFile`'s page-boundary handling is faithful; Java's second clamp is
+  guarded by a condition that makes the guard redundant, so the two read
+  differently and compute the same thing.
+
+What that pass found was a wrong line in this file rather than a wrong line of
+Go: the deviations list claimed `ReadBuffer.Read` stopped instead of adding the
+`-1`, which contradicted both JAVA-BUGS 2 and the code. Corrected above. It also
+found one real difference nobody had recorded — `BufferedFile.Length` checking
+closed where Java's does not — which is slice 0's to settle.
+
+**Then the remaining eleven files were read too**, so all thirteen of `slice/0`
+have now been through it: the three interfaces, `RandomAccessReadBuffer` and
+`RandomAccessReadWriteBuffer` end to end, `RandomAccessReadView`,
+`SequenceRandomAccessRead`, the two stream adapters, the two stream cache
+classes, and `IOUtils`.
+
+The Go held up — no mistranslation in any of the thirteen. What came out was
+five defects in the Java, JAVA-BUGS 67 to 71, and the discovery that entry 3 is
+a hang rather than an off-by-one. The full account is in the `slice/0` method
+note above; the short version is that **69** corrupts the default stream cache
+on a write at an exact chunk boundary, and **3** never returns.
+
+Three of the five are carried with pinning tests — `TestReadViewRewindPastItsOwnStart`,
+`TestAvailableGoesNegativePastTheEnd` and
+`TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`. Two, **70** and **71**,
+are the ones the port deviates on rather than reproduce an index panic and a
+leaked handle.
+
+Two things changed in the Go beyond comments. `ReadView` gained the `Rewind`
+override Java has, which the port had been getting by way of the interface
+default — that default is *correct*, so not having the override was the port
+quietly fixing a Java bug. And `SequenceRead.Read` now moves the cursor
+backwards on a `-1` the way `currentPosition += bytesRead` does.
+
+### Observations that are not defects
+
+Noted here because they are the kind of thing a later reader will wonder about:
+
+- `ReadBuffer.CreateView` and `BufferedFile.CreateView` append to a slice of
+  clones that is never pruned, so a document with very many views holds a clone
+  each until the source is closed. Java's per-thread map is bounded by thread
+  count instead. The clones share their chunks or their file, so each costs a
+  header rather than a copy.
+- `SequenceRead.Seek` searches its sources from index 0; Java searches outward
+  from the current index. Same source found, different number of comparisons.
+- `RandomAccessInputStream` logs an error on a "should never happen" branch that
+  the port answers with a plain `io.EOF`. The branch is unreachable except under
+  unsynchronised concurrent access, which the type does not support either way.
+
+### Review feedback
+
+Eight items, seven of them right. Two were behaviour and each got a test that
+fails without its fix.
+
+**`NewFlateDecoderReader` turned every error into the end of the stream.**
+Reported by Codex, and correct. The damage tolerance this track added for
+PDFBOX-1232 was too broad: `FlateFilterDecoderStream` reads its source *outside*
+the try block and catches `DataFormatException` alone, so an IOException out of
+the wrapped stream propagates in Java. `compress/flate` reports both through one
+error, so a failing disk was being reported as the end of the page's content.
+`isDeflateDamage` now separates the two — `CorruptInputError`, `InternalError`
+and `io.ErrUnexpectedEOF` end the stream, everything else is the source's and is
+passed on.
+
+**`NonSeekableRead.fetch` dropped bytes returned with an error.** Reported by
+Codex, and correct — and the same shape as the `(0, nil)` fix this track already
+made. `InputStream.read` cannot return bytes *and* throw, so Java would have
+seen the bytes from one call and the exception from the next. The port now does
+that: the bytes are taken and the failure is kept in `pendingErr` for the next
+fetch.
+
+**Two more Java bugs, 72 and 73.** `ScratchFile.close` reads and clears the
+buffer list under `ioLock` while `createBuffer` and `removeBuffer` synchronize
+on the list itself — a second concurrency hazard alongside 66, and now named in
+the type's contract. `RandomAccessReadMemoryMappedFile` opens its channel and
+then throws for a file over 2 GB without closing it; the port stats the file and
+refuses before opening anything, which is the order the constructor means to be
+in.
+
+**Three smaller ones, all taken.** The size check moved ahead of the mapping so
+an unsupported file no longer reserves the address range. `ScratchFile.Close`
+wraps the `os.Remove` cause, which Java has no equivalent of because
+`File.delete()` answers a boolean. `x/exp` is no longer marked `// indirect`.
+And two mapped file tests defer their close so a failing assertion cannot leave
+the mapping open for the cases after them.
+
+**One rejected.** Copilot proposed changing `ScratchFileBuffer.addPage`'s bound
+from `pageCount+1 >= len(pageIndexes)` to `pageCount >=`, on the grounds that it
+grows a page early. It does — and so does Java: `ScratchFileBuffer.java:103` is
+`if (pageCount+1 >= pageIndexes.length)`. Growing one slot later would be a
+deviation, and the early growth is exactly the kind of harmless oddity this port
+exists to preserve rather than tidy.
+
+### Still open
+
+- `MemoryUsageSetting.setTempDir` takes a `File` and the port takes a string.
+  Nothing in the port needs a directory handle, and `os.Stat` is the check Java
+  makes with `isDirectory()`.
+- The three-buffer rewind of `NonSeekableRead` is exercised only by the Java
+  cases. They are thorough — `testRewindAcrossBuffers2` and PDFBOX-5158 and
+  5161 all live in the awkward corners — but the class is new to the port and
+  has no corpus behind it yet.

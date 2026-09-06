@@ -45,3 +45,12 @@ func (c *MemoryStreamCache) Close() error { return nil }
 func MemoryOnlyStreamCache() StreamCacheFunc {
 	return func() (StreamCache, error) { return NewMemoryStreamCache(), nil }
 }
+
+// TempFileOnlyStreamCache returns a StreamCacheFunc producing scratch files
+// backed only by temporary files, of unrestricted size.
+//
+// Port of IOUtils.createTempFileOnlyStreamCache, which slice 0 deferred with
+// the rest of the scratch file support.
+func TempFileOnlyStreamCache() StreamCacheFunc {
+	return SetupTempFileOnly().StreamCache()
+}

@@ -2,6 +2,9 @@ package filter
 
 import (
 	"bytes"
+	"compress/zlib"
+	"errors"
+	"io"
 	"math/rand"
 	"testing"
 
@@ -264,5 +267,134 @@ func TestFlateDecodeCorrupt(t *testing.T) {
 	}
 	if !bytes.HasPrefix(original, decoded.Bytes()) {
 		t.Fatal("the partial output is not a prefix of the original data")
+	}
+}
+
+// TestFlateDecoderReaderEndsAtDamageInsteadOfFailing pins the damage tolerance
+// of FlateFilterDecoderStream on the streaming path.
+//
+// Java catches the DataFormatException in fetch, logs it, keeps whatever
+// inflated and reports the end of the stream. compress/flate reports an error
+// instead, so a port that handed its reader straight to the caller would fail
+// where Java carries on -- and PDFBOX-1232, the reason PDFBox inflates raw
+// rather than through a zlib reader, is exactly that real PDFs end without a
+// Z_STREAM_END.
+//
+// A truncated stream is the damage that is worth testing. Corrupting bytes in
+// the middle is not: deflate carries no check within the stream, PDFBox skips
+// the Adler-32 on purpose, and both inflaters simply produce different bytes
+// without noticing -- measured, over eight corruption offsets, before this test
+// was written.
+//
+// The expected shape was read out of the running Java, FlateFilterDecoderStream
+// compiled against JDK 17 over the same two inputs:
+//
+//	whole      decoded=408 prefixOfPlain=true lastRead=-1
+//	truncated  decoded=310 prefixOfPlain=true lastRead=-1
+//
+// The exact truncated count belongs to Java's own buffering and its recovery of
+// partly inflated bytes out of a 4096-byte array, so it is not asserted. What
+// is asserted is what those numbers say: no failure, and what comes out is a
+// non-empty prefix of what went in.
+func TestFlateDecoderReaderEndsAtDamageInsteadOfFailing(t *testing.T) {
+	plain := bytes.Repeat([]byte("BT /F1 12 Tf 100 700 Td (Hello scratch file) Tj ET\n"), 8)
+
+	var deflated bytes.Buffer
+	// zlib, so that the stream carries the two header bytes a stream out of a
+	// PDF has and NewFlateDecoderReader skips
+	zlibWriter := zlib.NewWriter(&deflated)
+	if _, err := zlibWriter.Write(plain); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := zlibWriter.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	whole := deflated.Bytes()
+
+	for _, row := range []struct {
+		name    string
+		encoded []byte
+		whole   bool
+	}{
+		{"whole", whole, true},
+		{"truncated", whole[:len(whole)-8], false},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			decoder, err := NewFlateDecoderReader(bytes.NewReader(row.encoded))
+			if err != nil {
+				t.Fatalf("NewFlateDecoderReader: %v", err)
+			}
+			defer decoder.Close()
+
+			got, err := io.ReadAll(decoder)
+			if err != nil {
+				t.Fatalf("ReadAll = %v, want no error: Java ends the stream at "+
+					"the damage rather than failing", err)
+			}
+			if !bytes.HasPrefix(plain, got) {
+				t.Errorf("decoded %d bytes that are not a prefix of the input",
+					len(got))
+			}
+			switch {
+			case row.whole && len(got) != len(plain):
+				t.Errorf("decoded %d bytes of an undamaged stream, want %d",
+					len(got), len(plain))
+			case !row.whole && len(got) == 0:
+				t.Error("decoded nothing at all; Java keeps what inflated " +
+					"before the damage")
+			}
+		})
+	}
+}
+
+// erroringReader hands back some bytes and then a real I/O failure, the way a
+// disk or a network source does.
+type erroringReader struct {
+	head []byte
+	err  error
+}
+
+func (e *erroringReader) Read(p []byte) (int, error) {
+	if len(e.head) > 0 {
+		n := copy(p, e.head)
+		e.head = e.head[n:]
+		return n, nil
+	}
+	return 0, e.err
+}
+
+// TestFlateDecoderReaderPassesSourceErrorsOn checks that only damaged deflate
+// data ends the stream quietly.
+//
+// FlateFilterDecoderStream.fetch reads the source *outside* its try block and
+// catches only DataFormatException, so an IOException out of the wrapped stream
+// propagates and only corrupt compressed data is swallowed. compress/flate
+// reports both through one error, so the port has to tell them apart: a failing
+// disk must not look like the end of the page's content.
+func TestFlateDecoderReaderPassesSourceErrorsOn(t *testing.T) {
+	plain := bytes.Repeat([]byte("BT /F1 12 Tf 100 700 Td (Hello) Tj ET\n"), 8)
+	var deflated bytes.Buffer
+	zlibWriter := zlib.NewWriter(&deflated)
+	if _, err := zlibWriter.Write(plain); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := zlibWriter.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	sourceErr := errors.New("the disk went away")
+	// enough of the stream to get past the header and start inflating
+	source := &erroringReader{head: deflated.Bytes()[:12], err: sourceErr}
+
+	decoder, err := NewFlateDecoderReader(source)
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+	defer decoder.Close()
+
+	if _, err := io.ReadAll(decoder); !errors.Is(err, sourceErr) {
+		t.Errorf("ReadAll = %v, want the source's own error: Java lets an "+
+			"IOException out of the wrapped stream propagate and swallows "+
+			"only DataFormatException", err)
 	}
 }

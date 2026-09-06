@@ -274,3 +274,95 @@ func mustContents(t *testing.T, page *PDPage) pdfio.RandomAccessRead {
 	}
 	return r
 }
+
+// flateContentStream returns a stream holding the given content, compressed
+// with FlateDecode and nothing else -- the one shape the stream parsing fast
+// path takes.
+func flateContentStream(t *testing.T, content string) *cos.Stream {
+	t.Helper()
+	s := cos.NewStream(filter.Provider{})
+	s.SetItem(cos.Filter, cos.FlateDecode)
+	w, err := s.CreateWriter()
+	if err != nil {
+		t.Fatalf("CreateWriter: %v", err)
+	}
+	if _, err := w.Write([]byte(content)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return s
+}
+
+// TestPDPageContentsForStreamParsingTakesTheFlatePath checks the fast path
+// PDPage.getContentsForStreamParsing has for a single flate content stream: the
+// content is decoded as it is read, through a source that cannot seek.
+func TestPDPageContentsForStreamParsingTakesTheFlatePath(t *testing.T) {
+	const content = "BT /F1 12 Tf (hello) Tj ET"
+	page := NewPDPage()
+	page.Dictionary().SetItem(cos.Contents, flateContentStream(t, content))
+
+	source, err := page.ContentsForStreamParsing()
+	if err != nil {
+		t.Fatalf("ContentsForStreamParsing: %v", err)
+	}
+	defer source.Close()
+
+	if _, isNonSeekable := source.(*pdfio.NonSeekableRead); !isNonSeekable {
+		t.Fatalf("ContentsForStreamParsing gave %T, want the forward-only source "+
+			"the fast path builds", source)
+	}
+	// pdfio.NewReader seeks, which this source refuses, so the bytes are read
+	// straight from it -- which is what the parser does.
+	decoded, err := io.ReadAll(source)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(decoded) != content {
+		t.Errorf("content = %q, want %q", decoded, content)
+	}
+}
+
+// TestPDPageContentsForStreamParsingFallsBack checks that anything but a single
+// flate stream takes the general path, which is what Java falls back to.
+func TestPDPageContentsForStreamParsingFallsBack(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		page func() *PDPage
+	}{
+		{"no contents", NewPDPage},
+		{"unfiltered", func() *PDPage {
+			page := NewPDPage()
+			page.Dictionary().SetItem(cos.Contents, contentStream(t, "unfiltered"))
+			return page
+		}},
+		{"an array of one", func() *PDPage {
+			page := NewPDPage()
+			array := cos.NewArray()
+			array.Add(flateContentStream(t, "in an array"))
+			page.Dictionary().SetItem(cos.Contents, array)
+			return page
+		}},
+		{"a filter array", func() *PDPage {
+			page := NewPDPage()
+			stream := flateContentStream(t, "two filters")
+			filters := cos.NewArray()
+			filters.Add(cos.FlateDecode)
+			stream.SetItem(cos.Filter, filters)
+			page.Dictionary().SetItem(cos.Contents, stream)
+			return page
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			source, err := c.page().ContentsForStreamParsing()
+			if err != nil {
+				t.Fatalf("ContentsForStreamParsing: %v", err)
+			}
+			defer source.Close()
+			if _, isNonSeekable := source.(*pdfio.NonSeekableRead); isNonSeekable {
+				t.Error("ContentsForStreamParsing took the fast path, want the general one")
+			}
+		})
+	}
+}

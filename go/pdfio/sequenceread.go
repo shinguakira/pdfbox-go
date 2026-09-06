@@ -24,6 +24,12 @@ var _ RandomAccessRead = (*SequenceRead)(nil)
 // NewSequenceRead concatenates the given sources in order. Empty sources are
 // dropped. It fails if the list is empty or if a source cannot report its
 // length; the Java constructor throws IllegalArgumentException in both cases.
+//
+// Java checks isEmpty() before it filters, so a list that is not empty but
+// holds only zero-length sources passes the check and then indexes an empty
+// list -- IndexOutOfBoundsException, not the IllegalArgumentException the
+// constructor plainly means. The port checks after filtering as well, so that
+// case answers "empty list". See migration/JAVA-BUGS.md entry 70.
 func NewSequenceRead(readers []RandomAccessRead) (*SequenceRead, error) {
 	if len(readers) == 0 {
 		return nil, errors.New("pdfio: missing input parameter")
@@ -56,6 +62,11 @@ func (s *SequenceRead) checkClosed() error {
 }
 
 // Close closes every source in the sequence.
+//
+// Java's loop lets the first failure propagate, so the sources after it are
+// never closed and isClosed stays false -- the sequence leaks handles and then
+// claims to be open. The port closes all of them and reports the first failure.
+// See migration/JAVA-BUGS.md entry 71.
 func (s *SequenceRead) Close() error {
 	if s.closed {
 		return nil
@@ -152,10 +163,13 @@ func (s *SequenceRead) Read(p []byte) (int, error) {
 		bytesRead += n
 	}
 
+	// Java's `currentPosition += bytesRead` runs unconditionally, so a read
+	// that ends on a -1 moves the cursor backwards as well as under-reporting.
+	// Part of the same defect; see JAVA-BUGS entry 3.
+	s.position += int64(bytesRead)
 	if bytesRead < 0 {
 		return 0, io.EOF
 	}
-	s.position += int64(bytesRead)
 	return bytesRead, nil
 }
 

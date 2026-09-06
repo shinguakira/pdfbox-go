@@ -1,6 +1,9 @@
 package pdfio
 
-import "io"
+import (
+	"io"
+	"log/slog"
+)
 
 // Helpers ported from org.apache.pdfbox.io.IOUtils.
 //
@@ -13,8 +16,14 @@ import "io"
 //	IOUtils.populateBuffer(in, buf) -> io.ReadFull(r, buf)
 //	IOUtils.unmap(buffer)           -> not needed, Go has no mapped ByteBuffer
 //
-// The temp directory helpers (createProtectedTempDir, createProtectedTempFile)
-// belong with the scratch file support and are ported alongside it.
+// The rest was deferred with the scratch file support and arrives with it:
+// createProtectedTempFile is in tempfile.go, and createTempFileOnlyStreamCache
+// in streamcache.go alongside createMemoryOnlyStreamCache.
+//
+// createProtectedTempDir is not ported. Its only caller in the whole tree is
+// PDFDebugger, which is not in the migration plan, and it exists to register a
+// JVM shutdown hook that deletes the directory -- Go has no shutdown hook, so
+// porting it would mean inventing a lifetime rather than reproducing one.
 
 // CloseQuietly closes c and discards any error, for use in deferred cleanup
 // where the error cannot be acted on.
@@ -38,6 +47,11 @@ func CloseAndKeepError(c io.Closer, err error) error {
 		return err
 	}
 	closeErr := c.Close()
+	if closeErr != nil {
+		// Java logs the close failure at warn before deciding which exception
+		// to return, so an error it drops is still on the record.
+		slog.Warn("pdfio: error closing resource", "err", closeErr)
+	}
 	if err != nil {
 		return err
 	}

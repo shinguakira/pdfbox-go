@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/zlib"
+	"errors"
 	"io"
 	"log/slog"
 
@@ -113,3 +114,85 @@ func (b *byteCountingReader) Read(p []byte) (int, error) {
 	b.n += int64(n)
 	return n, err
 }
+
+// NewFlateDecoderReader returns a reader that inflates as it is read, rather
+// than into a buffer.
+//
+// Port of org.apache.pdfbox.filter.FlateFilterDecoderStream, which
+// PDPage.getContentsForStreamParsing reads a single flate content stream
+// through. It skips the two zlib header bytes and inflates raw, for the reason
+// Decode above gives, and applies no predictor -- which is what Java does, and
+// what makes the fast path wrong for a stream that declares one. See
+// migration/JAVA-BUGS.md entry 63.
+func NewFlateDecoderReader(r io.Reader) (io.ReadCloser, error) {
+	// skip zlib header
+	var header [2]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		// A stream too short to have a header has nothing to inflate; Java's
+		// two bare in.read() calls answer -1 and carry on to inflate nothing.
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+	return &flateDecoderStream{inflated: flate.NewReader(r)}, nil
+}
+
+// flateDecoderStream ends the stream where the data is damaged rather than
+// failing, which is what FlateFilterDecoderStream.fetch does: it catches the
+// DataFormatException, logs it, keeps whatever inflated and reports no more
+// data. Its own comment reads "don't throw an exception, use the already read
+// data or an empty stream" — a damaged PDF has to stay readable up to the
+// damage, which is the whole reason this filter exists.
+//
+// Java recovers the partly inflated bytes out of its own 4096-byte buffer;
+// compress/flate has already handed them to the caller by the time it reports
+// the error, so there is nothing left here to recover.
+//
+// Only damaged data is swallowed. Java reads the source *outside* the try block
+// and catches DataFormatException alone, so an IOException out of the wrapped
+// stream propagates -- a failing disk must not look like the end of the page.
+// compress/flate reports both through one error, so isDeflateDamage tells them
+// apart.
+type flateDecoderStream struct {
+	inflated io.ReadCloser
+	isEOF    bool
+}
+
+func (f *flateDecoderStream) Read(p []byte) (int, error) {
+	if f.isEOF {
+		return 0, io.EOF
+	}
+	n, err := f.inflated.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		if !isDeflateDamage(err) {
+			// the source itself failed; Java lets this one out
+			return n, err
+		}
+		slog.Warn("filter: premature end of flate stream", "err", err)
+		f.isEOF = true
+		if n > 0 {
+			return n, nil
+		}
+		return 0, io.EOF
+	}
+	if errors.Is(err, io.EOF) {
+		f.isEOF = true
+	}
+	return n, err
+}
+
+// isDeflateDamage reports whether err is compress/flate complaining about the
+// compressed data rather than the source underneath it.
+//
+// These are what Java raises as DataFormatException: a malformed stream, and a
+// stream that ends before the final block. Anything else came from the reader
+// being inflated and is the source's own failure.
+func isDeflateDamage(err error) bool {
+	var corrupt flate.CorruptInputError
+	var internal flate.InternalError
+	return errors.As(err, &corrupt) || errors.As(err, &internal) ||
+		errors.Is(err, io.ErrUnexpectedEOF)
+}
+
+// Close releases the inflater, which is FlateFilterDecoderStream.close's
+// inflater.end(). The stream it reads from is not closed: Java reaches that one
+// through a RandomAccessInputStream, whose close is the inherited no-op.
+func (f *flateDecoderStream) Close() error { return f.inflated.Close() }

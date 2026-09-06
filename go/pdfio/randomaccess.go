@@ -65,9 +65,17 @@ func SeekTo(r io.Seeker, position int64) error {
 	return err
 }
 
-// Available returns an estimate of the number of bytes that can still be read,
-// clamped to the range of an int as the Java version is.
+// Available returns an estimate of the number of bytes that can still be read.
+//
+// Java is `(int) Math.min(length() - getPosition(), Integer.MAX_VALUE)`, which
+// bounds the value above and does nothing at all below: a source whose position
+// has been put past its length answers a negative count, and the int cast
+// narrows rather than clamps. A RandomAccessReadView reaches that shape through
+// an ordinary seek. Ported as written; see migration/JAVA-BUGS.md entry 68.
 func Available(r RandomAccessRead) (int, error) {
+	if own, overrides := r.(availabler); overrides {
+		return own.Available()
+	}
 	length, err := r.Length()
 	if err != nil {
 		return 0, err
@@ -77,13 +85,10 @@ func Available(r RandomAccessRead) (int, error) {
 		return 0, err
 	}
 	remaining := length - position
-	if remaining <= 0 {
-		return 0, nil
-	}
 	if remaining > math.MaxInt32 {
-		return math.MaxInt32, nil
+		remaining = math.MaxInt32
 	}
-	return int(remaining), nil
+	return int(int32(remaining)), nil
 }
 
 // Peek returns the next byte without advancing the cursor. It reports io.EOF at
@@ -99,8 +104,31 @@ func Peek(r RandomAccessRead) (byte, error) {
 	return b, nil
 }
 
+// Rewind, Skip, ReadFully and Available are default methods of Java's
+// RandomAccessRead, and a source may override any of them -- as
+// NonSeekableRandomAccessReadInputStream overrides all four, because it cannot
+// seek. The port has them as package functions, so an override is a method on
+// the source and these four interfaces are how the function finds it. A source
+// that declares none behaves as the default does.
+type (
+	// rewinder is a source with a rewind of its own.
+	rewinder interface{ Rewind(bytes int64) error }
+
+	// skipper is a source with a skip of its own.
+	skipper interface{ Skip(length int64) error }
+
+	// fullReader is a source with a readFully of its own.
+	fullReader interface{ ReadFully(p []byte) error }
+
+	// availabler is a source with an available of its own.
+	availabler interface{ Available() (int, error) }
+)
+
 // Rewind seeks backwards by the given number of bytes.
 func Rewind(r RandomAccessRead, bytes int64) error {
+	if own, overrides := r.(rewinder); overrides {
+		return own.Rewind(bytes)
+	}
 	position, err := r.Position()
 	if err != nil {
 		return err
@@ -111,6 +139,9 @@ func Rewind(r RandomAccessRead, bytes int64) error {
 // Skip advances the cursor by the given number of bytes. As in Java, seeking
 // past the end of the source is allowed.
 func Skip(r RandomAccessRead, length int64) error {
+	if own, overrides := r.(skipper); overrides {
+		return own.Skip(length)
+	}
 	position, err := r.Position()
 	if err != nil {
 		return err
@@ -121,6 +152,9 @@ func Skip(r RandomAccessRead, length int64) error {
 // ReadFully reads len(p) bytes into p, looping until the buffer is full. It
 // returns ErrPrematureEOF if the source holds fewer bytes than requested.
 func ReadFully(r RandomAccessRead, p []byte) error {
+	if own, overrides := r.(fullReader); overrides {
+		return own.ReadFully(p)
+	}
 	length, err := r.Length()
 	if err != nil {
 		return err
