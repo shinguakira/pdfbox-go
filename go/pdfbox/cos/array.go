@@ -1,6 +1,9 @@
 package cos
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Array is an array of COS objects.
 //
@@ -383,15 +386,19 @@ func (a *Array) SetFloatArray(values []float32) {
 	}
 }
 
-// ToNameStringList returns the entries as name strings. An entry that is not a
-// name yields nil, which is what the Java list holds for it.
-func (a *Array) ToNameStringList() []*string {
-	out := make([]*string, len(a.objects))
+// ToNameStringList returns the entries as name strings.
+//
+// Java casts each entry to COSName and calls getName on it, so an entry that is
+// not a name raises ClassCastException and a null entry raises
+// NullPointerException. Both are unchecked, so the port panics.
+func (a *Array) ToNameStringList() []string {
+	out := make([]string, len(a.objects))
 	for i, item := range a.objects {
-		if n, ok := item.(*Name); ok {
-			s := n.Name()
-			out[i] = &s
+		n, isName := item.(*Name)
+		if !isName {
+			panic(fmt.Sprintf("cos: %T cannot be cast to COSName", item))
 		}
+		out[i] = n.Name()
 	}
 	return out
 }
@@ -469,6 +476,11 @@ func (a *Array) String() string {
 	sb.WriteString("}")
 	return sb.String()
 }
+
+// Equal reports whether two COS objects are equal the way Java's equals does:
+// a name, a number, a string or a boolean by value, everything else by
+// identity, since COSDictionary, COSArray and COSStream do not override equals.
+func Equal(a, b Base) bool { return cosEqual(a, b) }
 
 // cosEqual compares two COS values by content where the type defines equality,
 // and by identity otherwise.

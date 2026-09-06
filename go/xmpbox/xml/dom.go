@@ -14,6 +14,14 @@
 // caller. That is what the port needs: DomXmpParser reads an element's prefix
 // as often as it reads its namespace. Where this differs from Xerces the
 // difference is recorded in migration/STATUS.md.
+//
+// go/w3c/dom is a second DOM, and the two do not fold together. That one is the
+// subset PDFBox reads XFDF through: read only, because XFDF is written out by
+// hand with a Writer, and it resolves a prefix away when it is namespace aware,
+// because that is what the FDF reading wants. This one has to build a document
+// to serialize it, and has to keep the prefix on every name. Each is a faithful
+// port of what its own Java call site asks for, and widening either to cover
+// both would make it a port of neither.
 package xml
 
 import (

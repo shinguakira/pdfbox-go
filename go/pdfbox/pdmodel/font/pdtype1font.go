@@ -312,6 +312,12 @@ func (f *PDType1Font) readEncodingFromFont() (encoding.Encoding, error) {
 // FontBoxFont returns the font program the glyphs are drawn from.
 func (f *PDType1Font) FontBoxFont() fontbox.FontBoxFont { return f.genericFont }
 
+// Type1Font returns the embedded Type 1 font program, or nil where the font is
+// not embedded.
+//
+// Port of getType1Font.
+func (f *PDType1Font) Type1Font() *type1.Type1Font { return f.type1font }
+
 // BoundingBox returns the box every glyph of the font fits in.
 func (f *PDType1Font) BoundingBox() (*fontutil.BoundingBox, error) {
 	if f.fontBBox == nil {

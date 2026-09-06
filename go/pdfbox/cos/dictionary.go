@@ -18,9 +18,11 @@ import (
 // COSDictionary holding the same entries; comparing *Dictionary with == does
 // the same here.
 //
-// Not yet ported: the date accessors, which need a date parser from
-// pdfbox/util; getCOSStream, which needs Stream; and the COSObjectable
-// overloads, which need pdmodel. See migration/STATUS.md.
+// The date accessors are not methods here: they need DateConverter, and
+// pdfbox/util imports this package for Matrix, so they read as functions over a
+// dictionary in util/dictionarydate.go. Not yet ported: getCOSStream, which
+// needs Stream, and the COSObjectable overloads, which need pdmodel. See
+// migration/STATUS.md.
 type Dictionary struct {
 	object
 	updateInfoState

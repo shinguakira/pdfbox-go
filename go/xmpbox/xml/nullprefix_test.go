@@ -4,7 +4,7 @@ package xml_test
 //
 // Not a case in DomXmpParserTest, which only parses PDFBOX-5835. Serializing
 // what it parses is where Java and the port part company, and this pins it. See
-// migration/JAVA-BUGS.md 42 and the track's section in migration/STATUS.md.
+// migration/JAVA-BUGS.md 59 and the track's section in migration/STATUS.md.
 
 import (
 	"strings"

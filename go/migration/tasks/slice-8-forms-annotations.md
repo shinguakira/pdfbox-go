@@ -71,53 +71,66 @@ Subpackages: `action`, `annotation`, `digitalsignature`,
 Take one subpackage at a time. For each: port its Java tests first, then its
 implementation, then move on. Do not open all eight at once.
 
-- [ ] A1. `interactive/form` — port its Java tests
-- [ ] A2. `interactive/annotation` — port its Java tests
-- [ ] A3. `interactive/action` — port its Java tests
-- [ ] A4. `interactive/documentnavigation` — port its Java tests
-- [ ] A5. `interactive/pagenavigation` — port its Java tests
-- [ ] A6. `interactive/digitalsignature` — port its Java tests
-- [ ] A7. `interactive/measurement`, `interactive/viewerpreferences`
-- [ ] A8. `documentinterchange` — port its Java tests
-- [ ] A9. `pdmodel/common` — port `COSArrayListTest`, which slice 2 could not
+- [x] A1. `interactive/form` — port its Java tests
+  - PDFieldTreeTest, PDAcroFormGenerateAppearancesTest and PDAcroFormFromAnnotsTest
+    download their PDFs from the issue tracker, so none of the three is ported
+- [x] A2. `interactive/annotation` — port its Java tests
+  - the two rendering comparisons of AppearanceGenerationTest wait for slice 9
+- [x] A3. `interactive/action` — port its Java tests
+- [x] A4. `interactive/documentnavigation` — port its Java tests
+- [x] A5. `interactive/pagenavigation` — port its Java tests
+- [x] A6. `interactive/digitalsignature` — port its Java tests
+  - there are none: the subpackage has no test directory
+- [x] A7. `interactive/measurement`, `interactive/viewerpreferences`
+  - there are none: neither subpackage has a test directory
+- [x] A8. `documentinterchange` — port its Java tests
+- [x] A9. `pdmodel/common` — port `COSArrayListTest`, which slice 2 could not
       port because it needs annotations
 
 ---
 
 # Phase B — Port the implementation
 
-- [ ] B1. `pdmodel/common` — `COSArrayList`, `COSDictionaryMap`, `PDStream`,
-      `PDMetadata`, `common/filespecification`
+- [x] B1. `pdmodel/common` — `COSArrayList`, `COSDictionaryMap`, `PDStream`,
+      `PDMetadata`, `common/filespecification`. Also `PDNameTreeNode`,
+      `PDNumberTreeNode`, `PDObjectStream`, `PDPageLabels` and
+      `PDPageLabelRange`. `PDEmbeddedFile`s four date accessors wait for
+      `DateConverter`, which is this slice's and is taken in dependency order
   - `migration/STATUS.md` records these as blocking `PDPage.getContentStreams`
     and `setContents` since slice 2
-- [ ] B2. `interactive/form` — AcroForms and the field hierarchy
-- [ ] B3. `interactive/annotation` — annotations and their appearance handlers
-- [ ] B4. `interactive/action`
-- [ ] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
-- [ ] B6. `interactive/digitalsignature`
-- [ ] B7. `interactive/measurement`, `interactive/viewerpreferences`
-- [ ] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
+- [x] B2. `interactive/form` — AcroForms and the field hierarchy
+- [x] B3. `interactive/annotation` — annotations and their appearance handlers
+  - the squiggly handler draws with a tiling pattern, which waits for slice 9
+- [x] B4. `interactive/action`
+- [x] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
+- [x] B6. `interactive/digitalsignature`
+- [x] B7. `interactive/measurement`, `interactive/viewerpreferences`
+  - both subpackages are done: the five viewer preference enums, and the
+    measure, number format, rectlinear measure and viewport dictionaries
+- [x] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
       prepress
-- [ ] B9. `pdmodel/graphics/optionalcontent` — 3 files
+- [x] B9. `pdmodel/graphics/optionalcontent` — 3 files, and `PDPropertyList`
+      with them, since the two name each other. `rendering.RenderDestination`
+      came too, because `getRenderState` takes one
   - `PDPropertyList` lives here, and `PDResources.getProperties` returns it.
     Slice 2 recorded that lookup as absent, and BDC and DP in
     `operator/markedcontent` cannot resolve a named property list without it.
-- [ ] B10. `pdmodel/fdf` — 31 files, and `pdfparser/FDFParser`
+- [x] B10. `pdmodel/fdf` — 31 files, and `pdfparser/FDFParser`
   - Forms Data Format: the import and export half of AcroForms
-- [ ] B11. `pdmodel/fixup` and `fixup/processor` — 8 files
+- [x] B11. `pdmodel/fixup` and `fixup/processor` — 8 files
   - The document fixups AcroForm reading applies before it trusts a file
-- [ ] B12. Close the `PDPage` holes slice 2 left: annotations, thread beads,
+- [x] B12. Close the `PDPage` holes slice 2 left: annotations, thread beads,
       transitions, additional actions, viewports, metadata
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — including the slice 2 `PDPage` and
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md` — including the slice 2 `PDPage` and
       `pdmodel/common` rows this slice closes
 
 ---
@@ -128,78 +141,92 @@ implementation, then move on. Do not open all eight at once.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [x] D4. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D7. This slice is mostly dictionary wrappers — check the keys
+- [x] D7. This slice is mostly dictionary wrappers — check the keys
   - A wrong `COSName` constant compiles, passes a shallow test, and reads the
     wrong entry from every real file. Check each key against the Java, not
     against the specification.
 
-- [ ] D8. Check the `COSArrayList` semantics
+- [x] D8. Check the `COSArrayList` semantics
   - It syncs a Go slice to a `COSArray`. Java's is a `List` view with a
     filtered mode that refuses writes. Whatever the Go does instead, check that
     a filtered list still refuses.
 
-- [ ] D9. Digital signatures verify or they do not
+- [x] D9. Digital signatures verify or they do not
   - A signature path that "mostly works" is worse than one that is absent.
 
 ---
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 ---
 
 # Blocked
 
-- [ ] Appearance generation for form fields and annotations draws content
+- [x] Appearance generation for form fields and annotations draws content
       streams, which needs the writer from slice 7. Decide whether this branch
       ports only the reading half, or waits.
+
+      **Decided: the writing half is in scope, and it pulls three files in with
+      it.** Slice 7 is merged, so the question is no longer whether to wait.
+      What appearance generation actually draws through is
+      `PDAppearanceContentStream`, which extends `PDPageContentStream`, which
+      extends `PDAbstractContentStream` --- all three in top-level `pdmodel`,
+      and none of them named in any slice's scope table. They are ported here
+      because this is the slice that needs them; `AppearanceGeneratorHelper`
+      cannot exist without them.
+
+      `PDAbstractContentStream` reaches `PDFormXObject`, `PDShading` and
+      `PDPattern`, which are slice 9's. Those methods are the ones left out,
+      named where they occur and in `migration/STATUS.md`; the text, colour,
+      path and image methods appearance generation uses are all here.

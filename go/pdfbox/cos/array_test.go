@@ -52,7 +52,7 @@ func TestArrayConvertNames(t *testing.T) {
 		t.Fatalf("ToNameStringList() length = %d, want 3", len(list))
 	}
 	for i, want := range []string{A.Name(), B.Name(), C.Name()} {
-		if list[i] == nil || *list[i] != want {
+		if list[i] != want {
 			t.Errorf("ToNameStringList()[%d] = %v, want %q", i, list[i], want)
 		}
 	}

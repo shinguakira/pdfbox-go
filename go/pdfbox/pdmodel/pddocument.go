@@ -2,13 +2,19 @@ package pdmodel
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"math"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
@@ -29,12 +35,27 @@ type PDDocument struct {
 
 	resourceCache ResourceCache
 
+	// fontsToSubset is the set of fonts to subset before saving, which the
+	// content stream writing fills in.
+	fontsToSubset []font.PDFont
+
 	documentId *int64
 
 	// signInterface signs an incremental save. Java holds a SignatureInterface;
-	// the writer declares the same contract, and the signature model that fills
-	// this in arrives with slice 8.
+	// the writer declares the same contract, which digitalsignature's satisfies
+	// structurally.
 	signInterface pdfwriter.SignatureInterface
+
+	// signatureAdded is Java's flag of the same name: only one signature may be
+	// added in a document.
+	signatureAdded bool
+
+	// signingSupport is the ExternalSigningSupport of the last
+	// saveIncrementalForExternalSigning, which Close closes. It is typed on the
+	// closer it is used through, because SigningSupport lives in
+	// interactive/digitalsignature and that package would then have to be
+	// imported here for one field; interactive/form sets it.
+	signingSupport io.Closer
 
 	encryption             *encryption.PDEncryption
 	accessPermission       *encryption.AccessPermission
@@ -173,8 +194,15 @@ func (d *PDDocument) Close() error {
 	// - all IO resources are closed
 	// - there's a way to see which errors occurred
 	var firstException error
+	// close resources and COSWriter
+	if d.signingSupport != nil {
+		if err := d.signingSupport.Close(); err != nil {
+			slog.Warn("pdmodel: closing SigningSupport", "err", err)
+			firstException = err
+		}
+	}
 	// close all intermediate I/O streams
-	if err := d.document.Close(); err != nil {
+	if err := d.document.Close(); err != nil && firstException == nil {
 		firstException = err
 	}
 	// close the source PDF stream, if we read from one
@@ -190,12 +218,23 @@ func (d *PDDocument) Close() error {
 
 // PDDocumentCatalog is the root of the object graph of a document.
 //
-// Port of org.apache.pdfbox.pdmodel.PDDocumentCatalog. The form, outline,
-// names, threads, metadata, actions and viewer preference accessors are not
-// here: each needs a type this port has not reached. See migration/STATUS.md.
+// Port of org.apache.pdfbox.pdmodel.PDDocumentCatalog. Everything that names a
+// type from pdmodel/interactive, pdmodel/documentinterchange or
+// graphics/optionalcontent is in pddocumentcatalog.go, so that this file stays
+// next to PDDocument; getAcroForm and setAcroForm are in interactive/form,
+// which is the only package that can name both sides. See the comment on
+// acroFormFixupApplied.
 type PDDocumentCatalog struct {
 	root     *cos.Dictionary
 	document *PDDocument
+
+	// acroFormFixupApplied and cachedAcroForm are the two private fields of
+	// getAcroForm. That accessor names PDAcroForm, which lives in
+	// interactive/form, and that package imports this one, so getAcroForm is a
+	// function there over these two. They are typed on any because this package
+	// cannot name either type; see AcroFormOfCatalog in interactive/form.
+	acroFormFixupApplied any
+	cachedAcroForm       any
 }
 
 var _ common_COSObjectable = (*PDDocumentCatalog)(nil)
@@ -246,9 +285,7 @@ func (c *PDDocumentCatalog) SetVersion(version string) {
 // PDDocumentInformation is the /Info dictionary: what the document says about
 // itself.
 //
-// Port of org.apache.pdfbox.pdmodel.PDDocumentInformation. The date accessors
-// are not here: they need the COS date parsing, which slice 1 left out. See
-// migration/STATUS.md.
+// Port of org.apache.pdfbox.pdmodel.PDDocumentInformation.
 type PDDocumentInformation struct {
 	info *cos.Dictionary
 }
@@ -325,5 +362,144 @@ func (i *PDDocumentInformation) setString(key *cos.Name, value string) {
 	i.info.SetItem(key, cos.NewStringObj(value))
 }
 
+// PropertyStringValue returns the raw string under the given key, which allows
+// the low level date to be retrieved for validation purposes.
+//
+// Port of getPropertyStringValue, which Java declares as returning Object
+// although its body answers a String.
+func (i *PDDocumentInformation) PropertyStringValue(propertyKey string) string {
+	return i.info.GetString(cos.GetPDFName(propertyKey), "")
+}
+
+// CreationDate returns the creation date of the document, reporting false where
+// there is none, which is the null Java answers.
+func (i *PDDocumentInformation) CreationDate() (time.Time, bool) {
+	return util.DictionaryDate(i.info, cos.CreationDate)
+}
+
+// SetCreationDate sets the creation date of the document.
+func (i *PDDocumentInformation) SetCreationDate(date time.Time) {
+	util.SetDictionaryDate(i.info, cos.CreationDate, date)
+}
+
+// ModificationDate returns the modification date of the document, reporting
+// false where there is none.
+func (i *PDDocumentInformation) ModificationDate() (time.Time, bool) {
+	return util.DictionaryDate(i.info, cos.ModDate)
+}
+
+// SetModificationDate sets the modification date of the document.
+func (i *PDDocumentInformation) SetModificationDate(date time.Time) {
+	util.SetDictionaryDate(i.info, cos.ModDate, date)
+}
+
+// Trapped returns the trapped value for the document, or "" where there is
+// none.
+func (i *PDDocumentInformation) Trapped() string {
+	return i.info.GetNameAsString(cos.Trapped, "")
+}
+
+// SetTrapped sets the trapped value of the document, which shall be 'True',
+// 'False' or 'Unknown'.
+//
+// Java throws IllegalArgumentException for anything else, which is unchecked,
+// so the port panics. The empty string is Java's null, which it lets through.
+func (i *PDDocumentInformation) SetTrapped(value string) {
+	if value != "" && value != "True" && value != "False" && value != "Unknown" {
+		panic("Valid values for trapped are 'True', 'False', or 'Unknown'")
+	}
+	i.info.SetName(cos.Trapped, value)
+}
+
+// MetadataKeys returns the keys of all metadata information fields for the
+// document, sorted, which is what Java's TreeSet answers.
+//
+// Since Apache PDFBox 1.3.0.
+func (i *PDDocumentInformation) MetadataKeys() []string {
+	keySet := i.info.KeySet()
+	keys := make([]string, 0, len(keySet))
+	for _, key := range keySet {
+		keys = append(keys, key.Name())
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // ErrMissingRoot is what a document with no catalogue is reported with.
 var ErrMissingRoot = errors.New("pdmodel: Missing root object specification in trailer.")
+
+// addFontToSubset records a font to subset before the document is saved.
+//
+// Java holds a Set<PDFont> and hands it out through the package-private
+// getFontsToSubset, which the content stream adds to. A Go map would walk in a
+// random order, so the port keeps the insertion order and checks for the
+// duplicate a set would drop.
+func (d *PDDocument) addFontToSubset(f font.PDFont) {
+	for _, known := range d.fontsToSubset {
+		if known == f {
+			return
+		}
+	}
+	d.fontsToSubset = append(d.fontsToSubset, f)
+}
+
+// AcroFormFixupApplied returns the fixup getAcroForm has already applied, or
+// nil where it has applied none.
+//
+// Java holds this in a private field of PDDocumentCatalog. getAcroForm lives in
+// interactive/form, because it names PDAcroForm; this is how it reaches the
+// field.
+func (c *PDDocumentCatalog) AcroFormFixupApplied() any { return c.acroFormFixupApplied }
+
+// SetAcroFormFixupApplied records the fixup getAcroForm has applied.
+func (c *PDDocumentCatalog) SetAcroFormFixupApplied(fixup any) { c.acroFormFixupApplied = fixup }
+
+// CachedAcroForm returns the form getAcroForm last built, or nil where it has
+// built none since the cache was last cleared.
+//
+// Java holds this in a private field of PDDocumentCatalog; see
+// AcroFormFixupApplied.
+func (c *PDDocumentCatalog) CachedAcroForm() any { return c.cachedAcroForm }
+
+// SetCachedAcroForm records the form getAcroForm built, and clears the cache
+// for a nil one.
+func (c *PDDocumentCatalog) SetCachedAcroForm(acroForm any) { c.cachedAcroForm = acroForm }
+
+// Document returns the document the catalogue is part of.
+//
+// Java holds it in a private field, which its getAcroForm reads; the accessor
+// is here because that method lives in interactive/form. See
+// AcroFormFixupApplied.
+func (c *PDDocumentCatalog) Document() *PDDocument { return c.document }
+
+// SignatureAdded reports whether a signature has already been added to the
+// document.
+//
+// Java holds this in a private field of PDDocument, which addSignature reads
+// and writes. That method names PDSignatureField and PDAcroForm and so lives in
+// interactive/form; this is how it reaches the field. See AcroFormFixupApplied
+// for the same device on the catalogue.
+func (d *PDDocument) SignatureAdded() bool { return d.signatureAdded }
+
+// SetSignatureAdded records that a signature has been added.
+func (d *PDDocument) SetSignatureAdded(added bool) { d.signatureAdded = added }
+
+// SetSignInterface records the interface that signs the next incremental save,
+// which SaveIncremental hands to the writer. Java's addSignature sets the
+// private field directly; see SignatureAdded.
+func (d *PDDocument) SetSignInterface(signInterface pdfwriter.SignatureInterface) {
+	d.signInterface = signInterface
+}
+
+// SetSigningSupport records the external signing support Close is to close; see
+// SignatureAdded.
+func (d *PDDocument) SetSigningSupport(signingSupport io.Closer) {
+	d.signingSupport = signingSupport
+}
+
+// PDFSource returns the file the document was read from, or nil where it was
+// built in memory.
+//
+// Java reads the private pdfSource field in saveIncrementalForExternalSigning,
+// which lives in interactive/form here; see SignatureAdded.
+func (d *PDDocument) PDFSource() pdfio.RandomAccessRead { return d.pdfSource }
