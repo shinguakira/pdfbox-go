@@ -99,12 +99,11 @@ reached, in the Go, by a method that panics.
 
 # Phase B — Port the implementation
 
-**A change with no failing test behind it is not a fix.** Where porting one
-site makes you notice a second with the same defect, that second site needs a
-test of its own before it is touched -- pattern-matching the first fix onto it
-without one is how a wrong fix gets in beside a right one, and phase D will
-read it as demonstrated because it travelled with a demonstrated change. Either
-write the test, or leave the site alone and record it.
+**Every function this phase touches needs a test that says it works.** Where
+porting one site makes you notice a second with the same defect, the second one
+needs its own test before it is touched: without it nobody can say whether that
+code works, before the change or after, and the suite stays green either way.
+Either write the test, or leave the site alone and record it.
 
 If the defect is a Java standard-library contract, port the contract once into a
 helper rather than patching each call site. See
@@ -172,12 +171,12 @@ faithful migration. Go in assuming it is wrong.
     running the Go?
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every change made in phase B
-  - Does each one have a test that fails without it? Name the test. A change
-    that rode along with a tested one and has no test of its own is not
-    demonstrated, whatever it travelled with
-  - Was it a port defect, or the Java behaving that way? The second is a
-    `JAVA-BUGS.md` entry and a reverted change
+- [ ] D4. Check every function phase B touched has a test
+  - Name the test that covers it. Not "the suite is green" -- green says the
+    code is not broken in a way something already checks, which is a different
+    claim from "this works"
+  - Where there is none, the function was changed on an argument rather than on
+    evidence. Write the test, and take whatever it says
 
 - [ ] D5. Check every deferral is real and recorded
 
