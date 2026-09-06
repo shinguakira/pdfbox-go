@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/action"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
@@ -118,12 +119,50 @@ func (p *PDPage) ContentsForRandomAccess() (pdfio.RandomAccessRead, error) {
 // ContentsForStreamParsing returns the content of this page for a parser that
 // only reads forwards.
 //
-// Java has a fast path here that decodes a single flate stream as it is read,
-// rather than into a buffer. It needs the decoder stream and the non-seekable
-// wrapper, neither of which is ported yet, so this is the general path for now
-// — the same one Java falls back to. See migration/STATUS.md.
+// Where the page has a single content stream and its only filter is
+// FlateDecode, the content is decoded as it is read rather than into a buffer.
+// Any other shape takes the general path.
+//
+// Java applies no predictor on this path, so a stream that declares one is
+// decoded wrongly here and correctly by the general path. Ported as written;
+// see migration/JAVA-BUGS.md.
 func (p *PDPage) ContentsForStreamParsing() (pdfio.RandomAccessRead, error) {
+	// return a stream based reader if there is just one stream
+	contentStream := p.getCOSStream(cos.Contents)
+	if contentStream != nil && isFlateDecode(contentStream.Filters()) {
+		// for now only streams using a flate filter are supported
+		source, err := p.streamParsingReader(contentStream)
+		if err != nil {
+			// Java logs "skipped malformed content stream" and answers a
+			// buffer holding the delimiter.
+			return pdfio.NewReadBufferBytes(delimiter), nil
+		}
+		return source, nil
+	}
 	return p.ContentsForRandomAccess()
+}
+
+// isFlateDecode reports whether the filters of a stream are exactly the name
+// FlateDecode, which is Java's COSName.FLATE_DECODE.equals(getFilters()): an
+// array of one, or of several, is not equal to a name and takes the general
+// path.
+func isFlateDecode(filters cos.Base) bool {
+	name, isName := filters.(*cos.Name)
+	return isName && cos.FlateDecode.Equals(name)
+}
+
+// streamParsingReader wraps the raw bytes of the stream in the flate decoder
+// and the forward-only reader the fast path uses.
+func (p *PDPage) streamParsingReader(contentStream *cos.Stream) (pdfio.RandomAccessRead, error) {
+	raw, err := contentStream.CreateRawReader()
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := filter.NewFlateDecoderReader(raw)
+	if err != nil {
+		return nil, err
+	}
+	return pdfio.NewNonSeekableRead(io.NopCloser(decoded)), nil
 }
 
 // getCOSStream returns the value of key as a stream, resolving an indirect

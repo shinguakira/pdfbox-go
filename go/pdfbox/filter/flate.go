@@ -113,3 +113,23 @@ func (b *byteCountingReader) Read(p []byte) (int, error) {
 	b.n += int64(n)
 	return n, err
 }
+
+// NewFlateDecoderReader returns a reader that inflates as it is read, rather
+// than into a buffer.
+//
+// Port of org.apache.pdfbox.filter.FlateFilterDecoderStream, which
+// PDPage.getContentsForStreamParsing reads a single flate content stream
+// through. It skips the two zlib header bytes and inflates raw, for the reason
+// Decode above gives, and applies no predictor -- which is what Java does, and
+// what makes the fast path wrong for a stream that declares one. See
+// migration/JAVA-BUGS.md.
+func NewFlateDecoderReader(r io.Reader) (io.Reader, error) {
+	// skip zlib header
+	var header [2]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		// A stream too short to have a header has nothing to inflate; Java's
+		// two bare in.read() calls answer -1 and carry on to inflate nothing.
+		return bytes.NewReader(nil), nil
+	}
+	return flate.NewReader(r), nil
+}
