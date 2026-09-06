@@ -330,11 +330,23 @@ func NewDateType(metadata MetadataLike, namespaceURI, prefix, propertyName strin
 	return d, nil
 }
 
-// Value returns the date.
-func (d *DateType) Value() any { return d.dateValue }
+// Value returns the date, and nil where the property holds none.
+//
+// Java's getValue answers the Calendar, which is null for a property built from
+// a blank string; see PDFBOX-6029 and setValueFromString below.
+func (d *DateType) Value() any {
+	if !d.hasValue {
+		return nil
+	}
+	return d.dateValue
+}
 
-// DateValue returns the date, typed.
-func (d *DateType) DateValue() time.Time { return d.dateValue }
+// DateValue returns the date, typed, the second result being false where the
+// property holds none -- which is Java's null getValue().
+//
+// Every caller has to answer that null onwards: a date property that is there
+// and holds nothing is not the same as one holding the epoch.
+func (d *DateType) DateValue() (time.Time, bool) { return d.dateValue, d.hasValue }
 
 // isGoodType reports whether the given value is one this property can hold.
 func isGoodDate(value any) bool {

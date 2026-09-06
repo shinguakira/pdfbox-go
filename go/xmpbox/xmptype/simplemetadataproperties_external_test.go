@@ -114,8 +114,8 @@ func TestElementAndObjectSynchronization(t *testing.T) {
 	if got := boolean.BooleanValue(); got != boolv {
 		t.Errorf("BooleanValue() = %v, want %v", got, boolv)
 	}
-	if got := date.DateValue(); !got.Equal(datev) {
-		t.Errorf("DateValue() = %v, want %v", got, datev)
+	if got, held := date.DateValue(); !held || !got.Equal(datev) {
+		t.Errorf("DateValue() = %v, %v, want %v", got, held, datev)
 	}
 	if got := integer.IntegerValue(); got != integerv {
 		t.Errorf("IntegerValue() = %v, want %v", got, integerv)

@@ -19,6 +19,7 @@ package schema_test
 // once for each.
 
 import (
+	"strconv"
 	"testing"
 )
 
@@ -77,7 +78,7 @@ func caseName(name string, i, count int) string {
 	if count == 1 {
 		return name
 	}
-	return name + "/" + string(rune('1'+i))
+	return name + "/" + strconv.Itoa(i+1)
 }
 
 // equal reports whether two values of a comparable type are the same, and

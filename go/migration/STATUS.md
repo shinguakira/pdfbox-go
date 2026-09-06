@@ -3183,6 +3183,11 @@ imports nothing from `org.apache.xmpbox.xml`.
   ISO 8601 string.
 - **`ErrorType.Configuration` is unreachable**, because the port has no
   `DocumentBuilderFactory` to fail to configure.
+- **A sequence holding an empty date can still have an element removed**, where
+  Java raises NullPointerException on the empty one. JAVA-BUGS 60.
+- **A list of sequence dates holds the zero time** where Java holds a null,
+  because a `[]time.Time` cannot hold one; the length is the same either way.
+  JAVA-BUGS 61.
 
 ### Which Java tests are ported
 
@@ -3337,7 +3342,8 @@ above: the two that construct an exception and assert it was thrown.
 Java's own, carried over with it; `grep` finds no other. Nothing in this module
 is "not ported yet".
 
-**D5 — the Java bugs.** Eight found, JAVA-BUGS 52 to 59, each with where, what,
+**D5 — the Java bugs.** Eight found, JAVA-BUGS 52 to 59, and two more in the
+feedback round below, each with where, what,
 what correct would be, where the Go carries it and how confident. None was fixed
 on the way past: 36, 37, 38, 39 and 41 are ported as written, and 35, 40 and 42
 are divergences recorded in both files rather than silent corrections.
@@ -3351,7 +3357,50 @@ differs from Xerces".
 twelve SHA-256 digests `DeserializationTest` asserts are over Java's bytes, and
 the port now produces them.
 
+
+### The xmpbox feedback round
+
+Three review items, all acted on.
+
+**A date property that is there and holds no date read back as the epoch.**
+Reported by Codex against `dateValueOf`, and correct: Java's `getCreateDate`
+and its neighbours answer `getValue()`, which is null both when the property is
+absent and when it is there holding nothing — the `<xmp:CreateDate/>` of
+PDFBOX-6029. The port checked only the pointer, so the second case answered a
+date at year 1. `AbstractStructuredType.getDatePropertyAsCalendar` had the same
+shape, which the report also named.
+
+Fixed at the root rather than at the two call sites: `DateType.Value` now
+answers nil where the property holds no date, the way `getValue()` does, and
+`DateType.DateValue` answers `(time.Time, bool)` rather than a bare time, so
+every caller has to say what it does with the null. That turned up two more
+readers the report had not named, and both are Java defects rather than port
+ones:
+
+- `removeUnqualifiedSequenceDateValue` calls `getValue().equals(date)` without
+  a null check, so a sequence holding one empty date cannot have any element
+  removed. JAVA-BUGS 60. The port passes over such an element.
+- `getUnqualifiedSequenceDateValueList` adds the null to the list it answers.
+  JAVA-BUGS 61. A `[]time.Time` cannot hold one, so the port keeps the element
+  — the length matches — with the zero time standing in.
+
+`TestAnEmptyDateReadsBackAsNothing` and
+`TestAnEmptyDateInAStructuredTypeReadsBackAsNothing` pin all of it. Both fail on
+every assertion without the fix; the expected values were read by running
+`org.apache.xmpbox` over the same packet, which prints null for
+`getCreateDateProperty().getValue()`, `getCreateDate()`,
+`getDatePropertyValue("CreateDate")` and `getStringValue()`, and null for
+`ResourceEventType.getWhen()`.
+
+**Two consecutive horizontal rules in JAVA-BUGS.md.** Reported by Copilot, and
+correct: an artefact of resolving the merge conflict by hand. Removed, and the
+seam where this track's entries begin now matches the file's own style.
+
+**`caseName` numbered subtests with `string(rune('1'+i))`.** Reported by
+Copilot, and correct: past nine rounds that stops being a digit. No row carries
+more than two values today, so it could not bite yet; `strconv.Itoa` now.
+
 ### Still open
 
-Nothing in this track. Two differences are deliberate and pinned, and are listed
-above.
+Nothing in this track. Four differences are deliberate and pinned, and are listed
+above: the two the review found, and the two the feedback round added.

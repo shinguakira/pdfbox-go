@@ -1414,8 +1414,6 @@ panicking with `End page is smaller than startPage` for pages 30 to 40 of the
 
 ---
 
----
-
 ## 35. `COSName.BEAD` is `"BEAD"`, and the specification says `/Bead`
 
 **Where** `pdfbox/src/main/java/org/apache/pdfbox/cos/COSName.java` line 100:
@@ -2155,6 +2153,7 @@ space written as a bare name rather than inline is legal but unusual, and no
 PDFBox test covers it.
 
 ---
+
 ## 52. `XMPSchema.reorganizeAltOrder` dereferences a missing `xml:lang`
 
 **Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
@@ -2458,3 +2457,73 @@ entry.
 **Confidence** high. Reproduced by compiling `xmpbox` against JDK 17 and running
 `DomXmpParser.parse` then `XmpSerializer.serialize` over
 `PDFBOX-5835.xml`; the message above is what came out.
+
+---
+
+## 60. `XMPSchema.removeUnqualifiedSequenceDateValue` dereferences an empty date
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
+`removeUnqualifiedSequenceDateValue`
+
+```java
+for (AbstractField tmp : seq.getContainer().getAllProperties())
+{
+    if (tmp instanceof DateType && ((DateType) tmp).getValue().equals(date))
+```
+
+`DateType.getValue()` is null for a property built from a blank string — which
+is what `<xmp:CreateDate/>` produces, and what PDFBOX-6029 was about — and the
+`.equals` goes straight through it.
+
+**What correct would be** `date.equals(((DateType) tmp).getValue())`, which is
+the same comparison with the operands the other way round, or a null check.
+
+**Why it matters** a sequence of dates holding one empty element cannot have any
+element removed: the walk raises NullPointerException at the empty one, whether
+or not the date being removed is there.
+
+**Where the Go carries it** it does not:
+`go/xmpbox/schema/xmpschema.go`, `RemoveUnqualifiedSequenceDateValue`, passes
+over an element that holds no date. A panic in a remover, over a shape the same
+module produces from a legal document, was the worse of the two; the divergence
+is recorded here and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high. Reproduced by compiling `xmpbox` against JDK 17: adding an
+empty `DateType` to a sequence and calling
+`removeUnqualifiedSequenceDateValue` prints `NullPointerException`.
+
+---
+
+## 61. `XMPSchema.getUnqualifiedSequenceDateValueList` puts nulls in the list
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
+`getUnqualifiedSequenceDateValueList`
+
+```java
+for (AbstractField child : seq.getContainer().getAllProperties())
+{
+    if (child instanceof DateType)
+    {
+        retval.add(((DateType) child).getValue());
+    }
+}
+```
+
+An element holding no date adds a null to the `List<Calendar>` the method
+answers.
+
+**What correct would be** skipping such an element, or documenting that the list
+may hold nulls. Neither is done, and the method's javadoc says it answers "the
+list of Calendar".
+
+**Why it matters** every caller walks the list and reads the dates; the first
+one that reaches an empty element raises NullPointerException somewhere else
+entirely, with nothing to say where the null came from.
+
+**Where the Go carries it** partly: `go/xmpbox/schema/xmpschema.go`,
+`UnqualifiedSequenceDateValueList`, keeps the element so the length matches, and
+a `[]time.Time` cannot hold Java's null, so the zero time stands in it. Said
+where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high. Reproduced against JDK 17: a sequence holding a date and an
+empty date prints `[java.util.GregorianCalendar[...], null]`.

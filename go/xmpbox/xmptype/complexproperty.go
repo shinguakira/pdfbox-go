@@ -359,10 +359,13 @@ func (s *StructuredType) PropertyValueAsString(fieldName string) string {
 
 // DatePropertyAsCalendar returns the value of the named date field, the second
 // result being false where there is none -- which is Java's null.
+//
+// Java answers getValue(), so a field that is there and holds no date is null
+// too, not a date at the epoch.
 func (s *StructuredType) DatePropertyAsCalendar(fieldName string) (time.Time, bool) {
 	absProp := s.FirstEquivalentProperty(fieldName, "DateType")
 	if date, isDate := absProp.(*DateType); isDate {
-		return date.DateValue(), true
+		return date.DateValue()
 	}
 	return time.Time{}, false
 }

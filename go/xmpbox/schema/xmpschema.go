@@ -272,7 +272,10 @@ func (s *XMPSchema) DatePropertyValue(qualifiedName string) (time.Time, bool, er
 	prop := s.AbstractPropertyOf(qualifiedName)
 	if prop != nil {
 		if date, isDate := prop.(*xmptype.DateType); isDate {
-			return date.DateValue(), true, nil
+			// Java answers getValue(), which is null for a property that is
+			// there and holds no date.
+			value, held := date.DateValue()
+			return value, held, nil
 		}
 		return time.Time{}, false, fmt.Errorf("%w: Property asked is not a Date Property",
 			xmptype.ErrBadFieldValue)
@@ -567,8 +570,14 @@ func (s *XMPSchema) RemoveUnqualifiedSequenceDateValue(seqName string, date time
 	}
 	var toDelete []xmptype.AbstractField
 	for _, tmp := range seq.Container().AllProperties() {
-		if dateProperty, isDate := tmp.(*xmptype.DateType); isDate &&
-			dateProperty.DateValue().Equal(date) {
+		dateProperty, isDate := tmp.(*xmptype.DateType)
+		if !isDate {
+			continue
+		}
+		// Java calls getValue().equals(date) without a null check, so a
+		// sequence holding an empty date raises NullPointerException; the port
+		// passes over such an element. See migration/JAVA-BUGS.md.
+		if value, held := dateProperty.DateValue(); held && value.Equal(date) {
 			toDelete = append(toDelete, tmp)
 		}
 	}
@@ -603,7 +612,12 @@ func (s *XMPSchema) UnqualifiedSequenceDateValueList(seqName string) []time.Time
 	retval := []time.Time{}
 	for _, child := range seq.Container().AllProperties() {
 		if date, isDate := child.(*xmptype.DateType); isDate {
-			retval = append(retval, date.DateValue())
+			// Java adds getValue(), so an element holding no date puts a null
+			// in the list; a []time.Time cannot hold one, so the zero time
+			// stands in and the length is the same either way. See
+			// migration/STATUS.md.
+			value, _ := date.DateValue()
+			retval = append(retval, value)
 		}
 	}
 	return retval

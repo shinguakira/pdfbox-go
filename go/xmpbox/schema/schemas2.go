@@ -322,9 +322,12 @@ func (s *XMPBasicSchema) ThumbnailsProperty() ([]*xmptype.ThumbnailType, error) 
 }
 
 // dateValueOf is Java's `dt == null ? null : dt.getValue()`.
+//
+// Both halves answer null: an absent property, and a property that is there and
+// holds no date. See PDFBOX-6029.
 func dateValueOf(date *xmptype.DateType) (time.Time, bool) {
 	if date == nil {
 		return time.Time{}, false
 	}
-	return date.DateValue(), true
+	return date.DateValue()
 }

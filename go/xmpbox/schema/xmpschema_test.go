@@ -229,8 +229,8 @@ func TestAsSimpleMethods(t *testing.T) {
 	}
 	dateProperty, err := schem.DateProperty(dateName)
 	noError(t, "DateProperty", err)
-	if !dateProperty.DateValue().Equal(dateVal) {
-		t.Errorf("DateProperty().Value() = %v, want %v", dateProperty.DateValue(), dateVal)
+	if got, held := dateProperty.DateValue(); !held || !got.Equal(dateVal) {
+		t.Errorf("DateProperty().Value() = %v, %v, want %v", got, held, dateVal)
 	}
 	integerProperty, err := schem.IntegerProperty(integ)
 	noError(t, "IntegerProperty", err)
