@@ -2151,3 +2151,379 @@ says why above the line.
 the `resources` it ignores. Medium for how often it bites: an underlying colour
 space written as a bare name rather than inline is legal but unusual, and no
 PDFBox test covers it.
+
+---
+
+## 52. `XMPSchema.reorganizeAltOrder` dereferences a missing `xml:lang`
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
+`reorganizeAltOrder`
+
+```java
+if (it.hasNext() && it.next().getAttribute(XmpConstants.LANG_NAME).getValue().equals(XmpConstants.X_DEFAULT))
+```
+
+and again in the loop below it:
+
+```java
+xdefault = it.next();
+if (xdefault.getAttribute(XmpConstants.LANG_NAME).getValue().equals(XmpConstants.X_DEFAULT))
+```
+
+`getAttribute` answers null for an alternative that carries no `xml:lang`, and
+both calls reach straight through it.
+
+**What correct would be** treating a missing qualifier as "not the default
+language", which is what every other reader of an alternative does.
+
+**Why it matters** an `rdf:Alt` whose items have no `xml:lang` is malformed but
+common, and this is reached from `setUnqualifiedLanguagePropertyValue`, so
+adding one language to such an alternative fails with a NullPointerException
+rather than doing something.
+
+**Where the Go carries it** it does not, quite: `languageOf` in
+`go/xmpbox/schema/xmpschema.go` answers the empty string where the qualifier is
+absent, so the comparison is false and the walk continues. Panicking on
+malformed input, in a library that exists to read malformed input, was the worse
+of the two; the divergence is recorded here and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high. Read from the two dereferences; `getAttribute` is a map
+lookup that answers null for a name it does not hold.
+
+---
+
+## 53. `XMPSchema.merge` stops at the first value both schemas already have
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
+`mergeComplexProperty` and its caller `merge`
+
+```java
+private boolean mergeComplexProperty(Iterator<AbstractField> itNewValues, ArrayProperty arrayProperty)
+{
+    while (itNewValues.hasNext())
+    {
+        TextType tmpNewValue = (TextType) itNewValues.next();
+        for (AbstractField abstractField : arrayProperty.getContainer().getAllProperties())
+        {
+            TextType tmpOldValue = (TextType) abstractField;
+            if (tmpOldValue.getStringValue().equals(tmpNewValue.getStringValue()))
+            {
+                return true;
+            }
+        }
+        arrayProperty.getContainer().addProperty(tmpNewValue);
+    }
+    return false;
+}
+```
+
+and
+
+```java
+if (mergeComplexProperty(itNewValues, (ArrayProperty) tmpEmbeddedProperty))
+{
+    return;
+}
+```
+
+The `true` means "a value was already there", and the caller takes it as a
+reason to stop merging the whole schema.
+
+**What correct would be** skipping the duplicate value and carrying on: the loop
+over the new values, the loop over this schema's properties, and the loop over
+the other schema's properties should all continue.
+
+**Why it matters** merging two Dublin Core schemas that share one creator drops
+every property after the array that held the duplicate -- the rest of that
+array, every later array, and every later simple property.
+
+**Where the Go carries it** `go/xmpbox/schema/xmpschema.go`, `Merge` and
+`mergeComplexProperty`, which return the same way at the same place.
+
+**Confidence** high. Read from the two methods; the `return` is the whole of
+`merge`'s remaining work.
+
+---
+
+## 54. `TiffSchema.setArtist` stores a type its own getter cannot see
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/TiffSchema.java`,
+`setArtist` and `getArtistProperty`
+
+```java
+public ProperNameType getArtistProperty()
+{
+    return getPropertyAs(ARTIST, ProperNameType.class);
+}
+
+public void setArtist(String text)
+{
+    addProperty(createTextType(ARTIST, text));
+}
+```
+
+`createTextType` builds a plain `TextType`, which is the superclass of
+`ProperNameType` and so not an instance of it; `getPropertyAs` answers null for
+anything the class is not an instance of.
+
+**What correct would be** `instanciateSimple(ARTIST, text)`, which reads the
+field's declared type -- `Types.ProperName` -- and builds the matching class,
+the way every other setter of a derived text field does.
+
+**Why it matters** `setArtist("name")` followed by `getArtist()` answers null.
+The value is in the schema and is serialized, but no accessor of the class can
+read it back.
+
+**Where the Go carries it** `go/xmpbox/schema/schemas4.go`, `SetArtist` and
+`ArtistProperty`: the setter goes through `SetTextValue`, which is
+`createTextType`, and the getter asks for `*xmptype.ProperNameType`, which a
+`*xmptype.TextType` is not.
+
+**Confidence** high. Read from the two methods and from `getPropertyAs`, which
+is `type.isInstance(property) ? type.cast(property) : null`.
+
+---
+
+## 55. `XMPMediaManagementSchema.addVersions` writes the wrong kind of array
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPMediaManagementSchema.java`,
+`addVersions`
+
+```java
+@PropertyType(type = Types.Version, card = Cardinality.Seq)
+public static final String VERSIONS = "Versions";
+
+public void addVersions(String value)
+{
+    addQualifiedBagValue(VERSIONS, value);
+}
+```
+
+The field is declared as an ordered array of the structured `Version` type;
+`addQualifiedBagValue` makes an unordered array of text.
+
+**What correct would be** `addUnqualifiedSequenceValue`, which is what
+`addHistory` uses for the neighbouring `Seq` field -- and, for the declared
+type, adding a `VersionType` rather than a string.
+
+**Why it matters** a document written through this method carries an `rdf:Bag`
+of text where the schema says `rdf:Seq` of `stVer:Version`, and reading it back
+in strict mode fails with "Invalid array type, expecting Seq and found Bag".
+
+**Where the Go carries it** `go/xmpbox/schema/schemas3.go`, `AddVersions`, which
+calls `AddQualifiedBagValue` and says so in its comment.
+
+**Confidence** high. Read from the annotation and the method, and from the
+neighbouring `addHistory` that does it the other way.
+
+---
+
+## 56. `DomXmpParser.parseEndPacket` indexes past the end of a short instruction
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java`,
+`parseEndPacket`
+
+```java
+if (xpackData.startsWith("end="))
+{
+    char end = xpackData.charAt(5);
+```
+
+Four characters are checked and the sixth is read.
+
+**What correct would be** checking the length, or matching the whole thing
+against `end=['"][rw]['"]` -- the shape the next two lines assume.
+
+**Why it matters** `<?xpacket end=?>` and `<?xpacket end="?>` are malformed
+input a parser should refuse with its own exception; instead they raise
+StringIndexOutOfBoundsException, which is unchecked and so escapes the
+`XmpParsingException` a caller catches.
+
+**Where the Go carries it** `go/xmpbox/xml/domxmpparser.go`, `parseEndPacket`,
+which indexes the same byte and panics the same way, with a comment naming this
+entry.
+
+**Confidence** high. Read from the method; `"end="` is four characters and
+`charAt(5)` needs six.
+
+---
+
+## 57. `DomXmpParser.parseDescriptionInner` reaches through a null type
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java`,
+`parseDescriptionInner`
+
+```java
+PropertyType dtype = checkPropertyDefinition(tm, DomHelper.getQName(property), null);
+PropertyType ptype = tm.getStructuredPropMapping(dtype.type()).getPropertyType(name);
+```
+
+`checkPropertyDefinition` answers null when the namespace is known but the
+property is not declared in it -- that is what its callers elsewhere test for --
+and `dtype.type()` is read without the test.
+
+**What correct would be** the treatment `createProperty` gives the same null:
+report it in strict mode, and fall back to text in lenient mode.
+
+**Why it matters** a structured value holding a property its type does not
+declare fails with a NullPointerException rather than with the parser's own
+exception, in both parsing modes.
+
+**Where the Go carries it** it does not, quite: `go/xmpbox/xml/domxmpparser.go`,
+`parseDescriptionInner`, reports the property as `NoType` instead. The parse
+fails either way, which is the observable behaviour; a panic out of a parser
+handed malformed input was the worse of the two. Recorded here and in
+[`STATUS.md`](STATUS.md).
+
+**Confidence** high. Read from the method and from `getSpecifiedPropertyType`,
+which returns null on the paths its own comment marks as not found.
+
+---
+
+## 58. `XMPMetadata.createAndAddPDFAExtensionSchemaWithNS` ignores its argument
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/XMPMetadata.java`,
+`createAndAddPDFAExtensionSchemaWithNS`
+
+```java
+public PDFAExtensionSchema createAndAddPDFAExtensionSchemaWithNS(Map<String, String> namespaces)
+        throws XmpSchemaException
+{
+    PDFAExtensionSchema pdfAExt = new PDFAExtensionSchema(this);
+    pdfAExt.setAboutAsSimple("");
+    addSchema(pdfAExt);
+    return pdfAExt;
+}
+```
+
+The javadoc says "This PDFAExtension is created with specified list of
+namespaces" and "@throws XmpSchemaException If namespaces list not contains
+PDF/A Extension namespace URI". The map is never read and nothing is thrown, so
+the method is `createAndAddPDFAExtensionSchemaWithDefaultNS` with an argument.
+
+**What correct would be** either declaring the namespaces on the schema and
+checking the extension namespace is among them, or deleting the method.
+
+**Why it matters** a caller that passes a namespace map gets a schema that does
+not have it, with nothing to say the argument was dropped.
+
+**Where the Go carries it** `go/xmpbox/xmpmetadata_schemas.go`,
+`CreateAndAddPDFAExtensionSchemaWithNS`, which takes the map, ignores it and
+says so.
+
+**Confidence** high. The method body is four lines and the parameter appears in
+none of them.
+
+---
+
+## 59. `XmpSerializer` cannot write a property whose element had no prefix
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/xml/XmpSerializer.java`,
+`serializeFields`
+
+```java
+// PDFBOX-2378: add namespace declaration to the top
+if (!field.getPrefix().isEmpty() && field.getNamespace() != null && !field.getNamespace().isEmpty())
+```
+
+`getPrefix()` is null for a property parsed from an element written without one
+— which is what PDFBOX-5835 is about, and what the file
+`src/test/resources/org/apache/xmpbox/xml/PDFBOX-5835.xml` holds. The guard
+null-checks `getNamespace()` on the next line and not `getPrefix()` on this one.
+
+**What correct would be** the same null check the neighbouring term already has.
+
+**Why it matters** the packet parses — `DomXmpParserTest.testPDFBox5835` asserts
+what comes out of it — and then cannot be written back:
+
+```
+NullPointerException: Cannot invoke "String.isEmpty()" because the return value
+of "org.apache.xmpbox.type.AbstractField.getPrefix()" is null
+```
+
+Reading a document and writing it out again is the module's main use, and for
+this one it throws an unchecked exception rather than the
+`XmpSerializationException` its signature declares.
+
+**Where the Go carries it** it does not: `Prefix()` answers the empty string
+where Java answers null, so the test is false and the property is written under
+its local name. Both halves of the alternative were bad — panicking out of a
+serializer handed a document that parsed, or writing a name Java never gets to
+write — and writing it keeps the module usable.
+`TestSerializingAnUnprefixedPropertyWhereJavaFails` in
+`go/xmpbox/xml/nullprefix_test.go` pins what the port writes and names this
+entry.
+
+**Confidence** high. Reproduced by compiling `xmpbox` against JDK 17 and running
+`DomXmpParser.parse` then `XmpSerializer.serialize` over
+`PDFBOX-5835.xml`; the message above is what came out.
+
+---
+
+## 60. `XMPSchema.removeUnqualifiedSequenceDateValue` dereferences an empty date
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
+`removeUnqualifiedSequenceDateValue`
+
+```java
+for (AbstractField tmp : seq.getContainer().getAllProperties())
+{
+    if (tmp instanceof DateType && ((DateType) tmp).getValue().equals(date))
+```
+
+`DateType.getValue()` is null for a property built from a blank string — which
+is what `<xmp:CreateDate/>` produces, and what PDFBOX-6029 was about — and the
+`.equals` goes straight through it.
+
+**What correct would be** `date.equals(((DateType) tmp).getValue())`, which is
+the same comparison with the operands the other way round, or a null check.
+
+**Why it matters** a sequence of dates holding one empty element cannot have any
+element removed: the walk raises NullPointerException at the empty one, whether
+or not the date being removed is there.
+
+**Where the Go carries it** it does not:
+`go/xmpbox/schema/xmpschema.go`, `RemoveUnqualifiedSequenceDateValue`, passes
+over an element that holds no date. A panic in a remover, over a shape the same
+module produces from a legal document, was the worse of the two; the divergence
+is recorded here and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high. Reproduced by compiling `xmpbox` against JDK 17: adding an
+empty `DateType` to a sequence and calling
+`removeUnqualifiedSequenceDateValue` prints `NullPointerException`.
+
+---
+
+## 61. `XMPSchema.getUnqualifiedSequenceDateValueList` puts nulls in the list
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java`,
+`getUnqualifiedSequenceDateValueList`
+
+```java
+for (AbstractField child : seq.getContainer().getAllProperties())
+{
+    if (child instanceof DateType)
+    {
+        retval.add(((DateType) child).getValue());
+    }
+}
+```
+
+An element holding no date adds a null to the `List<Calendar>` the method
+answers.
+
+**What correct would be** skipping such an element, or documenting that the list
+may hold nulls. Neither is done, and the method's javadoc says it answers "the
+list of Calendar".
+
+**Why it matters** every caller walks the list and reads the dates; the first
+one that reaches an empty element raises NullPointerException somewhere else
+entirely, with nothing to say where the null came from.
+
+**Where the Go carries it** partly: `go/xmpbox/schema/xmpschema.go`,
+`UnqualifiedSequenceDateValueList`, keeps the element so the length matches, and
+a `[]time.Time` cannot hold Java's null, so the zero time stands in it. Said
+where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high. Reproduced against JDK 17: a sequence holding a date and an
+empty date prints `[java.util.GregorianCalendar[...], null]`.

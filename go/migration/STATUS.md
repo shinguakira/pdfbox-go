@@ -9,7 +9,7 @@ none". This file is where partial work and the reasons for it get recorded.
 
 Status values: `done` · `in progress` · `blocked` · `not started` · `out of scope`
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Summary
 
@@ -26,7 +26,7 @@ Last updated: 2026-09-05
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
 | 7 | `cmd/pdfbox` | 26 | not started |
-| — | `xmpbox` | 74 | not started |
+| — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 
 ## Phase 0 — `pdfio`
 
@@ -2985,3 +2985,422 @@ work; `[/Pattern /CS1]`, naming a colour space in the page's `/ColorSpace`
 dictionary, throws. The three sibling recursions in the same method —
 `PDIndexed`, `PDSeparation`, `PDDeviceN` — all pass the resources on. Ported as
 written and recorded as Java bug 51.
+
+## Track `xmpbox` — the XMP metadata module
+
+Branch `track/xmpbox`. A parallel track rather than a slice: `xmpbox` is a
+module of its own that depends on nothing else in the build, so it does not have
+to wait for a slice, and nothing waits for it. `pdfbox` hands back the raw
+metadata stream and this module parses it.
+
+All 74 Java files are ported, and all 27 Java test files.
+
+### `org.apache.xmpbox` — the root, 3 files
+
+| Java file | Go file | Notes |
+| --- | --- | --- |
+| `XMPMetadata.java` | `xmpmetadata.go`, `xmpmetadata_schemas.go` | done |
+| `XmpConstants.java` | `xmptype/xmpconstants.go`, aliased in `xmpconstants.go` | moved down a layer, see below |
+| `DateConverter.java` | `xmptype/dateconverter.go`, aliased in `xmpconstants.go` | moved down a layer, see below |
+
+`XmpConstants` and `DateConverter` had to move into `xmpbox/xmptype`. Java's
+root package holds `XMPMetadata`, which every property points back at, and
+`xmptype` would have to import the root package for those two; Go forbids the
+cycle. Both are aliased back under the Java name in the Java place, which is the
+device `pdmodel.ResourceCache` uses for `pdmodel/font`'s.
+
+### `org.apache.xmpbox.type` — all 33 files, as `xmpbox/xmptype`
+
+Renamed because `type` is a Go keyword; `mapping/packages.tsv` records it.
+
+| Java files | Go file |
+| --- | --- |
+| `Attribute`, `Cardinality`, `AbstractField`, `PropertyType`, `StructuredType`, `PropertiesDescription` | `attribute.go`, `cardinality.go`, `field.go`, `propertytype.go` |
+| `AbstractSimpleProperty`, `BooleanType`, `IntegerType`, `RealType`, `TextType`, `DateType` | `simpleproperty.go` |
+| The 13 derived text types | `derivedtext.go` |
+| `AbstractComplexProperty`, `ComplexPropertyContainer`, `AbstractStructuredType`, `ArrayProperty` | `complexproperty.go` |
+| The 17 structured types | `structuredtypes.go`, `structuredtypes2.go` |
+| `DefinedStructuredType` | `definedstructuredtype.go` |
+| `Types`, `TypeMapping` | `types.go`, `typemapping.go`, `typemappingcreate.go` |
+| `BadFieldValueException` | `errors.go` |
+
+### `org.apache.xmpbox.schema` — all 14 files
+
+| Java file | Go file |
+| --- | --- |
+| `XMPSchema.java` | `xmpschema.go` |
+| `XMPSchemaFactory.java`, `XmpSchemaException.java` | `schemafactory.go` |
+| `AdobePDFSchema`, `DublinCoreSchema`, `PDFAExtensionSchema`, `PDFAIdentificationSchema`, `XMPRightsManagementSchema`, `XMPPageTextSchema`, `XMPBasicJobTicketSchema` | `schemas.go` |
+| `XMPBasicSchema` | `schemas2.go` |
+| `PhotoshopSchema`, `XMPMediaManagementSchema` | `schemas3.go` |
+| `TiffSchema` | `schemas4.go` |
+| `ExifSchema` | `schemas5.go` |
+
+### `org.apache.xmpbox.xml` — all 6 files, plus a DOM
+
+| Java file | Go file |
+| --- | --- |
+| `DomHelper.java` | `domhelper.go` |
+| `DomXmpParser.java` | `domxmpparser.go` |
+| `PdfaExtensionHelper.java` | `pdfaextensionhelper.go` |
+| `XmpSerializer.java` | `serializer.go` |
+| `XmpParsingException.java`, `XmpSerializationException.java` | `errors.go` |
+| — (`org.w3c.dom`, `javax.xml.parsers`, `javax.xml.transform`) | `dom.go` |
+
+### The DOM, and how it differs from Xerces
+
+Java reaches the XML through `org.w3c.dom`: `DocumentBuilderFactory` parses into
+a namespace-aware `Document` and a `Transformer` writes one back. Go has no DOM,
+so `dom.go` is one — the node kinds this module asks for and nothing else.
+
+`encoding/xml` alone will not do, because it resolves a name's prefix away and
+`DomXmpParser` reads an element's prefix as often as it reads its namespace. The
+parser is built on `encoding/xml`'s `RawToken`, which reports names as written,
+with namespace resolution, element nesting and the DOCTYPE refusal done here.
+
+`go/w3c/dom`, which slice 8 added for XFDF, is a second DOM, and the two do not
+fold together. That one is the subset PDFBox reads XFDF through: read only,
+because XFDF is written out by hand with a `Writer`, and it resolves a prefix
+away when it is namespace aware, because that is what the FDF reading matches
+against. This one has to build a document in order to serialize it, and has to
+keep the prefix on every name. Each is a faithful port of what its own Java call
+site asks for, and widening either to cover both would make it a port of
+neither.
+
+Where the two differ, and what the port does:
+
+- **Attribute order.** Xerces holds an element's attributes in a `NamedNodeMap`
+  it searches by name, so they are held, walked and written in name order rather
+  than document order. Both the parser and the serializer walk that list and the
+  order reaches the output, so `Element.addAttribute` keeps it sorted the same
+  way.
+- **Namespace fixup.** An element built with `createElementNS` carries a
+  namespace and no declaration; a DOM serializer emits the missing declaration
+  as it writes the start tag, and leaves out one an enclosing element already
+  makes with the same binding. `writeElement` does both, and writes an element's
+  own declarations before its other attributes, which is the order the JDK's
+  serializer uses.
+- **Line separators.** The JDK's transformer ends the document with the
+  platform's separator, CRLF on Windows. The port always writes LF. Every Java
+  caller that compares serialized output normalizes CRLF to LF first —
+  `DeserializationTest.checkTransform` does — so this changes nothing they
+  check.
+- **Whitespace and comments.** `removeCommentsAndBlanks` is ported as written,
+  including its early return for an element with one child, so a comment inside
+  a single-child element survives in both.
+- **Malformed input.** Both parsers refuse a document that is not well formed;
+  the message differs, and no test compares it, because Java's comes from
+  Xerces. A DOCTYPE declaration is refused here the way
+  `disallow-doctype-decl` refuses it there.
+- **Encoding.** Java's parser sniffs the encoding declaration; the port reads
+  UTF-8, which is what every XMP packet in the corpus is and what the
+  specification requires.
+
+The serializer's output was checked against Java's, not against the port's own:
+`xmpbox` depends on nothing outside the JDK, so it compiles and runs locally,
+and every fixture in `DeserializationTest` now serializes byte-for-byte
+identically once CRLF is normalized to LF. The twelve SHA-256 digests that test
+asserts are the ported test's assertions too.
+
+### No reflection
+
+Java reads `@StructuredType` and `@PropertyType` off a class at run time, holds
+a `Class` in each `Types` constant, and finds a schema by
+`clz.getAnnotation(StructuredType.class).namespace()`. None of that is ported as
+reflection. Instead:
+
+- each structured type declares its `StructuredTypeInfo` and its
+  `PropertiesDescription` as values, and registers them against its `Types`
+  constant from its package's `init`;
+- each `Types` constant carries a constructor function rather than a `Class`,
+  registered the same way, and `ImplementingClassName` answers the simple name
+  Java's messages use;
+- `getClass().getSimpleName()` becomes a `TypeName() string` method;
+- each schema's namespace is an exported constant, and `XMPMetadata`'s typed
+  getters ask for the namespace and type-assert the result, which is what Java's
+  cast does anyway;
+- `TestValidatePermitedMetadata` walks the class for annotated fields; the port
+  asks the schema factory's property description, which is what those
+  annotations were read into.
+
+### Package cycles
+
+Java's four packages form three cycles that Go forbids. The devices, all of them
+already used elsewhere in this port:
+
+- **root ↔ type**: `XmpConstants` and `DateConverter` moved down and are aliased
+  back, as above.
+- **type ↔ schema**: `TypeMapping.initialize` names the twelve default schema
+  factories. `xmptype` declares `SchemaFactoryLike` and
+  `RegisterDefaultSchema`, and `xmpbox/schema`'s `init` pushes the twelve in.
+  `NewDefaultSchemaFactory` is the hook `addNewNameSpace` reaches back through;
+  where `xmpbox/schema` is not linked into a binary it is nil and
+  `AddNewNameSpace` does nothing, which cannot happen in practice because
+  nothing reaches a `TypeMapping` without going through a schema.
+- **schema → root**: `XMPSchemaFactory.createXMPSchema` calls
+  `metadata.addSchema`. `schema.MetadataHolder` names what is used and
+  `xmpbox.XMPMetadata` satisfies it.
+
+`xmpbox/xml` imports the root package directly, because Java's root package
+imports nothing from `org.apache.xmpbox.xml`.
+
+### Deviations from Java, each commented where it is
+
+- **`XMPSchema.reorganizeAltOrder` and an alternative with no `xml:lang`.** Java
+  raises NullPointerException; `languageOf` answers the empty string and the
+  walk continues. JAVA-BUGS 52.
+- **`DomXmpParser.parseDescriptionInner` and an undeclared property.** Java
+  raises NullPointerException; the port reports the property as `NoType`. The
+  parse fails either way. JAVA-BUGS 57.
+- **Java's null in a setter.** `setTextPropertyValue(name, null)` and its three
+  neighbours remove the property, and `setAboutAsSimple(null)` removes the
+  attribute; a Go string cannot be null, so
+  `XMPSchema.RemoveUnqualifiedProperty` and `RemoveAttribute` are those paths.
+  Without them the branches would be unreachable.
+- **`setUnqualifiedLanguagePropertyValue` with an empty value** removes the
+  alternative, where Java removes it only for null. An alternative whose value
+  is the empty string cannot be set through the port.
+- **`DateConverter.toCalendar` of a blank string** answers the zero time where
+  Java answers null; `IsBlankDate` is how a caller tells the two apart, and
+  `DateType` uses it so that an empty date property stays empty.
+- **`QName` gained a `Prefix` field.** `javax.xml.namespace.QName` has one and
+  the parser puts it in its messages; the port's had only the two parts
+  `getSpecifiedPropertyType` reads.
+- **Namespace declarations are written in sorted order** where Java walks a
+  `HashMap`, whose order is arbitrary but fixed for a given content. Sorting
+  makes the same metadata always write the same bytes.
+- **Three unchecked casts carry on rather than raising.**
+  `ArrayProperty.getElementsAsString` — which Java's own FIXME flags —
+  `XMPSchema.mergeComplexProperty` and
+  `removeUnqualifiedArrayValue(String, AbstractField)` cast every element of an
+  array without checking, so an array holding a shape they do not expect raises
+  `ClassCastException`. The port skips the element, or compares without the
+  cast. Each says so where it is.
+- **A property whose element had no prefix is written under its local name**,
+  where Java's serializer cannot write the packet at all. JAVA-BUGS 59.
+- **A date before the 1582 cutover is a different instant** from Java's, whose
+  `GregorianCalendar` switches to the Julian calendar there; both write the same
+  ISO 8601 string.
+- **`ErrorType.Configuration` is unreachable**, because the port has no
+  `DocumentBuilderFactory` to fail to configure.
+- **A sequence holding an empty date can still have an element removed**, where
+  Java raises NullPointerException on the empty one. JAVA-BUGS 60.
+- **A list of sequence dates holds the zero time** where Java holds a null,
+  because a `[]time.Time` cannot hold one; the length is the same either way.
+  JAVA-BUGS 61.
+
+### Which Java tests are ported
+
+All 27, as 396 Go test cases.
+
+| Java test | Go test |
+| --- | --- |
+| `type/AttributeTest` | `xmptype/attribute_test.go` |
+| `type/TestSimpleMetadataProperties` | `xmptype/simplemetadataproperties_external_test.go` |
+| `type/TestAbstractStructuredType`, `type/TestDerivedType` | `xmptype/structuredtype_external_test.go` |
+| `type/TestStructuredType` | `xmptype/teststructuredtype_external_test.go` |
+| `type/AbstractTypeTester` | — a reflection helper with no cases of its own |
+| `schema/SchemaTester`, `schema/XMPSchemaTester` | `schema/schematester_test.go` |
+| `schema/DublinCoreTest` | `schema/dublincore_test.go` |
+| `schema/XMPBasicTest` | `schema/xmpbasic_test.go` |
+| `schema/AdobePDFTest`, `schema/AdobePDFErrorsTest` | `schema/adobepdf_test.go` |
+| `schema/PhotoshopSchemaTest` | `schema/photoshop_test.go` |
+| `schema/XMPMediaManagementTest` | `schema/mediamanagement_test.go` |
+| `schema/XmpRightsSchemaTest` | `schema/xmprights_test.go` |
+| `schema/BasicJobTicketSchemaTest` | `schema/basicjobticket_test.go` |
+| `schema/PDFAIdentificationTest`, `schema/PDFAIdentificationOthersTest` | `schema/pdfaidentification_test.go` |
+| `schema/TestExifXmp` | `schema/exifxmp_test.go` |
+| `schema/XMPSchemaTest` | `schema/xmpschema_test.go` |
+| `xml/DomXmpParserTest` | `xml/domxmpparser_test.go`, `domxmpparser2_test.go`, `domxmpparser3_test.go` |
+| `parser/DeserializationTest` | `xml/deserialization_test.go` |
+| `DateConverterTest` | `dateconverter_test.go` |
+| `XMPMetaDataTest`, `DoubleSameTypeSchemaTest`, `TestXMPWithDefinedSchemas`, `TestXMPWithUndefinedSchemas`, `TestValidatePermitedMetadata` | `xmpmetadata_test.go` |
+
+The tests read the Java test resources from `xmpbox/src/test/resources`, the way
+the ported tests in the other modules do; nothing is copied.
+
+`SchemaTester` and `XMPSchemaTester` name every accessor by reflection and find
+the fields by walking the class. The port's harness takes a table naming them,
+and makes the same three assertions: nothing is set on a fresh schema, a value
+set through the accessors comes back through them, and setting one field leaves
+every other field of the schema alone. `SchemaTester`'s fifty rounds of random
+values become the several values a row may carry.
+
+Two Java cases are not assertions about the port and are left out:
+`XMPMetaDataTest.testTransformerExceptionMessage` and
+`testTransformerExceptionWithCause`, which construct an exception and assert
+that it was thrown.
+
+### Port defects found by the ported tests, fixed
+
+- **A getter of a derived text field read back as nothing.** Java's
+  `getPropertyAs(name, TextType.class)` answers a `URLType` or an
+  `AgentNameType`, because `Class.isInstance` is true of a subclass; a Go type
+  assertion to `*TextType` is false for a type that only embeds one, so
+  `getBaseURL`, `getCreatorTool` and every other accessor of a derived text
+  field answered the empty string. `xmptype.TextValued` and
+  `schema.TextPropertyOf` are what that call means here.
+- **`DimensionsType.toString`** wrote its two Floats through `%v`, which drops
+  the fraction part Java always writes, and answered 0 for a dimension that is
+  not there rather than `null`.
+- **`instanciateSimpleProperty`'s message** named the type rather than the class
+  that implements it — "Date" where Java writes "DateType" — and wrote the cause
+  into the message, which Java attaches to the exception without putting it in
+  `getMessage`.
+- **The serializer** wrote redundant namespace declarations, wrote attributes in
+  the order they were set, wrote an empty property as a pair of tags where
+  `setTextContent("")` adds no text node, and ended the document without a line
+  separator. All four are in the DOM section above.
+- **`setAboutAsSimple("")`** removed the attribute where Java sets it to the
+  empty string.
+- **A `DateType` built from a blank string** held the zero time where Java holds
+  no date at all, so PDFBOX-6029's empty date was written as the epoch.
+- **`fromISO8601`** took any two-digit zone offset, where `java.time.ZoneOffset`
+  refuses one beyond eighteen hours.
+- **`toISO8601`** wrote the proleptic year where a `Calendar` counts within an
+  era, so PDFBOX-6107's "0000-01-01" came back as "0000" rather than "0001".
+
+### The xmpbox adversarial review
+
+敵対的レビュー, phase D of the task file. What was checked, what was found, and
+what is still open.
+
+**D1 — every ported file against its Java.** This module depends on nothing
+outside the JDK, so it compiles with `javac` and runs under `jshell`, and the
+two implementations can be driven over the same input and compared. Three
+sweeps, all from the scratchpad, none of them committed:
+
+- **Every XML fixture in the repository**, parsed and serialized in both modes:
+  132 runs, of which 130 produce byte-identical output or the identical failure
+  message once CRLF is normalized to LF. The two that differ are one file, and
+  the difference is Java's, not the port's: `PDFBOX-5835.xml` parses in both and
+  cannot be serialized by Java at all. JAVA-BUGS 59.
+- **Every simple field of every one of the twelve schemas**, instantiated
+  through the type mapping and serialized: 164 lines of output, identical. That
+  covers each schema's property description — the names, the types, the
+  cardinalities — the type mapping's instantiation, and the serializer.
+- **Every one of the seventeen structured types**, with its namespace, its
+  prefix, its field list and every simple field: identical, both the report and
+  the serialized packet.
+- **Fifty-nine date strings** through `toCalendar` and `toISO8601`: 57
+  identical.
+
+What the sweeps found is in the commit that ran them and in the list of port
+defects above. Two differences were left in place, both pinned by tests:
+
+- **A date before the 1582 cutover** is a different instant in Java's
+  `GregorianCalendar`, which switches to the Julian calendar there, and in Go's
+  proleptic `time.Time`. Both write the same ISO 8601 string.
+  `TestDatesBefore1582DifferFromJava` pins it. Implementing the hybrid calendar
+  is out of proportion to a case XMP does not carry.
+- **A property whose element had no prefix** cannot be serialized by Java at
+  all, and is written by the port under its local name. JAVA-BUGS 59, pinned by
+  `TestSerializingAnUnprefixedPropertyWhereJavaFails`.
+
+The mechanical half: every public and protected Java method was listed and
+matched against the Go, and every one is accounted for — as the same name, as
+the renaming the conventions call for (`getX` to `X`, `isX` to `IsX`, an
+overload to a named form), or as something reflection did that a declared value
+does now. Two were unexported and are exported now:
+`PdfaExtensionHelper.validateNaming` and `populateSchemaMapping`.
+
+**D2 — silently dropped behaviour.** All seven `finally` blocks in the Java are
+`nsFinder.pop()` and all seven are `defer` in the port; the two places Java pops
+without a `finally` — the loop in `parseChildrenAsProperties` and the tail of
+`parseLiDescription` — pop without a `defer` here, so the same leak on an early
+exit is reproduced. There is no logger in this module and nothing is logged and
+swallowed. Every `catch` rethrows except three, and all three are ported as the
+same fallback: `DateType.isGoodType` answering false, `fromISO8601` falling back
+to the local form, and `transformValueType` falling back to a defined type.
+
+Java's checked exceptions are errors. `IllegalArgumentException` out of a
+constructor or a setter is an error, which is what
+`conventions/java-to-go.md` calls for. The unchecked ones are the three
+divergences already listed plus the `StringIndexOutOfBoundsException` of
+JAVA-BUGS 56, which is a panic.
+
+One family of unchecked exceptions is left as a divergence rather than a panic:
+Java casts without checking in three places, and a shape it does not expect
+raises `ClassCastException`. `ArrayProperty.getElementsAsString` — which Java's
+own FIXME flags — `XMPSchema.mergeComplexProperty` and
+`removeUnqualifiedArrayValue(String, AbstractField)` all carry on in the port,
+skipping the element or comparing without the cast. Each says so where it is.
+
+`XmpParsingException.ErrorType.Configuration` is unreachable in the port: it is
+raised when `DocumentBuilderFactory` cannot be configured, and the port has no
+factory to configure.
+
+**D3 — the tests are Java-derived.** Every assertion in the 27 ported test files
+comes from the Java test source. Three test files are not ports and say so in
+their own doc comments: `dateconverter_smart_test.go`, whose values were read by
+running Java's `DateConverter`; `nullprefix_test.go`, which pins JAVA-BUGS 59;
+and the `schema` harness, which is the reflection-driven `SchemaTester` and
+`XMPSchemaTester` rewritten as a table. Two Java cases are dropped and recorded
+above: the two that construct an exception and assert it was thrown.
+
+**D4 — the deferrals.** There are none. Every `TODO` and `FIXME` in the Go is
+Java's own, carried over with it; `grep` finds no other. Nothing in this module
+is "not ported yet".
+
+**D5 — the Java bugs.** Eight found, JAVA-BUGS 52 to 59, and two more in the
+feedback round below, each with where, what,
+what correct would be, where the Go carries it and how confident. None was fixed
+on the way past: 36, 37, 38, 39 and 41 are ported as written, and 35, 40 and 42
+are divergences recorded in both files rather than silent corrections.
+
+**D6 — this section.**
+
+**D7 — the XML handling difference.** The section above, "The DOM, and how it
+differs from Xerces".
+
+**D8 — the round trip against Java's output.** Not against the port's own: the
+twelve SHA-256 digests `DeserializationTest` asserts are over Java's bytes, and
+the port now produces them.
+
+
+### The xmpbox feedback round
+
+Three review items, all acted on.
+
+**A date property that is there and holds no date read back as the epoch.**
+Reported by Codex against `dateValueOf`, and correct: Java's `getCreateDate`
+and its neighbours answer `getValue()`, which is null both when the property is
+absent and when it is there holding nothing — the `<xmp:CreateDate/>` of
+PDFBOX-6029. The port checked only the pointer, so the second case answered a
+date at year 1. `AbstractStructuredType.getDatePropertyAsCalendar` had the same
+shape, which the report also named.
+
+Fixed at the root rather than at the two call sites: `DateType.Value` now
+answers nil where the property holds no date, the way `getValue()` does, and
+`DateType.DateValue` answers `(time.Time, bool)` rather than a bare time, so
+every caller has to say what it does with the null. That turned up two more
+readers the report had not named, and both are Java defects rather than port
+ones:
+
+- `removeUnqualifiedSequenceDateValue` calls `getValue().equals(date)` without
+  a null check, so a sequence holding one empty date cannot have any element
+  removed. JAVA-BUGS 60. The port passes over such an element.
+- `getUnqualifiedSequenceDateValueList` adds the null to the list it answers.
+  JAVA-BUGS 61. A `[]time.Time` cannot hold one, so the port keeps the element
+  — the length matches — with the zero time standing in.
+
+`TestAnEmptyDateReadsBackAsNothing` and
+`TestAnEmptyDateInAStructuredTypeReadsBackAsNothing` pin all of it. Both fail on
+every assertion without the fix; the expected values were read by running
+`org.apache.xmpbox` over the same packet, which prints null for
+`getCreateDateProperty().getValue()`, `getCreateDate()`,
+`getDatePropertyValue("CreateDate")` and `getStringValue()`, and null for
+`ResourceEventType.getWhen()`.
+
+**Two consecutive horizontal rules in JAVA-BUGS.md.** Reported by Copilot, and
+correct: an artefact of resolving the merge conflict by hand. Removed, and the
+seam where this track's entries begin now matches the file's own style.
+
+**`caseName` numbered subtests with `string(rune('1'+i))`.** Reported by
+Copilot, and correct: past nine rounds that stops being a digit. No row carries
+more than two values today, so it could not bite yet; `strconv.Itoa` now.
+
+### Still open
+
+Nothing in this track. Four differences are deliberate and pinned, and are listed
+above: the two the review found, and the two the feedback round added.
