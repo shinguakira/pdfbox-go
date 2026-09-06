@@ -20,19 +20,27 @@ func isJavaSpace(r rune) bool {
 func SplitOnSpace(s string) []string {
 	pieces := []string{}
 	current := []rune{}
+	matched := false
 	for _, r := range s {
 		if isJavaSpace(r) {
+			matched = true
 			pieces = append(pieces, string(current))
 			current = current[:0]
 			continue
 		}
 		current = append(current, r)
 	}
+	// Pattern.split answers the whole input, untrimmed, where the pattern never
+	// matched -- which is why an empty input gives one empty string.
+	if !matched {
+		return []string{s}
+	}
 	pieces = append(pieces, string(current))
-	// String.split with a limit of zero drops the trailing empty strings, and
-	// answers one empty string for an empty input.
+	// With a limit of zero it then drops *every* trailing empty string, so an
+	// input that is nothing but separators gives an empty array rather than one
+	// empty string. Java's own test asserts both shapes.
 	last := len(pieces)
-	for last > 1 && pieces[last-1] == "" {
+	for last > 0 && pieces[last-1] == "" {
 		last--
 	}
 	return pieces[:last]

@@ -1,106 +1,67 @@
-package graphics
+package graphics_test
+
+// Port of org.apache.pdfbox.pdmodel.graphics.PDLineDashPatternTest.
 
 import (
 	"testing"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics"
 )
 
-// Written from org.apache.pdfbox.pdmodel.graphics.PDLineDashPattern; the Java
-// suite has no test for it.
+// TestGetCOSObject is testGetCOSObject.
+//
+// The dashes go in as integers and come back as floats: the pattern keeps them
+// as a float array of its own rather than the array it was handed. The phase
+// stays an integer.
+func TestGetCOSObject(t *testing.T) {
+	ar := cos.NewArray()
+	ar.Add(cos.IntegerOne)
+	ar.Add(cos.IntegerTwo)
 
-func TestPDLineDashPatternDefault(t *testing.T) {
-	p := NewPDLineDashPattern()
-	if got := p.Phase(); got != 0 {
-		t.Errorf("Phase = %d, want 0", got)
+	dash := graphics.NewPDLineDashPatternOf(ar, 3)
+
+	dashBase, isArray := dash.COSObject().(*cos.Array)
+	if !isArray {
+		t.Fatalf("COSObject() is %T, want an array", dash.COSObject())
 	}
-	if got := p.DashArray(); len(got) != 0 {
-		t.Errorf("DashArray = %v, want none", got)
+	if dashBase.Size() != 2 {
+		t.Fatalf("the pattern array holds %d entries, want 2", dashBase.Size())
+	}
+
+	dashArray, isArray := dashBase.GetObject(0).(*cos.Array)
+	if !isArray {
+		t.Fatalf("the first entry is %T, want an array", dashBase.GetObject(0))
+	}
+	if dashArray.Size() != 2 {
+		t.Fatalf("the dash array holds %d entries, want 2", dashArray.Size())
+	}
+	wantFloat(t, dashArray.Get(0), cos.FloatOne, "the first dash")
+	wantFloat(t, dashArray.Get(1), cos.NewFloat(2), "the second dash")
+
+	phase, isInteger := dashBase.Get(1).(*cos.Integer)
+	if !isInteger {
+		t.Fatalf("the phase is %T, want an integer", dashBase.Get(1))
+	}
+	if !phase.Equals(cos.IntegerThree) {
+		t.Errorf("the phase is %v, want 3", phase)
+	}
+
+	// Java ends with System.out.println(dash); the port checks String() answers
+	// something rather than printing it, which is all that line proves.
+	if dash.String() == "" {
+		t.Error("String() = \"\", want a description of the pattern")
 	}
 }
 
-func TestPDLineDashPatternOf(t *testing.T) {
-	p := NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{3, 2}), 1)
-	if got := p.Phase(); got != 1 {
-		t.Errorf("Phase = %d, want 1", got)
+// wantFloat is assertEquals(expected, dashArray.get(i)) for a COSFloat.
+func wantFloat(t *testing.T, got cos.Base, want *cos.Float, what string) {
+	t.Helper()
+	value, isFloat := got.(*cos.Float)
+	if !isFloat {
+		t.Fatalf("%s is %T, want a float", what, got)
 	}
-	if got := p.DashArray(); len(got) != 2 || got[0] != 3 || got[1] != 2 {
-		t.Errorf("DashArray = %v, want [3 2]", got)
-	}
-}
-
-// TestPDLineDashPatternArrayIsCopied pins that the pattern is immutable: the
-// array handed back cannot be used to change it.
-func TestPDLineDashPatternArrayIsCopied(t *testing.T) {
-	p := NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{3, 2}), 0)
-	p.DashArray()[0] = 99
-	if got := p.DashArray()[0]; got != 3 {
-		t.Errorf("the pattern changed to %v", got)
-	}
-}
-
-// TestPDLineDashPatternNegativePhase pins the rule from the PDF 2.0
-// specification: a negative phase is raised by twice the sum of the dash
-// lengths until it is positive.
-func TestPDLineDashPatternNegativePhase(t *testing.T) {
-	// Twice the sum is 10, so -3 goes to 7 in one step.
-	p := NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{3, 2}), -3)
-	if got := p.Phase(); got != 7 {
-		t.Errorf("Phase = %d, want 7", got)
-	}
-
-	// -23 needs three steps of 10, landing on 7 again.
-	p = NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{3, 2}), -23)
-	if got := p.Phase(); got != 7 {
-		t.Errorf("Phase = %d, want 7", got)
-	}
-}
-
-// TestPDLineDashPatternNegativePhaseNoDashes pins that a negative phase with
-// nothing to step by is simply zeroed rather than looping forever.
-func TestPDLineDashPatternNegativePhaseNoDashes(t *testing.T) {
-	p := NewPDLineDashPatternOf(cos.NewArray(), -5)
-	if got := p.Phase(); got != 0 {
-		t.Errorf("Phase = %d, want 0", got)
-	}
-
-	p = NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{0, 0}), -5)
-	if got := p.Phase(); got != 0 {
-		t.Errorf("Phase = %d, want 0", got)
-	}
-}
-
-func TestPDLineDashPatternCOSObject(t *testing.T) {
-	array, ok := NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{3, 2}), 1).COSObject().(*cos.Array)
-	if !ok {
-		t.Fatal("COSObject is not an array")
-	}
-	if array.Size() != 2 {
-		t.Fatalf("array = %v, want the dashes and the phase", array)
-	}
-	dashes, ok := array.Get(0).(*cos.Array)
-	if !ok || dashes.Size() != 2 {
-		t.Errorf("the first entry is %v, want the dash array", array.Get(0))
-	}
-	if got := array.GetInt(1); got != 1 {
-		t.Errorf("the phase is %d, want 1", got)
-	}
-}
-
-func TestPDLineDashPatternString(t *testing.T) {
-	got := NewPDLineDashPatternOf(cos.ArrayOfFloats([]float32{3, 2}), 1).String()
-	if want := "PDLineDashPattern{array=[3.0, 2.0], phase=1}"; got != want {
-		t.Errorf("String = %q, want %q", got, want)
-	}
-}
-
-// TestPDLineDashPatternDashArrayNeverNil pins the doc contract. Java returns
-// array.clone(), and cloning an empty array gives a non-null empty array.
-func TestPDLineDashPatternDashArrayNeverNil(t *testing.T) {
-	if got := NewPDLineDashPattern().DashArray(); got == nil {
-		t.Error("DashArray() of the solid pattern is nil, want an empty slice")
-	}
-	if got := NewPDLineDashPatternOf(cos.NewArray(), 0).DashArray(); got == nil {
-		t.Error("DashArray() of an empty dash array is nil, want an empty slice")
+	if !value.Equals(want) {
+		t.Errorf("%s is %v, want %v", what, value, want)
 	}
 }

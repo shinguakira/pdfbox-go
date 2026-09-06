@@ -41,7 +41,7 @@ func FormatFloatFast(value float32, fractionDigits int, asciiBuffer []byte) int 
 	}
 
 	offset := 0
-	integerPart := int64(value)
+	integerPart := int64OfFloat(value)
 
 	// handle sign
 	if value < 0 {
@@ -69,6 +69,28 @@ func FormatFloatFast(value float32, fractionDigits int, asciiBuffer []byte) int 
 		offset = formatPositiveNumber(fractionPart, fractionDigits-1, true, asciiBuffer, offset)
 	}
 	return offset
+}
+
+// int64OfFloat is Java's `(long) value` cast.
+//
+// Java saturates: a float at or above Long.MAX_VALUE becomes Long.MAX_VALUE and
+// one at or below Long.MIN_VALUE becomes Long.MIN_VALUE. Go leaves the result
+// implementation-defined, and on amd64 an out-of-range conversion gives
+// -9223372036854775808 whichever way the value went.
+//
+// It is reachable here. The guard above compares against Long.MAX_VALUE
+// *widened to a float*, which is 2^63 exactly, so a value of exactly 2^63
+// passes it and then has to be cast — which is what
+// TestNumberFormatUtil.testFormatOfIntegerValues does, and why it expects
+// 9223372036854775807 rather than ...808.
+func int64OfFloat(value float32) int64 {
+	if value >= float32(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	if value <= float32(math.MinInt64) {
+		return math.MinInt64
+	}
+	return int64(value)
 }
 
 // formatPositiveNumber writes one number digit by digit, from the given power
