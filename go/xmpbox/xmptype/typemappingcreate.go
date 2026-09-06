@@ -121,11 +121,16 @@ func CreatePropertyType(t Types, card Cardinality) PropertyType {
 
 // QName is an XML qualified name: a namespace URI and a local part.
 //
-// Port of javax.xml.namespace.QName, of which getSpecifiedPropertyType uses
-// exactly these two accessors.
+// Port of javax.xml.namespace.QName.
 type QName struct {
 	NamespaceURI string
 	LocalPart    string
+
+	// Prefix is the prefix the name was written with, and the empty string
+	// where it was written without one -- which is javax.xml.namespace.QName's
+	// DEFAULT_NS_PREFIX. Java's QName.toString leaves it out, and so does
+	// String below; it is here because the parser puts it in its messages.
+	Prefix string
 }
 
 // String returns the Java QName.toString form.

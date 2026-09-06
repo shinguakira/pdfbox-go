@@ -503,7 +503,7 @@ type PDFAExtensionSchema struct{ XMPSchema }
 const PDFAExtensionSchemas = "schemas"
 
 var pdfaExtensionInfo = xmptype.StructuredTypeInfo{
-	PreferedPrefix: "pdfaExtension",
+	PreferedPrefix: PDFAExtensionPreferedPrefix,
 	Namespace:      PDFAExtensionNamespace,
 }
 

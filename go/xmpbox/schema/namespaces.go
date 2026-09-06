@@ -20,3 +20,7 @@ const (
 	TiffNamespace               = "http://ns.adobe.com/tiff/1.0/"
 	ExifNamespace               = "http://ns.adobe.com/exif/1.0/"
 )
+
+// PDFAExtensionPreferedPrefix is the prefix PDFAExtensionSchema declares, which
+// PdfaExtensionHelper insists on.
+const PDFAExtensionPreferedPrefix = "pdfaExtension"
