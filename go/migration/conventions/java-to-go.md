@@ -127,6 +127,49 @@ JDK lacked something:
 Java2D throughout, and Go has no equivalent; see PLAN.md slice 9 for how that is
 scoped.
 
+### Methods whose contract is not what the Go one looks like
+
+The table above is for methods with a Go equivalent. These are the ones where a
+Go function has the same *name* or the same *shape* and different semantics.
+Each of them has already cost this port at least one defect. **Port the contract
+once, in a helper, rather than at the call site** — every one of these was found
+more than once because it was patched where it bit instead of written down.
+
+**`String.split(regex)` with the default limit.** Three rules, and no function
+in `strings` has all three:
+
+| Input | `String.split(",")` | `strings.Split` | `strings.FieldsFunc` |
+| --- | --- | --- | --- |
+| `",1"` | `["", "1"]` | `["", "1"]` | `["1"]` ✗ |
+| `"1,,2"` | `["1", "", "2"]` | `["1", "", "2"]` | `["1", "2"]` ✗ |
+| `"1,2,"` | `["1", "2"]` | `["1", "2", ""]` ✗ | `["1", "2"]` |
+| `",,"` | `[]` | `["", "", ""]` ✗ | `[]` |
+| `""` | `[""]` | `[""]` | `[]` ✗ |
+
+So: leading and interior empties are **kept**, every trailing empty is
+**dropped**, and where the separator never occurs the whole input comes back
+untrimmed. `pdmodel/fdf`'s `splitJavaFunc` writes all three out; `util.SplitOnSpace`
+is the same contract for `\s`. `track/test-backfill` hit this four times in
+three packages, and one of them made the port silently accept a coordinate list
+Java rejects.
+
+**`HashMap.put` keeps the key object it already has**, and updates only the
+value. Two keys that are `equals` but carry different extra state — as
+`COSObjectKey` does with its stream index — do not replace one another. Removing
+first is how Java changes one; `cos.Document` has `RemoveXRefOffset` for it.
+
+**`(long) someFloat` saturates.** Out of range it gives `Long.MAX_VALUE` or
+`Long.MIN_VALUE`; the Go conversion is implementation-defined and gives
+-9223372036854775808 either way on amd64. See `util.int64OfFloat`. `(int)` from
+a wider integer narrows rather than saturating, which is the opposite rule —
+both are in [Numeric types](#numeric-types).
+
+**Xerces holds a `NamedNodeMap` sorted by qualified name**, not in document
+order, because it searches the map with a binary search. Anything that walks
+`getAttributes()` sees the sorted order, and PDFBox writes XML out that way.
+Both DOMs in this port do the same; `w3c/dom` did not until a test asserted the
+bytes.
+
 ## Numeric types
 
 Java has no unsigned types, so PDFBox masks constantly: `b & 0xff`, `x & 0xffff`,

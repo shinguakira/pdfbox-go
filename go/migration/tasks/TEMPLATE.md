@@ -69,6 +69,18 @@ and write from source.>
 
 # Phase B — Port the implementation
 
+**A change with no failing test behind it is not a fix.** Where porting one
+site makes you notice a second with the same defect, that second site needs a
+test of its own before it is touched -- pattern-matching the first fix onto it
+without one is how a wrong fix gets in beside a right one, and phase D will
+read it as demonstrated because it travelled with a demonstrated change. Either
+write the test, or leave the site alone and record it.
+
+If the defect is a Java standard-library contract, port the contract once into a
+helper rather than patching each call site. See
+[`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
+port has already paid for more than once.
+
 <One task per package, in dependency order. Name the Java classes.>
 
 - [ ] B1.
@@ -109,17 +121,24 @@ the ported tests cannot answer.
     running the Go? A value read off the port proves nothing.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [ ] D4. Check every change made in phase B
+  - Does each one have a test that fails without it? Name the test. A change
+    that rode along with a tested one and has no test of its own is not
+    demonstrated, whatever it travelled with
+  - Was it a port defect, or the Java behaving that way? The second is a
+    `JAVA-BUGS.md` entry and a reverted change
+
+- [ ] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [ ] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [ ] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 ---

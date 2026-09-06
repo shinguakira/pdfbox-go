@@ -130,6 +130,18 @@ A0 and make `STATUS.md` agree with whatever is chosen.
 
 # Phase B — Port the implementation
 
+**A change with no failing test behind it is not a fix.** Where porting one
+site makes you notice a second with the same defect, that second site needs a
+test of its own before it is touched -- pattern-matching the first fix onto it
+without one is how a wrong fix gets in beside a right one, and phase D will
+read it as demonstrated because it travelled with a demonstrated change. Either
+write the test, or leave the site alone and record it.
+
+If the defect is a Java standard-library contract, port the contract once into a
+helper rather than patching each call site. See
+[`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
+port has already paid for more than once.
+
 - [ ] B1. `Version` and the flag plumbing chosen in A0
 - [ ] B2. The slice 1 commands — `DecompressObjectstreams`, `WriteDecodedDoc`
 - [ ] B3. The text commands — `ExtractText`, `PDFText2HTML`, `PDFText2Markdown`
@@ -173,22 +185,29 @@ faithful migration. Go in assuming it is wrong.
 
 - [ ] D3. Check the tests are Java-derived, not Go-derived
 
-- [ ] D4. Check every deferral is real and recorded
+- [ ] D4. Check every change made in phase B
+  - Does each one have a test that fails without it? Name the test. A change
+    that rode along with a tested one and has no test of its own is not
+    demonstrated, whatever it travelled with
+  - Was it a port defect, or the Java behaving that way? The second is a
+    `JAVA-BUGS.md` entry and a reverted change
 
-- [ ] D5. Check the Java bugs
+- [ ] D5. Check every deferral is real and recorded
 
-- [ ] D6. Write the review down
+- [ ] D6. Check the Java bugs
+
+- [ ] D7. Write the review down
 
 And for this branch in particular:
 
-- [ ] D7. Check every flag, one at a time
+- [ ] D8. Check every flag, one at a time
   - The flag names, their defaults, and what an unrecognised flag does are the
     compatibility surface. A command that does the right thing under different
     flag names is a different command
   - Java's `picocli` gives some flags an arity and some a negatable form. Both
     are easy to lose in translation and neither shows up in a test
 
-- [ ] D8. Check the exit codes and the streams
+- [ ] D9. Check the exit codes and the streams
   - Which failures exit non-zero, and what goes to stdout versus stderr. A tool
     that prints its error to stdout breaks every pipeline that uses it
 

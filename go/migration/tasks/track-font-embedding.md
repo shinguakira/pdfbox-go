@@ -99,6 +99,18 @@ reached, in the Go, by a method that panics.
 
 # Phase B — Port the implementation
 
+**A change with no failing test behind it is not a fix.** Where porting one
+site makes you notice a second with the same defect, that second site needs a
+test of its own before it is touched -- pattern-matching the first fix onto it
+without one is how a wrong fix gets in beside a right one, and phase D will
+read it as demonstrated because it travelled with a demonstrated change. Either
+write the test, or leave the site alone and record it.
+
+If the defect is a Java standard-library contract, port the contract once into a
+helper rather than patching each call site. See
+[`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
+port has already paid for more than once.
+
 In dependency order — the interface, then the shared base, then the two halves.
 
 - [ ] B1. `Subsetter`
@@ -160,17 +172,24 @@ faithful migration. Go in assuming it is wrong.
     running the Go?
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [ ] D4. Check every change made in phase B
+  - Does each one have a test that fails without it? Name the test. A change
+    that rode along with a tested one and has no test of its own is not
+    demonstrated, whatever it travelled with
+  - Was it a port defect, or the Java behaving that way? The second is a
+    `JAVA-BUGS.md` entry and a reverted change
 
-- [ ] D5. Check the Java bugs
+- [ ] D5. Check every deferral is real and recorded
+
+- [ ] D6. Check the Java bugs
   - Every bug found — with where, what, what correct would be, where the Go
     carries it, and how confident?
 
-- [ ] D6. Write the review down
+- [ ] D7. Write the review down
 
 And for this branch in particular:
 
-- [ ] D7. Check the bytes, not just the structure
+- [ ] D8. Check the bytes, not just the structure
   - A subsetted font that parses is not a font that is right. Read a document
     this branch writes back with the port's own `fontbox` parser, and check the
     glyphs the subset kept are the glyphs that were asked for
@@ -178,7 +197,7 @@ And for this branch in particular:
     the two `/FontFile2` streams. Identical is the strong result; a difference
     needs a reason
 
-- [ ] D8. Check `/ToUnicode` against JAVA-BUGS 33
+- [ ] D9. Check `/ToUnicode` against JAVA-BUGS 33
   - The entry says the Java checks one of two strings. Confirm the port
     reproduces that and that the entry's "where the Go carries it" is now true
 
