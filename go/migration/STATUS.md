@@ -3810,8 +3810,8 @@ not one turned out to be the Java behaving oddly.**
 Six defects, in four families. None of them is a Java bug; `JAVA-BUGS.md` gains
 no entry from this branch.
 
-**Two things `String.split` does that `strings.Split` does not** — the same trap
-twice, in unrelated packages:
+**Three things `String.split` does that no function in `strings` does** — the
+same trap in unrelated packages, and the review round found a fourth face of it:
 
 - `java.lang.String.split` with the default limit drops **trailing** empty
   strings. Every `String.split` site in `pdmodel/fdf` kept them, and
@@ -3981,6 +3981,35 @@ because **none of them is a test**:
 
 The remaining 20 are `tools` and `pdfbox-layout`, which belong to
 `track/tools` and `track/pdfbox-layout`.
+
+### Review feedback
+
+Two items, both right, and the first of them was the branch's own fix left half
+done.
+
+**`splitOnCommaOrSemicolon` still dropped leading and interior empty fields.**
+Reported by Copilot and by Codex, independently and identically. Phase B had
+wrapped `strings.FieldsFunc` in a trailing-empty trim, which fixes nothing that
+`FieldsFunc` breaks: it drops *every* empty field, so `"1,,2"` came back as two
+numbers where Java gives three and then rejects the middle one. That is worse
+than the panic this branch started by fixing — **the port silently accepted a
+coordinate list Java rejects, and read the remaining numbers into the wrong
+positions.**
+
+Writing the test first found a third rule broken as well, which neither
+reviewer mentioned: `splitJava("")` answered `[]` where Java answers `[""]`,
+because `Pattern.split` returns the input untrimmed when the separator never
+occurs at all. That is the same rule `StringUtil.SplitOnSpace` was fixed for
+earlier in this branch, missed here.
+
+Both helpers now go through one `splitJavaFunc` that writes all three rules
+out, with `split_test.go` covering leading, interior, trailing, all-separator
+and empty inputs for both separators.
+
+**The `NamedNodeMap` doc comment was left saying the opposite of what the code
+now does.** Reported by Copilot, and correct: sorting the attributes made "in
+the order they were written" false for every caller reading it. Corrected, and
+it now points at `addAttribute` as the only thing that fills the map.
 
 ### Still open
 

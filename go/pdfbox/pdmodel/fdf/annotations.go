@@ -694,27 +694,52 @@ func (a *FDFAnnotationInk) InkList() [][]float32 {
 	return retval
 }
 
-// splitOnCommaOrSemicolon is String.split("[,;]").
+// splitOnCommaOrSemicolon is String.split("[,;]"), which the ink, polygon and
+// polyline annotations read their coordinates with.
 func splitOnCommaOrSemicolon(text string) []string {
-	return dropTrailingEmpty(strings.FieldsFunc(text,
-		func(r rune) bool { return r == ',' || r == ';' }))
+	return splitJavaFunc(text, func(r rune) bool { return r == ',' || r == ';' })
 }
 
 // splitJava is String.split(sep) for a one-character separator.
-//
-// java.lang.String.split with the default limit of zero **removes trailing
-// empty strings**; strings.Split keeps them. Every one of these attributes is
-// a list of numbers, and real XFDF in the wild ends them with a separator --
-// the coords of xfdf-test-document-annotations.xml do -- so without this the
-// port hands parseFloat an empty string and panics on a file Java reads.
 func splitJava(text, sep string) []string {
-	return dropTrailingEmpty(strings.Split(text, sep))
+	sepRune := []rune(sep)[0]
+	return splitJavaFunc(text, func(r rune) bool { return r == sepRune })
 }
 
-// dropTrailingEmpty removes the empty strings at the end of a split, which is
-// what String.split does and what neither strings.Split nor strings.FieldsFunc
-// expresses on its own. Interior empties stay, because Java keeps those.
-func dropTrailingEmpty(parts []string) []string {
+// splitJavaFunc is java.lang.String.split with the default limit of zero, for a
+// separator described by a predicate.
+//
+// Three of its rules have to be written out, because no function in `strings`
+// has the same set:
+//
+//   - a leading or interior empty field is **kept**. strings.FieldsFunc drops
+//     every empty field, so it cannot be used: dropping an interior one does
+//     not merely lose a field, it makes the port accept a coordinate list Java
+//     rejects and read the rest into the wrong positions.
+//   - every *trailing* empty field is dropped. strings.Split keeps them, and
+//     real XFDF ends these attributes with a separator -- the coords of
+//     xfdf-test-document-annotations.xml do -- so keeping one hands parseFloat
+//     an empty string, which panics on a file Java reads.
+//   - where the separator never occurs the whole input comes back untrimmed,
+//     which is why an empty input gives one empty string rather than none.
+func splitJavaFunc(text string, isSeparator func(rune) bool) []string {
+	parts := []string{}
+	current := &strings.Builder{}
+	matched := false
+	for _, r := range text {
+		if isSeparator(r) {
+			matched = true
+			parts = append(parts, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if !matched {
+		return []string{text}
+	}
+	parts = append(parts, current.String())
+
 	end := len(parts)
 	for end > 0 && parts[end-1] == "" {
 		end--

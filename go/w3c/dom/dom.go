@@ -79,8 +79,10 @@ func (l NodeList) Item(index int) Node {
 // NamedNodeMap is a collection of nodes reachable by name.
 //
 // Port of the interface org.w3c.dom.NamedNodeMap. It holds the attributes of an
-// element, in the order they were written, which is the order Xerces keeps them
-// in too.
+// element **sorted by qualified name**, not in the order they were written:
+// Xerces keeps them sorted so it can search the map with a binary search, and
+// anything that walks getAttributes() therefore sees that order. See
+// Element.addAttribute, which is the only thing that fills this.
 type NamedNodeMap []*Attr
 
 // Length returns how many nodes the map holds.
