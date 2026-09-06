@@ -104,50 +104,50 @@ records that as the reason it takes the general path instead.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every deferral is real and recorded
+- [x] D4. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D7. Check the temporary files are cleaned up
+- [x] D7. Check the temporary files are cleaned up
   - Java uses `File.deleteOnExit` and explicit close. Go has neither
     automatically. A scratch file left behind on a crash is a real defect.
 
-- [ ] D8. Check concurrency honestly
+- [x] D8. Check concurrency honestly
   - `slice/0` already deviated once here: `CreateView` hands each caller its
     own cursor where Java caches one per thread id. Whatever this track does,
     document the contract on every exported type.
 
-- [ ] D9. Re-read the `slice/0` note in `STATUS.md`
+- [x] D9. Re-read the `slice/0` note in `STATUS.md`
   - `pdfio` was not ported test-first. It is the one package where a later
     re-read against the Java is worth doing on its own, and this track is
     already in that code.
