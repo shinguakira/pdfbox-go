@@ -149,20 +149,37 @@ func (t *TypeMapping) InstanciateDefinedType(propertyName,
 }
 
 // InstanciateSimpleProperty returns a new simple property of the given type.
+//
+// Java names the implementing class in the message and hands the cause to the
+// IllegalArgumentException without writing it there, so the error this returns
+// answers the message alone and unwraps to the cause.
 func (t *TypeMapping) InstanciateSimpleProperty(nsuri, prefix, name string, value any,
 	simpleType Types) (AbstractSimpleProperty, error) {
+	failed := fmt.Sprintf("Failed to instantiate %s property with value '%v'",
+		simpleType.ImplementingClassName(), value)
 	construct := simpleType.SimpleConstructor()
 	if construct == nil {
-		return nil, fmt.Errorf("Failed to instantiate %v property with value '%v'",
-			simpleType, value)
+		return nil, &causedError{message: failed}
 	}
 	property, err := construct(t.metadata, nsuri, prefix, name, value)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to instantiate %v property with value '%v': %w",
-			simpleType, value, err)
+		return nil, &causedError{message: failed, cause: err}
 	}
 	return property, nil
 }
+
+// causedError is a Java exception built with a cause: Error answers the message
+// alone, the way getMessage does, and Unwrap answers what it came of.
+type causedError struct {
+	message string
+	cause   error
+}
+
+// Error returns the message.
+func (e *causedError) Error() string { return e.message }
+
+// Unwrap returns what this came of.
+func (e *causedError) Unwrap() error { return e.cause }
 
 // InstanciateSimpleField returns a new simple property of the type the given
 // description gives the named property.

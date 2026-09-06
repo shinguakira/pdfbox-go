@@ -198,6 +198,24 @@ func (t Types) StructuredConstructor() StructuredConstructor { return structured
 // type.
 func (t Types) StructuredTypeInfo() StructuredTypeInfo { return structuredTypeInfos[t] }
 
+// ImplementingClassName returns the simple name of the class that implements
+// the type, which is what the type mapping puts in its messages.
+//
+// Port of getImplementingClass().getSimpleName(). Every type but three names a
+// class spelled as the constant plus "Type": GPSCoordinate and LangAlt are
+// carried by a plain TextType, and MIMEType's class is MIMEType itself.
+func (t Types) ImplementingClassName() string {
+	switch t {
+	case Structured, DefinedType:
+		return ""
+	case GPSCoordinate, LangAlt:
+		return "TextType"
+	case MIMEType:
+		return "MIMEType"
+	}
+	return t.String() + "Type"
+}
+
 // StructuredProperties returns the properties a structured type declares.
 func (t Types) StructuredProperties() *PropertiesDescription { return structuredProperties[t] }
 
