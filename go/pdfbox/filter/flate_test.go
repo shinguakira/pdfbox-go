@@ -3,6 +3,7 @@ package filter
 import (
 	"bytes"
 	"compress/zlib"
+	"errors"
 	"io"
 	"math/rand"
 	"testing"
@@ -343,5 +344,57 @@ func TestFlateDecoderReaderEndsAtDamageInsteadOfFailing(t *testing.T) {
 					"before the damage")
 			}
 		})
+	}
+}
+
+// erroringReader hands back some bytes and then a real I/O failure, the way a
+// disk or a network source does.
+type erroringReader struct {
+	head []byte
+	err  error
+}
+
+func (e *erroringReader) Read(p []byte) (int, error) {
+	if len(e.head) > 0 {
+		n := copy(p, e.head)
+		e.head = e.head[n:]
+		return n, nil
+	}
+	return 0, e.err
+}
+
+// TestFlateDecoderReaderPassesSourceErrorsOn checks that only damaged deflate
+// data ends the stream quietly.
+//
+// FlateFilterDecoderStream.fetch reads the source *outside* its try block and
+// catches only DataFormatException, so an IOException out of the wrapped stream
+// propagates and only corrupt compressed data is swallowed. compress/flate
+// reports both through one error, so the port has to tell them apart: a failing
+// disk must not look like the end of the page's content.
+func TestFlateDecoderReaderPassesSourceErrorsOn(t *testing.T) {
+	plain := bytes.Repeat([]byte("BT /F1 12 Tf 100 700 Td (Hello) Tj ET\n"), 8)
+	var deflated bytes.Buffer
+	zlibWriter := zlib.NewWriter(&deflated)
+	if _, err := zlibWriter.Write(plain); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := zlibWriter.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	sourceErr := errors.New("the disk went away")
+	// enough of the stream to get past the header and start inflating
+	source := &erroringReader{head: deflated.Bytes()[:12], err: sourceErr}
+
+	decoder, err := NewFlateDecoderReader(source)
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+	defer decoder.Close()
+
+	if _, err := io.ReadAll(decoder); !errors.Is(err, sourceErr) {
+		t.Errorf("ReadAll = %v, want the source's own error: Java lets an "+
+			"IOException out of the wrapped stream propagate and swallows "+
+			"only DataFormatException", err)
 	}
 }

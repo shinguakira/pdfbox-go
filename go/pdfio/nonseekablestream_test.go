@@ -585,3 +585,60 @@ func TestNonSeekableCloseFailureLeavesTheSourceOpen(t *testing.T) {
 	// and it still reads, which is what "not closed" has to mean
 	wantByteOrEOF(t, source, '1')
 }
+
+// bytesThenError hands back its content and the failure in one call, which
+// io.Reader permits and java.io.InputStream cannot express.
+type bytesThenError struct {
+	content []byte
+	err     error
+}
+
+func (b *bytesThenError) Read(p []byte) (int, error) {
+	if len(b.content) == 0 {
+		return 0, b.err
+	}
+	n := copy(p, b.content)
+	b.content = b.content[n:]
+	return n, b.err
+}
+
+func (b *bytesThenError) Close() error { return nil }
+
+// TestNonSeekableKeepsBytesReturnedWithAnError checks that data handed back
+// together with a failure still reaches the reader.
+//
+// Java's fetch assigns `bufferBytes[CURRENT] = is.read(...)` and only then can
+// an exception happen, because InputStream.read either returns bytes or throws
+// -- never both. Go's io.Reader may do both in one call, so a port that reports
+// the error and drops the count loses bytes the source did deliver, and marks
+// itself at the end so they can never be asked for again.
+//
+// What Java would have seen is two calls: one returning the bytes, and the next
+// throwing. So the bytes come out first and the error follows.
+func TestNonSeekableKeepsBytesReturnedWithAnError(t *testing.T) {
+	sourceErr := errors.New("the disk went away")
+	source := NewNonSeekableRead(&bytesThenError{
+		content: []byte("0123456789"),
+		err:     sourceErr,
+	})
+
+	got := make([]byte, 10)
+	n, err := source.Read(got)
+	if err != nil {
+		t.Fatalf("Read = %v, want the ten bytes the source handed back", err)
+	}
+	if n != 10 || string(got) != "0123456789" {
+		t.Fatalf("Read gave %d bytes %q, want 10 bytes \"0123456789\"", n, got)
+	}
+
+	position, err := source.Position()
+	noError(t, "Position", err)
+	if position != 10 {
+		t.Errorf("Position() = %d, want 10", position)
+	}
+
+	// and the failure is reported next, not swallowed
+	if _, err := source.Read(make([]byte, 4)); !errors.Is(err, sourceErr) {
+		t.Errorf("the second Read = %v, want the source's own error", err)
+	}
+}

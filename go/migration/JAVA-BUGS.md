@@ -3054,3 +3054,97 @@ source whose close throws followed by an ordinary one:
 ```
 close threw java.io.IOException: nope | isClosed=false | second reader closed=false
 ```
+
+---
+
+## 72. `ScratchFile.close` walks the buffer list without the lock the list has
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/ScratchFile.java`. Every other
+touch of `buffers` takes the monitor on it:
+
+```java
+public RandomAccess createBuffer() throws IOException {
+    ScratchFileBuffer newBuffer = new ScratchFileBuffer(this);
+    synchronized (buffers) { buffers.add(newBuffer); }
+    return newBuffer;
+}
+
+void removeBuffer(ScratchFileBuffer buffer) {
+    synchronized (buffers) { buffers.remove(buffer); }
+}
+```
+
+`close` does not:
+
+```java
+synchronized (ioLock) {
+    ...
+    for (ScratchFileBuffer buffer : buffers) { ... buffer.close(false); }
+    buffers.clear();
+```
+
+It holds `ioLock`, which is a different monitor, and reads and then clears the
+list under it.
+
+**What correct would be** `synchronized (buffers)` around the walk and the
+clear, like its two neighbours — or a copy taken under that monitor and walked
+outside it, which would also settle the lock-order inversion of entry 66.
+
+**Why it matters** `createBuffer` running against `close` is a plain
+`ArrayList` being appended to while it is iterated:
+`ConcurrentModificationException` out of `close`, or a buffer added just after
+the walk and never closed, left reporting itself open over a scratch file that
+is gone. Three fields guard this class and the fourth thing it owns is guarded
+by whichever lock happened to be held.
+
+**Where the Go carries it** `go/pdfio/scratchfile.go`, `Close`, reads and clears
+`s.buffers` under `ioLock` while `CreateBuffer` and `removeBuffer` take
+`buffersLock`, so the same window is open. Go has no
+ConcurrentModificationException; it is a data race on the slice, which the race
+detector would name. Ported as written and said at the site.
+
+**Confidence** high, from the source: the three methods are twenty lines apart
+and two of them synchronize on the field that the third does not. Not
+reproduced — it needs the two threads to interleave inside the window, and a
+test that loses a race on purpose is not a test.
+
+---
+
+## 73. `RandomAccessReadMemoryMappedFile` leaks its channel on a file it refuses
+
+**Where**
+`io/src/main/java/org/apache/pdfbox/io/RandomAccessReadMemoryMappedFile.java`,
+the `Path` constructor
+
+```java
+fileChannel = FileChannel.open(path, EnumSet.of(StandardOpenOption.READ));
+size = fileChannel.size();
+// TODO only ints are allowed -> implement paging
+if (size > Integer.MAX_VALUE)
+{
+    throw new IOException(getClass().getName() + " doesn't yet support files bigger than "
+            + Integer.MAX_VALUE);
+}
+```
+
+The channel is opened and then the constructor throws without closing it. No
+object is returned, so no caller can close it either; the handle is held until
+the `FileChannel` is finalised.
+
+**What correct would be** closing the channel on the way out, or asking
+`Files.size(path)` before opening anything.
+
+**Why it matters** every attempt at a PDF over 2 GB leaks a file handle, and
+the caller's natural response — catch, log, try the next file — leaks one per
+attempt. On Windows the file also stays locked against deletion and renaming
+for as long as the handle is held.
+
+**Where the Go carries it** it does not: `go/pdfio/mappedfile.go`,
+`NewMappedFile`, stats the file and refuses before anything is opened or
+mapped, which is also the order Java means to be in — it wants the size first
+and only opens the channel because that is how it asks. Nothing is left open to
+leak. Said where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** high, from the source: the `throw` sits between the open and the
+only `close` the class has, and the class has no `finally`. Not reproduced —
+observing a leaked handle needs a file over 2 GB.

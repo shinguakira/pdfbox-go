@@ -41,7 +41,9 @@ var ErrScratchFileClosed = errors.New("pdfio: scratch file already closed")
 // taken in both orders -- getNewPage holds pagesLock and reaches ioLock through
 // enlarge, while Close holds ioLock and reaches pagesLock through a buffer's
 // markPagesAsFree. A goroutine writing while another closes can deadlock. That
-// is Java's, ported as written; see migration/JAVA-BUGS.md entry 66.
+// is Java's, ported as written; see migration/JAVA-BUGS.md entry 66. The
+// buffer list is the second hazard, entry 72: Close reads it under ioLock
+// while CreateBuffer holds buffersLock.
 type ScratchFile struct {
 	// ioLock guards the temporary file and the in-memory page array, which is
 	// Java's ioLock.
@@ -454,6 +456,12 @@ func (s *ScratchFile) Close() error {
 		return nil
 	}
 	s.isClosed = true
+	// The buffer list is read and cleared here under ioLock, while CreateBuffer
+	// and removeBuffer mutate it under buffersLock -- so a buffer created
+	// against a close in flight can be missed and left reporting itself open
+	// over a scratch file that is gone. That is Java: those two synchronize on
+	// the list and close does not. Ported as written; see
+	// migration/JAVA-BUGS.md entry 72.
 	for _, buffer := range s.buffers {
 		if buffer != nil && !buffer.IsClosed() {
 			buffer.closeBuffer(false)
@@ -466,7 +474,10 @@ func (s *ScratchFile) Close() error {
 		}
 		if err := os.Remove(s.fileName); err != nil && !os.IsNotExist(err) &&
 			ioexc == nil {
-			ioexc = fmt.Errorf("Error deleting scratch file: %s", s.fileName)
+			// Java has only File.delete()'s boolean and so no cause to
+			// report; os.Remove has one, and dropping it would lose why.
+			ioexc = fmt.Errorf("Error deleting scratch file: %s: %w",
+				s.fileName, err)
 		}
 	}
 	s.ioLock.Unlock()

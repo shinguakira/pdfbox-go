@@ -43,6 +43,10 @@ func TestMappedFilePathConstructor(t *testing.T) {
 
 func TestMappedFilePositionRead(t *testing.T) {
 	source := openMappedFixture(t, "RandomAccessReadFile1.txt")
+	// The case closes it again at the end, which is what it is checking; the
+	// defer is so an assertion failing before that does not leave the file
+	// mapped for the cases after it. Close is idempotent.
+	defer source.Close()
 
 	wantPosition(t, source, 0)
 	wantByteOrEOF(t, source, '0')
@@ -60,6 +64,7 @@ func TestMappedFilePositionRead(t *testing.T) {
 
 func TestMappedFileSeekEOF(t *testing.T) {
 	source := openMappedFixture(t, "RandomAccessReadFile1.txt")
+	defer source.Close()
 
 	noError(t, "Seek", SeekTo(source, 3))
 	wantPosition(t, source, 3)

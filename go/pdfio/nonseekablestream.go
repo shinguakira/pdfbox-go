@@ -63,6 +63,10 @@ type NonSeekableRead struct {
 
 	isClosed bool
 	isEOF    bool
+
+	// pendingErr holds a failure the source reported alongside bytes, kept
+	// until those bytes have been handed on.
+	pendingErr error
 }
 
 var (
@@ -281,10 +285,23 @@ func (n *NonSeekableRead) fetch() (bool, error) {
 	// silently. Read on until the source says one of the two things Java can.
 	var read int
 	var err error
-	for {
-		read, err = n.is.Read(n.buffers[bufCurrent])
-		if read > 0 || err != nil {
-			break
+	if n.pendingErr != nil {
+		err = n.pendingErr
+		n.pendingErr = nil
+	} else {
+		for {
+			read, err = n.is.Read(n.buffers[bufCurrent])
+			if read > 0 || err != nil {
+				break
+			}
+		}
+		// An io.Reader may hand back bytes and a failure in the same call,
+		// which InputStream cannot: Java would have seen the bytes from one
+		// read() and the exception from the next. So the bytes are taken now
+		// and the failure is kept for the next fetch.
+		if read > 0 && err != nil {
+			n.pendingErr = err
+			err = nil
 		}
 	}
 	if err != nil && !errors.Is(err, io.EOF) {

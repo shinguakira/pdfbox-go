@@ -4,7 +4,8 @@ package pdfio
 //
 // Port of org.apache.pdfbox.io.RandomAccessReadMemoryMappedFile.
 //
-// Java maps the whole file with FileChannel.map and reads through the
+// Java opens a channel, asks its size, refuses a file over 2 GB -- leaking the
+// channel on the way out, JAVA-BUGS entry 73 -- and maps the rest through the
 // ByteBuffer that comes back. Go has no mapping in its standard library, so the
 // mapping is golang.org/x/exp/mmap -- the decision migration/STATUS.md recorded
 // as open and the track's B0 settles. It carries the per-platform work the port
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 
 	"golang.org/x/exp/mmap"
 )
@@ -51,13 +53,26 @@ var _ RandomAccessRead = (*MappedFile)(nil)
 // Port of the three constructors, which Java overloads on String, File and
 // Path.
 func NewMappedFile(filename string) (*MappedFile, error) {
+	// The size is checked before the mapping is made, the order Java opens the
+	// channel, asks its size and refuses in: mapping first would reserve the
+	// address range for a file the type has already decided not to support.
+	info, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	// TODO only ints are allowed -> implement paging
+	if info.Size() > math.MaxInt32 {
+		return nil, fmt.Errorf(
+			"pdfio.MappedFile doesn't yet support files bigger than %d", math.MaxInt32)
+	}
+
 	mapped, err := mmap.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	size := int64(mapped.Len())
-	// TODO only ints are allowed -> implement paging
 	if size > math.MaxInt32 {
+		// the file grew between the two calls
 		mapped.Close()
 		return nil, fmt.Errorf(
 			"pdfio.MappedFile doesn't yet support files bigger than %d", math.MaxInt32)

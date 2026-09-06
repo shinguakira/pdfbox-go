@@ -145,6 +145,12 @@ func NewFlateDecoderReader(r io.Reader) (io.ReadCloser, error) {
 // Java recovers the partly inflated bytes out of its own 4096-byte buffer;
 // compress/flate has already handed them to the caller by the time it reports
 // the error, so there is nothing left here to recover.
+//
+// Only damaged data is swallowed. Java reads the source *outside* the try block
+// and catches DataFormatException alone, so an IOException out of the wrapped
+// stream propagates -- a failing disk must not look like the end of the page.
+// compress/flate reports both through one error, so isDeflateDamage tells them
+// apart.
 type flateDecoderStream struct {
 	inflated io.ReadCloser
 	isEOF    bool
@@ -156,6 +162,10 @@ func (f *flateDecoderStream) Read(p []byte) (int, error) {
 	}
 	n, err := f.inflated.Read(p)
 	if err != nil && !errors.Is(err, io.EOF) {
+		if !isDeflateDamage(err) {
+			// the source itself failed; Java lets this one out
+			return n, err
+		}
 		slog.Warn("filter: premature end of flate stream", "err", err)
 		f.isEOF = true
 		if n > 0 {
@@ -167,6 +177,19 @@ func (f *flateDecoderStream) Read(p []byte) (int, error) {
 		f.isEOF = true
 	}
 	return n, err
+}
+
+// isDeflateDamage reports whether err is compress/flate complaining about the
+// compressed data rather than the source underneath it.
+//
+// These are what Java raises as DataFormatException: a malformed stream, and a
+// stream that ends before the final block. Anything else came from the reader
+// being inflated and is the source's own failure.
+func isDeflateDamage(err error) bool {
+	var corrupt flate.CorruptInputError
+	var internal flate.InternalError
+	return errors.As(err, &corrupt) || errors.As(err, &internal) ||
+		errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 // Close releases the inflater, which is FlateFilterDecoderStream.close's
