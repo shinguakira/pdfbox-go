@@ -245,3 +245,58 @@ func TestGetStreamLength(t *testing.T) {
 		t.Error("a name used as a stream length was accepted")
 	}
 }
+
+// --- Port of org.apache.pdfbox.pdfparser.EndstreamFilterStreamTest --------
+
+// TestEndstreamFilterStream is testEndstreamFilterStream: five runs of buffers,
+// each checking which trailing end-of-line the filter drops and which it keeps.
+//
+// The Java case asserts a length against an array it writes out in full, so the
+// expected bytes are here too even though only the count is compared — they are
+// what the count means.
+func TestEndstreamFilterStream(t *testing.T) {
+	for _, row := range []struct {
+		name    string
+		buffers [][]byte
+		want    []byte
+	}{
+		{
+			name:    "CR LF at the end of the last buffer is dropped",
+			buffers: [][]byte{{1, 2, 3, 4}, {5, 6, 7, '\r', '\n'}, {8, 9, '\r', '\n'}},
+			want:    []byte{1, 2, 3, 4, 5, 6, 7, '\r', '\n', 8, 9},
+		},
+		{
+			name:    "a lone LF at the end is dropped",
+			buffers: [][]byte{{1, 2, 3, 4}, {5, 6, 7, '\r'}, {8, 9, '\n'}},
+			want:    []byte{1, 2, 3, 4, 5, 6, 7, '\r', 8, 9},
+		},
+		{
+			// final CR is not to be discarded
+			name:    "a lone CR at the end is kept",
+			buffers: [][]byte{{1, 2, 3, 4, '\r'}, {'\n', 5, 6, 7, '\n'}, {8, 9, '\r'}},
+			want:    []byte{1, 2, 3, 4, '\r', '\n', 5, 6, 7, '\n', 8, 9, '\r'},
+		},
+		{
+			// final CR LF across buffers
+			name:    "a CR LF split across two buffers is dropped",
+			buffers: [][]byte{{1, 2, 3, 4, '\r'}, {'\n', 5, 6, 7, '\r'}, {8, 9, '\r'}, {'\n'}},
+			want:    []byte{1, 2, 3, 4, '\r', '\n', 5, 6, 7, '\r', 8, 9},
+		},
+		{
+			// final CR is not to be discarded
+			name:    "an LF then a CR in its own buffer keeps both",
+			buffers: [][]byte{{1, 2, 3, 4, '\r'}, {'\n', 5, 6, 7, '\r'}, {8, 9, '\n'}, {'\r'}},
+			want:    []byte{1, 2, 3, 4, '\r', '\n', 5, 6, 7, '\r', 8, 9, '\n', '\r'},
+		},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			filter := &endstreamFilter{}
+			for _, buffer := range row.buffers {
+				filter.filter(buffer, 0, len(buffer))
+			}
+			if got := filter.calculateLength(); got != int64(len(row.want)) {
+				t.Errorf("calculateLength() = %d, want %d", got, len(row.want))
+			}
+		})
+	}
+}

@@ -161,6 +161,20 @@ func (d *PDDocument) AddPage(page *PDPage) {
 	d.Pages().Add(page)
 }
 
+// RemovePage removes a page from the document.
+//
+// Port of removePage(PDPage).
+func (d *PDDocument) RemovePage(page *PDPage) {
+	d.Pages().Remove(page)
+}
+
+// RemovePageAt removes the page at the given index.
+//
+// Port of removePage(int).
+func (d *PDDocument) RemovePageAt(pageNumber int) {
+	d.Pages().RemoveAt(pageNumber)
+}
+
 // IsEncrypted reports whether the document is encrypted.
 func (d *PDDocument) IsEncrypted() bool { return d.document.IsEncrypted() }
 
