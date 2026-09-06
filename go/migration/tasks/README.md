@@ -108,7 +108,7 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
 | `pdfbox/pdfwriter` | 3 | slice 7 |
 | `pdfbox/pdfwriter/compress` | 4 | slice 7 |
-| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7 |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio) |
 | `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
 | `pdmodel/common/filespecification` | 4 | slice 8 |
 | `pdmodel/common/function` | 6 | slice 9 |

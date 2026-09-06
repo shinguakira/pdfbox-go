@@ -70,7 +70,7 @@ func NewPDDocument() *PDDocument {
 	doc.DocumentState().SetParsing(false)
 	trailer := cos.NewDictionary()
 	doc.SetTrailer(trailer)
-	d := &PDDocument{document: doc, resourceCache: NewDefaultResourceCache()}
+	d := &PDDocument{document: doc, resourceCache: CreateResourceCache()}
 
 	// initialise the document catalogue, which builds the page tree
 	root := cos.NewDictionary()
@@ -93,7 +93,7 @@ func NewPDDocumentOf(doc *cos.Document, source pdfio.RandomAccessRead) *PDDocume
 	return &PDDocument{
 		document:      doc,
 		pdfSource:     source,
-		resourceCache: NewDefaultResourceCache(),
+		resourceCache: CreateResourceCache(),
 	}
 }
 

@@ -108,35 +108,35 @@ record it — do not port a weakened version of it.
 Order is by risk, not by size. The parser first, because it is the one place
 where a silent defect corrupts every document that follows.
 
-- [ ] A1. `TestCOSParser` — 21 cases
+- [x] A1. `TestCOSParser` — 21 cases
   - The `COSParser` recovery paths: broken `/Root`, broken xref, object numbers
     that do not match, the brute-force scan
-- [ ] A2. `TestPDFParser` — 18 cases
+- [x] A2. `TestPDFParser` — 18 cases
   - Whole-document parses, PDFBOX-numbered regressions
-- [ ] A3. `PDFObjectStreamParserTest`, `PDFStreamParserTest`, `TestBaseParser`,
+- [x] A3. `PDFObjectStreamParserTest`, `PDFStreamParserTest`, `TestBaseParser`,
       `EndstreamFilterStreamTest` — 10 cases between them
-- [ ] A4. `TestCOSIncrement` and `TestCOSUpdateInfo` — 4 cases
+- [x] A4. `TestCOSIncrement` and `TestCOSUpdateInfo` — 4 cases
   - The incremental-save state slice 7 ported; these are its own tests
-- [ ] A5. `BlendModeTest` — 17 cases
+- [x] A5. `BlendModeTest` — 17 cases
   - Every separable and non-separable blend function, value by value
-- [ ] A6. `FDFUtilsTest`, `FDFFieldTest`, `FDFAnnotationTest` — 19 cases
-- [ ] A7. `StringUtilTest`, `TestNumberFormatUtil`, `TestHexUtil` — 17 cases
-- [ ] A8. `PDLineDashPatternTest` — 1 case
-- [ ] A9. For each Java case **not** ported, write down which and why. A case
+- [x] A6. `FDFUtilsTest`, `FDFFieldTest`, `FDFAnnotationTest` — 19 cases
+- [x] A7. `StringUtilTest`, `TestNumberFormatUtil`, `TestHexUtil` — 17 cases
+- [x] A8. `PDLineDashPatternTest` — 1 case
+- [x] A9. For each Java case **not** ported, write down which and why. A case
       dropped without a reason is indistinguishable from one missed.
 
 ---
 
 # Phase B — Judge each failure, then fix
 
-- [ ] B1. Sort every failure into the three buckets above before fixing
+- [x] B1. Sort every failure into the three buckets above before fixing
       anything. A batch of fixes made without sorting will quietly "fix" the
       Java's own behaviour.
-- [ ] B2. Fix the Go where the defect is the port's
-- [ ] B3. Reproduce against the running Java where the answer is not obvious
+- [x] B2. Fix the Go where the defect is the port's
+- [x] B3. Reproduce against the running Java where the answer is not obvious
       from the source. `io` needs only `log4j-api`; `pdfbox` needs `fontbox`
       and `io` on the classpath. A measured expected value beats an argued one
-- [ ] B4. Port the three `ResourceCacheFactory` files
+- [x] B4. Port the three `ResourceCacheFactory` files
   - Java's is a static with a settable function and a `null` that disables
     caching. Go has no static initialiser; a package-level var set in `init()`
     is the shape the port already uses for this
@@ -147,11 +147,11 @@ where a silent defect corrupts every document that follows.
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md` — **none**. Every failure was the port's
+- [x] C5. Update `migration/STATUS.md`
   - This branch's section
   - The five stale rows the survey found, listed under **Known-stale rows**
     below

@@ -3794,3 +3794,115 @@ exists to preserve rather than tidy.
   cases. They are thorough — `testRewindAcrossBuffers2` and PDFBOX-5158 and
   5161 all live in the awkward corners — but the class is new to the port and
   has no corpus behind it yet.
+
+## Track `test-backfill` — the Java tests merged slices missed
+
+Branch `track/test-backfill`. Not a slice: it ported no new Java class. It ran
+sixteen Java test classes that already-merged slices left behind, against Go
+that already existed.
+
+**87 of their 107 cases are ported. Twenty are not, each for a reason recorded
+below. Every one of the 87 that failed, failed because of a defect in the port —
+not one turned out to be the Java behaving oddly.**
+
+### What it found
+
+Six defects, in four families. None of them is a Java bug; `JAVA-BUGS.md` gains
+no entry from this branch.
+
+**Two things `String.split` does that `strings.Split` does not** — the same trap
+twice, in unrelated packages:
+
+- `java.lang.String.split` with the default limit drops **trailing** empty
+  strings. Every `String.split` site in `pdmodel/fdf` kept them, and
+  `xfdf-test-document-annotations.xml` — a file in this repository, which Java
+  reads without complaint — has a `coords` attribute ending in a comma. The port
+  handed `parseFloat` an empty string and **panicked**. `splitJava` now drops
+  trailing empties and keeps interior ones, which is Java's rule;
+  `splitOnCommaOrSemicolon` had used `strings.FieldsFunc`, which drops all of
+  them, and is fixed too.
+- `Pattern.split` answers the whole input untrimmed **only when the pattern
+  never matched**, which is why an empty input gives one empty string. When it
+  did match it drops every trailing empty, so an all-separator input gives an
+  empty array. `StringUtil.SplitOnSpace("   ")` answered `[""]` where Java
+  answers `[]`; the port's loop stopped at one element, conflating the two
+  rules. `StringUtilTest` asserts both shapes.
+
+**A cast that saturates in Java and does not in Go.** `FormatFloatFast` guards
+with `value > Long.MAX_VALUE`, and `Long.MAX_VALUE` widened to a float is 2^63
+exactly — so that value passes the guard and is then cast to `long`. Java's
+float-to-long cast saturates to 9223372036854775807; Go's is
+implementation-defined and gives -9223372036854775808 on amd64. The port wrote
+one byte where Java writes nineteen. `int64OfFloat` is Java's cast.
+
+**A Xerces ordering the `w3c/dom` did not have.** `FDFAnnotation.richContentsToString`
+walks `getAttributes()`, and Xerces holds a `NamedNodeMap` sorted by qualified
+name for binary search — so the `/RC` it writes has its attributes in that
+order, not source order. `FDFAnnotationTest` asserts the string byte for byte.
+`w3c/dom` now inserts attributes in name order. **The `xmpbox` DOM found this
+independently and already did it**; the two still cannot be folded together, for
+the reason the `track/xmpbox` section gives.
+
+**Two missing pieces of API**, each found because a Java test needed it:
+
+- `Document.RemoveXRefOffset`. Java hands out the live cross-reference map, so
+  every map operation is available; the port had put, add and clear and no
+  remove. `PDFObjectStreamParserTest.testParseAllObjectsIndexed` changes an
+  object's stream index by removing the entry and putting a new one — "remove
+  the old entry first to be sure it is replaced" — because `HashMap.put` keeps
+  the key object it already has and only updates the value. `AddXRefTable`
+  reproduces that faithfully, so without a remove the case could not be
+  expressed at all.
+- `PDDocument.RemovePage` and `RemovePageAt`. `PDPageTree` had both halves;
+  the two document-level methods were simply absent.
+
+### What it added beyond the tests
+
+`ResourceCacheFactory`, `ResourceCacheCreateFunction` and
+`DefaultResourceCacheCreateImpl` — the three `pdmodel` classes the coverage
+survey found unported and unrecorded. They are the process-wide override point
+`PDDocument` reads its cache from; without them a document could neither be
+given a different cache nor be told to keep none, which the factory's own
+javadoc offers by setting the function to null. Java is a class of statics with
+a static initialiser; the port is a package variable, guarded, because the
+setter is called from one thread while documents open on others.
+
+### Three test headers that were not true
+
+Each said the Java suite did not exercise something directly, which is why the
+Go test had been written from the source instead. Each was wrong, and each is
+now corrected and followed by the ported cases:
+
+| File | Claimed | Actually |
+| --- | --- | --- |
+| `pdfparser/objectparser_test.go` | "the Java suite exercises these only through whole documents" | `TestCOSParser` calls `parseCOSName` and `parseCOSLiteralString` directly, 21 times |
+| `graphics/blend/blendmode_test.go` | "the Java suite covers the blend functions through rendered images" | `BlendModeTest` calls `blendChannel` with exact values |
+| `pdfparser/streamparser_test.go` | (kept — its subject really is only reached through documents) | — |
+
+That pattern is worth naming: **a header asserting what the Java suite does not
+cover is a claim, and it was wrong two times out of three.** Check before
+writing one.
+
+### The twenty cases not ported
+
+| Java case | Why |
+| --- | --- |
+| `TestPDFParser`, 17 of 18 | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetches nothing in a test. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
+| `TestCOSIncrement.testConcurrentModification` | Downloads a PDF from `issues.apache.org` |
+| `TestCOSIncrement.testSubsetting` | Needs `PDType0Font.load`, which is font embedding. Unported, and `track/font-embedding` names this case |
+| `TestNumberFormatUtil.testFormattingInRange` | A property test comparing against `BigDecimal` with `HALF_UP` rounding. Go has no arbitrary-precision decimal in its standard library, and re-implementing one to check a formatter would be checking the re-implementation. The five example-based cases it is built on are ported, with the exact bytes |
+
+`TestPDFParser.testPDFParserMissingCatalog` is the one of its eighteen whose
+fixture is checked in, and it is ported.
+
+### Two assertions deliberately narrowed
+
+Both are assertions on prose rather than on behaviour, and both say so where
+they are:
+
+- `PDFStreamParserTest.testNestedBI` asserts Java's whole message. The port's
+  carries the same two offsets in the lower-case package-prefixed form every
+  error in `pdfparser` uses, so the offsets are asserted and the wording is not.
+- `TestCOSIncrement` ends with `System.out.println(dash)` in
+  `PDLineDashPatternTest`; the port checks `String()` answers something rather
+  than printing it, which is all that line proves.
