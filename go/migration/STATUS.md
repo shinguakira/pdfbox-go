@@ -3650,6 +3650,50 @@ Noted here because they are the kind of thing a later reader will wonder about:
   the port answers with a plain `io.EOF`. The branch is unreachable except under
   unsynchronised concurrent access, which the type does not support either way.
 
+### Review feedback
+
+Eight items, seven of them right. Two were behaviour and each got a test that
+fails without its fix.
+
+**`NewFlateDecoderReader` turned every error into the end of the stream.**
+Reported by Codex, and correct. The damage tolerance this track added for
+PDFBOX-1232 was too broad: `FlateFilterDecoderStream` reads its source *outside*
+the try block and catches `DataFormatException` alone, so an IOException out of
+the wrapped stream propagates in Java. `compress/flate` reports both through one
+error, so a failing disk was being reported as the end of the page's content.
+`isDeflateDamage` now separates the two — `CorruptInputError`, `InternalError`
+and `io.ErrUnexpectedEOF` end the stream, everything else is the source's and is
+passed on.
+
+**`NonSeekableRead.fetch` dropped bytes returned with an error.** Reported by
+Codex, and correct — and the same shape as the `(0, nil)` fix this track already
+made. `InputStream.read` cannot return bytes *and* throw, so Java would have
+seen the bytes from one call and the exception from the next. The port now does
+that: the bytes are taken and the failure is kept in `pendingErr` for the next
+fetch.
+
+**Two more Java bugs, 72 and 73.** `ScratchFile.close` reads and clears the
+buffer list under `ioLock` while `createBuffer` and `removeBuffer` synchronize
+on the list itself — a second concurrency hazard alongside 66, and now named in
+the type's contract. `RandomAccessReadMemoryMappedFile` opens its channel and
+then throws for a file over 2 GB without closing it; the port stats the file and
+refuses before opening anything, which is the order the constructor means to be
+in.
+
+**Three smaller ones, all taken.** The size check moved ahead of the mapping so
+an unsupported file no longer reserves the address range. `ScratchFile.Close`
+wraps the `os.Remove` cause, which Java has no equivalent of because
+`File.delete()` answers a boolean. `x/exp` is no longer marked `// indirect`.
+And two mapped file tests defer their close so a failing assertion cannot leave
+the mapping open for the cases after them.
+
+**One rejected.** Copilot proposed changing `ScratchFileBuffer.addPage`'s bound
+from `pageCount+1 >= len(pageIndexes)` to `pageCount >=`, on the grounds that it
+grows a page early. It does — and so does Java: `ScratchFileBuffer.java:103` is
+`if (pageCount+1 >= pageIndexes.length)`. Growing one slot later would be a
+deviation, and the early growth is exactly the kind of harmless oddity this port
+exists to preserve rather than tidy.
+
 ### Still open
 
 - `MemoryUsageSetting.setTempDir` takes a `File` and the port takes a string.
