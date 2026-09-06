@@ -250,12 +250,34 @@ Everything from `slice/1` onward follows the rule, and so did the five files
 `track/scratchfile` added here: phase A ported the three Java test files before
 any implementation was written.
 
-That leaves the thirteen files of `slice/0` itself. The re-read this note asked
-for has now been done once, by `track/scratchfile`'s D9, over the two places it
-named — the chunk arithmetic in `ReadBuffer` and the page-boundary handling in
-`BufferedFile`. Both are faithful; what the re-read found was one wrong line in
-the deviations list above, not a wrong line of Go. The other eleven files have
-still not been re-read.
+That left the thirteen files of `slice/0` itself. **The re-read this note asked
+for has been done, over all thirteen**, by `track/scratchfile`'s D9.
+
+The Go held up. Not one of the thirteen turned out to mistranslate its Java, the
+two places this note named least of all — `ReadBuffer`'s chunk arithmetic and
+`BufferedFile`'s page-boundary handling are both faithful, `-1` accumulation and
+redundant clamp included.
+
+What the re-read found instead was **five defects in the Java that nobody had
+noticed**, JAVA-BUGS 67 to 71, and one already-recorded defect that is worse
+than it was written up as:
+
+- **69** is the one that matters. `RandomAccessReadBuffer.seek` past the end
+  parks the cursor at the *start* of the last chunk whenever the buffer holds an
+  exact multiple of the chunk size, so a write at the end of a full buffer
+  destroys byte 0 and leaves a length the chunks cannot supply.
+  `RandomAccessReadWriteBuffer` is the default stream cache.
+- **67** lets a view rewind before its own start and read bytes it exists to
+  exclude. **68** lets `available()` answer a negative count. **70** and **71**
+  are a wrong exception type and a handle leak in `SequenceRandomAccessRead`.
+- **3**, the `-1` accumulation, does not merely under-report the byte count:
+  the loop oscillates and the read never returns. A sequence over a view whose
+  `streamLength` exceeds its source hung, and the thread dump named the loop.
+
+So the answer to the question this note has been asking is that the risk was
+real but it was not where it was expected. The implementation-first ordering did
+not leave a mistranslation behind; what it left behind was five pieces of Java
+nobody had read closely enough to be surprised by.
 
 ### Ported tests
 
@@ -294,6 +316,16 @@ Each of these carries a comment at the point of difference in the Go source.
 - `MappedFile.CreateView` answers `ErrClosed` on a closed source, where Java
   reaches through the released buffer and raises NullPointerException.
   JAVA-BUGS 65, pinned by `TestMappedFileViewOfAClosedSource`.
+- `NewSequenceRead` answers "empty list" for a list holding only zero-length
+  sources, where Java checks `isEmpty()` before it filters and so raises
+  IndexOutOfBoundsException. JAVA-BUGS 70.
+- `SequenceRead.Close` closes every source and reports the first failure, where
+  Java lets the first failure out of the loop and leaks the rest. JAVA-BUGS 71.
+- `NewReadBufferSize` reads a chunk size of zero or less as the default. Java
+  keeps a zero — `seek` carries `chunkSize > 0 ?` guards for exactly that state
+  — and throws IllegalArgumentException for a negative one. The port drops those
+  guards and forbids the state instead, because its chunk arithmetic divides by
+  the chunk size. Slice 0's to settle.
 
 And two the `track/scratchfile` D9 re-read confirmed are **not** deviations,
 against an earlier note here that said the first one was:
@@ -3573,13 +3605,50 @@ later re-read of two places in particular. Done, over both:
   guarded by a condition that makes the guard redundant, so the two read
   differently and compute the same thing.
 
-What it found was a wrong line in this file rather than a wrong line of Go: the
-deviations list claimed `ReadBuffer.Read` stopped instead of adding the `-1`,
-which contradicted both JAVA-BUGS 2 and the code. Corrected above. It also found
-one real difference nobody had recorded — `BufferedFile.Length` checking closed
-where Java's does not — which is slice 0's to settle.
+What that pass found was a wrong line in this file rather than a wrong line of
+Go: the deviations list claimed `ReadBuffer.Read` stopped instead of adding the
+`-1`, which contradicted both JAVA-BUGS 2 and the code. Corrected above. It also
+found one real difference nobody had recorded — `BufferedFile.Length` checking
+closed where Java's does not — which is slice 0's to settle.
 
-Eleven of the thirteen `slice/0` files still have not been re-read.
+**Then the remaining eleven files were read too**, so all thirteen of `slice/0`
+have now been through it: the three interfaces, `RandomAccessReadBuffer` and
+`RandomAccessReadWriteBuffer` end to end, `RandomAccessReadView`,
+`SequenceRandomAccessRead`, the two stream adapters, the two stream cache
+classes, and `IOUtils`.
+
+The Go held up — no mistranslation in any of the thirteen. What came out was
+five defects in the Java, JAVA-BUGS 67 to 71, and the discovery that entry 3 is
+a hang rather than an off-by-one. The full account is in the `slice/0` method
+note above; the short version is that **69** corrupts the default stream cache
+on a write at an exact chunk boundary, and **3** never returns.
+
+Three of the five are carried with pinning tests — `TestReadViewRewindPastItsOwnStart`,
+`TestAvailableGoesNegativePastTheEnd` and
+`TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`. Two, **70** and **71**,
+are the ones the port deviates on rather than reproduce an index panic and a
+leaked handle.
+
+Two things changed in the Go beyond comments. `ReadView` gained the `Rewind`
+override Java has, which the port had been getting by way of the interface
+default — that default is *correct*, so not having the override was the port
+quietly fixing a Java bug. And `SequenceRead.Read` now moves the cursor
+backwards on a `-1` the way `currentPosition += bytesRead` does.
+
+### Observations that are not defects
+
+Noted here because they are the kind of thing a later reader will wonder about:
+
+- `ReadBuffer.CreateView` and `BufferedFile.CreateView` append to a slice of
+  clones that is never pruned, so a document with very many views holds a clone
+  each until the source is closed. Java's per-thread map is bounded by thread
+  count instead. The clones share their chunks or their file, so each costs a
+  header rather than a copy.
+- `SequenceRead.Seek` searches its sources from index 0; Java searches outward
+  from the current index. Same source found, different number of comparisons.
+- `RandomAccessInputStream` logs an error on a "should never happen" branch that
+  the port answers with a plain `io.EOF`. The branch is unreachable except under
+  unsynchronised concurrent access, which the type does not support either way.
 
 ### Still open
 
