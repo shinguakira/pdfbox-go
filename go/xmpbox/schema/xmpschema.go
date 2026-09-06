@@ -137,16 +137,12 @@ func (s *XMPSchema) SetAbout(about *xmptype.Attribute) error {
 		xmptype.ErrBadFieldValue)
 }
 
-// SetAboutAsSimple sets what the schema is about, and removes the attribute
-// where the value is absent.
+// SetAboutAsSimple sets what the schema is about.
 //
-// Java takes a null to mean removal; the port takes the empty string, which is
-// what an absent about is elsewhere -- see AboutValue.
+// Java takes a null to mean removal and sets the attribute for every other
+// value, the empty string included; a Go string cannot be null, so the removal
+// is RemoveAttribute(xmptype.AboutName).
 func (s *XMPSchema) SetAboutAsSimple(about string) {
-	if about == "" {
-		s.RemoveAttribute(xmptype.AboutName)
-		return
-	}
 	s.SetAttribute(xmptype.NewAttribute(xmptype.RDFNamespace, xmptype.AboutName, about))
 }
 

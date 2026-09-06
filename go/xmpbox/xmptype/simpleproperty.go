@@ -380,6 +380,13 @@ func (d *DateType) setValueFromString(value string) error {
 		// STRING HAS BEEN CHECKED BEFORE
 		return err
 	}
+	if IsBlankDate(value) {
+		// DateConverter.toCalendar answers null for a blank string, which
+		// leaves the property with no date at all: getStringValue then answers
+		// null and the serializer writes an empty element. See PDFBOX-6029.
+		d.dateValue, d.hasValue = time.Time{}, false
+		return nil
+	}
 	d.setValueFromCalendar(parsed)
 	return nil
 }

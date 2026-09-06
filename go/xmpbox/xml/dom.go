@@ -227,8 +227,7 @@ func (e *Element) SetAttribute(qualifiedName, value string) {
 		}
 	}
 	prefix, localName := splitQName(qualifiedName)
-	e.attributes = append(e.attributes, &Attr{prefix: prefix, localName: localName,
-		value: value})
+	e.addAttribute(&Attr{prefix: prefix, localName: localName, value: value})
 }
 
 // SetAttributeNS sets an attribute of the given namespace and qualified name.
@@ -244,12 +243,32 @@ func (e *Element) SetAttributeNS(namespaceURI, qualifiedName, value string) {
 			return
 		}
 	}
-	e.attributes = append(e.attributes, &Attr{
+	e.addAttribute(&Attr{
 		namespaceURI: namespaceURI,
 		prefix:       prefix,
 		localName:    localName,
 		value:        value,
 	})
+}
+
+// addAttribute puts an attribute in the list, in order of its written name.
+//
+// Xerces keeps an element's attributes in a NamedNodeMap it searches by name
+// with a binary search, so they are held -- and walked, and written out -- in
+// that order rather than the order they were set or read in. Both the parser
+// and the serializer walk this list, so the order belongs here.
+func (e *Element) addAttribute(attribute *Attr) {
+	name := attribute.Name()
+	at := len(e.attributes)
+	for i, held := range e.attributes {
+		if held.Name() > name {
+			at = i
+			break
+		}
+	}
+	e.attributes = append(e.attributes, nil)
+	copy(e.attributes[at+1:], e.attributes[at:])
+	e.attributes[at] = attribute
 }
 
 // ChildNodes returns the nodes this element holds.
@@ -275,9 +294,14 @@ func (e *Element) TextContent() string { return textOf(e.children) }
 
 // SetTextContent replaces what this element holds with one text node.
 //
-// Port of Node.setTextContent(String).
+// Port of Node.setTextContent(String), which removes the children and adds the
+// text node only where the string is not empty -- so an element set to the
+// empty string holds nothing and is written as an empty tag.
 func (e *Element) SetTextContent(text string) {
-	e.children = []Node{&Text{data: text}}
+	e.children = nil
+	if text != "" {
+		e.children = []Node{&Text{data: text}}
+	}
 }
 
 // String returns what Java's Element.toString would put in a message.
@@ -425,8 +449,7 @@ func Parse(input io.Reader) (*Document, error) {
 				namespaceURI: namespaces.resolve(token.Name.Space),
 			}
 			for _, attribute := range token.Attr {
-				element.attributes = append(element.attributes,
-					attributeOf(attribute, namespaces))
+				element.addAttribute(attributeOf(attribute, namespaces))
 			}
 			appendTo(document, open, element)
 			open = append(open, element)

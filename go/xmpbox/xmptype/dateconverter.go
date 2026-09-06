@@ -24,12 +24,18 @@ import (
 // isoDateTime matches the ISO 8601 form toCalendar hands to fromISO8601.
 var isoDateTime = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T.*`)
 
+// IsBlankDate reports whether a date string is the one toCalendar answers null
+// for, which a caller that has to tell that apart from a date asks.
+func IsBlankDate(date string) bool { return date == "" || strings.TrimSpace(date) == "" }
+
 // ToCalendar converts a string to a date, and answers the zero time where the
 // string is empty or blank, which is Java's null.
 //
-// Port of toCalendar(String), whose IOException becomes an error.
+// Port of toCalendar(String), whose IOException becomes an error. A caller that
+// must tell Java's null apart from a date at the epoch tests the string with
+// IsBlankDate first.
 func ToCalendar(date string) (time.Time, error) {
-	if date == "" || strings.TrimSpace(date) == "" {
+	if IsBlankDate(date) {
 		return time.Time{}, nil
 	}
 	date = strings.TrimSpace(date)

@@ -228,6 +228,11 @@ func save(doc *Document, out io.Writer) error {
 	for _, child := range doc.ChildNodes() {
 		w.writeNode(child, 0, nil)
 	}
+	// The transformer ends the document with a line separator. Java's is the
+	// platform's, which is CRLF on Windows; the port always writes LF, and
+	// every caller that compares output normalizes the two the same way. See
+	// migration/STATUS.md.
+	w.write("\n")
 	return w.err
 }
 
@@ -270,8 +275,20 @@ func (w *indentWriter) writeElement(element *Element, depth int, namespaces scop
 	namespaces[len(namespaces)-1] = mergedWith(namespaces[len(namespaces)-1], missing)
 
 	w.write("<" + element.TagName())
-	for _, attribute := range element.Attributes() {
-		w.write(" " + attribute.Name() + "=\"" + escapeAttribute(attribute.Value()) + "\"")
+	// A DOM serializer writes an element's namespace declarations before its
+	// other attributes, and the ones it had to add itself after both.
+	enclosing := namespaces[:len(namespaces)-1]
+	for _, declaration := range []bool{true, false} {
+		for _, attribute := range element.Attributes() {
+			if isDeclaration(attribute) != declaration {
+				continue
+			}
+			if declaration && redundantDeclaration(attribute, enclosing) {
+				continue
+			}
+			w.write(" " + attribute.Name() + "=\"" +
+				escapeAttribute(attribute.Value()) + "\"")
+		}
 	}
 	for _, prefix := range sortedKeys(missing) {
 		w.write(" " + declarationName(prefix) + "=\"" +
@@ -298,6 +315,29 @@ func (w *indentWriter) writeElement(element *Element, depth int, namespaces scop
 		w.writeNode(child, depth+1, namespaces)
 	}
 	w.write("\n" + strings.Repeat("  ", depth) + "</" + element.TagName() + ">")
+}
+
+// isDeclaration reports whether the attribute is a namespace declaration.
+func isDeclaration(attribute *Attr) bool {
+	return attribute.Prefix() == XMLNSAttribute ||
+		attribute.Prefix() == "" && attribute.LocalName() == XMLNSAttribute
+}
+
+// redundantDeclaration reports whether the attribute declares a namespace an
+// enclosing element already binds the same prefix to.
+//
+// A DOM serializer leaves such a declaration out: serializeSchema puts one on
+// every rdf:Description, and serializeFields puts the same one on rdf:RDF for
+// PDFBOX-2378, so without this every description would carry a declaration its
+// parent already made.
+func redundantDeclaration(attribute *Attr, enclosing scope) bool {
+	switch {
+	case attribute.Prefix() == XMLNSAttribute:
+		return enclosing.resolve(attribute.LocalName()) == attribute.Value()
+	case attribute.Prefix() == "" && attribute.LocalName() == XMLNSAttribute:
+		return enclosing.resolve("") == attribute.Value()
+	}
+	return false
 }
 
 // declaredOn reads the namespace declarations an element carries.
