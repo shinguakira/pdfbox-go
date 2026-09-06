@@ -109,7 +109,7 @@ func (s *AdobePDFSchema) SetProducerProperty(producer *xmptype.TextType) {
 
 // KeywordsProperty returns the keywords property, or nil.
 func (s *AdobePDFSchema) KeywordsProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PDFKeywords)
+	return TextPropertyOf(&s.XMPSchema, PDFKeywords)
 }
 
 // Keywords returns the keywords.
@@ -117,7 +117,7 @@ func (s *AdobePDFSchema) Keywords() string { return TextValueOf(&s.XMPSchema, PD
 
 // PDFVersionProperty returns the version property, or nil.
 func (s *AdobePDFSchema) PDFVersionProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PDFPDFVersion)
+	return TextPropertyOf(&s.XMPSchema, PDFPDFVersion)
 }
 
 // PDFVersion returns the PDF version.
@@ -125,7 +125,7 @@ func (s *AdobePDFSchema) PDFVersion() string { return TextValueOf(&s.XMPSchema, 
 
 // ProducerProperty returns the producer property, or nil.
 func (s *AdobePDFSchema) ProducerProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PDFProducer)
+	return TextPropertyOf(&s.XMPSchema, PDFProducer)
 }
 
 // Producer returns the producer.
@@ -346,7 +346,7 @@ func (s *DublinCoreSchema) Contributors() []string {
 
 // CoverageProperty returns the coverage property, or nil.
 func (s *DublinCoreSchema) CoverageProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, DCCoverage)
+	return TextPropertyOf(&s.XMPSchema, DCCoverage)
 }
 
 // Coverage returns the coverage.
@@ -394,7 +394,7 @@ func (s *DublinCoreSchema) Description() (string, error) {
 
 // FormatProperty returns the format property, or nil.
 func (s *DublinCoreSchema) FormatProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, DCFormat)
+	return TextPropertyOf(&s.XMPSchema, DCFormat)
 }
 
 // Format returns the MIME type.
@@ -402,7 +402,7 @@ func (s *DublinCoreSchema) Format() string { return TextValueOf(&s.XMPSchema, DC
 
 // IdentifierProperty returns the identifier property, or nil.
 func (s *DublinCoreSchema) IdentifierProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, DCIdentifier)
+	return TextPropertyOf(&s.XMPSchema, DCIdentifier)
 }
 
 // Identifier returns the identifier.
@@ -452,7 +452,7 @@ func (s *DublinCoreSchema) Rights() (string, error) { return s.RightsOfLanguage(
 
 // SourceProperty returns the source property, or nil.
 func (s *DublinCoreSchema) SourceProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, DCSource)
+	return TextPropertyOf(&s.XMPSchema, DCSource)
 }
 
 // Source returns the source.
@@ -674,7 +674,7 @@ func (s *PDFAIdentificationSchema) Amendment() string {
 
 // AmdProperty returns the amendment property, or nil.
 func (s *PDFAIdentificationSchema) AmdProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PDFAIDAmd)
+	return TextPropertyOf(&s.XMPSchema, PDFAIDAmd)
 }
 
 // Amd returns the amendment, falling back to an attribute of that name where
@@ -685,7 +685,7 @@ func (s *PDFAIdentificationSchema) Amd() string {
 
 // ConformanceProperty returns the conformance property, or nil.
 func (s *PDFAIdentificationSchema) ConformanceProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PDFAIDConformance)
+	return TextPropertyOf(&s.XMPSchema, PDFAIDConformance)
 }
 
 // Conformance returns the conformance level, falling back to an attribute of
@@ -880,7 +880,7 @@ func (s *XMPRightsManagementSchema) UsageTerms() (string, error) {
 
 // WebStatementProperty returns the web statement property, or nil.
 func (s *XMPRightsManagementSchema) WebStatementProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, RightsWebStatement)
+	return TextPropertyOf(&s.XMPSchema, RightsWebStatement)
 }
 
 // WebStatement returns the URL of the web statement.
@@ -900,7 +900,7 @@ func (s *XMPRightsManagementSchema) SetWebStatementProperty(url *xmptype.URLValu
 
 // CertificateProperty returns the certificate property, or nil.
 func (s *XMPRightsManagementSchema) CertificateProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, RightsCertificate)
+	return TextPropertyOf(&s.XMPSchema, RightsCertificate)
 }
 
 // Certificate returns the URL of the certificate.

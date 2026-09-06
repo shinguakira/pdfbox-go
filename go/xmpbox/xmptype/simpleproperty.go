@@ -398,3 +398,21 @@ func (d *DateType) TypeName() string { return "DateType" }
 
 // String returns the Java toString form.
 func (d *DateType) String() string { return simpleString(d) }
+
+// TextValued is what a TextType answers, and so does every type derived from
+// it: the text property itself.
+//
+// Java's getPropertyAs asks Class.isInstance, which is true of a subclass, so a
+// getter declared to answer a TextType answers a URLType or an AgentNameType
+// where the field holds one. A Go type assertion to *TextType is false for a
+// type that embeds it, so the accessors ask for this instead.
+type TextValued interface {
+	AbstractSimpleProperty
+
+	// TextValue returns the text property this is, or the one it embeds.
+	TextValue() *TextType
+}
+
+// TextValue returns this property, so that a TextType and everything embedding
+// one is TextValued.
+func (t *TextType) TextValue() *TextType { return t }

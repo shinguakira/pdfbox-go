@@ -856,13 +856,28 @@ func PropertyAs[T xmptype.AbstractField](s *XMPSchema, name string) T {
 	return property
 }
 
+// TextPropertyOf returns the named property as a text property, and nil where
+// it is absent or holds something that is not text.
+//
+// This is PropertyAs for the TextType.class every Java getter of a text field
+// asks for. It cannot be PropertyAs itself: Class.isInstance is true of a
+// subclass, so a field declared as a URL or an agent name answers its TextType
+// there, and a Go type assertion to *TextType is false for a type that only
+// embeds one.
+func TextPropertyOf(s *XMPSchema, name string) *xmptype.TextType {
+	if valued, is := s.Property(name).(xmptype.TextValued); is {
+		return valued.TextValue()
+	}
+	return nil
+}
+
 // TextValueOf returns the string value of the named text property, and the
 // empty string where it is absent -- which is Java's null.
 //
 // Java writes this out per accessor as `TextType tt = getPropertyAs(name,
 // TextType.class); return tt == null ? null : tt.getStringValue();`.
 func TextValueOf(s *XMPSchema, name string) string {
-	if tt := PropertyAs[*xmptype.TextType](s, name); tt != nil {
+	if tt := TextPropertyOf(s, name); tt != nil {
 		return tt.StringValue()
 	}
 	return ""

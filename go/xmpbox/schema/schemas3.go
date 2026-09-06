@@ -128,7 +128,7 @@ func (s *PhotoshopSchema) SetAncestorIDProperty(text *xmptype.URIValueType) { s.
 
 // AuthorsPositionProperty returns the author's position property, or nil.
 func (s *PhotoshopSchema) AuthorsPositionProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopAuthorsPosition)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopAuthorsPosition)
 }
 
 // AuthorsPosition returns the author's position.
@@ -146,7 +146,7 @@ func (s *PhotoshopSchema) SetAuthorsPositionProperty(text *xmptype.TextType) { s
 
 // CaptionWriterProperty returns the caption writer property, or nil.
 func (s *PhotoshopSchema) CaptionWriterProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopCaptionWriter)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopCaptionWriter)
 }
 
 // CaptionWriter returns the caption writer.
@@ -169,7 +169,7 @@ func (s *PhotoshopSchema) SetCaptionWriterProperty(text *xmptype.ProperNameType)
 
 // CategoryProperty returns the category property, or nil.
 func (s *PhotoshopSchema) CategoryProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopCategory)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopCategory)
 }
 
 // Category returns the category.
@@ -185,7 +185,7 @@ func (s *PhotoshopSchema) SetCategoryProperty(text *xmptype.TextType) { s.AddPro
 
 // CityProperty returns the city property, or nil.
 func (s *PhotoshopSchema) CityProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopCity)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopCity)
 }
 
 // City returns the city.
@@ -219,7 +219,7 @@ func (s *PhotoshopSchema) SetColorModeProperty(text *xmptype.IntegerType) { s.Ad
 
 // CountryProperty returns the country property, or nil.
 func (s *PhotoshopSchema) CountryProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopCountry)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopCountry)
 }
 
 // Country returns the country.
@@ -235,7 +235,7 @@ func (s *PhotoshopSchema) SetCountryProperty(text *xmptype.TextType) { s.AddProp
 
 // CreditProperty returns the credit property, or nil.
 func (s *PhotoshopSchema) CreditProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopCredit)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopCredit)
 }
 
 // Credit returns the credit.
@@ -287,7 +287,7 @@ func (s *PhotoshopSchema) DocumentAncestors() []string {
 
 // HeadlineProperty returns the headline property, or nil.
 func (s *PhotoshopSchema) HeadlineProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopHeadline)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopHeadline)
 }
 
 // Headline returns the headline.
@@ -303,7 +303,7 @@ func (s *PhotoshopSchema) SetHeadlineProperty(text *xmptype.TextType) { s.AddPro
 
 // HistoryProperty returns the history property, or nil.
 func (s *PhotoshopSchema) HistoryProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopHistory)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopHistory)
 }
 
 // History returns the history.
@@ -319,7 +319,7 @@ func (s *PhotoshopSchema) SetHistoryProperty(text *xmptype.TextType) { s.AddProp
 
 // ICCProfileProperty returns the ICC profile property, or nil.
 func (s *PhotoshopSchema) ICCProfileProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopICCProfile)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopICCProfile)
 }
 
 // ICCProfile returns the ICC profile.
@@ -337,7 +337,7 @@ func (s *PhotoshopSchema) SetICCProfileProperty(text *xmptype.TextType) { s.AddP
 
 // InstructionsProperty returns the instructions property, or nil.
 func (s *PhotoshopSchema) InstructionsProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopInstructions)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopInstructions)
 }
 
 // Instructions returns the instructions.
@@ -355,7 +355,7 @@ func (s *PhotoshopSchema) SetInstructionsProperty(text *xmptype.TextType) { s.Ad
 
 // SourceProperty returns the source property, or nil.
 func (s *PhotoshopSchema) SourceProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopSource)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopSource)
 }
 
 // Source returns the source.
@@ -369,7 +369,7 @@ func (s *PhotoshopSchema) SetSourceProperty(text *xmptype.TextType) { s.AddPrope
 
 // StateProperty returns the state property, or nil.
 func (s *PhotoshopSchema) StateProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopState)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopState)
 }
 
 // State returns the state.
@@ -384,7 +384,7 @@ func (s *PhotoshopSchema) SetStateProperty(text *xmptype.TextType) { s.AddProper
 // SupplementalCategoriesProperty returns the supplemental categories property,
 // or nil.
 func (s *PhotoshopSchema) SupplementalCategoriesProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopSupplementalCategories)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopSupplementalCategories)
 }
 
 // SupplementalCategories returns the supplemental categories.
@@ -441,7 +441,7 @@ func (s *PhotoshopSchema) TextLayers() ([]*xmptype.LayerType, error) {
 // TransmissionReferenceProperty returns the transmission reference property, or
 // nil.
 func (s *PhotoshopSchema) TransmissionReferenceProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, PhotoshopTransmissionReference)
+	return TextPropertyOf(&s.XMPSchema, PhotoshopTransmissionReference)
 }
 
 // TransmissionReference returns the transmission reference.
@@ -602,7 +602,7 @@ func (s *XMPMediaManagementSchema) SetDocumentIDProperty(tt *xmptype.URIValueTyp
 
 // DocumentIDProperty returns the document identifier property, or nil.
 func (s *XMPMediaManagementSchema) DocumentIDProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMDocumentID)
+	return TextPropertyOf(&s.XMPSchema, MMDocumentID)
 }
 
 // DocumentID returns the document identifier.
@@ -659,7 +659,7 @@ func (s *XMPMediaManagementSchema) SetManagerProperty(tt *xmptype.AgentNameType)
 
 // ManagerProperty returns the manager property, or nil.
 func (s *XMPMediaManagementSchema) ManagerProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMManager)
+	return TextPropertyOf(&s.XMPSchema, MMManager)
 }
 
 // Manager returns the manager.
@@ -677,7 +677,7 @@ func (s *XMPMediaManagementSchema) SetManageToProperty(tt *xmptype.URIValueType)
 
 // ManageToProperty returns the manage-to property, or nil.
 func (s *XMPMediaManagementSchema) ManageToProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMManageTo)
+	return TextPropertyOf(&s.XMPSchema, MMManageTo)
 }
 
 // ManageTo returns where the document is managed to.
@@ -697,7 +697,7 @@ func (s *XMPMediaManagementSchema) SetManageUIProperty(tt *xmptype.URIValueType)
 
 // ManageUIProperty returns the management interface property, or nil.
 func (s *XMPMediaManagementSchema) ManageUIProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMManageUI)
+	return TextPropertyOf(&s.XMPSchema, MMManageUI)
 }
 
 // ManageUI returns the management interface.
@@ -717,7 +717,7 @@ func (s *XMPMediaManagementSchema) SetManagerVariantProperty(tt *xmptype.TextTyp
 
 // ManagerVariantProperty returns the manager variant property, or nil.
 func (s *XMPMediaManagementSchema) ManagerVariantProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMManagerVariant)
+	return TextPropertyOf(&s.XMPSchema, MMManagerVariant)
 }
 
 // ManagerVariant returns the manager variant.
@@ -737,7 +737,7 @@ func (s *XMPMediaManagementSchema) SetInstanceIDProperty(tt *xmptype.URIValueTyp
 
 // InstanceIDProperty returns the instance identifier property, or nil.
 func (s *XMPMediaManagementSchema) InstanceIDProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMInstanceID)
+	return TextPropertyOf(&s.XMPSchema, MMInstanceID)
 }
 
 // InstanceID returns the instance identifier.
@@ -769,7 +769,7 @@ func (s *XMPMediaManagementSchema) SetOriginalDocumentIDProperty(tt *xmptype.Tex
 // OriginalDocumentIDProperty returns the original document identifier property,
 // or nil.
 func (s *XMPMediaManagementSchema) OriginalDocumentIDProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMOriginalDocumentID)
+	return TextPropertyOf(&s.XMPSchema, MMOriginalDocumentID)
 }
 
 // OriginalDocumentID returns the original document identifier.
@@ -789,7 +789,7 @@ func (s *XMPMediaManagementSchema) SetRenditionClassProperty(tt *xmptype.Renditi
 
 // RenditionClassProperty returns the rendition class property, or nil.
 func (s *XMPMediaManagementSchema) RenditionClassProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMRenditionClass)
+	return TextPropertyOf(&s.XMPSchema, MMRenditionClass)
 }
 
 // RenditionClass returns the rendition class.
@@ -809,7 +809,7 @@ func (s *XMPMediaManagementSchema) SetRenditionParamsProperty(tt *xmptype.TextTy
 
 // RenditionParamsProperty returns the rendition parameters property, or nil.
 func (s *XMPMediaManagementSchema) RenditionParamsProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMRenditionParams)
+	return TextPropertyOf(&s.XMPSchema, MMRenditionParams)
 }
 
 // RenditionParams returns the rendition parameters.
@@ -829,7 +829,7 @@ func (s *XMPMediaManagementSchema) SetVersionIDProperty(tt *xmptype.TextType) {
 
 // VersionIDProperty returns the version identifier property, or nil.
 func (s *XMPMediaManagementSchema) VersionIDProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, MMVersionID)
+	return TextPropertyOf(&s.XMPSchema, MMVersionID)
 }
 
 // VersionID returns the version identifier.

@@ -208,7 +208,7 @@ func (s *XMPBasicSchema) Advisory() []string { return s.UnqualifiedBagValueList(
 
 // BaseURLProperty returns the base URL property, or nil.
 func (s *XMPBasicSchema) BaseURLProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, BasicBaseURL)
+	return TextPropertyOf(&s.XMPSchema, BasicBaseURL)
 }
 
 // BaseURL returns the base URL.
@@ -227,7 +227,7 @@ func (s *XMPBasicSchema) CreateDate() (time.Time, bool) {
 
 // CreatorToolProperty returns the creator tool property, or nil.
 func (s *XMPBasicSchema) CreatorToolProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, BasicCreatorTool)
+	return TextPropertyOf(&s.XMPSchema, BasicCreatorTool)
 }
 
 // CreatorTool returns what made the document.
@@ -245,7 +245,7 @@ func (s *XMPBasicSchema) Identifiers() []string {
 
 // LabelProperty returns the label property, or nil.
 func (s *XMPBasicSchema) LabelProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, BasicLabel)
+	return TextPropertyOf(&s.XMPSchema, BasicLabel)
 }
 
 // Label returns the label.
@@ -283,7 +283,7 @@ func (s *XMPBasicSchema) ModifierDate() (time.Time, bool) {
 
 // NicknameProperty returns the nickname property, or nil.
 func (s *XMPBasicSchema) NicknameProperty() *xmptype.TextType {
-	return PropertyAs[*xmptype.TextType](&s.XMPSchema, BasicNickname)
+	return TextPropertyOf(&s.XMPSchema, BasicNickname)
 }
 
 // Nickname returns the nickname.
