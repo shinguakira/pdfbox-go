@@ -41,6 +41,13 @@ func NewReadBuffer() *ReadBuffer {
 }
 
 // NewReadBufferSize returns an empty buffer using the given chunk size.
+//
+// A chunk size of zero or less is read as the default. Java keeps a zero --
+// ByteBuffer.allocate(0) succeeds, and seek carries `chunkSize > 0 ?` guards
+// for exactly that state -- and throws IllegalArgumentException for a negative
+// one. The port drops those guards and forbids the state instead, because the
+// chunk arithmetic here divides by chunkSize and would panic rather than answer
+// 0. A deviation, recorded in STATUS.md as slice 0's to settle.
 func NewReadBufferSize(chunkSize int) *ReadBuffer {
 	if chunkSize <= 0 {
 		chunkSize = DefaultChunkSize4KB

@@ -65,8 +65,13 @@ func SeekTo(r io.Seeker, position int64) error {
 	return err
 }
 
-// Available returns an estimate of the number of bytes that can still be read,
-// clamped to the range of an int as the Java version is.
+// Available returns an estimate of the number of bytes that can still be read.
+//
+// Java is `(int) Math.min(length() - getPosition(), Integer.MAX_VALUE)`, which
+// bounds the value above and does nothing at all below: a source whose position
+// has been put past its length answers a negative count, and the int cast
+// narrows rather than clamps. A RandomAccessReadView reaches that shape through
+// an ordinary seek. Ported as written; see migration/JAVA-BUGS.md entry 68.
 func Available(r RandomAccessRead) (int, error) {
 	if own, overrides := r.(availabler); overrides {
 		return own.Available()
@@ -80,13 +85,10 @@ func Available(r RandomAccessRead) (int, error) {
 		return 0, err
 	}
 	remaining := length - position
-	if remaining <= 0 {
-		return 0, nil
-	}
 	if remaining > math.MaxInt32 {
-		return math.MaxInt32, nil
+		remaining = math.MaxInt32
 	}
-	return int(remaining), nil
+	return int(int32(remaining)), nil
 }
 
 // Peek returns the next byte without advancing the cursor. It reports io.EOF at

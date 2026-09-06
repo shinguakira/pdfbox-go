@@ -104,16 +104,40 @@ until the total falls to `-1` or below.
 
 **What correct would be** treat a non-positive inner read as the end.
 
-**Why it matters** the returned count can be negative, and the offset arithmetic
-inside the loop goes backwards with it.
+**Why it matters** **the read can never return.** The `track/scratchfile` D9
+re-read found the loop is not merely wrong but non-terminating: `bytesRead`
+oscillates. Where an inner source hands back fewer bytes than its `length()`
+promises, one pass reads some bytes, the next adds a `-1` and puts `bytesRead`
+back below where it was, the pass after that reads them again, and the loop
+never reaches `maxAvailBytes` and never falls to `-1` either. Beyond that, the
+returned count is one low per `-1` and `currentPosition += bytesRead` moves the
+cursor backwards.
+
+A `RandomAccessReadView` whose `streamLength` is longer than its source is such
+a source, and it needs no corruption to build — the view takes the length it is
+told.
+
+**What correct would be** as above: stop on a non-positive inner read.
 
 **Where the Go carries it** `go/pdfio/sequenceread.go`, `SequenceRead.Read`.
 The helper `readOrMinusOne` stands in for Java's read() returning -1, so the
-same accumulation happens. An earlier draft stopped on a non-positive read;
-that was corrected once this rule was adopted.
+same accumulation, the same backwards cursor and the same spin all happen. An
+earlier draft stopped on a non-positive read; that was corrected once this rule
+was adopted, and the backwards cursor was added by the D9 re-read, which found
+the port had been keeping the position where Java loses a byte from it.
 
-**Confidence** high on the defect, and it is worse than #2 because the loop can
-iterate.
+No test pins the spin. A test that hangs when it succeeds is worse than no test;
+this entry is the record.
+
+**Confidence** reproduced. A `SequenceRandomAccessRead` over a single
+`RandomAccessReadView(source, 0, 100)` whose source holds 10 bytes hung on the
+first `read(b, 0, 20)`, and the thread dump named the loop:
+
+```
+at org.apache.pdfbox.io.SequenceRandomAccessRead.read(SequenceRandomAccessRead.java:132)
+```
+
+which is `bytesRead += randomAccessRead.read(b, offset + bytesRead, maxAvailBytes - bytesRead);`.
 
 ---
 
@@ -2793,3 +2817,240 @@ Found one Java-level deadlock:
 No test pins this one. A test for it would have to lose a race on purpose, and
 a test that hangs when it succeeds is worse than no test; the probe and this
 entry are the record.
+
+---
+
+## 67. `RandomAccessReadView.rewind` checks nothing, and reads outside the view
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadView.java`,
+`rewind`
+
+```java
+@Override
+public void rewind(int bytes) throws IOException
+{
+    checkClosed();
+    restorePosition();
+    randomAccessRead.rewind(bytes);
+    currentPosition -= bytes;
+}
+```
+
+`seek` in the same class refuses a negative offset — `if (newOffset < 0) throw
+new IOException("Invalid position " + newOffset)`. `rewind` never asks. It
+points the source at the view's position and then rewinds **the source**, so a
+rewind longer than the view has read lands the source before `startPosition`.
+`currentPosition` goes negative, and every later read comes out of bytes the
+view exists to exclude.
+
+**What correct would be** the same check `seek` makes, or `seek(getPosition() -
+bytes)` — which is what the interface's own default does, and which the override
+exists only to avoid.
+
+**Why it matters** a view is the port's boundary around an embedded stream. Any
+parser that rewinds further than it has read silently starts reading its
+neighbour's bytes, with nothing to signal it: no exception, and a position that
+merely looks odd.
+
+**Where the Go carries it** `go/pdfio/readview.go`, `ReadView.Rewind`, which
+exists so the package function `Rewind` dispatches to it the way Java's virtual
+call does. Pinned by `TestReadViewRewindPastItsOwnStart`.
+
+**Confidence** reproduced. Read out of the running Java, JDK 17: a view of
+`data[4..7]` over the bytes `0..9`, seeked to 2 and read once, so its position
+is 3:
+
+```
+after seek(2): position=2 read=6
+rewind(5) ok: position=-2 read=2 (source now at 0)
+```
+
+2 is `data[2]` — two bytes before the view begins.
+
+---
+
+## 68. The default `available()` has no lower bound, and answers a negative count
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessRead.java`,
+`available`
+
+```java
+default int available() throws IOException
+{
+    return (int) Math.min(length() - getPosition(), Integer.MAX_VALUE);
+}
+```
+
+The `min` bounds the value above and nothing bounds it below. A source whose
+position has been put past its length answers a negative count, and the `int`
+cast narrows rather than clamps.
+
+`RandomAccessReadView` reaches that state through an ordinary seek: its `seek`
+clamps the position it passes down to the source but records `newOffset`
+verbatim, so `getPosition()` can exceed `length()` by any amount.
+
+**What correct would be** the `Math.max(0, ...)` that
+`RandomAccessInputStream.available()`, twelve files away, already has:
+
+```java
+return (int) Math.max(0, Math.min(input.length() - position, Integer.MAX_VALUE));
+```
+
+Two implementations of the same idea in the same package, one with the bound and
+one without.
+
+**Why it matters** it is latent rather than live: the only caller of
+`RandomAccessRead.available()` in the whole tree is
+`DataInputRandomAccessRead.hasRemaining`, which asks `available() > 0` — false
+for a negative and false for a zero. Anything that sized an array by it, which
+is what `available()` is for in `java.io`, would get
+NegativeArraySizeException.
+
+**Where the Go carries it** `go/pdfio/randomaccess.go`, `Available`, narrows
+through int32 so the cast is reproduced too. Pinned by
+`TestAvailableGoesNegativePastTheEnd`.
+
+**Confidence** reproduced. Read out of the running Java, JDK 17, a four-byte
+view seeked to 20:
+
+```
+ReadView seek(20) ok, position=20 length=4 available=-16 isEOF=true
+```
+
+---
+
+## 69. A write at an exact chunk boundary lands on the first byte of the chunk
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadBuffer.java`,
+`seek`, and `RandomAccessReadWriteBuffer.write`
+
+```java
+else
+{
+    // it is allowed to jump beyond the end of the file
+    // jump to the end of the buffer
+    pointer = size;
+    bufferListIndex = bufferListMaxIndex;
+    currentBuffer = bufferList.get(bufferListIndex);
+    currentBufferPointer = chunkSize > 0 ? (int) (size % chunkSize) : 0;
+}
+```
+
+`size % chunkSize` is 0 whenever the buffer holds an exact multiple of the chunk
+size — which is the normal state of a buffer that has just been filled. So the
+"jump to the end" branch parks the cursor at the **start** of the last chunk
+rather than past its end.
+
+Reading recovers, because every read path seeks first or checks `pointer >=
+size`. Writing does not: `write` uses `currentBufferPointer` as it stands.
+
+**What correct would be** treating a full last chunk as full —
+`currentBufferPointer = chunkSize` where `size > 0 && size % chunkSize == 0`,
+which the read path already knows how to step past — or deriving the index as
+`size / chunkSize` and letting the pointer be 0 in a fresh chunk.
+
+**Why it matters** it corrupts data and then hides the corruption behind a
+length that no longer matches the contents. Writing one byte at the end of a
+full buffer overwrites byte 0, and `size` counts the byte anyway, so the buffer
+claims a length its chunks cannot supply and a full read fails outright.
+`RandomAccessReadWriteBuffer` is the default stream cache — this is where
+`COSStream` data lives.
+
+**Where the Go carries it** `go/pdfio/readbuffer.go`, `ReadBuffer.Seek`, and
+`go/pdfio/readwritebuffer.go`, `ReadWriteBuffer.Write`. Pinned by
+`TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`.
+
+**Confidence** reproduced. Read out of the running Java, JDK 17, an 8-byte chunk
+written full, seeked to 8, and written one more byte:
+
+```
+size=9 position=9
+first 8 bytes: 99 2 3 4 5 6 7 8 (read 8)
+readFully(9) threw java.io.IOException: No more chunks available, end of buffer reached
+```
+
+The 99 was written at position 8 and landed on byte 0.
+
+---
+
+## 70. `SequenceRandomAccessRead` checks its list is not empty before emptying it
+
+**Where**
+`io/src/main/java/org/apache/pdfbox/io/SequenceRandomAccessRead.java`, the
+constructor
+
+```java
+if (randomAccessReadList.isEmpty())
+{
+    throw new IllegalArgumentException("Empty list");
+}
+readerList = randomAccessReadList.stream()
+        .filter(r -> { ... return r.length() > 0; ... })
+        .collect(Collectors.toList());
+currentRandomAccessRead = readerList.get(currentIndex);
+```
+
+The check is made against the argument and the filter is applied afterwards, so
+a list that is not empty but holds only zero-length sources passes the check and
+then indexes an empty list.
+
+**What correct would be** checking `readerList` after the filter, which is the
+list the constructor actually goes on to use.
+
+**Why it matters** the caller gets `IndexOutOfBoundsException` — unchecked, and
+about an index — instead of the `IllegalArgumentException("Empty list")` the
+constructor plainly means to raise. A list of empty sources is a perfectly
+ordinary thing to assemble from a document with empty content streams.
+
+**Where the Go carries it** it does not: `go/pdfio/sequenceread.go`,
+`NewSequenceRead`, checks after filtering as well and answers "empty list". An
+index panic for an input the constructor already has an error for was the worse
+of the two. Said where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** reproduced. Read out of the running Java, JDK 17:
+
+```
+all-empty list threw java.lang.IndexOutOfBoundsException: Index 0 out of bounds for length 0
+empty list threw java.lang.IllegalArgumentException: Empty list
+```
+
+---
+
+## 71. `SequenceRandomAccessRead.close` leaks every source after the first failure
+
+**Where**
+`io/src/main/java/org/apache/pdfbox/io/SequenceRandomAccessRead.java`, `close`
+
+```java
+for (RandomAccessRead randomAccessRead : readerList)
+{
+    randomAccessRead.close();
+}
+readerList.clear();
+currentRandomAccessRead = null;
+isClosed = true;
+```
+
+Nothing catches. The first source whose `close` fails ends the loop, so the
+sources after it are never closed, the list is never cleared and `isClosed`
+stays false.
+
+**What correct would be** closing all of them and reporting the first failure
+afterwards — what `IOUtils.closeAndLogException` in the same package exists for.
+
+**Why it matters** the sources are files and scratch buffers. A single failing
+close leaks every handle behind it, and the sequence then answers `isClosed()`
+false, so a caller retrying the close closes the first ones twice and still
+never reaches the rest.
+
+**Where the Go carries it** it does not: `go/pdfio/sequenceread.go`,
+`SequenceRead.Close`, closes every source, keeps the first error and marks
+itself closed. Leaking handles to reproduce a `finally` that Java does not have
+was the worse of the two. Said where it is and in [`STATUS.md`](STATUS.md).
+
+**Confidence** reproduced. Read out of the running Java, JDK 17, a sequence of a
+source whose close throws followed by an ordinary one:
+
+```
+close threw java.io.IOException: nope | isClosed=false | second reader closed=false
+```

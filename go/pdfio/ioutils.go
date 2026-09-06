@@ -1,6 +1,9 @@
 package pdfio
 
-import "io"
+import (
+	"io"
+	"log/slog"
+)
 
 // Helpers ported from org.apache.pdfbox.io.IOUtils.
 //
@@ -44,6 +47,11 @@ func CloseAndKeepError(c io.Closer, err error) error {
 		return err
 	}
 	closeErr := c.Close()
+	if closeErr != nil {
+		// Java logs the close failure at warn before deciding which exception
+		// to return, so an error it drops is still on the record.
+		slog.Warn("pdfio: error closing resource", "err", closeErr)
+	}
 	if err != nil {
 		return err
 	}
