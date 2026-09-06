@@ -16,17 +16,108 @@ Last updated: 2026-09-06
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
 | 0 | `pdfio` | 18 | **done — all 18 files**, finished by `track/scratchfile` |
-| 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
-| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 3, `getDataToSign` included |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
+| 1 | `pdfbox/cos` | 24 | **done — 22 of 24 ported**. Slice 7 closed the incremental-save deferral: `COSIncrement`, `COSUpdateInfo` and `COSUpdateState` are in. The two left are deliberate — `COSInputStream`, which exists in Java only to carry a `DecodeResult`, and `COSOutputStream`, folded into `streamWriter` |
+| 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | **done — all 48**. `filter` 23 of 23, finished by slice 6, `DecodeOptions` included; `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 7, `getDataToSign` included |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders, which `track/font-embedding` claims), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | **done — all 85 files**, finished by slice 9: the graphics engine, all 23 graphics operators, all 13 colour operators and the three `DrawObject`s |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D`, `Ellipse2D`, `FlatteningPathIterator`, and `Area` minus curves |
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `cmd/pdfbox` | 26 | not started |
+| 7 | `tools` | 26 | not started — `track/tools` claims it. The Go directory is settled in that branch A0; this row used to say `cmd/pdfbox`, which `PLAN.md` never said |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
+| — | `pdfbox/glyphlayout` | 7 | not started — `track/pdfbox-layout` claims it, and its A0 is choosing a Go text shaper |
+
+
+## What is left, and the four tracks that claim it
+
+Every slice in [`PLAN.md`](PLAN.md) is merged into `migration-base`, and so are
+`track/xmpbox` and `track/scratchfile`. This section is the answer to "what is
+actually left", taken from a survey that compared **all 891 in-scope Java main
+classes and 237 Java test classes** against the Go tree, class by class.
+
+Method, because the numbers here are only as good as it: every Java class name
+and fully-qualified name was matched against every identifier and comment in
+`go/`, and every class that did not match was then read on both sides. A name
+appearing in the Go tree is **not** evidence of a port — the survey's first pass
+was wrong twice for exactly that reason, matching a class named in a Go comment
+that said the class was *not* ported. A `Port of <FQN>` comment, or a type, is
+evidence; a name is not.
+
+### 64 of 891 classes are unported. 24 of those are settled.
+
+| Group | Files | Verdict |
+| --- | ---: | --- |
+| `graphics/shading` `Paint` and `PaintContext` implementations | 19 | deliberate — slice 9 put the raster half behind `rendering.Backend` |
+| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | deliberate — same reason |
+| `cos/COSInputStream`, `cos/COSOutputStream` | 2 | deliberate — one carries a `DecodeResult` Go returns directly, one is folded into `streamWriter` |
+| `encryption/MessageDigests`, `SecurityProvider` | 2 | deliberate — JCE lookups Go answers with `crypto/*` |
+| `graphics/color/PDJPXColorSpace` | 1 | deliberate — only the JPX filter constructs it |
+
+Every one of those was already recorded here with a reason. Nothing in that
+group is a gap.
+
+### 40 are real, and each now has a branch
+
+| Group | Files | Branch |
+| --- | ---: | --- |
+| `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | `track/font-embedding` |
+| `pdmodel` resource cache factory | 3 | `track/test-backfill`, which is already in those files |
+| `pdmodel/AbstractGlyphLayoutProcessor` | 1 | `track/pdfbox-layout` |
+| `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | `track/pdfbox-layout` |
+| `tools`, `tools/imageio` | 26 | `track/tools` |
+
+`io`, `fontbox` and `xmpbox` have no unported class at all.
+
+### The test gap is the finding that mattered
+
+36 Java test classes are unported. Twenty of them are recorded here with a
+reason — a corpus this repository does not carry, a network fetch, `java.awt`.
+**Sixteen are not recorded anywhere**: they sit in packages a merged slice calls
+done, and were missed rather than deferred.
+
+107 `@Test` methods, 2,557 lines. Five of the sixteen and 47 of the 107 are the
+parser — `TestCOSParser` and `TestPDFParser` are the recovery suite for broken
+cross-reference tables and truncated objects, and nothing in the port has run
+them.
+
+`track/test-backfill` is that list, and it is the first of the four to take. It
+is the only one that can find a defect in work already merged; the other three
+add surface on top of a base whose test coverage has a known hole.
+
+### Order
+
+1. **`track/test-backfill`** — 16 test classes, the resource cache factory, and
+   the stale rows below. Depends on nothing.
+2. **`track/font-embedding`** — a capability gap, not tidying: nothing in the
+   port can write a PDF with an embedded font, and `PDType0Font`'s embedding
+   methods panic where the half is missing.
+3. **`track/tools`** — 22 commands, whose libraries all exist now. Seven are
+   held for the raster backend.
+4. **`track/pdfbox-layout`** — last. Its A0 is choosing a Go text shaper, which
+   is entangled with whatever eventually implements `rendering.Backend`.
+
+### Rows this file had wrong
+
+Corrected above, and listed here because the cause will recur: **a later slice
+closed a deferral and wrote it down only in its own section.** The summary row
+and the deferring slice's table were left saying the work was outstanding.
+
+- Phase 1 said `19 of 24` with four deferred to slice 7. Slice 7 ported three of
+  them.
+- Phase 2 said `filter has the slice 1 subset`. Slice 6 finished all 23, and the
+  slice 2 section still listed `the other 15 filters` and `DecodeOptions` as
+  outstanding while slice 6's own section, 1,200 lines further down, recorded
+  them as done.
+- Phase 7 said `cmd/pdfbox`, a directory `PLAN.md` never named.
+
+Two rows were checked and are **right**, so they are not to be "corrected"
+later: `pdmodel/font at 34 of 39` with five embedders left, and `4 of rendering`
+being `java.awt`.
+
+The lesson for every branch from here: **C5 means the summary row and the row
+that deferred the work, not only your own section.**
 
 ## Phase 0 — `pdfio`
 
@@ -182,8 +273,8 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done |
 | `IdentityFilter.java` | `filter.go` | done |
 | `DecodeResult.java` | `filter.go` | partial — the JPX colour space and soft mask fields arrive with that filter |
-| `DecodeOptions.java` | — | not started — image subsampling only |
-| the other 15 filters | — | slice 6 |
+| `DecodeOptions.java` | `decodeoptions.go` | done in slice 6 |
+| the other 15 filters | `dct.go`, `ccittfax.go`, `lzw.go`, `runlength.go`, `asciihex.go`, `ascii85.go`, `imagereader.go` and the rest | done in slice 6 |
 
 | Java test | Go test | Notes |
 | --- | --- | --- |

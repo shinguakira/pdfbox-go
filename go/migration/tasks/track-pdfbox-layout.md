@@ -2,14 +2,21 @@
 
 Track — `pdfbox-layout-*`. Glyph layout, one interface against two backends.
 
-**Branch: `track/<name>`** — from and back to `migration-base`.
-**The branch is not decided.** `migration/PLAN.md` gives this a "Parallel track"
-section; `migration/BRANCHING.md`'s track table lists only `track/xmpbox` and
-`track/scratchfile`, so no branch row exists for it. Settle that before
-branching. Do not add a row to the plan without the user saying so.
+**Branch: `track/pdfbox-layout`** — from and back to `migration-base`.
 
-Depends on `slice/4` — it needs fonts to shape. `PLAN.md` says it is worth
-reading before `slice/9` for its backend-interface shape.
+The branch is settled; `BRANCHING.md` carries a row for it. What is **not**
+settled is A0, and that is a bigger decision than the branch was — see below.
+
+Depends on `slice/4` — it needs fonts to shape, and that is merged. `PLAN.md`
+says it is worth reading before `slice/9` for its backend-interface shape.
+
+**Take this one last, of the four open tracks.** The AWT backend is
+`java.awt.font.TextLayout` and the FOP backend is Apache FOP; Go has neither, so
+A0 is choosing a Go text shaper — a harfbuzz binding, `x/image/font/shaping`, or
+something written here. That choice is very likely to constrain, or be
+constrained by, whatever eventually implements `rendering.Backend`, which is the
+other undecided substitution in the project. Deciding the shaper alone, ahead of
+the rasteriser, risks doing both twice.
 
 ## Rules — do not break these
 
