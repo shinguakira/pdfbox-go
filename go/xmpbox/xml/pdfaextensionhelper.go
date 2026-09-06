@@ -23,7 +23,7 @@ const (
 )
 
 // pdfaNamespaceDeclarations is the prefix and the namespace of each of the five
-// PDF/A extension types, which validateNaming insists go together.
+// PDF/A extension types, which ValidateNaming insists go together.
 //
 // Java reads them off each class's @StructuredType annotation; the port has no
 // reflection, so it names them.
@@ -39,11 +39,11 @@ var pdfaNamespaceDeclarations = [...]struct{ prefix, namespace string }{
 		xmptype.PDFAType.StructuredTypeInfo().Namespace},
 }
 
-// validateNaming checks that every namespace declaration on the description
+// ValidateNaming checks that every namespace declaration on the description
 // binds a PDF/A prefix to the namespace that goes with it.
 //
-// Port of PdfaExtensionHelper.validateNaming(XMPMetadata, Element).
-func validateNaming(description *Element) error {
+// Port of PdfaExtensionHelper.ValidateNaming(XMPMetadata, Element).
+func ValidateNaming(description *Element) error {
 	for _, attribute := range description.Attributes() {
 		for _, declaration := range pdfaNamespaceDeclarations {
 			if err := checkNamespaceDeclaration(attribute,
@@ -78,11 +78,11 @@ func checkNamespaceDeclaration(attribute *Attr, cprefix, cnamespace string) erro
 	return nil
 }
 
-// populateSchemaMapping teaches the type mapping every namespace and type the
+// PopulateSchemaMapping teaches the type mapping every namespace and type the
 // extension schemas describe.
 //
-// Port of PdfaExtensionHelper.populateSchemaMapping(XMPMetadata, boolean).
-func populateSchemaMapping(meta *xmpbox.XMPMetadata, strictParsing bool) error {
+// Port of PdfaExtensionHelper.PopulateSchemaMapping(XMPMetadata, boolean).
+func PopulateSchemaMapping(meta *xmpbox.XMPMetadata, strictParsing bool) error {
 	tm := meta.TypeMapping()
 	for _, xmpSchema := range meta.AllSchemas() {
 		if xmpSchema.Namespace() != schema.PDFAExtensionNamespace {

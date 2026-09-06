@@ -283,11 +283,44 @@ func isZoneOffset(offset int) bool {
 	return offset >= -maxZoneOffsetSeconds && offset <= maxZoneOffsetSeconds
 }
 
+// clampDayOfMonth returns the date string with a day of month beyond the length
+// of its month brought back to the last day of that month.
+//
+// Java's DateTimeFormatter resolves with ResolverStyle.SMART, which is its
+// default: a day of month within 1 to 31 but past the end of the month becomes
+// the last day of the month, so "2015-02-30" reads as the 28th and
+// "2015-04-31" as the 30th. A month outside 1 to 12, or a day outside 1 to 31,
+// is still refused, and so is an hour, minute or second out of range. Go's
+// parser refuses all of them, so the one relaxation is done here.
+func clampDayOfMonth(dateString string) (string, bool) {
+	if len(dateString) < 10 || dateString[4] != '-' || dateString[7] != '-' {
+		return dateString, false
+	}
+	year, errYear := strconv.Atoi(dateString[0:4])
+	month, errMonth := strconv.Atoi(dateString[5:7])
+	day, errDay := strconv.Atoi(dateString[8:10])
+	if errYear != nil || errMonth != nil || errDay != nil {
+		return dateString, false
+	}
+	if month < 1 || month > 12 || day < 1 || day > 31 {
+		return dateString, false
+	}
+	// The zeroth day of the next month is the last day of this one.
+	length := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if day <= length {
+		return dateString, false
+	}
+	return fmt.Sprintf("%s%02d%s", dateString[:8], length, dateString[10:]), true
+}
+
 // fromISO8601 parses the ISO 8601 form.
 //
 // Port of the private fromISO8601, whose DateTimeParseException becomes an
 // error.
 func fromISO8601(dateString string) (time.Time, error) {
+	if clamped, wasClamped := clampDayOfMonth(dateString); wasClamped {
+		dateString = clamped
+	}
 	for _, layout := range isoLayouts {
 		if parsed, err := time.Parse(layout, dateString); err == nil {
 			if _, offset := parsed.Zone(); !isZoneOffset(offset) {

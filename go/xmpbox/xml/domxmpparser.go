@@ -144,7 +144,7 @@ func (p *DomXmpParser) Parse(input io.Reader) (*xmpbox.XMPMetadata, error) {
 	}
 
 	// find schema description
-	if err := populateSchemaMapping(xmp, p.strictParsing); err != nil {
+	if err := PopulateSchemaMapping(xmp, p.strictParsing); err != nil {
 		return nil, err
 	}
 
@@ -207,7 +207,7 @@ func (p *DomXmpParser) parseSchemaExtensions(xmp *xmpbox.XMPMetadata,
 		}
 	}
 	if len(schemaExtensions) != 0 {
-		if err := validateNaming(description); err != nil {
+		if err := ValidateNaming(description); err != nil {
 			return err
 		}
 	}
@@ -905,20 +905,32 @@ func (p *DomXmpParser) findDescriptionsParent(root *Element) (*Element, error) {
 }
 
 // expectNaming reports an element that is not named as it should be.
+//
+// The three messages concatenate a value that is null in Java where the element
+// has no namespace or no prefix, and Java writes a null as "null".
 func expectNaming(element *Element, ns, prefix, ln string) error {
 	switch {
 	case ns != "" && ns != element.NamespaceURI():
 		return NewXmpParsingError(Format, "Expecting namespace '"+ns+"' and found '"+
-			element.NamespaceURI()+"'")
+			orNull(element.NamespaceURI())+"'")
 	case prefix != "" && prefix != element.Prefix():
 		return NewXmpParsingError(Format, "Expecting prefix '"+prefix+"' and found '"+
-			element.Prefix()+"'")
+			orNull(element.Prefix())+"'")
 	case ln != "" && ln != element.LocalName():
 		return NewXmpParsingError(Format, "Expecting local name '"+ln+"' and found '"+
 			element.LocalName()+"'")
 	}
 	// else OK
 	return nil
+}
+
+// orNull writes an absent string the way Java's string concatenation writes a
+// null.
+func orNull(value string) string {
+	if value == "" {
+		return "null"
+	}
+	return value
 }
 
 // removeCommentsAndBlanks removes every comment and blank node below the node.
@@ -1190,10 +1202,18 @@ func nodeClassName(node Node) string {
 	return "org.w3c.dom.Node"
 }
 
-// nodeString is what a node reads as inside a message.
+// nodeString is what a node reads as inside a message, which is what Xerces
+// writes for the node kind: the name in brackets, and the data after it.
 func nodeString(node Node) string {
-	if element, isElement := node.(*Element); isElement {
-		return element.String()
+	switch node := node.(type) {
+	case *Element:
+		return node.String()
+	case *Text:
+		return "[#text: " + node.Data() + "]"
+	case *Comment:
+		return "[#comment: " + node.Data() + "]"
+	case *ProcessingInstruction:
+		return "[" + node.NodeName() + ": " + node.Data() + "]"
 	}
 	return "[" + nodeClassName(node) + "]"
 }

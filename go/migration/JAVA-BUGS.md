@@ -1673,3 +1673,47 @@ says so.
 
 **Confidence** high. The method body is four lines and the parameter appears in
 none of them.
+
+---
+
+## 42. `XmpSerializer` cannot write a property whose element had no prefix
+
+**Where** `xmpbox/src/main/java/org/apache/xmpbox/xml/XmpSerializer.java`,
+`serializeFields`
+
+```java
+// PDFBOX-2378: add namespace declaration to the top
+if (!field.getPrefix().isEmpty() && field.getNamespace() != null && !field.getNamespace().isEmpty())
+```
+
+`getPrefix()` is null for a property parsed from an element written without one
+— which is what PDFBOX-5835 is about, and what the file
+`src/test/resources/org/apache/xmpbox/xml/PDFBOX-5835.xml` holds. The guard
+null-checks `getNamespace()` on the next line and not `getPrefix()` on this one.
+
+**What correct would be** the same null check the neighbouring term already has.
+
+**Why it matters** the packet parses — `DomXmpParserTest.testPDFBox5835` asserts
+what comes out of it — and then cannot be written back:
+
+```
+NullPointerException: Cannot invoke "String.isEmpty()" because the return value
+of "org.apache.xmpbox.type.AbstractField.getPrefix()" is null
+```
+
+Reading a document and writing it out again is the module's main use, and for
+this one it throws an unchecked exception rather than the
+`XmpSerializationException` its signature declares.
+
+**Where the Go carries it** it does not: `Prefix()` answers the empty string
+where Java answers null, so the test is false and the property is written under
+its local name. Both halves of the alternative were bad — panicking out of a
+serializer handed a document that parsed, or writing a name Java never gets to
+write — and writing it keeps the module usable.
+`TestSerializingAnUnprefixedPropertyWhereJavaFails` in
+`go/xmpbox/xml/nullprefix_test.go` pins what the port writes and names this
+entry.
+
+**Confidence** high. Reproduced by compiling `xmpbox` against JDK 17 and running
+`DomXmpParser.parse` then `XmpSerializer.serialize` over
+`PDFBOX-5835.xml`; the message above is what came out.
