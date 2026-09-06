@@ -2140,6 +2140,20 @@ imports nothing from `org.apache.xmpbox.xml`.
 - **Namespace declarations are written in sorted order** where Java walks a
   `HashMap`, whose order is arbitrary but fixed for a given content. Sorting
   makes the same metadata always write the same bytes.
+- **Three unchecked casts carry on rather than raising.**
+  `ArrayProperty.getElementsAsString` — which Java's own FIXME flags —
+  `XMPSchema.mergeComplexProperty` and
+  `removeUnqualifiedArrayValue(String, AbstractField)` cast every element of an
+  array without checking, so an array holding a shape they do not expect raises
+  `ClassCastException`. The port skips the element, or compares without the
+  cast. Each says so where it is.
+- **A property whose element had no prefix is written under its local name**,
+  where Java's serializer cannot write the packet at all. JAVA-BUGS 42.
+- **A date before the 1582 cutover is a different instant** from Java's, whose
+  `GregorianCalendar` switches to the Julian calendar there; both write the same
+  ISO 8601 string.
+- **`ErrorType.Configuration` is unreachable**, because the port has no
+  `DocumentBuilderFactory` to fail to configure.
 
 ### Which Java tests are ported
 
@@ -2211,3 +2225,104 @@ that it was thrown.
   refuses one beyond eighteen hours.
 - **`toISO8601`** wrote the proleptic year where a `Calendar` counts within an
   era, so PDFBOX-6107's "0000-01-01" came back as "0000" rather than "0001".
+
+### The xmpbox adversarial review
+
+敵対的レビュー, phase D of the task file. What was checked, what was found, and
+what is still open.
+
+**D1 — every ported file against its Java.** This module depends on nothing
+outside the JDK, so it compiles with `javac` and runs under `jshell`, and the
+two implementations can be driven over the same input and compared. Three
+sweeps, all from the scratchpad, none of them committed:
+
+- **Every XML fixture in the repository**, parsed and serialized in both modes:
+  132 runs, of which 130 produce byte-identical output or the identical failure
+  message once CRLF is normalized to LF. The two that differ are one file, and
+  the difference is Java's, not the port's: `PDFBOX-5835.xml` parses in both and
+  cannot be serialized by Java at all. JAVA-BUGS 42.
+- **Every simple field of every one of the twelve schemas**, instantiated
+  through the type mapping and serialized: 164 lines of output, identical. That
+  covers each schema's property description — the names, the types, the
+  cardinalities — the type mapping's instantiation, and the serializer.
+- **Every one of the seventeen structured types**, with its namespace, its
+  prefix, its field list and every simple field: identical, both the report and
+  the serialized packet.
+- **Fifty-nine date strings** through `toCalendar` and `toISO8601`: 57
+  identical.
+
+What the sweeps found is in the commit that ran them and in the list of port
+defects above. Two differences were left in place, both pinned by tests:
+
+- **A date before the 1582 cutover** is a different instant in Java's
+  `GregorianCalendar`, which switches to the Julian calendar there, and in Go's
+  proleptic `time.Time`. Both write the same ISO 8601 string.
+  `TestDatesBefore1582DifferFromJava` pins it. Implementing the hybrid calendar
+  is out of proportion to a case XMP does not carry.
+- **A property whose element had no prefix** cannot be serialized by Java at
+  all, and is written by the port under its local name. JAVA-BUGS 42, pinned by
+  `TestSerializingAnUnprefixedPropertyWhereJavaFails`.
+
+The mechanical half: every public and protected Java method was listed and
+matched against the Go, and every one is accounted for — as the same name, as
+the renaming the conventions call for (`getX` to `X`, `isX` to `IsX`, an
+overload to a named form), or as something reflection did that a declared value
+does now. Two were unexported and are exported now:
+`PdfaExtensionHelper.validateNaming` and `populateSchemaMapping`.
+
+**D2 — silently dropped behaviour.** All seven `finally` blocks in the Java are
+`nsFinder.pop()` and all seven are `defer` in the port; the two places Java pops
+without a `finally` — the loop in `parseChildrenAsProperties` and the tail of
+`parseLiDescription` — pop without a `defer` here, so the same leak on an early
+exit is reproduced. There is no logger in this module and nothing is logged and
+swallowed. Every `catch` rethrows except three, and all three are ported as the
+same fallback: `DateType.isGoodType` answering false, `fromISO8601` falling back
+to the local form, and `transformValueType` falling back to a defined type.
+
+Java's checked exceptions are errors. `IllegalArgumentException` out of a
+constructor or a setter is an error, which is what
+`conventions/java-to-go.md` calls for. The unchecked ones are the three
+divergences already listed plus the `StringIndexOutOfBoundsException` of
+JAVA-BUGS 39, which is a panic.
+
+One family of unchecked exceptions is left as a divergence rather than a panic:
+Java casts without checking in three places, and a shape it does not expect
+raises `ClassCastException`. `ArrayProperty.getElementsAsString` — which Java's
+own FIXME flags — `XMPSchema.mergeComplexProperty` and
+`removeUnqualifiedArrayValue(String, AbstractField)` all carry on in the port,
+skipping the element or comparing without the cast. Each says so where it is.
+
+`XmpParsingException.ErrorType.Configuration` is unreachable in the port: it is
+raised when `DocumentBuilderFactory` cannot be configured, and the port has no
+factory to configure.
+
+**D3 — the tests are Java-derived.** Every assertion in the 27 ported test files
+comes from the Java test source. Three test files are not ports and say so in
+their own doc comments: `dateconverter_smart_test.go`, whose values were read by
+running Java's `DateConverter`; `nullprefix_test.go`, which pins JAVA-BUGS 42;
+and the `schema` harness, which is the reflection-driven `SchemaTester` and
+`XMPSchemaTester` rewritten as a table. Two Java cases are dropped and recorded
+above: the two that construct an exception and assert it was thrown.
+
+**D4 — the deferrals.** There are none. Every `TODO` and `FIXME` in the Go is
+Java's own, carried over with it; `grep` finds no other. Nothing in this module
+is "not ported yet".
+
+**D5 — the Java bugs.** Eight found, JAVA-BUGS 35 to 42, each with where, what,
+what correct would be, where the Go carries it and how confident. None was fixed
+on the way past: 36, 37, 38, 39 and 41 are ported as written, and 35, 40 and 42
+are divergences recorded in both files rather than silent corrections.
+
+**D6 — this section.**
+
+**D7 — the XML handling difference.** The section above, "The DOM, and how it
+differs from Xerces".
+
+**D8 — the round trip against Java's output.** Not against the port's own: the
+twelve SHA-256 digests `DeserializationTest` asserts are over Java's bytes, and
+the port now produces them.
+
+### Still open
+
+Nothing in this track. Two differences are deliberate and pinned, and are listed
+above.

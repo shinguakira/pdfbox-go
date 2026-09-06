@@ -474,6 +474,10 @@ func (s *XMPSchema) RemoveUnqualifiedSequenceValue(qualifiedSeqName, seqValue st
 // Port of removeUnqualifiedArrayValue(String, AbstractField), which Java
 // overloads on the second argument; Go has no overloading, so the port names
 // the field form.
+//
+// Java casts each element to AbstractSimpleProperty before comparing, so an
+// array holding a structured value raises ClassCastException; the port compares
+// without the cast. See migration/STATUS.md.
 func (s *XMPSchema) RemoveUnqualifiedArrayField(arrayName string,
 	fieldValue xmptype.AbstractField) {
 	array := s.arrayOf(arrayName)
@@ -805,6 +809,10 @@ func (s *XMPSchema) Merge(xmpSchema *XMPSchema) error {
 // Java returns true from the first duplicate, which makes merge return
 // outright and drop every property it had not reached yet. Ported as written;
 // see migration/JAVA-BUGS.md.
+//
+// Java casts each element to TextType without checking, so an array holding
+// anything else raises ClassCastException; the port skips such an element. See
+// migration/STATUS.md.
 func mergeComplexProperty(newValues []xmptype.AbstractField,
 	arrayProperty *xmptype.ArrayProperty) bool {
 	for _, newValue := range newValues {
