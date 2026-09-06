@@ -186,13 +186,27 @@ func fixedZone(offsetSeconds int) *time.Location {
 // Port of toISO8601(Calendar).
 func ToISO8601(cal time.Time) string { return ToISO8601Millis(cal, false) }
 
+// eraYear returns the year Calendar.get(Calendar.YEAR) answers, which is what
+// toISO8601 writes.
+//
+// A Calendar counts within an era, so the year before 1 AD is 1 BC and the one
+// before that is 2 BC; Go counts them 0 and -1. Java writes the era's number
+// without saying which era it is. See PDFBOX-6107, whose case reads "0000-01-01"
+// and expects "0001-01-01" back.
+func eraYear(year int) int {
+	if year <= 0 {
+		return 1 - year
+	}
+	return year
+}
+
 // ToISO8601Millis converts a date to its ISO 8601 string, printMillis saying
 // whether the milliseconds are written.
 //
 // Port of toISO8601(Calendar, boolean).
 func ToISO8601Millis(cal time.Time, printMillis bool) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "%04d", cal.Year())
+	fmt.Fprintf(&out, "%04d", eraYear(cal.Year()))
 	out.WriteByte('-')
 	fmt.Fprintf(&out, "%02d", int(cal.Month()))
 	out.WriteByte('-')
@@ -258,6 +272,17 @@ var localIsoLayouts = []string{
 	"2006-01-02T15:04",
 }
 
+// maxZoneOffsetSeconds is the largest offset from UTC a zone may have.
+//
+// Port of the range java.time.ZoneOffset accepts, which is what refuses
+// "2008-12-31T19:48:30+19:00".
+const maxZoneOffsetSeconds = 18 * 3600
+
+// isZoneOffset reports whether an offset from UTC is one a zone may have.
+func isZoneOffset(offset int) bool {
+	return offset >= -maxZoneOffsetSeconds && offset <= maxZoneOffsetSeconds
+}
+
 // fromISO8601 parses the ISO 8601 form.
 //
 // Port of the private fromISO8601, whose DateTimeParseException becomes an
@@ -265,6 +290,12 @@ var localIsoLayouts = []string{
 func fromISO8601(dateString string) (time.Time, error) {
 	for _, layout := range isoLayouts {
 		if parsed, err := time.Parse(layout, dateString); err == nil {
+			if _, offset := parsed.Zone(); !isZoneOffset(offset) {
+				// Java's ZoneOffset refuses one outside this range, and the
+				// DateTimeParseException it raises is what the caller reports;
+				// Go's parser takes any two-digit hour.
+				break
+			}
 			return parsed, nil
 		}
 	}
