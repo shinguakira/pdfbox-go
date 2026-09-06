@@ -2527,3 +2527,149 @@ where it is and in [`STATUS.md`](STATUS.md).
 
 **Confidence** high. Reproduced against JDK 17: a sequence holding a date and an
 empty date prints `[java.util.GregorianCalendar[...], null]`.
+
+---
+
+## 62. `ScratchFile.markPagesAsFree` walks to `count` rather than `off + count`
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/ScratchFile.java`,
+`markPagesAsFree`
+
+```java
+void markPagesAsFree(int[] pageIndexes, int off, int count) {
+    synchronized (freePages)
+    {
+        for (int aIdx = off; aIdx < count; aIdx++)
+```
+
+The loop starts at `off` and stops at `count`, so it visits `count - off`
+entries rather than `count`.
+
+Its two callers are in `ScratchFileBuffer`. `close(boolean)` passes `off` 0, and
+`0 + count == count`, so it is right by coincidence. `clear()` passes
+
+```java
+pageHandler.markPagesAsFree(pageIndexes, 1, pageCount - 1);
+```
+
+which visits indices 1 to `pageCount - 2` and never the last one.
+
+**What correct would be** `aIdx < off + count`, or passing an end index rather
+than a count.
+
+**Why it matters** every `clear()` leaks one page, and the pages are a fixed
+allowance. A buffer that filled its allowance cannot be refilled after being
+cleared: the next write fails with "Maximum allowed scratch file memory
+exceeded." Repeated clears leak a page each time, so a long-lived
+`ScratchFile` loses a page per clear until it can hand out none.
+
+**Where the Go carries it** `go/pdfio/scratchfile.go`, `markPagesAsFree`, walks
+to `count` and says so.
+`TestClearLeaksTheLastPage` in `go/pdfio/scratchfilebuffer_test.go` pins it and
+names this entry.
+
+**Confidence** high. Reproduced by compiling the `io` module against JDK 17 and
+running it: a `ScratchFile` of three pages of main memory, three pages written,
+`clear()`, and the second write fails with
+
+```
+second write failed: Maximum allowed scratch file memory exceeded.
+```
+
+---
+
+## 63. `PDPage.getContentsForStreamParsing` skips the predictor
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPage.java`,
+`getContentsForStreamParsing`
+
+```java
+COSStream contentStream = page.getCOSStream(COSName.CONTENTS);
+if (contentStream != null && COSName.FLATE_DECODE.equals(contentStream.getFilters()))
+{
+    // for now only streams using a flate filter are supported
+    FlateFilterDecoderStream decoderStream = new FlateFilterDecoderStream(
+            contentStream.createRawInputStream());
+    return new NonSeekableRandomAccessReadInputStream(decoderStream);
+}
+return getContentsForRandomAccess();
+```
+
+The guard tests the filter and says nothing about `/DecodeParms`.
+`FlateFilterDecoderStream` is an `Inflater` and eleven lines of buffering: it
+carries no predictor. The general path this one skips,
+`getContentsForRandomAccess`, goes through `COSStream.createView` and the whole
+filter chain, predictor included.
+
+**What correct would be** taking the fast path only where the stream declares no
+predictor, which is one more term in the guard.
+
+**Why it matters** a content stream written as
+`/Filter /FlateDecode /DecodeParms <</Predictor 12 /Columns n>>` is legal. Read
+through `getContentsForStreamParsing` it yields the raw PNG-filtered bytes,
+which are not content stream operators; read through
+`getContentsForRandomAccess` it yields the right ones. The same page then parses
+differently depending on which accessor the caller reached for.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/pdpage.go`,
+`ContentsForStreamParsing`, takes the same fast path on the same condition and
+says so, and `go/pdfbox/filter/flate.go`'s `NewFlateDecoderReader` says it
+applies no predictor.
+
+**Confidence** high for the shape, which is plain in the two methods and in
+`FlateFilterDecoderStream`. Not run: no PDF in the test corpus has a predictored
+content stream, which is also why no PDFBox test covers it.
+
+---
+
+## 64. `MemoryUsageSetting.setupMixed`'s javadoc names two equivalences, and neither holds
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/MemoryUsageSetting.java`, both
+`setupMixed` overloads
+
+```java
+ * @param maxMainMemoryBytes maximum number of main-memory to be used; if <code>-1</code> this is the same as
+ * {@link #setupMainMemoryOnly()}; if <code>0</code> this is the same as {@link #setupTempFileOnly()}
+```
+
+Neither claim survives the private constructor.
+
+`setupMixed(-1)` is `new MemoryUsageSetting(true, true, -1, -1)` and
+`setupMainMemoryOnly()` is `new MemoryUsageSetting(true, false, -1, -1)`. The
+constructor copies `useTempFile` through untouched, so the first answers `true`
+from `useTempFile()` and the second `false`.
+
+`setupMixed(0)` is `new MemoryUsageSetting(true, true, 0, -1)`, and
+`locUseMainMemory && locMaxMainMemoryBytes == 0` with a temporary file turns
+`useMainMemory` off — but only after `locMaxMainMemoryBytes` has been set from
+the argument, so it stays 0. `setupTempFileOnly()` passes `useMainMemory` false
+from the start, and `useMainMemory ? maxMainMemoryBytes : -1` makes it -1. So
+the first answers 0 from `getMaxMainMemoryBytes()` and `true` from
+`isMainMemoryRestricted()`, the second -1 and `false`.
+
+**What correct would be** the javadoc saying what these setups do rather than
+naming another setup they are not equal to, or `setupMixed` delegating to the
+setup it names.
+
+**Why it matters** the four getters are public API, and the javadoc is what a
+caller reads before choosing a setup. A caller who believes the -1 equivalence
+and later branches on `useTempFile()` gets the other branch. Inside `ScratchFile`
+neither difference changes behaviour — `setupMixed(-1)` leaves
+`maxMainMemoryIsRestricted` false so no scratch file is opened either way, and
+both zero cases leave `inMemoryMaxPageCount` at 0 — so nothing in PDFBox itself
+notices, which is presumably why the javadoc has stood.
+
+**Where the Go carries it** `go/pdfio/memoryusagesetting.go`,
+`newMemoryUsageSetting`, is the same arithmetic, and `SetupMixed` says the two
+claims are false rather than repeating them.
+`TestMemoryUsageSettingSetupMethods` in `go/pdfio/memoryusagesetting_test.go`
+holds the four settings apart.
+
+**Confidence** high. Read out of the running Java, `io` compiled against JDK 17:
+
+```
+setupMixed(-1)         mainMem=true  tempFile=true  memRestricted=false maxMem=-1 maxStore=-1
+setupMainMemoryOnly()  mainMem=true  tempFile=false memRestricted=false maxMem=-1 maxStore=-1
+setupMixed(0)          mainMem=false tempFile=true  memRestricted=true  maxMem=0  maxStore=-1
+setupTempFileOnly()    mainMem=false tempFile=true  memRestricted=false maxMem=-1 maxStore=-1
+```

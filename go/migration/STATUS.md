@@ -15,7 +15,7 @@ Last updated: 2026-09-06
 
 | Phase | Area | Java files | Status |
 | --- | --- | ---: | --- |
-| 0 | `pdfio` | 18 | in progress — 13 of 18 ported |
+| 0 | `pdfio` | 18 | **done — all 18 files**, finished by `track/scratchfile` |
 | 1 | `pdfbox/cos` | 24 | **19 of 24 — every file slice 1 needs**; the remaining 4 are slice 7 incremental-save machinery, plus 1 folded away |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | in progress — `filter` has the slice 1 subset, `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 3, `getDataToSign` included |
 | 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
@@ -44,12 +44,12 @@ Last updated: 2026-09-06
 | `RandomAccessOutputStream.java` | `adapters.go` | done |
 | `RandomAccessStreamCache.java` | `streamcache.go` | done |
 | `RandomAccessStreamCacheImpl.java` | `streamcache.go` | done |
-| `IOUtils.java` | `ioutils.go` | done — most of it maps to the Go stdlib instead, see the file header |
-| `ScratchFile.java` | — | not started — deferred to phase 2, see PLAN.md |
-| `ScratchFileBuffer.java` | — | not started — deferred to phase 2 |
-| `MemoryUsageSetting.java` | — | not started — only meaningful once `ScratchFile` exists |
-| `RandomAccessReadMemoryMappedFile.java` | — | not started — needs a decision on `golang.org/x/exp/mmap` vs `syscall` |
-| `NonSeekableRandomAccessReadInputStream.java` | — | not started |
+| `IOUtils.java` | `ioutils.go`, `tempfile.go` | done — most of it maps to the Go stdlib instead, and the temporary file half arrived with `track/scratchfile`; see the file header. `createProtectedTempDir` is not ported: only `PDFDebugger` calls it, and it is a JVM shutdown hook |
+| `ScratchFile.java` | `scratchfile.go` | done in `track/scratchfile` |
+| `ScratchFileBuffer.java` | `scratchfilebuffer.go` | done in `track/scratchfile` |
+| `MemoryUsageSetting.java` | `memoryusagesetting.go` | done in `track/scratchfile` |
+| `RandomAccessReadMemoryMappedFile.java` | `mappedfile.go` | done in `track/scratchfile` — mapped through `golang.org/x/exp/mmap`, which is the decision B0 settled; see the file header for what it buys and what it costs |
+| `NonSeekableRandomAccessReadInputStream.java` | `nonseekablestream.go` | done in `track/scratchfile` |
 
 ## Slice 1 — `pdfbox/cos`
 
@@ -261,10 +261,11 @@ the parts where a silent mistranslation would be easiest to miss.
 | `SequenceRandomAccessReadTest` | `sequenceread_test.go` | complete |
 | `RandomAccessReadBufferedFileTest` | `bufferedfile_test.go` | fixtures written to `t.TempDir()` instead of read from the source tree |
 | `RandomAccessInputStreamTest` | `adapters_test.go` | complete |
-| `ScratchFileBufferTest` | — | waiting on `ScratchFile` |
-| `NonSeekableRandomAccessReadInputStreamTest` | — | waiting on that type |
-| `RandomAccessReadMemoryMappedFileTest` | — | waiting on that type |
-| `TestIOUtils` | — | mostly covers methods that map to the Go stdlib |
+| `ScratchFileBufferTest` | `scratchfilebuffer_test.go` | complete, plus `TestClearLeaksTheLastPage`, which pins JAVA-BUGS 62 |
+| `NonSeekableRandomAccessReadInputStreamTest` | `nonseekablestream_test.go` | complete |
+| `RandomAccessReadMemoryMappedFileTest` | `mappedfile_test.go` | complete |
+| `TestIOUtils` | `streamcache_test.go` | mostly covers methods that map to the Go stdlib; the two stream cache factory cases are ported |
+| — | `memoryusagesetting_test.go` | written from source: Java has no test for `MemoryUsageSetting`. Every expected value was read out of the running Java rather than reasoned about |
 
 ### Deviations from Java recorded so far
 
@@ -334,10 +335,12 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `MissingResourceException.java` | `errors.go` | done |
 | `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started here — slice 3 for the document and its information, slice 8 for the catalogue |
 
-`PDPage.getContentsForStreamParsing` is the general path for now. Its fast path
-decodes a single flate stream as it is read, which needs
-`FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`, neither
-of which is ported.
+`PDPage.getContentsForStreamParsing` took the general path for the length of
+this slice: its fast path decodes a single flate stream as it is read, which
+needs `FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`,
+neither of which was ported then. `track/scratchfile` ported both and wired the
+fast path back in, so `ContentsForStreamParsing` now branches the way Java does
+-- including onto the predictor bug the fast path carries, JAVA-BUGS 63.
 
 ### `pdfbox/pdmodel/graphics`
 

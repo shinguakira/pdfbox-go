@@ -406,7 +406,7 @@ func (s *ScratchFile) markPagesAsFree(pageIndexes []int, off, count int) {
 
 	// Java walks from off to count rather than to off+count, so a release that
 	// starts past the first index frees fewer pages than it was given. Ported
-	// as written; see migration/JAVA-BUGS.md.
+	// as written; see migration/JAVA-BUGS.md entry 62.
 	for aIdx := off; aIdx < count; aIdx++ {
 		pageIdx := pageIndexes[aIdx]
 		if pageIdx >= 0 && pageIdx < s.pageCount && !s.freePages[pageIdx] {

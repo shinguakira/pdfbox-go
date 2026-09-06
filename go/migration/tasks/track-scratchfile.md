@@ -65,24 +65,24 @@ records that as the reason it takes the general path instead.
 
 # Phase A — Write the tests
 
-- [ ] A1. Port `ScratchFileBufferTest`, which `slice/0` could not
-- [ ] A2. Port `NonSeekableRandomAccessReadInputStreamTest`
-- [ ] A3. Port `RandomAccessReadMemoryMappedFileTest`
-- [ ] A4. Write from source for `ScratchFile` and `MemoryUsageSetting` if Java
+- [x] A1. Port `ScratchFileBufferTest`, which `slice/0` could not
+- [x] A2. Port `NonSeekableRandomAccessReadInputStreamTest`
+- [x] A3. Port `RandomAccessReadMemoryMappedFileTest`
+- [x] A4. Write from source for `ScratchFile` and `MemoryUsageSetting` if Java
       has no test for them — check before assuming
 
 ---
 
 # Phase B — Port the implementation
 
-- [ ] B0. **Take the memory-mapping decision first.** `STATUS.md` names it:
+- [x] B0. **Take the memory-mapping decision first.** `STATUS.md` names it:
       `golang.org/x/exp/mmap` or `syscall`. Adding a dependency is a decision,
       not an implementation detail.
-- [ ] B1. `MemoryUsageSetting`
-- [ ] B2. `ScratchFile` and `ScratchFileBuffer`
-- [ ] B3. `NonSeekableRandomAccessReadInputStream`
-- [ ] B4. `RandomAccessReadMemoryMappedFile`
-- [ ] B5. Wire the flate fast path back into
+- [x] B1. `MemoryUsageSetting`
+- [x] B2. `ScratchFile` and `ScratchFileBuffer`
+- [x] B3. `NonSeekableRandomAccessReadInputStream`
+- [x] B4. `RandomAccessReadMemoryMappedFile`
+- [x] B5. Wire the flate fast path back into
       `PDPage.ContentsForStreamParsing`, and update the slice 2 note in
       `STATUS.md`
 
@@ -90,11 +90,11 @@ records that as the reason it takes the general path instead.
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — the phase 0 rows and the slice 2 note
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md` — the phase 0 rows and the slice 2 note
 
 ---
 

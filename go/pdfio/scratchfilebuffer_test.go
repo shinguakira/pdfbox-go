@@ -196,3 +196,43 @@ func TestView(t *testing.T) {
 		t.Errorf("CreateView = %v, want ErrViewNotSupported", err)
 	}
 }
+
+// TestClearLeaksTheLastPage pins the page leak of ScratchFile.markPagesAsFree.
+//
+// Java walks `for (aIdx = off; aIdx < count; aIdx++)` rather than to
+// off + count, and Clear passes off 1 with a count of pageCount - 1, so the
+// last page of the buffer is never returned to the free pool. A buffer that
+// filled its allowance cannot be refilled after Clear.
+//
+// Reproduced against JDK 17 before it was written: three pages of main memory,
+// three pages written, cleared, and the second write fails with "Maximum
+// allowed scratch file memory exceeded." See migration/JAVA-BUGS.md entry 62.
+func TestClearLeaksTheLastPage(t *testing.T) {
+	// Three pages of main memory and no more.
+	scratchFile, err := NewScratchFile(SetupMainMemoryOnlyMax(3 * scratchPageSize))
+	noError(t, "NewScratchFile", err)
+	defer scratchFile.Close()
+
+	buffer := createBuffer(t, scratchFile)
+	page := make([]byte, scratchPageSize)
+	for i := 0; i < 3; i++ {
+		writeAll(t, buffer, page)
+	}
+	length, err := buffer.Length()
+	noError(t, "Length", err)
+	if length != 3*scratchPageSize {
+		t.Fatalf("Length() = %d, want %d", length, 3*scratchPageSize)
+	}
+
+	noError(t, "Clear", buffer.Clear())
+
+	// The third page was not freed, so only two of the three can be had again.
+	var writeErr error
+	for i := 0; i < 3 && writeErr == nil; i++ {
+		_, writeErr = buffer.Write(page)
+	}
+	if writeErr == nil {
+		t.Error("the buffer refilled after Clear, so every page was freed; " +
+			"Java leaks the last one and the port is supposed to as well")
+	}
+}

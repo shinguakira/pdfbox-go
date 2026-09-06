@@ -122,7 +122,7 @@ func (b *byteCountingReader) Read(p []byte) (int, error) {
 // through. It skips the two zlib header bytes and inflates raw, for the reason
 // Decode above gives, and applies no predictor -- which is what Java does, and
 // what makes the fast path wrong for a stream that declares one. See
-// migration/JAVA-BUGS.md.
+// migration/JAVA-BUGS.md entry 63.
 func NewFlateDecoderReader(r io.Reader) (io.Reader, error) {
 	// skip zlib header
 	var header [2]byte

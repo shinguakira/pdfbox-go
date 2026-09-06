@@ -110,8 +110,10 @@ func SetupTempFileOnlyMax(maxStorageBytes int64) *MemoryUsageSetting {
 // temporary files once it is exceeded.
 //
 // Port of setupMixed(long). Java's javadoc says -1 is the same as
-// setupMainMemoryOnly and 0 the same as setupTempFileOnly; only the second
-// holds -- see migration/JAVA-BUGS.md.
+// setupMainMemoryOnly and 0 the same as setupTempFileOnly. Neither holds:
+// -1 leaves UseTempFile true where setupMainMemoryOnly leaves it false, and 0
+// leaves MaxMainMemoryBytes 0 where setupTempFileOnly leaves it -1. See
+// migration/JAVA-BUGS.md entry 64.
 func SetupMixed(maxMainMemoryBytes int64) *MemoryUsageSetting {
 	return SetupMixedMax(maxMainMemoryBytes, unrestricted)
 }

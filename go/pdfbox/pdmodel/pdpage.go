@@ -125,7 +125,7 @@ func (p *PDPage) ContentsForRandomAccess() (pdfio.RandomAccessRead, error) {
 //
 // Java applies no predictor on this path, so a stream that declares one is
 // decoded wrongly here and correctly by the general path. Ported as written;
-// see migration/JAVA-BUGS.md.
+// see migration/JAVA-BUGS.md entry 63.
 func (p *PDPage) ContentsForStreamParsing() (pdfio.RandomAccessRead, error) {
 	// return a stream based reader if there is just one stream
 	contentStream := p.getCOSStream(cos.Contents)
