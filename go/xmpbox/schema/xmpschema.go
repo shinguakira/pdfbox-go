@@ -211,6 +211,23 @@ func (s *XMPSchema) SetTextPropertyValueAsSimple(simpleName, propertyValue strin
 	return s.SetTextPropertyValue(simpleName, propertyValue)
 }
 
+// RemoveUnqualifiedProperty removes the first property of the given name.
+//
+// This is the null path of setSpecifiedSimpleTypeProperty(Types, String,
+// Object): Java's four value setters take a reference type and remove the
+// property when they are handed null. A Go string, bool, int or time.Time
+// cannot be null, so the removal is a method of its own; without it the branch
+// would be unreachable.
+func (s *XMPSchema) RemoveUnqualifiedProperty(qualifiedName string) {
+	// Search in properties to erase
+	for _, child := range s.Container().AllProperties() {
+		if child.PropertyName() == qualifiedName {
+			s.Container().RemoveProperty(child)
+			return
+		}
+	}
+}
+
 // UnqualifiedTextProperty returns the named text property, and nil where there
 // is none.
 func (s *XMPSchema) UnqualifiedTextProperty(name string) (*xmptype.TextType, error) {
