@@ -501,3 +501,87 @@ func TestNonSeekablePDFBOX5161(t *testing.T) {
 		t.Errorf("Read read %d bytes, want 3", bytesRead)
 	}
 }
+
+// stutteringReader answers (0, nil) before every real read, which io.Reader
+// explicitly permits and java.io.InputStream.read(byte[]) cannot do -- it
+// blocks until it holds a byte or the stream has ended.
+type stutteringReader struct {
+	remaining []byte
+	stutter   bool
+}
+
+func (s *stutteringReader) Read(p []byte) (int, error) {
+	s.stutter = !s.stutter
+	if s.stutter {
+		return 0, nil
+	}
+	if len(s.remaining) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, s.remaining)
+	s.remaining = s.remaining[n:]
+	return n, nil
+}
+
+func (s *stutteringReader) Close() error { return nil }
+
+// TestNonSeekableReadsPastAZeroByteRead checks a source that answers (0, nil)
+// is not taken for an ended one.
+//
+// Java's fetch stores is.read(buffer) and treats <= 0 as the end, which is
+// right for an InputStream: it blocks until it has a byte or the stream ends,
+// so 0 never comes back for a non-empty array. Go's io.Reader may answer
+// (0, nil) at any time, and a port that copied the <= 0 test literally would
+// end the stream at the first such answer -- silently, and mid-content.
+func TestNonSeekableReadsPastAZeroByteRead(t *testing.T) {
+	// two buffers' worth, so fetch runs more than once
+	content := createRandomData()
+	source := NewNonSeekableRead(&stutteringReader{remaining: content})
+
+	got := make([]byte, len(content))
+	if err := ReadFully(source, got); err != nil {
+		t.Fatalf("ReadFully: %v", err)
+	}
+	for i := range content {
+		if got[i] != content[i] {
+			t.Fatalf("byte %d = %d, want %d", i, got[i], content[i])
+		}
+	}
+
+	length, err := source.Length()
+	noError(t, "Length", err)
+	if length != int64(len(content)) {
+		t.Errorf("Length() = %d, want %d", length, len(content))
+	}
+}
+
+// failingCloser is a source whose Close reports a problem, which is Java's
+// is.close() throwing.
+type failingCloser struct {
+	*bytes.Reader
+	err error
+}
+
+func (f failingCloser) Close() error { return f.err }
+
+// TestNonSeekableCloseFailureLeavesTheSourceOpen pins the order of Java's
+// close: is.close() first, isClosed = true after. An exception from the first
+// leaves isClosed false, so the source still reads.
+func TestNonSeekableCloseFailureLeavesTheSourceOpen(t *testing.T) {
+	closeErr := errors.New("cannot close")
+	source := NewNonSeekableRead(failingCloser{
+		Reader: bytes.NewReader([]byte("0123456789")),
+		err:    closeErr,
+	})
+
+	wantByteOrEOF(t, source, '0')
+
+	if err := source.Close(); !errors.Is(err, closeErr) {
+		t.Errorf("Close() = %v, want %v", err, closeErr)
+	}
+	if source.IsClosed() {
+		t.Error("IsClosed() = true after a close that failed, want false")
+	}
+	// and it still reads, which is what "not closed" has to mean
+	wantByteOrEOF(t, source, '1')
+}

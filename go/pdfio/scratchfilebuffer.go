@@ -19,6 +19,10 @@ import (
 var ErrBufferClosed = errors.New("pdfio: buffer already closed")
 
 // ScratchFileBuffer holds its content in pages of a ScratchFile.
+//
+// Not safe for concurrent use, which is Java: the class synchronizes nothing of
+// its own and every field is plain. The ScratchFile behind it is shared and
+// locked; one buffer belongs to one reader or writer at a time.
 type ScratchFileBuffer struct {
 	pageSize int
 
@@ -83,7 +87,9 @@ func (b *ScratchFileBuffer) checkClosed() error {
 func (b *ScratchFileBuffer) addPage() error {
 	if b.pageCount+1 >= len(b.pageIndexes) {
 		newSize := len(b.pageIndexes) * 2
-		// check overflow
+		// check overflow. Java's length is an int and doubling it wraps
+		// negative; Go's int is 64 bits here, so this branch is reachable
+		// only where int is 32 bits. Ported as written for that case.
 		if newSize < len(b.pageIndexes) {
 			if len(b.pageIndexes) == maxInt32 {
 				return errors.New("Maximum buffer size reached.")

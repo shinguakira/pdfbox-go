@@ -217,3 +217,32 @@ func TestMappedFileView(t *testing.T) {
 	wantByteOrEOF(t, view, '5')
 	wantPosition(t, view, 3)
 }
+
+// TestMappedFileViewOfAClosedSource pins the one deliberate difference from
+// Java in this file.
+//
+// RandomAccessReadMemoryMappedFile.createView calls no checkClosed and does not
+// declare throws IOException, so on a closed source it reaches through the
+// released buffer. Read out of the running Java, JDK 17:
+//
+//	mapped createView on closed:       java.lang.NullPointerException: Cannot
+//	    invoke "java.nio.ByteBuffer.duplicate()" because
+//	    "<parameter1>.mappedByteBuffer" is null
+//	bufferedfile createView on closed: java.io.IOException:
+//	    org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed
+//
+// The port answers ErrClosed, which is what the sibling source answers and what
+// every other method on a closed MappedFile answers. See
+// migration/JAVA-BUGS.md entry 65.
+func TestMappedFileViewOfAClosedSource(t *testing.T) {
+	source := openMappedFixture(t, "RandomAccessReadFile1.txt")
+	noError(t, "Close", source.Close())
+
+	view, err := source.CreateView(0, 10)
+	if !errors.Is(err, ErrClosed) {
+		t.Errorf("CreateView on a closed source = %v, want ErrClosed", err)
+	}
+	if view != nil {
+		t.Error("CreateView on a closed source returned a view, want none")
+	}
+}

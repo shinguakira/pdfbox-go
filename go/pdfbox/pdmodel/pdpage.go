@@ -133,8 +133,7 @@ func (p *PDPage) ContentsForStreamParsing() (pdfio.RandomAccessRead, error) {
 		// for now only streams using a flate filter are supported
 		source, err := p.streamParsingReader(contentStream)
 		if err != nil {
-			// Java logs "skipped malformed content stream" and answers a
-			// buffer holding the delimiter.
+			slog.Warn("skipped malformed content stream", "err", err)
 			return pdfio.NewReadBufferBytes(delimiter), nil
 		}
 		return source, nil
@@ -162,7 +161,7 @@ func (p *PDPage) streamParsingReader(contentStream *cos.Stream) (pdfio.RandomAcc
 	if err != nil {
 		return nil, err
 	}
-	return pdfio.NewNonSeekableRead(io.NopCloser(decoded)), nil
+	return pdfio.NewNonSeekableRead(decoded), nil
 }
 
 // getCOSStream returns the value of key as a stream, resolving an indirect

@@ -17,6 +17,10 @@ const unrestricted = -1
 // Port of MemoryUsageSetting, which is final and immutable but for the
 // temporary directory. Build one with a Setup function; the zero value is not
 // one of the settings Java can produce.
+//
+// Safe to read from several goroutines once built, which is Java. SetTempDir
+// writes to it and returns it, so it is not safe alongside a reader -- set the
+// directory before handing the setting to a ScratchFile.
 type MemoryUsageSetting struct {
 	useMainMemory bool
 	useTempFile   bool

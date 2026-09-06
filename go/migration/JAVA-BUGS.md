@@ -2673,3 +2673,123 @@ setupMainMemoryOnly()  mainMem=true  tempFile=false memRestricted=false maxMem=-
 setupMixed(0)          mainMem=false tempFile=true  memRestricted=true  maxMem=0  maxStore=-1
 setupTempFileOnly()    mainMem=false tempFile=true  memRestricted=false maxMem=-1 maxStore=-1
 ```
+
+---
+
+## 65. `RandomAccessReadMemoryMappedFile.createView` checks nothing and reaches through the released buffer
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadMemoryMappedFile.java`,
+`createView`
+
+```java
+@Override
+public RandomAccessReadView createView(long startPosition, long streamLength)
+{
+    return new RandomAccessReadView(new RandomAccessReadMemoryMappedFile(this), startPosition,
+            streamLength, true);
+}
+```
+
+The private copy constructor it calls begins `mappedByteBuffer = parent.mappedByteBuffer.duplicate()`,
+and `close()` sets `mappedByteBuffer` to null. So `createView` on a closed
+source dereferences null. The method does not even declare `throws IOException`,
+which is the tell: every other method of the class calls `checkClosed` first,
+and this one has nothing to throw.
+
+**What correct would be** `checkClosed()` as the first line, which is exactly
+what the sibling `RandomAccessReadBufferedFile.createView` does.
+
+**Why it matters** the two sources are interchangeable behind `RandomAccessRead`
+and a caller cannot tell which it holds. Closing one and then asking for a view
+raises `IOException` from one and `NullPointerException` from the other — and an
+unchecked exception out of a method that declares no checked one will not be
+caught by a caller handling `IOException`.
+
+**Where the Go carries it** it does not: `go/pdfio/mappedfile.go`, `CreateView`,
+calls `checkClosed` and answers `ErrClosed`, which is what the sibling answers
+and what every other method on a closed `MappedFile` answers. The alternative
+was a nil dereference — a panic — for a caller error the rest of the package
+reports cleanly. Said where it is, in [`STATUS.md`](STATUS.md), and pinned by
+`TestMappedFileViewOfAClosedSource`.
+
+**Confidence** high. Read out of the running Java, JDK 17:
+
+```
+mapped createView on closed:       java.lang.NullPointerException: Cannot invoke
+    "java.nio.ByteBuffer.duplicate()" because "<parameter1>.mappedByteBuffer" is null
+bufferedfile createView on closed: java.io.IOException:
+    org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed
+```
+
+---
+
+## 66. `ScratchFile` takes its two locks in both orders, and deadlocks
+
+**Where** `io/src/main/java/org/apache/pdfbox/io/ScratchFile.java`. The class
+synchronizes on three things: `ioLock`, `freePages` and `buffers`. Two of them
+are taken nested, in both orders.
+
+`getNewPage` holds `freePages` and asks for `ioLock`:
+
+```java
+int getNewPage() throws IOException {
+    synchronized (freePages) {
+        ...
+        enlarge();          // -> synchronized (ioLock)
+```
+
+`close` holds `ioLock` and asks for `freePages`:
+
+```java
+public void close() throws IOException {
+    synchronized (ioLock) {
+        ...
+        for (ScratchFileBuffer buffer : buffers) {
+            if (buffer != null && !buffer.isClosed()) buffer.close(false);
+            // -> ScratchFile.markPagesAsFree -> synchronized (freePages)
+```
+
+**What correct would be** one order, kept everywhere. `close` does not need to
+hold `ioLock` while it walks the buffers: it could set `isClosed`, take a copy
+of the list, release `ioLock`, and close them outside it.
+
+**Why it matters** one thread writing to a buffer while another closes the
+scratch file is not an exotic pattern — it is a document being written while
+something else decides to shut down, and `ScratchFile` is the class whose whole
+job is to be shared. When the two windows overlap, both threads block forever,
+and because they are not daemon threads the JVM will not exit either.
+
+**Where the Go carries it** `go/pdfio/scratchfile.go` keeps the same three
+locks, taken in the same two orders — `getNewPage` holds `pagesLock` and
+`enlarge` takes `ioLock`; `Close` holds `ioLock` and `closeBuffer` reaches
+`markPagesAsFree`, which takes `pagesLock`. Ported as written and said at both
+sites. Go's mutexes are not reentrant where Java's monitors are, but that
+changes nothing here: the two locks are distinct, so this is the same
+cross-goroutine hold-and-wait and not a new self-deadlock.
+
+**Confidence** reproduced. A probe that ran a writer and a `close()` against the
+same `ScratchFile` deadlocked in round 215 of 400, and the JVM's own detector
+named it:
+
+```
+Found one Java-level deadlock:
+"writer-215":
+  waiting to lock monitor (object 0x0000000530e985d0, a java.lang.Object),
+  which is held by "closer-215"
+"closer-215":
+  waiting to lock monitor (object 0x0000000530e985e0, a java.util.BitSet),
+  which is held by "writer-215"
+
+  at org.apache.pdfbox.io.ScratchFile.enlarge(ScratchFile.java:244)
+  at org.apache.pdfbox.io.ScratchFile.getNewPage(ScratchFile.java:206)
+  - locked <0x0000000530e985e0> (a java.util.BitSet)
+  ...
+  at org.apache.pdfbox.io.ScratchFile.markPagesAsFree(ScratchFile.java:475)
+  at org.apache.pdfbox.io.ScratchFileBuffer.close(ScratchFileBuffer.java:431)
+  at org.apache.pdfbox.io.ScratchFile.close(ScratchFile.java:517)
+  - locked <0x0000000530e985d0> (a java.lang.Object)
+```
+
+No test pins this one. A test for it would have to lose a race on purpose, and
+a test that hangs when it succeeds is worse than no test; the probe and this
+entry are the record.

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 )
 
@@ -37,6 +38,10 @@ var ErrNotEnoughToRewind = errors.New(
 
 // NonSeekableRead reads a stream that cannot seek, holding the current, the
 // previous and the next buffer so that a rewind within them still works.
+//
+// Not safe for concurrent use, which is Java: the class synchronizes nothing,
+// and the three buffers and the cursor into them are one shared position. Two
+// readers would interleave into the same buffer.
 type NonSeekableRead struct {
 	// position is the current position within the stream.
 	position int64
@@ -80,10 +85,15 @@ func NewNonSeekableRead(inputStream io.ReadCloser) *NonSeekableRead {
 }
 
 // Close closes the underlying stream.
+//
+// Java sets isClosed after is.close() returns, so a close that fails leaves
+// the source open rather than half closed. The port does the same.
 func (n *NonSeekableRead) Close() error {
-	err := n.is.Close()
+	if err := n.is.Close(); err != nil {
+		return err
+	}
 	n.isClosed = true
-	return err
+	return nil
 }
 
 // Seek is not supported: the source cannot go backwards past its buffers.
@@ -265,10 +275,22 @@ func (n *NonSeekableRead) fetch() (bool, error) {
 		n.switchBuffers(bufCurrent, bufLast)
 	}
 
-	read, err := n.is.Read(n.buffers[bufCurrent])
+	// java.io.InputStream.read(byte[]) blocks until it holds at least one
+	// byte or the stream has ended, so it never answers 0. An io.Reader may,
+	// and 0 is not the end -- taking it for one would truncate the stream
+	// silently. Read on until the source says one of the two things Java can.
+	var read int
+	var err error
+	for {
+		read, err = n.is.Read(n.buffers[bufCurrent])
+		if read > 0 || err != nil {
+			break
+		}
+	}
 	if err != nil && !errors.Is(err, io.EOF) {
-		// Java logs "premature end of stream, some data could be read" and
-		// rethrows, having marked the source at its end.
+		// Java logs this and rethrows, having marked the source at its end.
+		slog.Warn("pdfio: premature end of stream, some data could be read",
+			"err", err)
 		n.isEOF = true
 		return false, err
 	}

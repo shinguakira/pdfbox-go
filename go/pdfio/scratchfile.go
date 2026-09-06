@@ -36,6 +36,12 @@ var ErrScratchFileClosed = errors.New("pdfio: scratch file already closed")
 // setting allows and writing the rest to a temporary file.
 //
 // Port of ScratchFile, which implements RandomAccessStreamCache.
+//
+// Safe for concurrent use, with the one hazard Java has: the two locks are
+// taken in both orders -- getNewPage holds pagesLock and reaches ioLock through
+// enlarge, while Close holds ioLock and reaches pagesLock through a buffer's
+// markPagesAsFree. A goroutine writing while another closes can deadlock. That
+// is Java's, ported as written; see migration/JAVA-BUGS.md entry 66.
 type ScratchFile struct {
 	// ioLock guards the temporary file and the in-memory page array, which is
 	// Java's ioLock.
@@ -213,7 +219,9 @@ func (s *ScratchFile) getNewPage() (int, error) {
 // allowed or the in-memory array where main memory is not restricted. Where
 // neither holds the free page count is unchanged.
 //
-// Only to be called under pagesLock.
+// Only to be called under pagesLock. Taking ioLock while pagesLock is held is
+// the second half of the lock-order inversion of JAVA-BUGS entry 66: Close
+// takes them the other way round.
 func (s *ScratchFile) enlarge() error {
 	s.ioLock.Lock()
 	defer s.ioLock.Unlock()
@@ -226,7 +234,13 @@ func (s *ScratchFile) enlarge() error {
 	}
 
 	if s.useScratchFile {
-		// create scratch file if needed
+		// create scratch file if needed.
+		//
+		// Java creates the file and then opens a RandomAccessFile over it,
+		// deleting it again where that second step throws
+		// FileNotFoundException. os.CreateTemp does both at once and hands
+		// back an open read-write file, so there is no window between them
+		// and nothing to undo.
 		if s.file == nil {
 			file, err := createProtectedTempFile(s.scratchFileDirectory, "PDFBox", ".tmp")
 			if err != nil {
@@ -249,7 +263,10 @@ func (s *ScratchFile) enlarge() error {
 				expectedFileLen, fileLen)
 		}
 
-		// enlarge if we do not overflow
+		// enlarge if we do not overflow. Java's pageCount is an int, so the
+		// sum can wrap; Go's int is 64 bits on every platform the port
+		// builds for that has more than 2^31 pages of address space, so the
+		// test is here for the shape rather than the arithmetic.
 		if s.pageCount+enlargePageCount > s.pageCount {
 			fileLen += enlargePageCount * scratchFilePageSize
 			if err := s.file.Truncate(fileLen); err != nil {
@@ -425,6 +442,9 @@ func (s *ScratchFile) markPagesAsFree(pageIndexes []int, off, count int) {
 //
 // No further interaction with the scratch file or its buffers can happen after
 // this.
+//
+// The buffers are closed under ioLock, and closing one takes pagesLock through
+// markPagesAsFree -- the opposite order to getNewPage. See JAVA-BUGS entry 66.
 func (s *ScratchFile) Close() error {
 	var ioexc error
 

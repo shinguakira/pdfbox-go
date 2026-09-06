@@ -22,6 +22,12 @@ import (
 )
 
 // MappedFile reads a file that has been mapped into memory.
+//
+// Not safe for concurrent use, which is Java: the position is Java's position
+// in the ByteBuffer, and one buffer has one. CreateView is how a second cursor
+// over the same mapping is had, and each view carries its own -- which is also
+// what the port does for RandomAccessReadBuffer, see the slice 0 note in
+// STATUS.md.
 type MappedFile struct {
 	// mapped is the mapping, and nil once this source is closed.
 	mapped *mmap.ReaderAt
@@ -185,6 +191,14 @@ func (m *MappedFile) IsEOF() (bool, error) {
 
 // CreateView returns an independent cursor clipped to the given section, which
 // reads through a second cursor over the same mapping.
+//
+// Java does not check that the source is still open here, so createView on a
+// closed one dereferences the released buffer and raises NullPointerException
+// -- where its sibling RandomAccessReadBufferedFile.createView calls
+// checkClosed and raises IOException. The port checks, so this answers
+// ErrClosed like every other operation on a closed source. The difference is
+// recorded in migration/JAVA-BUGS.md entry 65 and in STATUS.md, and pinned by
+// TestMappedFileViewOfAClosedSource.
 func (m *MappedFile) CreateView(start, length int64) (RandomAccessRead, error) {
 	if err := m.checkClosed(); err != nil {
 		return nil, err
