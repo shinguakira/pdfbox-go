@@ -307,7 +307,7 @@ func (a *FDFAnnotationTextMarkup) initTextMarkupOfXML(element *dom.Element) erro
 	if coords == "" {
 		return errors.New("Error: missing attribute 'coords'")
 	}
-	coordsValues := strings.Split(coords, ",")
+	coordsValues := splitJava(coords, ",")
 	if len(coordsValues) < 8 {
 		return errors.New("Error: too little numbers in attribute 'coords'")
 	}
@@ -696,7 +696,30 @@ func (a *FDFAnnotationInk) InkList() [][]float32 {
 
 // splitOnCommaOrSemicolon is String.split("[,;]").
 func splitOnCommaOrSemicolon(text string) []string {
-	return strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ';' })
+	return dropTrailingEmpty(strings.FieldsFunc(text,
+		func(r rune) bool { return r == ',' || r == ';' }))
+}
+
+// splitJava is String.split(sep) for a one-character separator.
+//
+// java.lang.String.split with the default limit of zero **removes trailing
+// empty strings**; strings.Split keeps them. Every one of these attributes is
+// a list of numbers, and real XFDF in the wild ends them with a separator --
+// the coords of xfdf-test-document-annotations.xml do -- so without this the
+// port hands parseFloat an empty string and panics on a file Java reads.
+func splitJava(text, sep string) []string {
+	return dropTrailingEmpty(strings.Split(text, sep))
+}
+
+// dropTrailingEmpty removes the empty strings at the end of a split, which is
+// what String.split does and what neither strings.Split nor strings.FieldsFunc
+// expresses on its own. Interior empties stay, because Java keeps those.
+func dropTrailingEmpty(parts []string) []string {
+	end := len(parts)
+	for end > 0 && parts[end-1] == "" {
+		end--
+	}
+	return parts[:end]
 }
 
 // FDFAnnotationLink is a link annotation of an FDF document.

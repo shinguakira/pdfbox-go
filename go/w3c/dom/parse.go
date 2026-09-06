@@ -86,7 +86,7 @@ func Parse(r io.Reader, nsAware bool) (*Document, error) {
 				tagName: nodeName(typed.Name, nsAware),
 			}
 			for _, attr := range typed.Attr {
-				element.attributes = append(element.attributes, &Attr{
+				element.addAttribute(&Attr{
 					node:  node{owner: document},
 					name:  nodeName(attr.Name, nsAware),
 					value: attr.Value,
