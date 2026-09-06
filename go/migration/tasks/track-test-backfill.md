@@ -164,39 +164,39 @@ where a silent defect corrupts every document that follows.
 敵対的レビュー. Green tests prove the port passes the tests, not that it is a
 faithful migration. Go in assuming it is wrong.
 
-- [ ] D1. Read each ported test against its Java file side by side
+- [x] D1. Read each ported test against its Java file side by side
   - Is every `@Test` accounted for — ported, or dropped with a reason?
   - Is every assertion value the Java's? A value that "looked right" is a value
     read off the Go
   - Does a `@ParameterizedTest` keep all its arguments?
 
-- [ ] D2. Check what each test actually reaches
+- [x] D2. Check what each test actually reaches
   - Does it take the real path with the real types, or a stand-in that would
     pass while the path it stands for is broken?
   - A test that constructs the Go's own output and asserts on it proves nothing
 
-- [ ] D3. Hunt for tests that pass for the wrong reason
+- [x] D3. Hunt for tests that pass for the wrong reason
   - A case asserting an exception: is it the same failure, or a different one
     that happens to also fail?
   - A case asserting a count: would it still pass if the contents were wrong?
 
-- [ ] D4. Check every fix made in phase B
+- [x] D4. Check every fix made in phase B
   - Was it a port defect, or did the Java behave that way? The second is a
     `JAVA-BUGS` entry and a reverted fix
   - Does each fix have a test that fails without it?
 
-- [ ] D5. Check the Java bugs
+- [x] D5. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
 
-- [ ] D6. Write the review down
+- [x] D6. Write the review down
   - What was checked, what was found, what was fixed, what is still open
   - Say plainly how many defects the sixteen classes found. If the answer is
     none, say that too — it is the result, not a failure to find one
 
 And for this branch in particular:
 
-- [ ] D7. Re-run the survey that produced this branch
+- [x] D7. Re-run the survey that produced this branch
   - Enumerate the Java test classes again and confirm the sixteen are gone from
     the unported list, and that nothing new appeared
   - Whatever is still unported must be in `STATUS.md` with a reason by the end

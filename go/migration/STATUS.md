@@ -3906,3 +3906,88 @@ they are:
 - `TestCOSIncrement` ends with `System.out.println(dash)` in
   `PDLineDashPatternTest`; the port checks `String()` answers something rather
   than printing it, which is all that line proves.
+
+### The adversarial review — phase D
+
+**D1, every case accounted for.** The sixteen Java classes hold 107 `@Test`
+methods; 87 are ported and 20 are dropped with the reasons above. Counted class
+by class against the Java, including the places where several Java cases became
+one Go table: `TestCOSParser`'s 21 are 8 Go functions, `BlendModeTest`'s 17 are
+3, `FDFUtilsTest`'s 13 are one table of 13 rows.
+
+Every assertion value was read out of the Java file. The two places where the
+port asserts something different say so where they are, and both are assertions
+on prose rather than behaviour — the nested-BI message and the `println` at the
+end of `PDLineDashPatternTest`.
+
+**D4, every fix demonstrated.** Each of the six defects had a test that failed
+before it and passed after. Three were found by a test that would not compile or
+would not run at all — the missing `RemoveXRefOffset`, the missing `RemovePage`,
+and the `parseFloat` panic — and three by a wrong value.
+
+**D3 found something the tests do not do.** `PDFStreamParserTest.testInlineImages`
+carries this comment before its last eight cases:
+
+```java
+// MAX_BIN_CHAR_TEST_LENGTH is currently 10, test boundaries
+//                              1234567890
+testInlineImage2ops("ID\n12EI5EI       EMC ", "12EI5", "EMC");
+```
+
+**The 39 cases do not constrain that constant.** Setting the port's
+`maxBinCharTestLength` to 3, 5, 9, 15 or 40 leaves every one of them passing.
+The reason is visible in the code: those cases put nothing but spaces inside the
+look-ahead window, so `startOpIdx` never leaves -1, both of the checks that use
+the window length are skipped, and the answer is the same whatever the window
+is.
+
+This is the Java's, not the port's. `hasNoFollowingBinData` and
+`atEndOfInlineImage` are line-for-line ports, signed-byte comparison included,
+and the window is read with the same length. So the comment describes an intent
+the cases do not achieve, in Java as much as here.
+
+The claim is bounded: **the cases do not pin the constant**, not "no case
+could". A distinguishing input was looked for — operators of several lengths at
+several distances past the `EI` — and none of the shapes tried told 9 from 10.
+
+**D2, what the tests actually reach.** All of them run the real types.
+`TestIncrementallyCreateDocument` is the strongest of the sixteen: six
+incremental saves with a reload and a re-check between each, exercising slice
+7's incremental writer end to end for the first time. `TestLoadXFDFAnnotations`
+guards against passing vacuously — it sets a flag when it finds the annotation
+it is looking for and fails if the flag is still false.
+
+Three test doubles are used, all of them standing in for a *source* while the
+code under test is real: `stutteringReader`, `failingCloser` and
+`bytesThenError` in `pdfio`, which are that package's own from an earlier
+branch.
+
+**A caching trap worth naming.** The first mutation run reported `ok (cached)`
+— Go had not re-run the test at all, because only a non-test file had changed
+in a way the cache did not notice on that invocation. A mutation check is
+worthless without `-count=1`. Every result above was taken with it.
+
+**D7, the survey re-run.** The enumeration that produced this branch was run
+again: 54 Java test classes had no trace in the Go tests, and 38 do now. All
+sixteen are gone, and nothing new appeared. Of the 38, every one in `pdfbox` or
+`fontbox` is recorded here with a reason except three, which are recorded now
+because **none of them is a test**:
+
+| Java file | What it is |
+| --- | --- |
+| `fontbox/ttf/GSUBTableDebugger` | one `` that asserts nothing. It reads a font and prints the GSUB table; its own javadoc says "to be used mainly for debugging purposes" |
+| `fontbox/ttf/gsub/GSUBTablePrintUtil` | no `` at all — the printer the above calls |
+| `pdmodel/interactive/annotation/package-info` | a package declaration |
+
+The remaining 20 are `tools` and `pdfbox-layout`, which belong to
+`track/tools` and `track/pdfbox-layout`.
+
+### Still open
+
+- `maxBinCharTestLength` is unpinned, above. Writing a case that pins it would
+  be writing a test the Java does not have, which is not this branch's job; it
+  is worth doing by whoever next touches the inline image parser.
+- The seventeen `TestPDFParser` cases stay unported until this repository has a
+  corpus. They are the whole-document recovery suite, and they are the largest
+  single block of Java testing the port has no answer to.
+- `testSubsetting` is waiting on `track/font-embedding`, which names it.
