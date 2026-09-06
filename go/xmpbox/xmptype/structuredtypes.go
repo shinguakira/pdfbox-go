@@ -15,8 +15,9 @@ package xmptype
 // them against its Types constant from the init at the end of this file.
 
 import (
-	"fmt"
 	"time"
+
+	"github.com/shinguakira/pdfbox-go/go/internal/javafmt"
 )
 
 // stringOf reads the named field as a string, and answers the empty string
@@ -134,10 +135,30 @@ func (d *DimensionsType) Unit() string { return stringOf(&d.StructuredType, Dime
 func (d *DimensionsType) TypeName() string { return "DimensionsType" }
 
 // String returns the Java toString form.
+//
+// Java concatenates the two Floats, which write themselves as "4.0" and a
+// missing one as "null"; the unit is a String, and a missing one is "null" as
+// well.
 func (d *DimensionsType) String() string {
-	w, _ := d.W()
-	h, _ := d.H()
-	return fmt.Sprintf("DimensionsType{%v x %v %s}", w, h, d.Unit())
+	return "DimensionsType{" + dimensionOf(d.W()) + " x " + dimensionOf(d.H()) + " " +
+		nullable(d.Property(DimensionsUnit), d.Unit()) + "}"
+}
+
+// dimensionOf writes a Float the way Java's string concatenation does.
+func dimensionOf(value float32, held bool) string {
+	if !held {
+		return "null"
+	}
+	return javafmt.Float32(value)
+}
+
+// nullable writes a String the way Java's string concatenation does, the
+// property saying whether there is one at all.
+func nullable(property AbstractField, value string) string {
+	if property == nil {
+		return "null"
+	}
+	return value
 }
 
 // FontType is a font a document used.
