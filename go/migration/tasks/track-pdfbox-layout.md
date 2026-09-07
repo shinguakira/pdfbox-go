@@ -91,12 +91,12 @@ choice is the work — not the 7 files around it.
     module asserts anything about the shaping, and a source of UAX#9 embedding
     levels, which golang.org/x/text/unicode/bidi does not expose. Measured
     against the running Java; see the branch section of migration/STATUS.md.
-- [ ] A1. Port the shared cases both backends run
+- [x] A1. Port the shared cases both backends run
   - `GlyphLayoutBidiTest`, `GlyphLayoutDin91379Test`,
     `GlyphLayoutDin91379FormTest`, `GlyphLayoutLigaturesAndKerningTest`,
     `GlyphLayoutSMPTest` — each exists twice, once per backend
-- [ ] A2. Port `TestBase` — the AWT side's shared fixture
-- [ ] A3. Port the hello-world tests, if A0 leaves them meaningful
+- [x] A2. Port `TestBase` — the AWT side's shared fixture
+- [x] A3. Port the hello-world tests, if A0 leaves them meaningful
 
 ---
 
@@ -113,7 +113,7 @@ helper rather than patching each call site. See
 [`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
 port has already paid for more than once.
 
-- [ ] B1. The interface both backends implement
+- [x] B1. The interface both backends implement
   - `GlyphLayoutProcessor` and `GlyphLayoutFontLoader` in the core, whichever
     slice ported them, and the contract they define
 - [ ] B2. One backend, chosen in A0
@@ -124,11 +124,11 @@ port has already paid for more than once.
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
 
 ---
 
@@ -138,53 +138,53 @@ port has already paid for more than once.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green" -- green says the
     code is not broken in a way something already checks, which is a different
     claim from "this works"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D8. This is a substitution, not a transliteration — say so plainly
+- [x] D8. This is a substitution, not a transliteration — say so plainly
   - Whatever Go shaper was chosen, it is not `java.awt.font.TextLayout`.
     Record every case where it shapes differently, in `STATUS.md`, as a
     deviation. Do not let "the test passes" stand in for "it shapes the same".
 
-- [ ] D9. Check bidi and the supplementary plane against the Java output
+- [x] D9. Check bidi and the supplementary plane against the Java output
   - `GlyphLayoutBidiTest` and `GlyphLayoutSMPTest` are the two that will expose
     a shaper difference first.
 
