@@ -1369,10 +1369,24 @@ rejects them first.
 checks `utf8.RuneCountInString(prev) == 1` and not `next`. The comment above it
 names this entry.
 
-**Confidence** high for the code reading; the failing case is derived from the
-method, not measured against a Java run, because there is no Maven in this
-environment to build PDFBox with. Every ported test of this class passes with
-the Java values.
+**Confidence** certain, and **measured** since `track/font-embedding`'s D9.
+`ToUnicodeWriter` and `util/Hex`/`util/StringUtil` compile on their own with
+`javac`, so the case above was run: for `add(0x400, "a")` and
+`add(0x401, "bc")` the running Java writes
+
+```
+1 beginbfrange
+<0400> <0401> <0061>
+endbfrange
+```
+
+with the `c` nowhere in the CMap, and answers `allowDestinationRange("a","bc")
+= true` against `allowDestinationRange("ab","c") = false`. The port writes the
+same bytes; `TestCMapDropsTheTailOfALongerDestination` in
+`tounicodewriter_test.go` holds both, with the Java output as the wanted value.
+(This entry previously said the case was derived rather than measured, "because
+there is no Maven in this environment" — Maven is not needed for a class whose
+only dependency is two utility classes.)
 
 ---
 
@@ -3148,3 +3162,61 @@ leak. Said where it is and in [`STATUS.md`](STATUS.md).
 **Confidence** high, from the source: the `throw` sits between the open and the
 only `close` the class has, and the class has no `finally`. Not reproduced —
 observing a leaked handle needs a file over 2 GB.
+
+---
+
+## 74. `TrueTypeEmbedder.getTag` indexes its alphabet with a negative remainder
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/TrueTypeEmbedder.java`,
+`getTag`
+
+```java
+public String getTag(Map<Integer, Integer> gidToCid)
+{
+    // hash might be negative due to an overflow if the map contains lots of values
+    long num = Math.abs(gidToCid.hashCode());
+    // base25 encode
+    StringBuilder sb = new StringBuilder();
+    do
+    {
+        long div = num / 25;
+        int mod = (int)(num % 25);
+        sb.append(BASE25.charAt(mod));
+```
+
+The comment shows the author knew the hash can be negative, and `Math.abs` is
+the guard against it. `Math.abs(int)` has one input it does not fix:
+`Math.abs(Integer.MIN_VALUE)` is `Integer.MIN_VALUE`, because the positive value
+does not exist in the range. Widening the result to `long` afterwards does not
+help — the negation has already failed.
+
+`num` is then negative, `num % 25` is negative in Java, and
+`BASE25.charAt(negative)` raises StringIndexOutOfBoundsException.
+
+**What correct would be** `Math.abs((long) gidToCid.hashCode())`, which widens
+before negating and has no such input. The `long num` is already there; only the
+cast is in the wrong place.
+
+**Why it matters** it is one hash value in 2^32, so it is a lottery rather than a
+hazard — but the failure is an unchecked exception out of saving a document,
+with a message about a string index, in a method whose comment says it is
+guarding against exactly this.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/truetypeembedder.go`,
+`subsetTag`, leaves `math.MinInt32` unnegated for the same reason and then
+indexes `base25` with a negative remainder, which panics as Java's unchecked
+exception does. Said at the point of difference.
+
+**Confidence** certain, and **measured**. A map whose hash is exactly
+`Integer.MIN_VALUE` needs one entry with `key ^ value == 0x80000000`, so
+`{0: Integer.MIN_VALUE}` does it, and the running Java answers
+
+```
+hashCode(patho)     = -2147483648
+getTag(patho) threw java.lang.StringIndexOutOfBoundsException: String index out of range: -23
+```
+
+against `getTag({1: 2, 3: 4})` = `AAAAAL+` for an ordinary map. Go's `%` keeps
+the sign of the dividend exactly as Java's does, so the port reaches the same
+-23 and panics. `TestSubsetTagMatchesJava` in `truetypeembedder_test.go` holds
+both, with the Java values as the wanted ones.

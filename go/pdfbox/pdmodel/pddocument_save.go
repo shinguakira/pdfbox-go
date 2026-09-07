@@ -130,9 +130,9 @@ func (d *PDDocument) SaveOfParameters(output io.Writer,
 // subsetDesignatedFonts subsets the fonts the document was told to subset.
 //
 // The set is filled by PDAbstractContentStream.SetFont, and only ever with a
-// font that answers WillBeSubset. Subsetting itself is font embedding, which
-// this port has not reached, so no font answers it yet and the walk is empty.
-// See migration/STATUS.md.
+// font that answers WillBeSubset -- which, since track/font-embedding, is a
+// font loaded by PDType0Font.load with subsetting asked for. TestSubsetting in
+// go/pdfbox/increment_test.go is the case that fails when this is not run.
 func (d *PDDocument) subsetDesignatedFonts() error {
 	// subset designated fonts
 	for _, f := range d.fontsToSubset {

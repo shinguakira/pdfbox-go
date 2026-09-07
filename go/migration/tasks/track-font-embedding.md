@@ -49,15 +49,19 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-The five files `STATUS.md` records as `pdmodel/font at 34 of 39`, and the half
-of two ported classes that was deferred with them.
+The files `STATUS.md` records as left of `pdmodel/font`, and the half of two
+ported classes that was deferred with them.
+
+**`STATUS.md` says 34 of 39 with five left, and it is wrong: `ToUnicodeWriter`
+was ported by slice 7**, with its own test ported from `TestToUnicodeWriter`
+and JAVA-BUGS 33 recorded at the point of difference. It is 35 of 39 and four
+are left. Correct that row in C5.
 
 | Java source | Lines | What it does |
 | --- | ---: | --- |
 | `pdmodel/font/TrueTypeEmbedder.java` | 401 | reads a TTF, writes `/FontFile2` and the descriptor, drives the subsetter |
 | `pdmodel/font/PDCIDFontType2Embedder.java` | 738 | the CID half — `/CIDToGIDMap`, `/W`, the descendant font |
 | `pdmodel/font/PDTrueTypeFontEmbedder.java` | 135 | the simple-font half, with its encoding |
-| `pdmodel/font/ToUnicodeWriter.java` | 228 | the `/ToUnicode` CMap the embedded font needs |
 | `pdmodel/font/Subsetter.java` | 40 | the interface `addToSubset`/`subset` are declared on |
 
 And the embedding halves the read-side port left as holes, which are named in
@@ -87,12 +91,12 @@ reached, in the Go, by a method that panics.
 
 # Phase A — Write the tests
 
-- [ ] A1. Port `TestFontEmbedding` — 17 cases
+- [x] A1. Port `TestFontEmbedding` — 17 cases
   - It writes documents and reads them back. Where a case needs
     `PDFTextStripper` to verify the round trip, that is ported and available
   - Where a case needs a font file, check `pdfbox/src/test/resources` carries
     it before assuming the case must be dropped
-- [ ] A2. Note every case not ported, and why. Font files this repository does
+- [x] A2. Note every case not ported, and why. Font files this repository does
       not have is a reason; "it was awkward" is not
 
 ---
@@ -112,23 +116,21 @@ port has already paid for more than once.
 
 In dependency order — the interface, then the shared base, then the two halves.
 
-- [ ] B1. `Subsetter`
+- [x] B1. `Subsetter`
   - 40 lines of interface. In Go it is the method set `PDType0Font` and
     `TrueTypeEmbedder` satisfy; check what the port already names before adding
     a second name for it
-- [ ] B2. `ToUnicodeWriter`
-  - **JAVA-BUGS entry 33 is about this class** — `allowDestinationRange` checks
-    only one of its two strings. It was found while reading, from the Java, when
-    nothing was ported. Port it as written and check the entry still describes
-    what the Go does
-- [ ] B3. `TrueTypeEmbedder`
+- [x] B2. `ToUnicodeWriter` — **already ported by slice 7**, in
+      `tounicodewriter.go`, with JAVA-BUGS 33 written at the point of
+      difference. Check the entry still describes what the Go does and move on
+- [x] B3. `TrueTypeEmbedder`
   - The descriptor, `/FontFile2`, the subsetting drive. Leans on
     `fontbox/ttf.TTFSubsetter`, which is ported
-- [ ] B4. `PDTrueTypeFontEmbedder`, and `PDTrueTypeFont.load`
-- [ ] B5. `PDCIDFontType2Embedder`, and `PDType0Font.load` / `loadVertical`
+- [x] B4. `PDTrueTypeFontEmbedder`, and `PDTrueTypeFont.load`
+- [x] B5. `PDCIDFontType2Embedder`, and `PDType0Font.load` / `loadVertical`
   - The largest file in the branch. `/CIDToGIDMap`, the `/W` widths array, the
     descendant font
-- [ ] B6. Replace the panics
+- [x] B6. Replace the panics
   - `pdtype0font.go` has methods that panic where the embedding half was
     missing. Each one is a promise this branch is here to keep; leaving one is
     leaving the branch unfinished
@@ -137,11 +139,11 @@ In dependency order — the interface, then the shared base, then the two halves
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
   - The `pdmodel/font` row, from `34 of 39` to what it becomes
   - The `PDType0Font` and `PDTrueTypeFont` rows, which say the embedding half is
     deferred
@@ -154,41 +156,41 @@ In dependency order — the interface, then the shared base, then the two halves
 敵対的レビュー. Green tests prove the port passes the tests, not that it is a
 faithful migration. Go in assuming it is wrong.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go?
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green" -- green says the
     code is not broken in a way something already checks, which is a different
     claim from "this works"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — with where, what, what correct would be, where the Go
     carries it, and how confident?
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
 
 And for this branch in particular:
 
-- [ ] D8. Check the bytes, not just the structure
+- [x] D8. Check the bytes, not just the structure
   - A subsetted font that parses is not a font that is right. Read a document
     this branch writes back with the port's own `fontbox` parser, and check the
     glyphs the subset kept are the glyphs that were asked for
@@ -196,7 +198,7 @@ And for this branch in particular:
     the two `/FontFile2` streams. Identical is the strong result; a difference
     needs a reason
 
-- [ ] D9. Check `/ToUnicode` against JAVA-BUGS 33
+- [x] D9. Check `/ToUnicode` against JAVA-BUGS 33
   - The entry says the Java checks one of two strings. Confirm the port
     reproduces that and that the entry's "where the Go carries it" is now true
 
@@ -204,21 +206,21 @@ And for this branch in particular:
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 ---

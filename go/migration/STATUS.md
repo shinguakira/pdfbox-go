@@ -18,7 +18,7 @@ Last updated: 2026-09-06
 | 0 | `pdfio` | 18 | **done — all 18 files**, finished by `track/scratchfile` |
 | 1 | `pdfbox/cos` | 24 | **done — 22 of 24 ported**. Slice 7 closed the incremental-save deferral: `COSIncrement`, `COSUpdateInfo` and `COSUpdateState` are in. The two left are deliberate — `COSInputStream`, which exists in Java only to carry a `DecodeResult`, and `COSOutputStream`, folded into `streamWriter` |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | **done — all 48**. `filter` 23 of 23, finished by slice 6, `DecodeOptions` included; `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 7, `getDataToSign` included |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` at 34 of 39 (the 5 left are the embedders, which `track/font-embedding` claims), all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
+| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` **at 39 of 39**, finished by `track/font-embedding`, all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | **done — all 85 files**, finished by slice 9: the graphics engine, all 23 graphics operators, all 13 colour operators and the three `DrawObject`s |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D`, `Ellipse2D`, `FlatteningPathIterator`, and `Area` minus curves |
@@ -45,7 +45,7 @@ was wrong twice for exactly that reason, matching a class named in a Go comment
 that said the class was *not* ported. A `Port of <FQN>` comment, or a type, is
 evidence; a name is not.
 
-### 64 of 891 classes are unported. 24 of those are settled.
+### 63 of 891 classes were unported. 24 of those are settled.
 
 | Group | Files | Verdict |
 | --- | ---: | --- |
@@ -58,12 +58,12 @@ evidence; a name is not.
 Every one of those was already recorded here with a reason. Nothing in that
 group is a gap.
 
-### 40 are real, and each now has a branch
+### 39 were real, and each has a branch. Seven are now done.
 
 | Group | Files | Branch |
 | --- | ---: | --- |
-| `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | `track/font-embedding` |
-| `pdmodel` resource cache factory | 3 | `track/test-backfill`, which is already in those files |
+| `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | **done** — `track/font-embedding`. Four, not five: `ToUnicodeWriter` was already ported and this survey missed it |
+| `pdmodel` resource cache factory | 3 | **done** — `track/test-backfill`, which was already in those files |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | `track/pdfbox-layout` |
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | `track/pdfbox-layout` |
 | `tools`, `tools/imageio` | 26 | `track/tools` |
@@ -89,10 +89,11 @@ add surface on top of a base whose test coverage has a known hole.
 ### Order
 
 1. **`track/test-backfill`** — 16 test classes, the resource cache factory, and
-   the stale rows below. Depends on nothing.
+   the stale rows below. Depends on nothing. **Done.**
 2. **`track/font-embedding`** — a capability gap, not tidying: nothing in the
-   port can write a PDF with an embedded font, and `PDType0Font`'s embedding
-   methods panic where the half is missing.
+   port could write a PDF with an embedded font, and `PDType0Font`'s embedding
+   methods panicked where the half was missing. **Done** — the port embeds and
+   subsets TrueType fonts, and the three panics answer.
 3. **`track/tools`** — 22 commands, whose libraries all exist now. Seven are
    held for the raster backend.
 4. **`track/pdfbox-layout`** — last. Its A0 is choosing a Go text shaper, which
@@ -112,9 +113,20 @@ and the deferring slice's table were left saying the work was outstanding.
   them as done.
 - Phase 7 said `cmd/pdfbox`, a directory `PLAN.md` never named.
 
-Two rows were checked and are **right**, so they are not to be "corrected"
-later: `pdmodel/font at 34 of 39` with five embedders left, and `4 of rendering`
-being `java.awt`.
+One of the two rows this survey declared **right** was not.
+`pdmodel/font at 34 of 39` with five embedders left was wrong when it was
+written: `ToUnicodeWriter` had been ported by slice 7, with its own test and
+JAVA-BUGS 33, so it was 35 of 39 with four left. `track/font-embedding` found
+it by nearly overwriting the file, and closed the remaining four, so the row now
+reads 39 of 39. `4 of rendering` being `java.awt` was checked again and is
+right.
+
+That is the same failure the list above records, one level up: the survey
+matched the class name in `tounicodewriter.go`'s header, which reads `Port of
+**the package-private** org.apache.pdfbox...`, against the plain
+`Port of org.apache.pdfbox...` it was looking for, missed it, and then wrote the
+miss down as verified. **A survey that says a row was checked is worth no more
+than the matcher it was checked with.**
 
 The lesson for every branch from here: **C5 means the summary row and the row
 that deferred the work, not only your own section.**
@@ -680,10 +692,10 @@ always gives the same encoding.
 | `PDFontDescriptor`, `PDPanose`, `PDPanoseClassification` | `pdfontdescriptor.go`, `pdpanose.go` | done |
 | `Standard14Fonts`, `UniUtil` | `standard14fonts.go` | done — the 15 AFM files embedded |
 | `PDType1Font` | `pdtype1font.go` | partial — the standard 14 path is whole; the embedded PFB needs `fontbox/type1` and the substitute needs the font mapper, both slice 4 |
-| `PDTrueTypeFont` | `pdtruetypefont.go` | partial — an embedded font is read whole; a font that is not embedded has no substitute until the font mapper arrives |
+| `PDTrueTypeFont` | `pdtruetypefont.go` | done — an embedded font is read whole; the substitute for one that is not embedded arrived with slice 4's font mapper, and the `load` factories that write one with `track/font-embedding`, in `pdtruetypefont_embed.go` |
 | `PDType3Font`, `PDType3CharProc` | `pdtype3font.go`, `pdtype3charproc.go` | done |
 | `PDFontFactory` | `pdfontfactory.go` | partial — Type 1, TrueType and Type 3; Type 0, Type 1C, Multiple Master and the CID fonts report that they are not ported |
-| `PDType0Font`, `PDCIDFont*`, `PDType1CFont`, `PDMMType1Font`, the `FontMapper` chain, every `*Embedder`, `Subsetter`, `ToUnicodeWriter`, `CMapManager`, `FontCache`, `FileSystemFontProvider` | — | not started — slices 4 and 7 |
+| `PDType0Font`, `PDCIDFont*`, `PDType1CFont`, `PDMMType1Font`, the `FontMapper` chain, every `*Embedder`, `Subsetter`, `ToUnicodeWriter`, `CMapManager`, `FontCache`, `FileSystemFontProvider` | — | done elsewhere — slice 4 took all but the embedders, slice 7 took `ToUnicodeWriter`, and `track/font-embedding` took `TrueTypeEmbedder`, `PDTrueTypeFontEmbedder`, `PDCIDFontType2Embedder` and `Subsetter` |
 
 What a font in this slice cannot do, and why:
 
@@ -1025,9 +1037,11 @@ rather than URIs, which is what every caller turned them into anyway.
 
 ### `pdmodel/font` — the CID half, and the font mapper chain
 
-34 of 39 files. The five that are left are the embedders, which slice 7 needs:
-`TrueTypeEmbedder`, `PDTrueTypeFontEmbedder`, `PDCIDFontType2Embedder`,
-`Subsetter` and `ToUnicodeWriter`.
+34 of 39 files when the slice closed. The five it left were the embedders, which
+slice 7 needs: `TrueTypeEmbedder`, `PDTrueTypeFontEmbedder`,
+`PDCIDFontType2Embedder`, `Subsetter` and `ToUnicodeWriter`. Slice 7 took
+`ToUnicodeWriter` and `track/font-embedding` took the other four, so the package
+is 39 of 39.
 
 | Java | Go | Status |
 | --- | --- | --- |
@@ -1140,7 +1154,8 @@ Devanagari drops `rkrf`, `cjct`, `abvs` and `psts`, and Gujarati drops `psts`.
 ### What the review checked
 
 - **Every Java class of the slice has a Go counterpart.** All 143 of `fontbox`;
-  34 of 39 in `pdmodel/font`, the five left being the slice 7 embedders.
+  34 of 39 in `pdmodel/font`, the five left being the slice 7 embedders — all
+  five since closed, by slice 7 and `track/font-embedding`.
 - **The substitutes table was diffed mechanically** against the Java rather than
   read: thirteen entries, identical.
 - **`FontMapperImpl`'s scoring**, where a Java `int` division truncates before
@@ -2305,10 +2320,12 @@ The same call therefore has two behaviours depending on the import graph, where
 Java has one. That is a divergence of the port, left as it stands; JAVA-BUGS 48
 records it, together with what `getAcroForm()` mutates when it is applied.
 
-`AcroFormOrphanWidgetsProcessor.ensureFontResources` finds the replacement font
-but does not embed it: Java calls `PDType0Font.load`, and the font embedders are
-not ported. The lookup and its logging are here so the shape is right when they
-land.
+`AcroFormOrphanWidgetsProcessor.ensureFontResources` found the replacement font
+but did not embed it: Java calls `PDType0Font.load`, and the font embedders were
+not ported. The lookup and its logging were here so the shape would be right
+when they landed. **`track/font-embedding` closed it** — the method now loads
+the mapped font and puts it in the default resources, as Java does, and
+`TestEnsureFontResourcesEmbedsTheReplacement` covers it.
 
 ### `pdmodel/graphics/optionalcontent` — all 3 files, and `PDPropertyList` with them
 
@@ -2655,8 +2672,9 @@ comments was checked against this file. All were recorded except two, now added:
 options-taking reader, and `PDPageContentStream`'s five deprecated
 `appendRawCommands`, which is a choice rather than a gap. Every remaining
 deferral is blocked on a type a later slice brings — `PDShading`,
-`PDTilingPattern`, the font embedders, an ICC engine, the four unported halves
-of the resource cache — none on difficulty.
+`PDTilingPattern`, the font embedders (since closed by `track/font-embedding`),
+an ICC engine, the four unported halves of the resource cache (since closed by
+`track/test-backfill`) — none on difficulty.
 
 **D5 — the Java bugs.** All of this slice's entries were re-read against the Go
 site that carries them. Entries 35 to 45 are carried: the `BEAD` type name, the
@@ -2725,8 +2743,10 @@ one.
 It is not reachable. Both sides measure each cell through
 `PDFont.getStringWidth` before drawing it, Java asking the font for the lone
 surrogate `U+D83D` and the port for the whole `U+1F600`, and no font this port
-can build has either — the embedders that would produce one are not ported. Both
-refuse the value rather than laying it out.
+can build has either. `track/font-embedding` made the embedders real, so a font
+with an emoji glyph could now be embedded — but no font in this repository
+carries `U+1F600`, so the divergence stays out of reach. Both refuse the value
+rather than laying it out.
 `TestCombFieldRefusesASupplementaryCharacter` asserts that the port refuses, so
 that the claim fails loudly rather than silently if the encoder ever starts
 accepting such a character. Changing the walk would mean decoding each UTF-16
@@ -3883,13 +3903,13 @@ That pattern is worth naming: **a header asserting what the Java suite does not
 cover is a claim, and it was wrong two times out of three.** Check before
 writing one.
 
-### The twenty cases not ported
+### The twenty cases not ported (nineteen, since track/font-embedding took one)
 
 | Java case | Why |
 | --- | --- |
 | `TestPDFParser`, 17 of 18 | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetches nothing in a test. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
 | `TestCOSIncrement.testConcurrentModification` | Downloads a PDF from `issues.apache.org` |
-| `TestCOSIncrement.testSubsetting` | Needs `PDType0Font.load`, which is font embedding. Unported, and `track/font-embedding` names this case |
+| `TestCOSIncrement.testSubsetting` | ~~Needs `PDType0Font.load`, which is font embedding~~ — **ported by `track/font-embedding`**, which brought the load. It is `TestSubsetting` in `go/pdfbox/increment_test.go`, so nineteen of the twenty are still out |
 | `TestNumberFormatUtil.testFormattingInRange` | A property test comparing against `BigDecimal` with `HALF_UP` rounding. Go has no arbitrary-precision decimal in its standard library, and re-implementing one to check a formatter would be checking the re-implementation. The five example-based cases it is built on are ported, with the exact bytes |
 
 `TestPDFParser.testPDFParserMissingCatalog` is the one of its eighteen whose
@@ -4020,3 +4040,303 @@ it now points at `addAttribute` as the only thing that fills the map.
   corpus. They are the whole-document recovery suite, and they are the largest
   single block of Java testing the port has no answer to.
 - `testSubsetting` is waiting on `track/font-embedding`, which names it.
+
+## Track `font-embedding` — writing a font into a document
+
+Branch `track/font-embedding`. Not a slice: `slice/4` ported the fonts a
+document is *read* with and `slice/7` ported writing, and the embedding half
+fell between them. **Before it, a Go program could not write a PDF with an
+embedded font** — `PDType0Font`'s `load`, `addToSubset` and `subset` panicked
+where the half was missing, and that is most of what writing a PDF is for.
+
+Four Java classes, 1,314 lines, plus the halves two ported classes were left
+without:
+
+| Java source | Go source | Status |
+| --- | --- | --- |
+| `pdmodel/font/Subsetter.java` | `truetypeembedder.go`, the `subsetter` interface | done |
+| `pdmodel/font/TrueTypeEmbedder.java` | `truetypeembedder.go` | done |
+| `pdmodel/font/PDCIDFontType2Embedder.java` | `pdcidfonttype2embedder.go` | done |
+| `pdmodel/font/PDTrueTypeFontEmbedder.java` | `pdtruetypefont_embed.go` | done |
+| `PDType0Font.load` / `loadVertical` / `addToSubset` / `subset` | `pdtype0font_embed.go`, `pdtype0font.go` | done — the three panics answer |
+| `PDTrueTypeFont.load` | `pdtruetypefont_embed.go` | done |
+
+`pdmodel/font` is **39 of 39**. `ToUnicodeWriter`, the fifth file the survey
+listed, was ported by slice 7 and the survey missed it — see "Rows this file had
+wrong" above.
+
+### What the branch had to work out
+
+**Java's `protected abstract buildSubset` is a function field.** `TrueTypeEmbedder`
+declares it and the two concrete embedders implement it, one to build a subset
+and one to refuse. Go has no abstract method, so the base carries
+`buildSubsetFromStream func(...) error` and each constructor fills it in. The
+simple-font one panics with Java's `"use PDType0Font instead"`, which is an
+`UnsupportedOperationException` and so unchecked.
+
+**`pdmodel/font` cannot import `pdmodel`.** The embedders need a document to
+create streams in, read and raise the version, and register a font program to be
+closed. The port names what it uses in an `embeddingDocument` interface, which
+`*pdmodel.PDDocument` satisfies. This is the third time the port has needed the
+shape — `common.COSDocumentLike` and `pdfwriter.PDDocumentLike` are the others.
+
+**A subsetting embedder keeps the font program open past its constructor.** The
+subset is not built until the document is saved, so the `TrueTypeFont` cannot be
+closed when `load` returns. Java holds it in `PDDocument.fontsToClose` and
+closes it in `close()`; the port added `fontsToClose` and
+`RegisterTrueTypeFontForClosing` to match. Nothing else in the port had needed
+a document to own a resource this way.
+
+**A typed nil in an interface is not `nil`.** `TrueTypeFont.getUnicodeCmapLookup`
+returns `null` where the font has no Unicode cmap and the caller is not strict;
+the Go returned `(*CmapSubtable)(nil)` boxed in a `CmapLookup`, which is not
+`== nil`, so `PDType0Font`'s null check passed and the next call panicked.
+`TestIndicScripts` found it the moment subsetting became real — the read path
+had never taken that branch. `truetypefont.go` now returns an untyped nil. This
+trap is in [`conventions/java-to-go.md`](conventions/java-to-go.md).
+
+**`getUnicodeCmapLookup()` and `getUnicodeCmapLookup(false)` are different
+methods.** The no-argument form delegates to `getUnicodeCmapLookup(true)`, the
+strict one, which raises where the font has no Unicode cmap; the `false` form
+answers `null` instead. Both embedding sites call the no-argument form
+(`PDType0Font:143`, `TrueTypeEmbedder:120`) and the port had passed `false` at
+both. Only the PDFBOX-5324 fallback at `pdtype0font.go:333` takes `false`, and
+it still does.
+
+### The Java bug
+
+**JAVA-BUGS 74 — `TrueTypeEmbedder.getTag` indexes its alphabet with a negative
+remainder.** `Math.abs(Integer.MIN_VALUE)` is `Integer.MIN_VALUE`, so the one
+hash value the guard was written for is the one it does not fix, and
+`BASE25.charAt(num % 25)` is then handed a negative index. Ported as written,
+said at the point of difference in `subsetTag`.
+
+Nothing else this branch touched turned out to be the Java behaving oddly.
+
+### The tests
+
+`TestFontEmbedding`, 17 cases. **Eleven are ported.** The six that are not each
+read a font the Maven build downloads into `target/fonts`, and the port fetches
+nothing in a test:
+
+| Java case | Font it needs |
+| --- | --- |
+| `testCIDFontType2VerticalSubsetMonospace` | `ipag.ttf` |
+| `testCIDFontType2VerticalSubsetProportional` | `ipagp.ttf` |
+| `testMaxEntries` | `ipag.ttf` |
+| `testSurrogatePairCharacter` | `ipag.ttf` |
+| `testToUnicodePrefersUsedCodePoint` | `NotoSansCJKkr-VF.ttf` |
+| `testToUnicodeCjkAndRadicalLookAlike` | `NotoSansCJKkr-VF.ttf` |
+
+Every case that is ported writes a document, saves it, reads it back with
+`Loader` and extracts the text with `PDFTextStripper` — which is the only way to
+check an embedded font end to end, and is what the Java does.
+`TestCIDFontType2` and `TestCIDFontType2Subset` embed LiberationSans, write
+`Unicode русский язык Tiếng Việt`, and read the same string back.
+
+Three cases phase A added because the Java has no equivalent to port — the
+review added six more, listed under D4:
+
+- `TestSimpleTrueTypeFontEmbedding` — `PDTrueTypeFont.load`, which
+  `TestFontEmbedding` never exercises. Java's own coverage of the simple path is
+  in tests that read downloaded PDFs.
+- `TestSubsetting` — `TestCOSIncrement.testSubsetting`, which
+  `track/test-backfill` deferred here for `PDType0Font.load`. A subsetted font
+  added to an existing document, saved incrementally: the subset is only built
+  at save time, so an incremental save that skipped the subsetter would write a
+  font dictionary with no `/FontFile2`. Removing the `subsetDesignatedFonts`
+  call from `SaveIncremental` makes it fail, which is the check that the
+  assertion is about the code and not about the shape of the file.
+- `TestEnsureFontResourcesEmbedsTheReplacement` — the slice 8 hole this branch
+  closed, above. The Java class that covers it downloads its PDFs.
+
+
+### The Java is runnable in this environment after all
+
+The port has settled arguments against the running Java since slice 0, but only
+for `io` and `fontbox`, whose only dependency is `log4j-api`. `pdfbox` was
+treated as out of reach — JAVA-BUGS 33 said so in as many words, "because there
+is no Maven in this environment to build PDFBox with" — and that was wrong twice
+over.
+
+**`javac` needs no Maven.** 784 sources compile in one call with `log4j-api` on
+the class path. What actually blocks it is one class: `PublicKeySecurityHandler`
+imports Bouncy Castle, there is no jar for it here and no network to fetch one,
+and `PDDocument` reaches it through `SecurityHandlerFactory`. A stand-in that
+declares the same methods and refuses lets everything compile; it is a build
+shim in a scratch directory, not a change to the reference, and public-key
+encryption has nothing to do with fonts. Running the result also needs
+`fontbox/src/main/resources` and `pdfbox/src/main/resources` on the class path,
+because the predefined CMaps and the AFMs are loaded as resources.
+
+**A class with few dependencies needs less than that.** `ToUnicodeWriter` needs
+`util/Hex` and `util/StringUtil` and nothing else, which is three files.
+
+Three things changed because of it: JAVA-BUGS 33 and 74 are measured rather than
+derived, and D8 below compares a document rather than a subroutine. **This is
+worth carrying to every branch after this one: `javac` plus the two resource
+directories, and where a class needs a jar that is not here, a shim for that
+class rather than a shrug.**
+
+### What the review checked
+
+**D1 — every ported file read against its Java.** Three findings, each with a
+commit and a test:
+
+- **Java's `Math.round` rounds half up; Go's `math.Round` rounds half away from
+  zero.** Twenty sites. Every `/W2` entry of a vertical font is a negated
+  metric, so this is not an edge case there: an advance height of 128 in a
+  2048-unit em is -62.5, which Java writes as -62 and the port wrote as -63.
+  Now one pair of helpers, `javaRound` and `javaRoundLong`, and
+  `TestJavaRoundHalfUp` holds what `jshell` prints for ten inputs.
+- **`ttf instanceof OpenTypeFont` was ported as a Go type assertion, which can
+  never hold.** `OpenTypeFont` embeds `*TrueTypeFont` rather than extending it,
+  so the field never carries one; `checkForCidGidIdentity` was unreachable and
+  its body was a stub whose comment claimed the opposite. `AsOpenType` is this
+  port's standing answer to that `instanceof` — `pdcidfonttype2.go` already asks
+  it that way — and the check is written out now, panicking as Java's unchecked
+  `IllegalStateException` does.
+- **Three of Java's thirteen `load` overloads had no Go entry point**: the
+  public `load(RandomAccessRead, boolean, boolean)`, `loadVertical(File)` and
+  `loadVertical(TrueTypeFont, boolean)`. The four-argument form the others
+  funnel into was unexported. The two `File` loaders also copied the whole font
+  into memory where Java's `RandomAccessReadBufferedFile` reads through it.
+  `TestEveryLoadOverload` runs all thirteen.
+
+**D2 — silently dropped behaviour.** Two `IllegalArgumentException`s, in
+`getWidths` and `getVerticalMetrics`, were returning an error; unchecked, so
+they panic now. Everything Java logs and swallows is logged and swallowed —
+`buildVerticalHeader`'s missing-`vhea` warning and `buildToUnicodeCMap`'s
+several-codes debug line. Java's two `try`-with-resources have no Go
+counterpart: `PDStream.CreateInputStream` and `TrueTypeFont.OriginalData` both
+answer an `io.Reader` with nothing to close.
+
+**D3 — the tests are Java-derived.** One case was not.
+`testEmbeddedFontWithZeroWidthChars` was ported with a string of the port's own
+invention and without its second half — the four assertions that the zero-width
+character has width 0 from `/W` and from the font program, an empty path, and
+an undamaged font. **That is the half that checks the four `forceInvisible`
+calls in `TrueTypeEmbedder.subset`, which is this branch's own code.** Restored;
+removing `forceInvisible(0x200C)` now fails it. The two surrogate cases also
+took Java's font size and offset.
+
+**D4 — every function phase B touched, and the test that says it works.**
+
+| Function | The test that covers it |
+| --- | --- |
+| `newTrueTypeEmbedder`, `createFontDescriptor` | `TestSimpleTrueTypeFontEmbedding` asserts the flags and the widths |
+| `isEmbeddingPermitted`, `IsEmbeddingPermittedForFsType` | `TestIsEmbeddingPermittedMultipleVersions`, eight fsType values |
+| `subsetTag` | `TestSubsetTagMatchesJava` — Java's tag for an ordinary map, and JAVA-BUGS 74 for the pathological one |
+| `javaRound`, `javaRoundLong` | `TestJavaRoundHalfUp` |
+| `Subset`, `buildSubset`, `buildFontFile2` | `TestSubsetBytesMatchJava`, `TestEmbeddedFontMatchesJava` |
+| `AddToSubset`, `SubsetCodePoints`, `buildToUnicodeCMap` | `TestEmbeddedFontMatchesJava` compares `/ToUnicode` byte for byte |
+| `AddGlyphIds`, `AddGlyphsToSubset` | `TestAddGlyphsToSubsetKeepsAGlyphNothingDrew` |
+| `addNameTag` | `TestSubsetWritesTheEntriesTheSpecificationAsksFor`, and the tagged `/BaseFont` in `TestEmbeddedFontMatchesJava` |
+| `buildCIDToGIDMap` | `TestSubsetKeepsTheGlyphsThatWereAskedFor`, which fails when the map is written off by one |
+| `buildCIDSet` | `TestSubsetWritesTheEntriesTheSpecificationAsksFor`, `TestEmbeddedFontMatchesJava` |
+| `buildWidths` (both overloads), `getWidths`, `unitsScaling` | `TestWidthArraysMatchJava`, `TestEmbeddedFontMatchesJava` |
+| `buildVerticalHeader` | its warning branch, by the vertical rows of `TestEveryLoadOverload` |
+| `getVerticalMetrics` | `TestWidthArraysMatchJava` — the only thing that runs it, see D5 |
+| `createCIDFont`, `toCIDSystemInfo`, `CIDFont`, `sortedCIDs` | `TestCIDFontType2`, `TestEmbeddedFontMatchesJava` |
+| `NeedsSubset`, `WillBeSubset`, the three panics | `TestSubsettingDisabledPanics`, `TestAWholeFontWritesIdentityCIDToGIDMap` |
+| the thirteen `load` factories | `TestEveryLoadOverload` |
+| `RegisterTrueTypeFontForClosing`, `PDDocument.Close` | `TestClosingTheDocumentClosesTheFontItRegistered` |
+| `ensureFontResources` | `TestEnsureFontResourcesEmbedsTheReplacement` |
+| `subsetDesignatedFonts` on the incremental path | `TestSubsetting` |
+
+Six of those tests were written by this review rather than by phase B, which is
+what D4 is for.
+
+**D5 — the deferrals, and whether each is real.**
+
+- **`buildVerticalMetrics`, `buildVerticalMetricsOfSubset` and the `/DW2` branch
+  of `buildVerticalHeader` cannot be reached through a document.** Every `.ttf`
+  and `.otf` in this repository was parsed and asked for a `vhea` table; none
+  has one, which is why the Java cases that write vertical metrics download
+  `ipag.ttf`. `getVerticalMetrics` is driven directly instead; the two builders
+  above it that read `vhea` and `vmtx` are read against the Java and not run.
+- **`checkForCidGidIdentity` is written but not run.** It needs an OpenType font
+  with a CID-keyed CFF charset. The one `.otf` here, `FoglihtenNo07.otf`, is
+  CFF but name-keyed, so the method returns at its second gate.
+- **`isSubsettingPermitted` answering false is not reached.** It needs a font
+  whose OS/2 `fsType` has the no-subsetting bit; none here has it, and the
+  branch cannot be reached without editing a font file, which is a test resource
+  and so out of bounds.
+- **`buildFontFile2` on an OpenType font with `glyf` outlines panics**, because
+  Java calls `getCFF()` unguarded and it throws `UnsupportedOperationException`
+  for a font with no PostScript tag. Ported as written, said at the site.
+- **Six of `TestFontEmbedding`'s seventeen cases** are not ported, each because
+  it reads a font the Maven build downloads. Listed above.
+- **`PDTrueTypeFont` sets `otf` to nil.** Java's own line, with Java's own
+  comment: "OpenTypeFonts are not fully supported yet".
+
+**D6 — the Java bugs.** One found: JAVA-BUGS 74, `TrueTypeEmbedder.getTag`,
+carried in `subsetTag` and now measured. JAVA-BUGS 33, the entry this branch's
+`/ToUnicode` runs through, was re-read and measured too. Nothing else this
+branch touched turned out to be the Java behaving oddly.
+
+**D8 — the bytes, not the structure.** Two comparisons, both against the
+running Java rather than against the port's own reader.
+
+- `TestSubsetBytesMatchJava` drives `TTFSubsetter` from Java exactly as
+  `TrueTypeEmbedder.subset` drives it — the same ten tables, the same four
+  `forceInvisible` calls, the same `getTag` — and compares: the same 30 glyphs,
+  the same map hash 21410, the same tag `AALHKC+`, the same 8332 bytes, the same
+  SHA-256.
+- `TestEmbeddedFontMatchesJava` writes the two documents `validateCIDFontType2`
+  writes and compares every entry: `/BaseFont`, `/FontFile2` and its `/Length1`,
+  `/W`, `/CIDToGIDMap` in both forms, `/CIDSet`, `/ToUnicode`. All match.
+
+  One value did not at first, and it was the measurement rather than the port:
+  the Java driver read `/CIDToGIDMap` through `COSStream.toTextString`, which is
+  not byte-faithful for binary. Read as bytes it is the port's own hash. **A
+  differential result is only as good as how it was taken** — the same lesson
+  the survey learned about its matcher.
+
+  `TestSubsetKeepsTheGlyphsThatWereAskedFor` closes it from inside as well: read
+  the document back with the port's own parser, walk `/CIDToGIDMap`, and compare
+  each glyph's outline against the original font's. Writing `gid+1` into the map
+  fails it.
+
+**D9 — `/ToUnicode` against JAVA-BUGS 33.** The entry describes
+`ToUnicodeWriter.allowDestinationRange` checking one of its two strings, and
+said its failing case was derived rather than measured. It is measured now: for
+`0x400` mapped to `a` and `0x401` mapped to `bc` the running Java writes
+`<0400> <0401> <0061>`, with the second character nowhere in the CMap, and the
+port writes the same bytes. `TestCMapDropsTheTailOfALongerDestination` holds it.
+The entry's "where the Go carries it" names `tounicodewriter.go`, which slice 7
+ported and this branch did not touch, and it is still true.
+
+### E — the review round
+
+Two items, both real.
+
+**`getUnicodeCmapLookup` skipped the GSUB branch when the cmap was null.**
+Slice 8's typed-nil fix — a `*CmapSubtable` that is nil, boxed in a
+`CmapLookup`, is not `== nil`, so every Java null check silently passed — was
+put at the top of the method rather than on the branch Java returns the cmap
+from. Java reads the GSUB table first and, with a feature enabled and a table
+present, returns a `SubstitutingCmapLookup` **wrapping the null cmap**, which is
+not null; it also raises whatever reading that table raised. The port answered
+nil and swallowed the error.
+
+Measured before fixing, with fontbox compiled and the cmap table removed from
+Lohit-Devanagari by reflection:
+
+| state | Java |
+| --- | --- |
+| cmap, feature enabled | `SubstitutingCmapLookup` |
+| no cmap, no feature | `null` |
+| no cmap, feature enabled | `SubstitutingCmapLookup`, and using it throws `NullPointerException` |
+
+`TestUnicodeCmapLookupKeepsTheGsubBranch` in `fontbox/ttf` holds all four rows,
+including the panic the port raises where Java raises the NPE. It failed on the
+third row before the fix.
+
+**`fontsToClose` was a slice documented as a set.** Java's field is
+`Set<TrueTypeFont>`, so the same program registered twice is closed once. The
+port now keys a map on the pointer, which says the same thing;
+`TestRegisterTrueTypeFontForClosingIsASet` registers one font twice and another
+once and expects two. Neither side promises an order to close them in, and no
+public path registers a duplicate today — this is faithfulness to the declared
+type rather than a fix to observable behaviour.

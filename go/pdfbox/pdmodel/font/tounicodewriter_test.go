@@ -183,3 +183,41 @@ func TestAllowDestinationRangeSurrogates(t *testing.T) {
 	// Denied (non sequential surrogates)
 	assertRange(t, false, allowDestinationRange(cjk1, cjk3), "cjk1, cjk3")
 }
+
+// TestCMapDropsTheTailOfALongerDestination is JAVA-BUGS 33, measured rather
+// than derived.
+//
+// allowDestinationRange checks that `prev` is a single code point and does not
+// check `next`, so a CID mapped to one character followed by a CID mapped to
+// two extends the bfrange instead of starting a new one, and everything after
+// the first character of the longer string is dropped.
+//
+// The wanted line is what the running Java prints for exactly this input:
+// ToUnicodeWriter compiled with javac and driven with add(0x400, "a") and
+// add(0x401, "bc").
+//
+// There is no Java test for it. The class's own testCMapLigatures does not fire
+// it because its ligatures all begin with the same letter, so allowCodeRange
+// refuses the range first.
+func TestCMapDropsTheTailOfALongerDestination(t *testing.T) {
+	writer := newToUnicodeWriter()
+	writer.add(0x400, "a")
+	writer.add(0x401, "bc")
+
+	output := writeToString(t, writer)
+
+	// Java emits one bfrange, and the "c" is nowhere in the CMap.
+	assertContains(t, output, "1 beginbfrange")
+	assertContains(t, output, "<0400> <0401> <0061>")
+	if strings.Contains(output, "0062") || strings.Contains(output, "0063") {
+		t.Errorf("the port wrote the second destination; Java drops it.\n%s", output)
+	}
+
+	// The asymmetry itself, which is the defect.
+	if !allowDestinationRange("a", "bc") {
+		t.Error(`allowDestinationRange("a", "bc") = false, want Java's true`)
+	}
+	if allowDestinationRange("ab", "c") {
+		t.Error(`allowDestinationRange("ab", "c") = true, want Java's false`)
+	}
+}
