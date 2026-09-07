@@ -30,6 +30,8 @@ type Subcommand struct {
 // is not registered; see migration/STATUS.md.
 func Subcommands() []Subcommand {
 	return []Subcommand{
+		{"decrypt", func() Command { return NewDecrypt() }},
+		{"encrypt", func() Command { return NewEncrypt() }},
 		{"decode", func() Command { return NewWriteDecodedDoc() }},
 		{"export:text", func() Command { return NewExtractText() }},
 		{"version", func() Command { return NewVersion() }},
