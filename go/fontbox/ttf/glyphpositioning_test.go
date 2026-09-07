@@ -87,7 +87,8 @@ func TestKerningPullsAVTogether(t *testing.T) {
 		t.Skip("DejaVuSans has no GPOS table")
 	}
 
-	kerned := gpos.Position(glyphsOf(t, font, "AV"), []string{"latn"}, []string{"kern"})
+	pair := glyphsOf(t, font, "AV")
+	kerned := gpos.Position(pair, []string{"latn"}, []string{"kern"})
 	if len(kerned) != 2 {
 		t.Fatalf("Position gave %d results for two glyphs", len(kerned))
 	}
@@ -97,7 +98,9 @@ func TestKerningPullsAVTogether(t *testing.T) {
 	}
 
 	// "II" is not a kern pair in any font this port has seen.
-	plain := gpos.Position(glyphsOf(t, font, "II"), []string{"latn"}, []string{"kern"})
+	unkerned := glyphsOf(t, font, "II")
+	plain := gpos.Position(unkerned,
+		[]string{"latn"}, []string{"kern"})
 	for i, position := range plain {
 		if !position.IsZero() {
 			t.Errorf("II glyph %d was adjusted by %+v; the font declares no pair for it",
@@ -116,7 +119,8 @@ func TestFeatureMustBeAskedFor(t *testing.T) {
 	}
 	glyphs := glyphsOf(t, font, "AV")
 
-	withKerning := gpos.Position(glyphs, []string{"latn"}, []string{"kern"})
+	withKerning := gpos.Position(glyphs,
+		[]string{"latn"}, []string{"kern"})
 	without := gpos.Position(glyphs, []string{"latn"}, nil)
 
 	if withKerning[0].IsZero() {
@@ -143,12 +147,14 @@ func TestPositionIsStableAndSized(t *testing.T) {
 	}
 
 	glyphs := glyphsOf(t, font, "AVATAR")
-	first := gpos.Position(glyphs, []string{"latn"}, []string{"kern"})
+	first := gpos.Position(glyphs,
+		[]string{"latn"}, []string{"kern"})
 	if len(first) != len(glyphs) {
 		t.Fatalf("Position gave %d results for %d glyphs", len(first), len(glyphs))
 	}
 	// Running it twice must answer the same thing: the table holds no state.
-	second := gpos.Position(glyphs, []string{"latn"}, []string{"kern"})
+	second := gpos.Position(glyphs,
+		[]string{"latn"}, []string{"kern"})
 	for i := range first {
 		if first[i] != second[i] {
 			t.Errorf("glyph %d gave %+v then %+v", i, first[i], second[i])
@@ -168,7 +174,8 @@ func TestArabicMarksAttach(t *testing.T) {
 	// U+0644 ARABIC LETTER LAM followed by U+064E ARABIC FATHA, a vowel mark
 	// that sits above the letter.
 	glyphs := glyphsOf(t, font, "لَ")
-	positions := gpos.Position(glyphs, []string{"arab"}, []string{"mark", "mkmk"})
+	positions := gpos.Position(glyphs,
+		[]string{"arab"}, []string{"mark", "mkmk"})
 	if len(positions) != 2 {
 		t.Fatalf("Position gave %d results for two glyphs", len(positions))
 	}

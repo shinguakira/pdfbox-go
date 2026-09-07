@@ -33,16 +33,33 @@ const GlyphPositioningTag = "GPOS"
 // GlyphPosition is the adjustment GPOS makes to one glyph, in font design
 // units.
 type GlyphPosition struct {
-	// XPlacement and YPlacement move the glyph without moving the pen.
+	// XPlacement and YPlacement move the glyph without moving the pen. For a
+	// glyph with AttachedTo set they are measured from the origin of that
+	// glyph instead, which is what an anchor in the font says.
 	XPlacement, YPlacement int
 
 	// XAdvance and YAdvance move the pen after it.
 	XAdvance, YAdvance int
+
+	// AttachedTo is the glyph this one hangs off -- the letter under a vowel
+	// mark, or the mark under a second mark -- as an index into the run, or
+	// NotAttached.
+	//
+	// A caller resolves it into a distance from the pen once it knows in which
+	// order the glyphs are drawn: a right-to-left run draws them the other way
+	// round, and then the mark comes before the letter it belongs to. Doing
+	// that here would mean assuming the order, and the assumption would be
+	// wrong half the time.
+	AttachedTo int
 }
+
+// NotAttached is the AttachedTo of a glyph that hangs off nothing.
+const NotAttached = -1
 
 // IsZero reports whether the position leaves the glyph where it was.
 func (p GlyphPosition) IsZero() bool {
-	return p.XPlacement == 0 && p.YPlacement == 0 && p.XAdvance == 0 && p.YAdvance == 0
+	return p.XPlacement == 0 && p.YPlacement == 0 && p.XAdvance == 0 &&
+		p.YAdvance == 0 && p.AttachedTo == NotAttached
 }
 
 // GlyphPositioningTable is the GPOS table of a font.
@@ -247,6 +264,9 @@ func (t *GlyphPositioningTable) readSubtable(data DataStream, lookupType int,
 func (t *GlyphPositioningTable) Position(glyphs []int, scriptTags []string,
 	featureTags []string) []GlyphPosition {
 	positions := make([]GlyphPosition, len(glyphs))
+	for i := range positions {
+		positions[i].AttachedTo = NotAttached
+	}
 	if len(glyphs) == 0 {
 		return positions
 	}

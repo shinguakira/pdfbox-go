@@ -3312,3 +3312,51 @@ which is what this port renders an unchecked exception as. Said at the site.
 
 **Confidence** certain, from the source. Not measured, for the reason entry 75
 gives.
+
+## 77. `GlyphLayoutProcessorAwt.checkMissingGlyphs` prints half a surrogate pair
+
+**Where** `pdfbox-layout-awt/src/main/java/org/apache/pdfbox/glyphlayout/awt/
+GlyphLayoutProcessorAwt.java`, `checkMissingGlyphs`.
+
+**What**
+
+```java
+int firstMissingCharacter = awtFont.canDisplayUpTo(text);
+if (firstMissingCharacter != -1)
+{
+    char c = text.charAt(firstMissingCharacter);
+    int codepoint = text.codePointAt(firstMissingCharacter);
+
+    throw new IllegalArgumentException(
+            String.format("Missing glyph in font '%s' for the character '%c', codePoint: %d (U+%04x).",
+                    awtFont.getName(), c, codepoint, codepoint));
+}
+```
+
+`c` is a `char`, which is one UTF-16 code unit; `codepoint` is the whole
+character. For anything outside the basic multilingual plane the two disagree:
+`charAt` answers the high surrogate, and `'%c'` formats it on its own. The
+message then carries an unpaired surrogate — an ill-formed string that prints as
+a replacement character or nothing at all — beside the correct code point.
+
+`GlyphLayoutSMPTest` is entirely about characters in that plane, so a font
+missing one of them is not a hypothetical case for this class.
+
+**What correct would be** formatting the code point rather than the code unit:
+`String.format("...'%s'...", new String(Character.toChars(codepoint)), ...)`.
+The `%04x` half of the message is already right.
+
+**Why it matters** the message names the character that could not be drawn, and
+for exactly the characters this module has a test class about, it names half of
+one.
+
+**Where the Go carries it** `go/pdfbox/glyphlayout/processor.go`,
+`missingGlyph`, which takes the first UTF-16 unit of the character for the
+`'%c'` position and the whole rune for the code point, the same way. Said at the
+site.
+
+**Confidence** certain, from the source. The Java's behaviour was not measured
+for a supplementary character: `canDisplayUpTo` has to answer the index of one,
+which needs a font missing a supplementary character that the test resources do
+not have. The basic-plane message was measured, and matches — see
+`TestMissingGlyphIsRefused`, which asserts it character for character.

@@ -116,9 +116,16 @@ port has already paid for more than once.
 - [x] B1. The interface both backends implement
   - `GlyphLayoutProcessor` and `GlyphLayoutFontLoader` in the core, whichever
     slice ported them, and the contract they define
-- [ ] B2. One backend, chosen in A0
-- [ ] B3. `FopStringTextFragment` and whatever the second backend needs, if a
+- [x] B2. One backend, chosen in A0
+  - `go/pdfbox/glyphlayout`, which is a substitution for both -- see STATUS.md.
+    Neither `*Awt` nor `*Fop` is ported by name: each is a shell around a
+    library Go has not got
+- [x] B3. `FopStringTextFragment` and whatever the second backend needs, if a
       second backend is in scope at all
+  - It is not. `FopStringTextFragment` exists to hand a string to FOP, which
+    is the library that is absent; there is nothing behind it to port to. One
+    backend serves both, and the `Features` on it are what the two font
+    loaders configure
 
 ---
 
@@ -215,5 +222,8 @@ And for this branch in particular:
 
 - [x] The branch itself. `PLAN.md` names this track, `BRANCHING.md` gives it no
       branch. **Settled** -- `track/pdfbox-layout` exists and A0 ran on it.
-- [ ] A0. The backend choice blocks every task in this file.
-- [ ] `slice/4`. Without fonts there is nothing to shape.
+- [x] A0. The backend choice blocks every task in this file. **Settled** -- the
+      backend is `go/pdfbox/glyphlayout`, built on this branch over ported GSUB
+      and GPOS written from the specification. No third-party shaper is used,
+      and none is needed.
+- [x] `slice/4`. Without fonts there is nothing to shape. Merged long since.

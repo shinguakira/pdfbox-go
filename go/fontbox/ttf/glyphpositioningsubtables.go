@@ -28,7 +28,9 @@ const (
 // corrections for a hinted rasteriser, and a PDF is laid out in font design
 // units at no particular size.
 func readValueRecord(r *reader, valueFormat int) GlyphPosition {
-	var position GlyphPosition
+	// A value record moves a glyph; it never hangs one off another, and a
+	// record that moves it by nothing has to answer true to IsZero.
+	position := GlyphPosition{AttachedTo: NotAttached}
 	if valueFormat&valueXPlacement != 0 {
 		position.XPlacement = int(r.signedShort())
 	}
@@ -326,19 +328,25 @@ type markAttachment struct {
 
 	// baseAnchors is one row per covered base, one column per mark class.
 	baseAnchors [][]anchor
+
+	// toMark says this is lookup type 6 rather than type 4: what the mark
+	// attaches to is the mark before it, not the letter before it. The two
+	// subtables have the same layout but not the same rule for finding what
+	// the mark hangs off -- see position.
+	toMark bool
 }
 
 func readMarkToBase(data DataStream, offset int64) (positioningSubtable, error) {
-	return readMarkAttachment(data, offset)
+	return readMarkAttachment(data, offset, false)
 }
 
 func readMarkToMark(data DataStream, offset int64) (positioningSubtable, error) {
-	return readMarkAttachment(data, offset)
+	return readMarkAttachment(data, offset, true)
 }
 
 // readMarkAttachment reads a MarkBasePos or MarkMarkPos subtable, which have
 // the same layout.
-func readMarkAttachment(data DataStream, offset int64) (positioningSubtable, error) {
+func readMarkAttachment(data DataStream, offset int64, toMark bool) (positioningSubtable, error) {
 	if err := data.SeekTo(offset); err != nil {
 		return nil, err
 	}
@@ -356,7 +364,7 @@ func readMarkAttachment(data DataStream, offset int64) (positioningSubtable, err
 		return nil, nil
 	}
 
-	t := &markAttachment{}
+	t := &markAttachment{toMark: toMark}
 	var err error
 	if t.markCoverage, err = readLayoutCoverageTable(data,
 		offset+int64(markCoverageOffset)); err != nil {
@@ -452,15 +460,24 @@ func (t *markAttachment) position(glyphs []int, i int, out []GlyphPosition) int 
 	if markIndex < 0 || markIndex >= len(t.marks) || i == 0 {
 		return 0
 	}
-	// The base is the nearest preceding glyph the second coverage covers.
-	baseAt := -1
-	for j := i - 1; j >= 0; j-- {
-		if t.baseCoverage.CoverageIndex(glyphs[j]) >= 0 {
-			baseAt = j
-			break
+	// What the mark hangs off.
+	//
+	// A mark-to-mark lookup takes the glyph immediately before, and nothing
+	// else: two marks that are not next to each other are not stacked. A
+	// mark-to-base lookup steps back over the marks in between -- that is what
+	// the specification means by skipping glyphs the lookup flags exclude --
+	// and takes the first glyph that is not one.
+	//
+	// Neither may run past a letter to reach something further back. Doing so
+	// attaches a mark to a letter it does not belong to, and puts it a word
+	// away on the page.
+	baseAt := i - 1
+	if !t.toMark {
+		for baseAt >= 0 && t.markCoverage.CoverageIndex(glyphs[baseAt]) >= 0 {
+			baseAt--
 		}
 	}
-	if baseAt < 0 {
+	if baseAt < 0 || t.baseCoverage.CoverageIndex(glyphs[baseAt]) < 0 {
 		return 0
 	}
 	baseIndex := t.baseCoverage.CoverageIndex(glyphs[baseAt])
@@ -473,14 +490,14 @@ func (t *markAttachment) position(glyphs []int, i int, out []GlyphPosition) int 
 	}
 	base := t.baseAnchors[baseIndex][mark.class]
 
-	// The mark is placed so that its anchor meets the base's. Everything drawn
-	// between the two has already moved the pen, so that distance comes off.
-	between := 0
-	for j := baseAt; j < i; j++ {
-		between += out[j].XAdvance
-	}
-	out[i].XPlacement += base.x - mark.anchor.x - between
-	out[i].YPlacement += base.y - mark.anchor.y
+	// The mark is placed so that its anchor meets the base's. Both anchors are
+	// measured from the origin of the glyph they belong to, so what comes out
+	// here is a distance from the base's origin -- not from the pen, which by
+	// now has moved past it. Turning one into the other needs to know in which
+	// order the run is drawn, and only the caller knows that.
+	out[i].XPlacement = base.x - mark.anchor.x
+	out[i].YPlacement = base.y - mark.anchor.y
+	out[i].AttachedTo = baseAt
 	return 1
 }
 
