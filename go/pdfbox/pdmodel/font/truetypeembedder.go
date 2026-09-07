@@ -136,7 +136,11 @@ func newTrueTypeEmbedder(document common.COSDocumentLike, dict *cos.Dictionary,
 	dict.SetName(cos.BaseFont, name)
 
 	// choose a Unicode "cmap"
-	lookup, err := font.UnicodeCmapLookup(false)
+	//
+	// Java calls the no-argument getUnicodeCmapLookup, which is the *strict*
+	// one: a font with no Unicode subtable is refused here rather than embedded
+	// and found unusable later.
+	lookup, err := font.UnicodeCmapLookup(true)
 	if err != nil {
 		return nil, err
 	}

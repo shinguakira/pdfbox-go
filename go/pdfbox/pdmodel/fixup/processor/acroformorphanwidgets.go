@@ -175,11 +175,6 @@ func resolveNonRootField(acroForm *form.PDAcroForm, parent *cos.Dictionary,
 // TODO: implement a font lookup similar as discussed in PDFBOX-2661 so that
 // already existing font resources might be accepatble. In such case this must be
 // implemented in PDDefaultAppearanceString too!
-//
-// The replacement itself is not ported: Java embeds the font it found with
-// PDType0Font.load, and the font embedders are not ported yet. The lookup and
-// the logging around it are here, so that the shape of the fixup is right when
-// they land. See migration/STATUS.md.
 func (p *AcroFormOrphanWidgetsProcessor) ensureFontResources(
 	defaultResources *pdmodel.PDResources, field *form.PDVariableText) {
 	daString := field.DefaultAppearance()
@@ -210,13 +205,20 @@ func (p *AcroFormOrphanWidgetsProcessor) ensureFontResources(
 			slog.String("font", fontName.Name()))
 		return
 	}
+	// Java loads the font before it logs the lookup, so a failure here is
+	// reported by the catch below rather than as a successful lookup.
+	pdFont, err := font.LoadPDType0FontTTF(p.document, fontMapping.Font(), false)
+	if err != nil {
+		// Java catches IOException around the whole body and logs it at debug.
+		slog.Debug("processor: unable to handle font resources for field",
+			slog.String("field", field.FullyQualifiedName()),
+			slog.String("err", err.Error()))
+		return
+	}
 	slog.Debug("processor: looked up font",
 		slog.String("for", fontName.Name()),
 		slog.String("found", fontMappingName(fontMapping)))
-	// Java embeds it here with PDType0Font.load(document, fontMapping.getFont(),
-	// false) and puts it in the default resources; the embedders are not ported.
-	slog.Debug("processor: the replacement font is not embedded, " +
-		"because the font embedders are not ported yet")
+	defaultResources.PutFont(fontName, pdFont)
 }
 
 // fontMappingName returns the name of the mapped font, which is what Java logs.

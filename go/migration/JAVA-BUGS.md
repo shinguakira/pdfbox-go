@@ -3148,3 +3148,52 @@ leak. Said where it is and in [`STATUS.md`](STATUS.md).
 **Confidence** high, from the source: the `throw` sits between the open and the
 only `close` the class has, and the class has no `finally`. Not reproduced —
 observing a leaked handle needs a file over 2 GB.
+
+---
+
+## 74. `TrueTypeEmbedder.getTag` indexes its alphabet with a negative remainder
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/TrueTypeEmbedder.java`,
+`getTag`
+
+```java
+public String getTag(Map<Integer, Integer> gidToCid)
+{
+    // hash might be negative due to an overflow if the map contains lots of values
+    long num = Math.abs(gidToCid.hashCode());
+    // base25 encode
+    StringBuilder sb = new StringBuilder();
+    do
+    {
+        long div = num / 25;
+        int mod = (int)(num % 25);
+        sb.append(BASE25.charAt(mod));
+```
+
+The comment shows the author knew the hash can be negative, and `Math.abs` is
+the guard against it. `Math.abs(int)` has one input it does not fix:
+`Math.abs(Integer.MIN_VALUE)` is `Integer.MIN_VALUE`, because the positive value
+does not exist in the range. Widening the result to `long` afterwards does not
+help — the negation has already failed.
+
+`num` is then negative, `num % 25` is negative in Java, and
+`BASE25.charAt(negative)` raises StringIndexOutOfBoundsException.
+
+**What correct would be** `Math.abs((long) gidToCid.hashCode())`, which widens
+before negating and has no such input. The `long num` is already there; only the
+cast is in the wrong place.
+
+**Why it matters** it is one hash value in 2^32, so it is a lottery rather than a
+hazard — but the failure is an unchecked exception out of saving a document,
+with a message about a string index, in a method whose comment says it is
+guarding against exactly this.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/font/truetypeembedder.go`,
+`subsetTag`, leaves `math.MinInt32` unnegated for the same reason and then
+indexes `base25` with a negative remainder, which panics as Java's unchecked
+exception does. Said at the point of difference.
+
+**Confidence** high, from the source. `Math.abs(Integer.MIN_VALUE) ==
+Integer.MIN_VALUE` is specified behaviour, and Go's `%` keeps the sign of the
+dividend exactly as Java's does. Not reproduced: constructing a glyph map whose
+`Map.hashCode()` is precisely -2147483648 was not worth the search.

@@ -126,7 +126,8 @@ func newEmbeddedPDType0Font(doc embeddingDocument, font *ttf.TrueTypeFont,
 	}
 	f.gsubData = gsubData
 
-	lookup, err := font.UnicodeCmapLookup(false)
+	// Java calls the no-argument getUnicodeCmapLookup, which is the strict one.
+	lookup, err := font.UnicodeCmapLookup(true)
 	if err != nil {
 		return nil, err
 	}
