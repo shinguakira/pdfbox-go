@@ -5019,6 +5019,7 @@ unnoticed.
 | `GlyphLayoutLigaturesAndKerningTest` | 9 | 4 |
 | `GlyphLayoutBidiTest` | 2 | 0 |
 | `GlyphLayoutSMPTest` | 7 | **7** |
+| `GlyphLayoutDin91379Test` | 41 | **40** |
 
 Agreement means every glyph and every number, at a tolerance of 0.02
 thousandths of the font size — a fifty-thousandth of an em. The tolerance is not
@@ -5031,44 +5032,116 @@ ligatures, kerning, and both — which carry `AVATAR, effective, affiliation,
 float, film, affluent`. Every ligature AWT formed, the port forms; every kern
 AWT applied, the port applies, to the same value. The seven agreeing lines of
 the SMP test are the whole page: every letter on it is a surrogate pair, and
-none was taken apart.
+none was taken apart. The DIN 91379 page is 41 lines of every letter that can
+appear in a European name, and then the sequences — a letter with one or two
+combining marks over it, which is the widest mark-positioning case there is;
+40 of the 41 agree, and the one that does not is a single `j`.
 
-#### Deviations, measured
+**The reference PDFs are pixel-equal to the Java that renders them, not
+byte-equal, and this comparison found where.** Twenty lines of
+`GlyphLayoutDIN91379.pdf` end with a space that `LATIN_CHARS_DIN_91379` does not
+have: the PDF was rendered from an earlier spelling of the string, and
+`checkRenderIdent` never noticed, because a space at the end of a line paints
+nothing. Neither side's trailing space is a shaping difference and the
+comparison drops it. Nothing was changed in the Java, which is the rule and also
+the right answer — the PDF is a reference, and it is only wrong about something
+invisible.
 
-Every one of these is a **GSUB** difference. Where the glyph run agrees, the
-positioning agrees: the Thai line's first eleven glyphs and the Bengali marks
-match the AWT reference to the last unit.
+#### Deviations, measured — and the one cause behind nearly all of them
 
-1. **Contextual alternates are not applied.** `GsubWorkerForLatin` applies
-   `ccmp`, `liga` and `clig`; `GsubWorkerForDflt` adds `calt`, and the factory
-   picks by the font's script. FiraCode's `!=` and `>=` ligatures are `calt`
-   under `latn`, so AWT draws them and the port draws `!` `=`. This is PDFBox's
-   own worker, ported as written.
-2. **Thai contextual forms are not applied.** A vowel or tone sign over a tall
-   consonant has a lowered variant, and U+0E33 decomposes into U+0E4D and
-   U+0E32. Both are contextual GSUB — lookup types 5 and 6, which the ported
-   reader skips — and PDFBox has no Thai worker in any case:
-   `GsubWorkerFactory` covers Bengali, Devanagari, Gujarati, Latin and DFLT, and
-   `getSupportedLanguage` reports NotoSansThai as Devanagari (the factory's own
-   comment points at PDFBOX-5700 and PDFBOX-5729).
-3. **Bengali conjuncts differ.** `GsubWorkerForBengali` reorders and substitutes,
-   and the page comes out legible — the pre-base vowel moves ahead of its
-   consonant, the conjuncts form — but it picks a different set of pre-base
-   forms than the platform does, in both directions: at one place the port
-   substitutes where AWT does not, at another the reverse.
-4. **Arabic joining is not applied at all.** A letter's initial, medial and
-   final forms are the `init`/`medi`/`fina` features, driven by the Unicode
-   joining types, and **PDFBox has no Arabic worker**. The port draws the
-   isolated forms. The bidi ordering — which is what `GlyphLayoutBidiTest` is
-   named for — is right: the runs are placed by `ReorderVisually` and the
-   letters inside each are reversed.
+Every deviation but one is a **GSUB** difference, and every GSUB difference but
+one has the same cause: **PDFBox's substitution reader implements lookup types
+1, 2, 3, 4 and 7, and drops 5 and 6.** `GlyphSubstitutionTable.
+readLookupSubtable` says so in a comment — "Other lookup types are not
+supported" — and logs each one it throws away. Counting those logs over the
+layout fonts:
 
-The shape of all four is the same: **the port substitutes exactly what PDFBox
+| Font | Lookups dropped |
+| --- | --- |
+| `FiraCode-Regular` | 111 of type 6 |
+| `NotoSansArabic-Regular` | 7 of type 6, 2 of type 5 |
+| `NotoSansThai-Regular` | 5 of type 6, 1 of type 5 |
+| `DejaVuSans` | 4 of type 6 |
+| `Arimo-Regular` | 2 of type 6 |
+| `Lohit-Bengali` | none |
+
+Type 6 is chained contextual substitution: *replace this glyph when it stands
+between those glyphs*. It is how a font says almost everything that depends on
+what is next to what, so the port asks for the features and the substitutions
+are not in the data it was given.
+
+Where the glyph run does agree, the positioning agrees: the Thai line's first
+eleven glyphs and the Bengali marks match the AWT reference to the last design
+unit.
+
+1. **FiraCode's `!=` and `>=`** are drawn with contextual alternates — 111
+   type 6 lookups, all dropped. AWT draws the joined forms; the port draws `!`
+   and `=`.
+2. **Thai contextual forms.** A vowel or tone sign over a tall consonant has a
+   lowered variant, and U+0E33 decomposes into U+0E4D and U+0E32. Six dropped
+   lookups.
+3. **The dotless `j`.** In `j́` the platform puts U+0237 LATIN SMALL LETTER
+   DOTLESS J under the accent, so the accent does not land on the dot. Arimo
+   spells that as `ccmp`, in two type 6 lookups. It is the only difference on
+   the whole DIN 91379 page: 40 of its 41 lines agree exactly.
+4. **Bengali conjuncts differ** — and this one is not a dropped lookup, because
+   Lohit-Bengali is the one layout font whose GSUB the reader reads in full.
+   `GsubWorkerForBengali` reorders and substitutes, and the page comes out
+   legible: the pre-base vowel moves ahead of its consonant, the conjuncts
+   form. It picks a different set of pre-base forms than the platform does, in
+   both directions — at one place the port substitutes where AWT does not, at
+   another the reverse.
+5. **Arabic joining is not applied at all**, and this one is a missing shaper
+   rather than a missing lookup type. A letter's initial, medial and final
+   forms are the `init`/`medi`/`fina` features, chosen by the Unicode joining
+   types of the letters around it, and **PDFBox has no Arabic worker**:
+   `GsubWorkerFactory` covers Bengali, Devanagari, Gujarati, Latin and DFLT.
+   The port draws the isolated forms. The bidi ordering — which is what
+   `GlyphLayoutBidiTest` is named for — is right: the runs are placed by
+   `ReorderVisually` and the letters inside each are reversed.
+
+The shape of all five is the same: **the port substitutes exactly what PDFBox
 can substitute, and positions exactly what the OpenType specification defines.**
-Closing them means writing shapers PDFBox does not have, which is a larger piece
-of work than this branch, and a decision for the user rather than a defect to
+Closing them means adding contextual substitution to a ported reader that
+deliberately does without it, and writing an Arabic shaper PDFBox has never
+had. Both are larger than this branch and are the user's call, not a defect to
 fix quietly.
 
+#### Which features the backend asks for, and why
+
+The Java font loader has two switches, `setKerningOn` and `setLigaturesOn`, and
+they do not mean "all the shaping" — measuring the reference PDFs says which
+features the platform applies regardless:
+
+| Feature | When |
+| --- | --- |
+| `ccmp`, `calt` | always |
+| `liga`, `clig` | with `Ligatures` |
+| `kern` (GPOS) | with `Kerning` |
+| `mark`, `mkmk`, `abvm`, `blwm` (GPOS) | always |
+
+The evidence for the first row is the FiraCode line written with no options at
+all, which carries the contextual forms, and the `j́` of the DIN 91379 page,
+which carries the dotless `j`. The evidence for the second is the DejaVu line
+written with no options, which has `ffi` in three separate letters, against the
+one written with them, which has the ligature.
+
+The last row is four features and not two because `mark` and `mkmk` are the
+Latin and Arabic spellings of mark positioning and `abvm` and `blwm` are the
+Indic ones — above-base and below-base. Asking only for the first two leaves a
+Bengali vowel sign on the baseline, because Lohit-Bengali files its anchors
+under the other two.
+
+Java has one GSUB worker per script, each with a feature list fixed in its
+class, and no way to ask for some of them and not others. `gsub.
+GsubWorkerForFeatures` is that: **not a port**, but not new machinery either --
+the same `featureApplier` the ported workers run, over a list the caller
+chooses. The script-specific workers are still used unchanged where a script
+has one, because they reorder as well as substitute.
+
+The script a feature is looked up under is the font's own GSUB language first
+and the run's direction second, so a Bengali font is not asked for its `latn`
+features and told it has none.
 #### What the Java tests could not be ported as
 
 Every assertion in the five shared test classes that checks the shaping goes
@@ -5080,18 +5153,93 @@ differ. What is ported straight is everything else the Java asserts:
 | --- | --- |
 | `testMissingGlyph`'s message, character for character | `TestMissingGlyphIsRefused` |
 | `assertEquals(f1, f2)`, `f4 < f1`, `f4 < f3` | `TestStringWidthWithAndWithoutKerning` |
+| `assertEquals(1, doc.getNumberOfPages())` | implied by the DIN comparison, which reads page 0 of a one-page document |
 
-`GlyphLayoutDin91379Test` and `GlyphLayoutDin91379FormTest` are not ported: both
-are `checkRenderIdent` over a character list, and the form one needs
-`PDAcroForm` field appearances driven by a layout processor, which is slice 8's
-`generateAppearance` path over a backend that does not exist yet. The two
-hello-world classes are examples, which `PLAN.md` puts out of scope.
+`GlyphLayoutDin91379Test` **is** ported, as the reference comparison above:
+its own assertion is `assertEquals(1, doc.getNumberOfPages())`, and the
+extracted text it writes to a file carries a TODO saying the comparison is "Not
+yet correct as of 4.7.2026", so there is nothing else in it to port.
 
-#### Features the backend asks for
+`GlyphLayoutDin91379FormTest` is not: it needs `PDAcroForm` field appearances
+driven by a layout processor, which is slice 8's `generateAppearance` path over
+a backend that does not exist yet. The two hello-world classes are examples,
+which `PLAN.md` puts out of scope.
 
-`kern` when kerning is on, and `mark`, `mkmk`, `abvm` and `blwm` always. The
-last two are the Indic spellings of mark positioning: asking only for `mark` and
-`mkmk` leaves a Bengali vowel sign on the baseline, because Lohit-Bengali files
-its anchors under the other two. The script is looked up under the font's own
-GSUB language first and the run direction second, so a Bengali font is not
-asked for its `latn` features and told it has none.
+#### What the GPOS reader does not do
+
+Beyond the lookup types in the table above:
+
+- **Lookup flags are not applied.** `ignoreBaseGlyphs`, `ignoreLigatures`,
+  `ignoreMarks`, the mark attachment type in the flag's high byte and the mark
+  filtering set all say which glyphs a lookup should skip while matching, and
+  none of them is honoured: a kern lookup that asks to ignore marks still sees
+  them, so a pair with a mark between it does not kern. Applying them needs the
+  GDEF table, which neither PDFBox nor this port reads. `useMarkFilteringSet`
+  is the one flag the reader looks at, and only to step over the extra field it
+  adds to the lookup header.
+- **Device tables are read and dropped**, as above.
+
+Two things it does that a first cut did not, both found by reading it against
+the specification rather than by a test:
+
+- **A lookup walks the run once, not once per subtable.** The specification
+  tries a lookup's subtables in order at each position and takes the first that
+  applies; walking the run once per subtable lets two subtables of one lookup
+  both adjust the same glyph. It changed nothing measurable in the five test
+  fonts, and it is what the specification says.
+- **`ValueRecord` zero is zero.** `IsZero` gained a field when attachment
+  moved onto `GlyphPosition`, and a value record built without setting it
+  answered false — which made pair adjustment consume two glyphs where it
+  should consume one, and dropped every second kern in `AVATAR`. The reference
+  comparison caught it; the kerning test did not, because there were still
+  kerns in the stream.
+
+### The adversarial review of the backend
+
+Phase D over `go/pdfbox/glyphlayout` and the GPOS reader, read against the Java
+and against the OpenType specification rather than against the tests.
+
+**Found by reading the Java side by side**
+
+- `supportsFont` was documented as a port and is not one. Java's is
+  `awtFontMap.containsKey(font)` -- the AWT backend supports the fonts its own
+  loader handed it, and nothing else. This port has no such loader, because
+  there is no AWT font to keep beside the PDFBox one. What it can answer is the
+  question the loader answers when asked to load, and it now answers that,
+  including refusing an OpenType font with PostScript outlines, which PDFBox
+  does not support here. Written down at the site and tested by
+  `TestSupportsFont`, which builds such a font from a dictionary because the
+  embedder refuses to load one.
+- Java's `delta` is applied to a distance in points and this port's `dx` is in
+  thousandths of an em, so the same constant is not the same test. It cannot
+  come to a different answer -- every `dx` here is a whole number of design
+  units, four orders of magnitude above the threshold -- and it is now said in
+  the comment rather than left to be discovered.
+- The Java class documents "Use an object of this class only in one thread".
+  The port keeps a map of GSUB workers with nothing guarding it, so it needs
+  the same sentence, and now has it.
+
+**Found by reading the OpenType specification**
+
+- A lookup walked the run once per subtable rather than once per lookup. See
+  above.
+- Lookup flags are not applied at all. Recorded, not fixed: it needs GDEF.
+- Mark-to-base looked back for its letter over the marks *this subtable*
+  covers, and a letter can carry two marks of different classes, covered by
+  different subtables. `C̨̆` -- C, ogonek, breve -- lost the breve entirely,
+  because the ogonek is not in the breve's subtable and the scan stopped on it.
+  The table now collects every mark glyph any of its attachment subtables
+  covers and hands the set to all of them, which is what GDEF would say if the
+  port read GDEF.
+
+**Found by the reference comparison, which the tests already had green**
+
+- `IsZero` gained a field and a zero value record stopped answering true to it,
+  which made pair adjustment consume two glyphs where it should consume one.
+  Half the kerns in `AVATAR` disappeared and every kerning test stayed green,
+  because there were still kerns in the stream.
+
+**Still open**
+
+The five deviations above, and the two things the GPOS reader does not do.
+Nothing found in this review is unrecorded, and nothing recorded is unmeasured.

@@ -334,6 +334,12 @@ type markAttachment struct {
 	// subtables have the same layout but not the same rule for finding what
 	// the mark hangs off -- see position.
 	toMark bool
+
+	// everyMark is every mark glyph the whole table knows of, which is what a
+	// mark-to-base lookup steps over on its way back to the letter. It is not
+	// this subtable's own coverage: a letter can carry two marks of different
+	// classes, and they are covered by different subtables.
+	everyMark *markSet
 }
 
 func readMarkToBase(data DataStream, offset int64) (positioningSubtable, error) {
@@ -472,8 +478,8 @@ func (t *markAttachment) position(glyphs []int, i int, out []GlyphPosition) int 
 	// attaches a mark to a letter it does not belong to, and puts it a word
 	// away on the page.
 	baseAt := i - 1
-	if !t.toMark {
-		for baseAt >= 0 && t.markCoverage.CoverageIndex(glyphs[baseAt]) >= 0 {
+	if !t.toMark && t.everyMark != nil {
+		for baseAt >= 0 && t.everyMark.contains(glyphs[baseAt]) {
 			baseAt--
 		}
 	}

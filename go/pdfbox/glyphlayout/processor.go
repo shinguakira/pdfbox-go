@@ -45,6 +45,10 @@ const fontScale = 1000
 // It fills the same place as `GlyphLayoutProcessorAwt`: it satisfies
 // pdmodel.GlyphLayoutProcessor, and PDPageContentStream.SetGlyphLayoutProcessor
 // takes it.
+//
+// Use one of these in one goroutine, which is what the Java class documents
+// ("Use an object of this class only in one thread") and for the same reason:
+// it keeps a map of the GSUB workers it has built, and nothing guards it.
 type Processor struct {
 	pdmodel.AbstractGlyphLayoutProcessor
 
@@ -96,15 +100,47 @@ func NewProcessorWithFeatures(features Features) *Processor {
 
 // SupportsFont reports whether this processor can lay text out in the font.
 //
-// Port of supportsFont, which answers true for a PDType0Font whose program is a
-// TrueType font with glyf outlines. A CFF-based OpenType font is refused for
-// the same reason Java refuses it: PDFBox does not support one here.
+// **Not a port of supportsFont, and it cannot be one.** Java's is
+// `awtFontMap.containsKey(font)`: the AWT backend supports exactly the fonts
+// its own loader was handed, because the loader is what built the
+// `java.awt.Font` beside each one. Nothing else can be laid out, whatever the
+// font is made of.
+//
+// This port has no such loader. Java's exists to keep an AWT font next to the
+// PDFBox one, and there is no AWT font here: the shaping reads the same
+// TrueType program `PDType0Font.load` already embedded. So there is nothing to
+// register and nothing to look up, and the question this can answer is the one
+// the loader answers when it is asked to load: is this a Type 0 font with a
+// TrueType program to read.
+//
+// The difference shows in one case. A Type 0 font the caller loaded through
+// `PDType0Font.load` rather than through the layout's own loader is refused by
+// Java -- `showText` falls through to the ordinary PDFBox path -- and is
+// accepted here. Accepting it is the behaviour that makes sense without a
+// loader to have gone through, and it is what the reference comparison in
+// glyphlayout's tests relies on.
+//
+// A CFF-based OpenType font is refused, for the reason Java's loader refuses
+// it: PDFBox does not support one here.
 func (p *Processor) SupportsFont(f font.PDFont) bool {
 	type0, isType0 := f.(*font.PDType0Font)
 	if !isType0 {
 		return false
 	}
-	return type0.TrueTypeFont() != nil
+	program := type0.TrueTypeFont()
+	if program == nil {
+		return false
+	}
+	// An OpenType font with PostScript outlines carries the tables this reads
+	// -- cmap, hmtx, GSUB, GPOS -- so it would lay out; but PDFBox does not
+	// support one as a glyph-layout font, and a caller that is refused falls
+	// through to the ordinary path rather than getting a page this port cannot
+	// render. `AsOpenType`, not a type assertion: OpenTypeFont embeds
+	// TrueTypeFont rather than extending it, so `instanceof` has no equivalent.
+	if openType := program.AsOpenType(); openType != nil && openType.IsPostScript() {
+		return false
+	}
+	return true
 }
 
 // positionedGlyph is one glyph of a laid-out run: which glyph, where it sits
@@ -199,23 +235,46 @@ func (p *Processor) substitute(f *font.PDType0Font, program *ttf.TrueTypeFont,
 	if gsubData == nil {
 		return glyphs, nil
 	}
-	if !p.features.Ligatures && !isScriptShaping(gsubData.Language()) {
-		// Java turns ligatures on only when the font was loaded with
-		// LIGATURES_ON, and measuring the reference PDF says it means it: with
-		// no options the Latin lines carry no ligature at all. The
-		// script-specific workers are a different matter -- see
-		// isScriptShaping.
-		return glyphs, nil
-	}
 	worker, known := p.gsubWorkers[f]
 	if !known {
-		worker = p.gsubFactory.GetGsubWorker(f.CmapLookup(), gsubData)
+		if isScriptShaping(gsubData.Language()) {
+			// The script's own worker, which reorders as well as substitutes.
+			worker = p.gsubFactory.GetGsubWorker(f.CmapLookup(), gsubData)
+		} else {
+			worker = gsub.NewGsubWorkerForFeatures(gsubData, p.substitutionTags())
+		}
 		p.gsubWorkers[f] = worker
 	}
 	if worker == nil {
 		return glyphs, nil
 	}
 	return worker.ApplyTransforms(glyphs), nil
+}
+
+// substitutionTags answers which GSUB features to apply to a script that has
+// no worker of its own.
+//
+// Two of them are not optional and are not typography. "ccmp" is glyph
+// composition and decomposition -- it is what turns a `j` into a dotless `j`
+// when an accent is going on top, so the accent does not land on the dot --
+// and "calt" is contextual alternates, which is how a font like FiraCode draws
+// `!=` as one mark. Measuring the reference PDFs says the platform applies
+// both whether or not anything was asked for: the FiraCode line written with
+// no options at all carries the contextual forms, and the `j́` of the DIN 91379
+// page carries the dotless `j`.
+//
+// "liga" and "clig" are the ones TextAttribute.LIGATURES_ON turns on, and the
+// same measurement says so: with no options the DejaVu line has `ffi` written
+// out in three letters, and with them it has the ligature.
+//
+// The order is the order the ported workers use, and the order the
+// specification gives: composition before ligature before contextual.
+func (p *Processor) substitutionTags() []string {
+	tags := []string{"ccmp"}
+	if p.features.Ligatures {
+		tags = append(tags, "liga", "clig")
+	}
+	return append(tags, "calt")
 }
 
 // isScriptShaping reports whether a language's worker does more than apply

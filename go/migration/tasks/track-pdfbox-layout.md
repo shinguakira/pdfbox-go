@@ -183,6 +183,10 @@ the ported tests cannot answer.
 
 - [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
+  - The backend's pass is in STATUS.md under "The adversarial review of the
+    backend": three findings from reading the Java, three from reading the
+    OpenType specification, and one the reference comparison caught with every
+    test green
 
 And for this branch in particular:
 
@@ -190,10 +194,18 @@ And for this branch in particular:
   - Whatever Go shaper was chosen, it is not `java.awt.font.TextLayout`.
     Record every case where it shapes differently, in `STATUS.md`, as a
     deviation. Do not let "the test passes" stand in for "it shapes the same".
+  - Five deviations, each measured against the AWT backend's own output and
+    pinned in the tests: a deviation that disappears fails the test as loudly
+    as one that appears.
 
 - [x] D9. Check bidi and the supplementary plane against the Java output
   - `GlyphLayoutBidiTest` and `GlyphLayoutSMPTest` are the two that will expose
     a shaper difference first.
+  - Done by comparing against the reference PDFs the Java tests render, which
+    are the AWT backend's own output. SMP agrees on all 7 text objects; bidi
+    agrees on the run order and differs on Arabic joining, which is recorded.
+    `GlyphLayoutDin91379Test` was added to the same comparison and agrees on
+    40 of 41.
 
 ---
 

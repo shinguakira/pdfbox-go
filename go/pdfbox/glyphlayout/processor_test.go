@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/glyphlayout"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -303,6 +304,110 @@ func TestMissingGlyphIsRefused(t *testing.T) {
 	if got := err.Error(); got != want {
 		t.Errorf("the failure is\n  %q\nwant\n  %q", got, want)
 	}
+}
+
+// TestSupportsFont checks the three answers supportsFont gives.
+//
+// The middle one is the one worth having: an OpenType font with PostScript
+// outlines carries every table the layout reads, so it would lay out, and
+// PDFBox does not support one here. A caller that is refused falls through to
+// the ordinary path instead of getting a page nothing can render.
+func TestSupportsFont(t *testing.T) {
+	document := pdmodel.NewPDDocument()
+	defer document.Close()
+
+	trueType := openLayoutFont(t, document, layoutFonts+"DejaVuSans.ttf")
+	if !glyphlayout.NewProcessor().SupportsFont(trueType) {
+		t.Error("a Type 0 font with a TrueType program was refused")
+	}
+
+	postScript := postScriptOutlineFont(t, document)
+	// Without this the next assertion would pass for the wrong reason: a font
+	// with no program at all is refused too.
+	if postScript.TrueTypeFont() == nil {
+		t.Fatal("the PostScript font carries no program, so nothing is being checked")
+	}
+	if glyphlayout.NewProcessor().SupportsFont(postScript) {
+		t.Error("a Type 0 font with PostScript outlines was accepted; " +
+			"PDFBox does not support one for glyph layout")
+	}
+
+	// Anything that is not a Type 0 font at all.
+	helvetica, err := font.NewPDType1FontStandard14(font.Helvetica)
+	if err != nil {
+		t.Fatalf("NewPDType1FontStandard14: %v", err)
+	}
+	if glyphlayout.NewProcessor().SupportsFont(helvetica) {
+		t.Error("a standard 14 font was accepted; the layout writes glyph ids, " +
+			"which a simple font has no room for")
+	}
+}
+
+// postScriptOutlineFont builds a Type 0 font whose program is an OpenType font
+// with PostScript outlines.
+//
+// It is built from a dictionary rather than loaded, because loading one is
+// refused earlier: the embedder answers "True Type fonts using CFF outlines are
+// not supported". A document that already has such a font -- and they exist,
+// which is why PDCIDFontType2 carries an `otf` beside its `ttf` and asks
+// whether it is PostScript in three places -- reaches the layout this way.
+func postScriptOutlineFont(t *testing.T, document *pdmodel.PDDocument) *font.PDType0Font {
+	t.Helper()
+	program, err := os.ReadFile("../../../fontbox/src/test/resources/otf/FoglihtenNo07.otf")
+	if err != nil {
+		t.Skipf("FoglihtenNo07.otf is not in this repository: %v", err)
+	}
+	stream, err := common.NewPDStreamOfInput(document.Document(),
+		bytes.NewReader(program), nil)
+	if err != nil {
+		t.Fatalf("embedding the font program: %v", err)
+	}
+
+	descriptor := font.NewPDFontDescriptor()
+	descriptor.SetFontName("FoglihtenNo07")
+	descriptor.SetFontFile3(stream)
+
+	descendant := cos.NewDictionary()
+	descendant.SetItem(cos.GetPDFName("Type"), cos.GetPDFName("Font"))
+	descendant.SetItem(cos.GetPDFName("Subtype"), cos.GetPDFName("CIDFontType2"))
+	descendant.SetItem(cos.GetPDFName("BaseFont"), cos.GetPDFName("FoglihtenNo07"))
+	descendant.SetItem(cos.GetPDFName("FontDescriptor"), descriptor.COSObject())
+	systemInfo := cos.NewDictionary()
+	systemInfo.SetItem(cos.GetPDFName("Registry"), cos.NewStringObj("Adobe"))
+	systemInfo.SetItem(cos.GetPDFName("Ordering"), cos.NewStringObj("Identity"))
+	systemInfo.SetItem(cos.GetPDFName("Supplement"), cos.GetInteger(0))
+	descendant.SetItem(cos.GetPDFName("CIDSystemInfo"), systemInfo)
+
+	dictionary := cos.NewDictionary()
+	dictionary.SetItem(cos.GetPDFName("Type"), cos.GetPDFName("Font"))
+	dictionary.SetItem(cos.GetPDFName("Subtype"), cos.GetPDFName("Type0"))
+	dictionary.SetItem(cos.GetPDFName("BaseFont"), cos.GetPDFName("FoglihtenNo07"))
+	dictionary.SetItem(cos.GetPDFName("Encoding"), cos.GetPDFName("Identity-H"))
+	descendants := cos.NewArray()
+	descendants.Add(descendant)
+	dictionary.SetItem(cos.GetPDFName("DescendantFonts"), descendants)
+
+	loaded, err := font.NewPDType0Font(dictionary, nil)
+	if err != nil {
+		t.Fatalf("reading the font back: %v", err)
+	}
+	return loaded
+}
+
+// openLayoutFont loads a font file as a Type 0 font.
+func openLayoutFont(t *testing.T, document *pdmodel.PDDocument,
+	path string) *font.PDType0Font {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Skipf("%s is not in this repository: %v", path, err)
+	}
+	t.Cleanup(func() { file.Close() })
+	loaded, err := font.LoadPDType0FontSubset(document, file, false)
+	if err != nil {
+		t.Fatalf("loading %s: %v", path, err)
+	}
+	return loaded
 }
 
 // TestStringWidthWithAndWithoutKerning is the four widths the Java test

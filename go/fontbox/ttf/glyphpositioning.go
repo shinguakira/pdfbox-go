@@ -112,9 +112,55 @@ func (t *GlyphPositioningTable) Read(ttf *TrueTypeFont, data DataStream) error {
 		return err
 	}
 	t.lookupList = lookups
+	t.collectMarks()
 
 	t.initialized = true
 	return nil
+}
+
+// markSet is which glyphs of a font are combining marks.
+//
+// The authority on that is GDEF's glyph class definition, which neither PDFBox
+// nor this port reads. What stands in for it is the table's own account of
+// itself: every glyph any mark attachment subtable covers as a mark is a mark.
+// A font that positions marks says so in those coverages, so the set is
+// complete for the fonts where the answer matters.
+type markSet struct {
+	coverages []common.CoverageTable
+}
+
+// contains reports whether the glyph is a combining mark.
+func (s *markSet) contains(gid int) bool {
+	for _, coverage := range s.coverages {
+		if coverage.CoverageIndex(gid) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// collectMarks builds the set of mark glyphs and hands it to every mark
+// attachment subtable, which needs to know which glyphs to step over when it
+// looks back for the letter a mark belongs to.
+//
+// It has to happen after every lookup is read: the mark of one subtable is a
+// glyph another subtable has to step over, and the two are not read together.
+func (t *GlyphPositioningTable) collectMarks() {
+	marks := &markSet{}
+	for _, lookup := range t.lookupList {
+		for _, subtable := range lookup.subTables {
+			if attachment, isAttachment := subtable.(*markAttachment); isAttachment {
+				marks.coverages = append(marks.coverages, attachment.markCoverage)
+			}
+		}
+	}
+	for _, lookup := range t.lookupList {
+		for _, subtable := range lookup.subTables {
+			if attachment, isAttachment := subtable.(*markAttachment); isAttachment {
+				attachment.everyMark = marks
+			}
+		}
+	}
 }
 
 // ScriptTags returns the scripts the table carries.
@@ -211,10 +257,15 @@ func (t *GlyphPositioningTable) readLookup(data DataStream,
 }
 
 // useMarkFilteringSet is the lookup flag that adds a mark filtering set field.
+//
+// It is the only lookup flag this reader acts on, and it acts on it only to
+// step over the extra field it adds. The rest -- ignoreBaseGlyphs,
+// ignoreLigatures, ignoreMarks, the mark attachment type in the high byte, and
+// the mark filtering set itself -- say which glyphs a lookup should skip over
+// while matching, and none of them is applied: a lookup that asks to ignore
+// marks still sees them. Applying them needs the GDEF table, which neither
+// PDFBox nor this port reads. See migration/STATUS.md.
 const useMarkFilteringSet = 0x0010
-
-// ignoreMarks is the lookup flag that skips mark glyphs.
-const ignoreMarks = 0x0008
 
 // readSubtable reads one positioning subtable, answering nil for a lookup type
 // this reader does not implement.
@@ -276,14 +327,23 @@ func (t *GlyphPositioningTable) Position(glyphs []int, scriptTags []string,
 			continue
 		}
 		lookup := t.lookupList[lookupIndex]
-		for _, subtable := range lookup.subTables {
-			for i := 0; i < len(glyphs); {
-				consumed := subtable.position(glyphs, i, positions)
-				if consumed <= 0 {
-					consumed = 1
+		// One walk of the run per lookup, trying the lookup's subtables in
+		// order at each glyph and taking the first that applies -- which is
+		// what the specification says a lookup does. Walking the run once per
+		// subtable instead lets two subtables of one lookup both adjust the
+		// same glyph, and they are usually alternative ways of saying the same
+		// thing about different glyph ranges.
+		for i := 0; i < len(glyphs); {
+			consumed := 0
+			for _, subtable := range lookup.subTables {
+				if consumed = subtable.position(glyphs, i, positions); consumed > 0 {
+					break
 				}
-				i += consumed
 			}
+			if consumed <= 0 {
+				consumed = 1
+			}
+			i += consumed
 		}
 	}
 	return positions

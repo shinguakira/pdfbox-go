@@ -350,3 +350,39 @@ func (f *Factory) GetGsubWorker(cmapLookup CmapLookup, gsubData model.GsubData) 
 		return &DefaultGsubWorker{}
 	}
 }
+
+// GsubWorkerForFeatures applies a caller's list of features, in the order the
+// caller gives them.
+//
+// **Not a port.** The Java has one worker per script, each with a fixed list of
+// features -- GsubWorkerForLatin applies ccmp, liga and clig, and there is no
+// way to ask for some of them and not others. A glyph layout backend needs
+// that: `java.awt.font.TextLayout` applies ccmp and calt whatever the caller
+// asked for, because they decide what the text *is* -- a `j` becomes a dotless
+// `j` under an accent -- and applies liga and clig only when the font was
+// loaded with TextAttribute.LIGATURES_ON.
+//
+// Nothing here is new machinery: it is the same featureApplier the ported
+// workers run, over a list the caller chooses. See migration/STATUS.md.
+type GsubWorkerForFeatures struct {
+	featureApplier
+
+	gsubData model.GsubData
+	features []string
+}
+
+var _ GsubWorker = (*GsubWorkerForFeatures)(nil)
+
+// NewGsubWorkerForFeatures returns a worker that applies the given features.
+func NewGsubWorkerForFeatures(gsubData model.GsubData, features []string) *GsubWorkerForFeatures {
+	return &GsubWorkerForFeatures{
+		featureApplier: newFeatureApplier(),
+		gsubData:       gsubData,
+		features:       slices.Clone(features),
+	}
+}
+
+// ApplyTransforms returns the glyphs the substitutions leave behind.
+func (w *GsubWorkerForFeatures) ApplyTransforms(originalGlyphIDs []int) []int {
+	return slices.Clone(w.applyFeaturesInOrder(w.gsubData, w.features, originalGlyphIDs))
+}

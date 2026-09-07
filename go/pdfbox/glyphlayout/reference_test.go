@@ -58,15 +58,20 @@ const (
 func TestLigaturesAndKerningAgainstTheAwtReference(t *testing.T) {
 	compareWithReference(t, "awt-GlyphLayoutLigaturesAndKerning.txt",
 		ligaturesAndKerningPage, map[int]string{
-			0: "FiraCode's ligatures are contextual alternates. GsubWorkerForLatin " +
-				"applies ccmp, liga and clig, and PDFBox has no worker that applies calt.",
+			0: "FiraCode draws != and >= with contextual alternates: 111 chained " +
+				"contextual lookups, which is GSUB lookup type 6, and PDFBox's " +
+				"reader drops every one of them. The port asks for the feature and " +
+				"the substitutions it needs are not there.",
 			1: "the same, on the line that asks for ligatures.",
 			6: "Thai: the vowel and tone signs have contextual forms, and U+0E33 " +
-				"decomposes into U+0E4D and U+0E32. Both are contextual GSUB, which " +
-				"PDFBox has no worker for. The positioning of the glyphs it does " +
-				"produce agrees with the AWT reference.",
+				"decomposes into U+0E4D and U+0E32. NotoSansThai spells both as five " +
+				"type 6 lookups and one type 5, which the reader drops. The " +
+				"positioning of the glyphs it does produce agrees with the AWT " +
+				"reference to the last design unit.",
 			7: "Bengali: GsubWorkerForBengali substitutes a different set of " +
-				"conjuncts and pre-base forms than the platform does.",
+				"conjuncts and pre-base forms than the platform does. Lohit-Bengali " +
+				"is the one layout font whose lookups the reader reads in full, so " +
+				"this one is the worker's own choices, not a missing lookup type.",
 			8: "the same, on the text object the Java test writes without the " +
 				"helper, to reach the end-position branch of showTextUni.",
 		})
@@ -363,6 +368,15 @@ func movingFields(line string) []string {
 			continue
 		}
 		fields = append(fields, field)
+	}
+	// A space at the end of a line paints nothing, and the reference PDFs have
+	// some the Java that renders them no longer produces: twenty lines of
+	// GlyphLayoutDIN91379.pdf end with one, and no line of
+	// LATIN_CHARS_DIN_91379 does. The PDF was rendered from an earlier
+	// spelling of that string, and `checkRenderIdent` never noticed because it
+	// compares pixels. Neither side's trailing space is a shaping difference.
+	for len(fields) != 0 && fields[len(fields)-1] == "G:0020" {
+		fields = fields[:len(fields)-1]
 	}
 	return fields
 }

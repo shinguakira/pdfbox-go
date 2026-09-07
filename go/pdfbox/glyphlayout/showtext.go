@@ -14,7 +14,19 @@ import (
 
 // delta is the distance below which an adjustment is not worth writing.
 //
-// Java's `final float delta = 1e-5f`.
+// Java's `final float delta = 1e-5f`, and Java tests it on a distance in
+// points: `dx` before it is scaled, and `py` as the layout gave it. `py` is in
+// points here too, so that test is the same one.
+//
+// `dx` is not. This port's is in thousandths of an em by the time it is
+// tested, because it never passes through points: the offsets come out of the
+// font in design units and are scaled by 1000/unitsPerEm, which does not
+// depend on the size. Testing the scaled value against the same constant is a
+// different test, and cannot come to a different answer -- every dx here is a
+// whole number of design units, so a non-zero one is at least 1000/unitsPerEm,
+// which is 0.06 for the largest em a font is allowed and four orders of
+// magnitude above delta. The threshold exists to swallow floating-point noise
+// from AWT's arithmetic in point space, and there is no such noise here.
 const delta = 1e-5
 
 // stringWidthUni computes the width of a run that goes one way.
