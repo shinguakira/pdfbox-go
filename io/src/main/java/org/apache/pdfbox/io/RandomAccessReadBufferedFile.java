@@ -127,7 +127,7 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
      * @throws java.io.IOException if something went wrong.
      */
     @Override
-    public void seek( final long position ) throws IOException
+    public final void seek( final long position ) throws IOException
     {
         checkClosed();
         if (position < 0)
