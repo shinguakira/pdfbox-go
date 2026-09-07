@@ -401,13 +401,16 @@ func (f *TrueTypeFont) UnicodeCmapLookupStrict() (CmapLookup, error) {
 // would not answer that check, because an interface holding a typed nil is not
 // itself nil. A subsetted font has no cmap at all, so this is not a corner: it
 // is the ordinary state of a font this port has just written.
+//
+// That normalisation belongs on the branch Java returns the cmap from, and
+// nowhere earlier. With a GSUB feature enabled and a GSUB table present, Java
+// wraps the null cmap and returns a SubstitutingCmapLookup, which is not null
+// -- and it raises whatever reading the GSUB table raised. Returning early on a
+// nil cmap would answer nil there and swallow that error.
 func (f *TrueTypeFont) UnicodeCmapLookup(isStrict bool) (CmapLookup, error) {
 	cmap, err := f.unicodeCmapImpl(isStrict)
 	if err != nil {
 		return nil, err
-	}
-	if cmap == nil {
-		return nil, nil
 	}
 	if len(f.enabledGsubFeatures) != 0 {
 		table, err := f.GSUB()
@@ -415,9 +418,15 @@ func (f *TrueTypeFont) UnicodeCmapLookup(isStrict bool) (CmapLookup, error) {
 			return nil, err
 		}
 		if table != nil {
+			// cmap may be nil here, and Java wraps a null just the same. Using
+			// the result then dereferences it, which is Java's
+			// NullPointerException and the port's nil-pointer panic.
 			return NewSubstitutingCmapLookup(cmap, table,
 				slices.Clone(f.enabledGsubFeatures)), nil
 		}
+	}
+	if cmap == nil {
+		return nil, nil
 	}
 	return cmap, nil
 }

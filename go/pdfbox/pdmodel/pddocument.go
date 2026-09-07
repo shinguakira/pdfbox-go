@@ -38,7 +38,11 @@ type PDDocument struct {
 
 	// fontsToClose is the set of font programs a subsetting embedder opened,
 	// which Close closes so that they do not leak until the collector runs.
-	fontsToClose []*ttf.TrueTypeFont
+	//
+	// Java's field is a Set<TrueTypeFont>, so registering the same program
+	// twice closes it once; a Go map keyed by the pointer says the same thing.
+	// Neither side promises an order to close them in.
+	fontsToClose map[*ttf.TrueTypeFont]bool
 
 	// fontsToSubset is the set of fonts to subset before saving, which the
 	// content stream writing fills in.
@@ -231,7 +235,7 @@ func (d *PDDocument) Close() error {
 		}
 	}
 	// close fonts
-	for _, f := range d.fontsToClose {
+	for f := range d.fontsToClose {
 		if err := f.Close(); err != nil && firstException == nil {
 			firstException = err
 		}
@@ -536,5 +540,8 @@ func (d *PDDocument) PDFSource() pdfio.RandomAccessRead { return d.pdfSource }
 // embedder needs it because the subset is not built until the document is
 // saved, so the font program has to stay readable until then.
 func (d *PDDocument) RegisterTrueTypeFontForClosing(f *ttf.TrueTypeFont) {
-	d.fontsToClose = append(d.fontsToClose, f)
+	if d.fontsToClose == nil {
+		d.fontsToClose = map[*ttf.TrueTypeFont]bool{}
+	}
+	d.fontsToClose[f] = true
 }

@@ -4306,3 +4306,37 @@ said its failing case was derived rather than measured. It is measured now: for
 port writes the same bytes. `TestCMapDropsTheTailOfALongerDestination` holds it.
 The entry's "where the Go carries it" names `tounicodewriter.go`, which slice 7
 ported and this branch did not touch, and it is still true.
+
+### E — the review round
+
+Two items, both real.
+
+**`getUnicodeCmapLookup` skipped the GSUB branch when the cmap was null.**
+Slice 8's typed-nil fix — a `*CmapSubtable` that is nil, boxed in a
+`CmapLookup`, is not `== nil`, so every Java null check silently passed — was
+put at the top of the method rather than on the branch Java returns the cmap
+from. Java reads the GSUB table first and, with a feature enabled and a table
+present, returns a `SubstitutingCmapLookup` **wrapping the null cmap**, which is
+not null; it also raises whatever reading that table raised. The port answered
+nil and swallowed the error.
+
+Measured before fixing, with fontbox compiled and the cmap table removed from
+Lohit-Devanagari by reflection:
+
+| state | Java |
+| --- | --- |
+| cmap, feature enabled | `SubstitutingCmapLookup` |
+| no cmap, no feature | `null` |
+| no cmap, feature enabled | `SubstitutingCmapLookup`, and using it throws `NullPointerException` |
+
+`TestUnicodeCmapLookupKeepsTheGsubBranch` in `fontbox/ttf` holds all four rows,
+including the panic the port raises where Java raises the NPE. It failed on the
+third row before the fix.
+
+**`fontsToClose` was a slice documented as a set.** Java's field is
+`Set<TrueTypeFont>`, so the same program registered twice is closed once. The
+port now keys a map on the pointer, which says the same thing;
+`TestRegisterTrueTypeFontForClosingIsASet` registers one font twice and another
+once and expects two. Neither side promises an order to close them in, and no
+public path registers a duplicate today — this is faithfulness to the declared
+type rather than a fix to observable behaviour.
