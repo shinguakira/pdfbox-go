@@ -170,6 +170,13 @@ the ported tests cannot answer.
     claim from "this works"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
+  - `supportsFont` had none for its PostScript branch: `TestSupportsFont`,
+    which builds such a font from a dictionary because the embedder refuses to
+    load one. `resolveAttachments` had none for its right-to-left half, which
+    the reference comparison cannot reach -- the Arabic it would compare
+    against is shaped by the platform:
+    `TestMarkSitsOverItsLetterInBothDirections`. Both were checked against the
+    code with the fix taken out again, and both fail without it
 
 - [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?

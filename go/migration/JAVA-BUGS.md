@@ -3360,3 +3360,32 @@ for a supplementary character: `canDisplayUpTo` has to answer the index of one,
 which needs a font missing a supplementary character that the test resources do
 not have. The basic-plane message was measured, and matches — see
 `TestMissingGlyphIsRefused`, which asserts it character for character.
+
+## 78. `GlyphLayoutDIN91379.pdf` was rendered from a string the test no longer has
+
+**Where** `pdfbox-layout-awt/src/test/resources/pdf/GlyphLayoutDIN91379.pdf`,
+against `GlyphLayoutDin91379Test.LATIN_CHARS_DIN_91379`.
+
+**What** twenty of the reference PDF's forty-one lines end with a space glyph.
+No line of `LATIN_CHARS_DIN_91379` ends with a space: every one of them ends
+`...\n"`, checked byte by byte. The PDF was rendered from an earlier spelling of
+the string and has not been regenerated since the spaces were taken out.
+
+`testGlyphLayoutDin91379` still passes, because `TestBase.checkRenderIdent`
+renders both documents and compares pixels, and a space at the end of a line
+paints nothing. The reference is stale in the one way that comparison cannot
+see.
+
+**What correct would be** regenerating the PDF from the current string, which
+is what `target/GlyphLayoutDIN91379.pdf` already is on every run — the test
+writes it and then compares. Nothing in the Java's behaviour is wrong; the
+resource is.
+
+**Where the Go carries it** nowhere: there is nothing to carry. It is recorded
+because a Go test does compare against that PDF and had to be told to ignore
+it. `go/pdfbox/glyphlayout/reference_test.go`, `movingFields`, drops a trailing
+space glyph from both sides, and says why.
+
+**Confidence** certain, and measured both ways: the twenty lines are exactly
+the twenty that ended with `G:0020` in the dump of the reference PDF, and the
+Java source lines they come from were read as bytes.
