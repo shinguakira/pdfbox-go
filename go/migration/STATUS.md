@@ -4674,9 +4674,10 @@ codes, positions and advances. The FOP backend is the same shape against FOP's
 own shaper. Choosing a Go one — a HarfBuzz binding, `x/image/font/shaping`, or
 something written here — **is** this branch, and it is not a transliteration.
 
-**2. Nothing in the ported tests can check a shaper without a rasteriser.**
-This is the fact that settles the order of the work. Every meaningful assertion
-in the 13 test classes goes through one helper:
+**2. The Java tests cannot be ported as written, but a shaper can still be
+checked — and this entry said the opposite at first, wrongly.**
+
+Every meaningful assertion in the 13 test classes goes through one helper:
 
 ```java
 void checkRenderIdent(String outputName) {
@@ -4695,11 +4696,31 @@ image size before it compares every pixel. **Nothing else asserts anything about
 the shaping at all** — the rest of each test writes a PDF for a human to look
 at.
 
-So a Go shaper cannot be validated here until `rendering.Backend` has an
-implementation. Everything needed for that validation *is* in the repository —
-all seven fonts and a reference PDF per test, checked in — which makes the
-comparison worth doing properly rather than approximately, once it can be done
-at all.
+So `checkRenderIdent` itself needs `rendering.Backend`, and until that exists
+the 13 classes cannot be ported as they stand.
+
+**That is not the same as saying a shaper cannot be checked**, which is what
+this entry claimed until it was read again. The reference PDFs are checked into
+the repository, and what they carry is exactly what `showTextUni` wrote — the
+glyph codes and the positioning, as `TJ` arrays and `Ts` operators. Opening
+`pdf/GlyphLayoutBidi.pdf` with the port's own reader gives:
+
+```
+BT
+12 780 Td
+/F1 12 Tf
+-2.784 Ts
+[-215.00015 (=)] TJ
+0 Ts
+[215.00015 ( e )] TJ
+...
+```
+
+A Go shaper can therefore be compared against the running Java **byte for
+byte, with no renderer at all** — the same move `track/font-embedding`'s D8
+made when it stopped comparing structures and started comparing `/FontFile2`.
+Seven fonts and a reference PDF per test are already here. The oracle is
+strong; it is the thing being tested that does not exist.
 
 **3. Even `AbstractGlyphLayoutProcessor` cannot be ported faithfully**, and this
 is the finding that was not expected. It is the one class in this branch with no
@@ -4761,27 +4782,40 @@ chosen.
 
 **Do not choose a shaper yet, and do not port anything in this branch.**
 
-The task file already suspected this — "deciding the shaper alone, ahead of the
-rasteriser, risks doing both twice" — and the measurements above make it
-concrete rather than cautious:
+The reason is narrower than blockers 1 to 3 together, and worth stating exactly,
+because it is the only branch of this migration where it holds:
 
-- the shaper cannot be *validated* until the rasteriser exists (blocker 2), so
-  choosing it first means writing it twice or shipping it unchecked;
-- the shaper choice and the rasteriser choice are the same family of decision,
-  and a HarfBuzz binding would answer both;
-- the bidi level problem (blocker 3) is a third choice that has to be made
-  whatever the other two are, and it is the only one of the three that could be
-  taken on its own.
+**there is nothing here to port.** Every other branch had Java to read and
+transliterate. PDFBox has no shaper of its own — it borrows Java's and FOP's,
+which is why there are two backend modules and not one implementation. Writing
+`layoutGlyphVector` in Go is not a port of anything in this repository; it is a
+new component, and a large one. What is offline here is `x/image/font/sfnt`,
+which gives outlines and advances and does no shaping; there is no HarfBuzz
+binding and no `go-text/typesetting` in the module cache, and no network.
+`fontbox` has GSUB — slice 4 ported it, and `fontbox/ttf/gsub` is in the tree —
+but for positioning it has only the old `kern` table's `KerningSubtable`, no
+GPOS.
+
+So the choice in front of the project is not "which Go shaper", it is "does
+this port build one". That is the user's to make, and it wants the rasteriser
+decided first: they are the same family of question, a HarfBuzz binding would
+answer both, and `rendering.Backend` already blocks far more.
+
+The bidi level problem (blocker 3) is a third choice, and the only one of the
+three that could be taken on its own.
 
 What the project needs before this branch can start, in the order the
 dependencies fall:
 
-1. **A rasteriser** — an implementation of `rendering.Backend`. It already
+1. **A rasteriser** -- an implementation of `rendering.Backend`. It already
    blocks 19 `graphics/shading` classes, 4 `rendering` classes and 7 of the 8
    `tools` commands `track/tools` could not build. It is the largest open
    decision in the project.
-2. **A shaper**, chosen with the rasteriser in view.
-3. **A source of UAX#9 embedding levels**, which `x/text` does not give.
+2. **A shaper** -- and first, whether this port writes one at all. There is
+   none to port and none available offline. Chosen with the rasteriser in view.
+3. **A source of UAX#9 embedding levels**, which `x/text` computes and does not
+   export. Vendoring its `core.go` or writing the level resolution are both
+   open; this is the one of the three that could be decided alone.
 
 ### What is recorded elsewhere
 
