@@ -3207,7 +3207,16 @@ guarding against exactly this.
 indexes `base25` with a negative remainder, which panics as Java's unchecked
 exception does. Said at the point of difference.
 
-**Confidence** high, from the source. `Math.abs(Integer.MIN_VALUE) ==
-Integer.MIN_VALUE` is specified behaviour, and Go's `%` keeps the sign of the
-dividend exactly as Java's does. Not reproduced: constructing a glyph map whose
-`Map.hashCode()` is precisely -2147483648 was not worth the search.
+**Confidence** certain, and **measured**. A map whose hash is exactly
+`Integer.MIN_VALUE` needs one entry with `key ^ value == 0x80000000`, so
+`{0: Integer.MIN_VALUE}` does it, and the running Java answers
+
+```
+hashCode(patho)     = -2147483648
+getTag(patho) threw java.lang.StringIndexOutOfBoundsException: String index out of range: -23
+```
+
+against `getTag({1: 2, 3: 4})` = `AAAAAL+` for an ordinary map. Go's `%` keeps
+the sign of the dividend exactly as Java's does, so the port reaches the same
+-23 and panics. `TestSubsetTagMatchesJava` in `truetypeembedder_test.go` holds
+both, with the Java values as the wanted ones.

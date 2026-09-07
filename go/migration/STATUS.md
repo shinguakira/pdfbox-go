@@ -4134,7 +4134,8 @@ check an embedded font end to end, and is what the Java does.
 `TestCIDFontType2` and `TestCIDFontType2Subset` embed LiberationSans, write
 `Unicode русский язык Tiếng Việt`, and read the same string back.
 
-Three cases the branch added because the Java has no equivalent to port:
+Three cases phase A added because the Java has no equivalent to port — the
+review added six more, listed under D4:
 
 - `TestSimpleTrueTypeFontEmbedding` — `PDTrueTypeFont.load`, which
   `TestFontEmbedding` never exercises. Java's own coverage of the simple path is
@@ -4149,21 +4150,159 @@ Three cases the branch added because the Java has no equivalent to port:
 - `TestEnsureFontResourcesEmbedsTheReplacement` — the slice 8 hole this branch
   closed, above. The Java class that covers it downloads its PDFs.
 
+
+### The Java is runnable in this environment after all
+
+The port has settled arguments against the running Java since slice 0, but only
+for `io` and `fontbox`, whose only dependency is `log4j-api`. `pdfbox` was
+treated as out of reach — JAVA-BUGS 33 said so in as many words, "because there
+is no Maven in this environment to build PDFBox with" — and that was wrong twice
+over.
+
+**`javac` needs no Maven.** 784 sources compile in one call with `log4j-api` on
+the class path. What actually blocks it is one class: `PublicKeySecurityHandler`
+imports Bouncy Castle, there is no jar for it here and no network to fetch one,
+and `PDDocument` reaches it through `SecurityHandlerFactory`. A stand-in that
+declares the same methods and refuses lets everything compile; it is a build
+shim in a scratch directory, not a change to the reference, and public-key
+encryption has nothing to do with fonts. Running the result also needs
+`fontbox/src/main/resources` and `pdfbox/src/main/resources` on the class path,
+because the predefined CMaps and the AFMs are loaded as resources.
+
+**A class with few dependencies needs less than that.** `ToUnicodeWriter` needs
+`util/Hex` and `util/StringUtil` and nothing else, which is three files.
+
+Three things changed because of it: JAVA-BUGS 33 and 74 are measured rather than
+derived, and D8 below compares a document rather than a subroutine. **This is
+worth carrying to every branch after this one: `javac` plus the two resource
+directories, and where a class needs a jar that is not here, a shim for that
+class rather than a shrug.**
+
 ### What the review checked
 
-**D1 — every ported file read against its Java.** See the commits; the sites
-worth naming are the two `getUnicodeCmapLookup` calls and `buildSubset`'s
-dispatch, both above.
+**D1 — every ported file read against its Java.** Three findings, each with a
+commit and a test:
 
-**D8 — the bytes, not the structure.** A subsetted font that parses is not a
-font that is right, so the round trip is closed with the port's own reader
-rather than with an assertion about the dictionary: each case reloads the saved
-document with `Loader` and extracts its text through `PDFTextStripper`, which
-reaches the glyphs through the embedded program's `cmap` and the `/W` array. A
-subset missing a glyph the text asked for, or a `/W` written from the wrong
-scaling, changes the extracted string or the width lookup that finds it.
+- **Java's `Math.round` rounds half up; Go's `math.Round` rounds half away from
+  zero.** Twenty sites. Every `/W2` entry of a vertical font is a negated
+  metric, so this is not an edge case there: an advance height of 128 in a
+  2048-unit em is -62.5, which Java writes as -62 and the port wrote as -63.
+  Now one pair of helpers, `javaRound` and `javaRoundLong`, and
+  `TestJavaRoundHalfUp` holds what `jshell` prints for ten inputs.
+- **`ttf instanceof OpenTypeFont` was ported as a Go type assertion, which can
+  never hold.** `OpenTypeFont` embeds `*TrueTypeFont` rather than extending it,
+  so the field never carries one; `checkForCidGidIdentity` was unreachable and
+  its body was a stub whose comment claimed the opposite. `AsOpenType` is this
+  port's standing answer to that `instanceof` — `pdcidfonttype2.go` already asks
+  it that way — and the check is written out now, panicking as Java's unchecked
+  `IllegalStateException` does.
+- **Three of Java's thirteen `load` overloads had no Go entry point**: the
+  public `load(RandomAccessRead, boolean, boolean)`, `loadVertical(File)` and
+  `loadVertical(TrueTypeFont, boolean)`. The four-argument form the others
+  funnel into was unexported. The two `File` loaders also copied the whole font
+  into memory where Java's `RandomAccessReadBufferedFile` reads through it.
+  `TestEveryLoadOverload` runs all thirteen.
+
+**D2 — silently dropped behaviour.** Two `IllegalArgumentException`s, in
+`getWidths` and `getVerticalMetrics`, were returning an error; unchecked, so
+they panic now. Everything Java logs and swallows is logged and swallowed —
+`buildVerticalHeader`'s missing-`vhea` warning and `buildToUnicodeCMap`'s
+several-codes debug line. Java's two `try`-with-resources have no Go
+counterpart: `PDStream.CreateInputStream` and `TrueTypeFont.OriginalData` both
+answer an `io.Reader` with nothing to close.
+
+**D3 — the tests are Java-derived.** One case was not.
+`testEmbeddedFontWithZeroWidthChars` was ported with a string of the port's own
+invention and without its second half — the four assertions that the zero-width
+character has width 0 from `/W` and from the font program, an empty path, and
+an undamaged font. **That is the half that checks the four `forceInvisible`
+calls in `TrueTypeEmbedder.subset`, which is this branch's own code.** Restored;
+removing `forceInvisible(0x200C)` now fails it. The two surrogate cases also
+took Java's font size and offset.
+
+**D4 — every function phase B touched, and the test that says it works.**
+
+| Function | The test that covers it |
+| --- | --- |
+| `newTrueTypeEmbedder`, `createFontDescriptor` | `TestSimpleTrueTypeFontEmbedding` asserts the flags and the widths |
+| `isEmbeddingPermitted`, `IsEmbeddingPermittedForFsType` | `TestIsEmbeddingPermittedMultipleVersions`, eight fsType values |
+| `subsetTag` | `TestSubsetTagMatchesJava` — Java's tag for an ordinary map, and JAVA-BUGS 74 for the pathological one |
+| `javaRound`, `javaRoundLong` | `TestJavaRoundHalfUp` |
+| `Subset`, `buildSubset`, `buildFontFile2` | `TestSubsetBytesMatchJava`, `TestEmbeddedFontMatchesJava` |
+| `AddToSubset`, `SubsetCodePoints`, `buildToUnicodeCMap` | `TestEmbeddedFontMatchesJava` compares `/ToUnicode` byte for byte |
+| `AddGlyphIds`, `AddGlyphsToSubset` | `TestAddGlyphsToSubsetKeepsAGlyphNothingDrew` |
+| `addNameTag` | `TestSubsetWritesTheEntriesTheSpecificationAsksFor`, and the tagged `/BaseFont` in `TestEmbeddedFontMatchesJava` |
+| `buildCIDToGIDMap` | `TestSubsetKeepsTheGlyphsThatWereAskedFor`, which fails when the map is written off by one |
+| `buildCIDSet` | `TestSubsetWritesTheEntriesTheSpecificationAsksFor`, `TestEmbeddedFontMatchesJava` |
+| `buildWidths` (both overloads), `getWidths`, `unitsScaling` | `TestWidthArraysMatchJava`, `TestEmbeddedFontMatchesJava` |
+| `buildVerticalHeader` | its warning branch, by the vertical rows of `TestEveryLoadOverload` |
+| `getVerticalMetrics` | `TestWidthArraysMatchJava` — the only thing that runs it, see D5 |
+| `createCIDFont`, `toCIDSystemInfo`, `CIDFont`, `sortedCIDs` | `TestCIDFontType2`, `TestEmbeddedFontMatchesJava` |
+| `NeedsSubset`, `WillBeSubset`, the three panics | `TestSubsettingDisabledPanics`, `TestAWholeFontWritesIdentityCIDToGIDMap` |
+| the thirteen `load` factories | `TestEveryLoadOverload` |
+| `RegisterTrueTypeFontForClosing`, `PDDocument.Close` | `TestClosingTheDocumentClosesTheFontItRegistered` |
+| `ensureFontResources` | `TestEnsureFontResourcesEmbedsTheReplacement` |
+| `subsetDesignatedFonts` on the incremental path | `TestSubsetting` |
+
+Six of those tests were written by this review rather than by phase B, which is
+what D4 is for.
+
+**D5 — the deferrals, and whether each is real.**
+
+- **`buildVerticalMetrics`, `buildVerticalMetricsOfSubset` and the `/DW2` branch
+  of `buildVerticalHeader` cannot be reached through a document.** Every `.ttf`
+  and `.otf` in this repository was parsed and asked for a `vhea` table; none
+  has one, which is why the Java cases that write vertical metrics download
+  `ipag.ttf`. `getVerticalMetrics` is driven directly instead; the two builders
+  above it that read `vhea` and `vmtx` are read against the Java and not run.
+- **`checkForCidGidIdentity` is written but not run.** It needs an OpenType font
+  with a CID-keyed CFF charset. The one `.otf` here, `FoglihtenNo07.otf`, is
+  CFF but name-keyed, so the method returns at its second gate.
+- **`isSubsettingPermitted` answering false is not reached.** It needs a font
+  whose OS/2 `fsType` has the no-subsetting bit; none here has it, and the
+  branch cannot be reached without editing a font file, which is a test resource
+  and so out of bounds.
+- **`buildFontFile2` on an OpenType font with `glyf` outlines panics**, because
+  Java calls `getCFF()` unguarded and it throws `UnsupportedOperationException`
+  for a font with no PostScript tag. Ported as written, said at the site.
+- **Six of `TestFontEmbedding`'s seventeen cases** are not ported, each because
+  it reads a font the Maven build downloads. Listed above.
+- **`PDTrueTypeFont` sets `otf` to nil.** Java's own line, with Java's own
+  comment: "OpenTypeFonts are not fully supported yet".
+
+**D6 — the Java bugs.** One found: JAVA-BUGS 74, `TrueTypeEmbedder.getTag`,
+carried in `subsetTag` and now measured. JAVA-BUGS 33, the entry this branch's
+`/ToUnicode` runs through, was re-read and measured too. Nothing else this
+branch touched turned out to be the Java behaving oddly.
+
+**D8 — the bytes, not the structure.** Two comparisons, both against the
+running Java rather than against the port's own reader.
+
+- `TestSubsetBytesMatchJava` drives `TTFSubsetter` from Java exactly as
+  `TrueTypeEmbedder.subset` drives it — the same ten tables, the same four
+  `forceInvisible` calls, the same `getTag` — and compares: the same 30 glyphs,
+  the same map hash 21410, the same tag `AALHKC+`, the same 8332 bytes, the same
+  SHA-256.
+- `TestEmbeddedFontMatchesJava` writes the two documents `validateCIDFontType2`
+  writes and compares every entry: `/BaseFont`, `/FontFile2` and its `/Length1`,
+  `/W`, `/CIDToGIDMap` in both forms, `/CIDSet`, `/ToUnicode`. All match.
+
+  One value did not at first, and it was the measurement rather than the port:
+  the Java driver read `/CIDToGIDMap` through `COSStream.toTextString`, which is
+  not byte-faithful for binary. Read as bytes it is the port's own hash. **A
+  differential result is only as good as how it was taken** — the same lesson
+  the survey learned about its matcher.
+
+  `TestSubsetKeepsTheGlyphsThatWereAskedFor` closes it from inside as well: read
+  the document back with the port's own parser, walk `/CIDToGIDMap`, and compare
+  each glyph's outline against the original font's. Writing `gid+1` into the map
+  fails it.
 
 **D9 — `/ToUnicode` against JAVA-BUGS 33.** The entry describes
-`ToUnicodeWriter.allowDestinationRange` checking one of two strings; the file it
-names is `tounicodewriter.go`, which slice 7 ported and this branch did not
-touch. The entry still describes what the Go does.
+`ToUnicodeWriter.allowDestinationRange` checking one of its two strings, and
+said its failing case was derived rather than measured. It is measured now: for
+`0x400` mapped to `a` and `0x401` mapped to `bc` the running Java writes
+`<0400> <0401> <0061>`, with the second character nowhere in the CMap, and the
+port writes the same bytes. `TestCMapDropsTheTailOfALongerDestination` holds it.
+The entry's "where the Go carries it" names `tounicodewriter.go`, which slice 7
+ported and this branch did not touch, and it is still true.
