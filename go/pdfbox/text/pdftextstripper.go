@@ -66,6 +66,14 @@ type PDFTextStripper struct {
 	startPage     int
 	endPage       int
 
+	// document is what writeText was given, which the two document hooks are
+	// handed.
+	document *pdmodel.PDDocument
+
+	// textOverrides is what the stripper calls instead of its own hooks. It is
+	// the stripper itself until SetTextOverrides is called.
+	textOverrides TextStripperOverrides
+
 	suppressDuplicateOverlappingText bool
 	shouldSeparateByBeads            bool
 	sortByPosition                   bool
@@ -292,7 +300,7 @@ func (s *PDFTextStripper) WritePage() error {
 			s.charactersByArticle[articleIndex] = textList
 		}
 
-		if err := s.StartArticle(); err != nil {
+		if err := s.textHooks().StartArticleLTR(true); err != nil {
 			return err
 		}
 		startOfArticle = true
@@ -470,11 +478,11 @@ func (s *PDFTextStripper) WritePage() error {
 			if err := s.writeLine(s.normalizeLine(line)); err != nil {
 				return err
 			}
-			if err := s.WriteParagraphEnd(); err != nil {
+			if err := s.textHooks().WriteParagraphEnd(); err != nil {
 				return err
 			}
 		}
-		if err := s.EndArticle(); err != nil {
+		if err := s.textHooks().EndArticle(); err != nil {
 			return err
 		}
 	}
@@ -840,7 +848,7 @@ func multiplyFloat(value1, value2 float32) float32 {
 
 // WriteParagraphSeparator writes whatever goes between two paragraphs.
 func (s *PDFTextStripper) WriteParagraphSeparator() error {
-	if err := s.WriteParagraphEnd(); err != nil {
+	if err := s.textHooks().WriteParagraphEnd(); err != nil {
 		return err
 	}
 	return s.WriteParagraphStart()
@@ -849,7 +857,7 @@ func (s *PDFTextStripper) WriteParagraphSeparator() error {
 // WriteParagraphStart writes whatever opens a paragraph.
 func (s *PDFTextStripper) WriteParagraphStart() error {
 	if s.inParagraph {
-		if err := s.WriteParagraphEnd(); err != nil {
+		if err := s.textHooks().WriteParagraphEnd(); err != nil {
 			return err
 		}
 		s.inParagraph = false
@@ -918,7 +926,7 @@ func matchPattern(str string, patterns []*regexp.Regexp) *regexp.Regexp {
 // writeLine writes one line of words, separated by the word separator.
 func (s *PDFTextStripper) writeLine(line []wordWithTextPositions) error {
 	for i, word := range line {
-		if err := s.WriteString(word.text, word.textPositions); err != nil {
+		if err := s.textHooks().WriteString(word.text, word.textPositions); err != nil {
 			return err
 		}
 		if i < len(line)-1 {
