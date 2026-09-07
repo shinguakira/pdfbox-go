@@ -36,6 +36,14 @@ type PDType0Font struct {
 	cmapLookup       ttf.CmapLookup
 	isCMapPredefined bool
 	isDescendantCJK  bool
+
+	// embedder writes this font into a document, and is nil for a font read
+	// out of one. Java holds a PDCIDFontType2Embedder here.
+	embedder *pdCIDFontType2Embedder
+
+	// ttf is the font program a subsetting embedder keeps open until the
+	// document is saved, because the subset is not built until then.
+	ttf *ttf.TrueTypeFont
 }
 
 var (

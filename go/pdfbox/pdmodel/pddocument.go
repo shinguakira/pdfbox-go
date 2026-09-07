@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdfwriter"
@@ -34,6 +35,10 @@ type PDDocument struct {
 	pdfSource pdfio.RandomAccessRead
 
 	resourceCache ResourceCache
+
+	// fontsToClose is the set of font programs a subsetting embedder opened,
+	// which Close closes so that they do not leak until the collector runs.
+	fontsToClose []*ttf.TrueTypeFont
 
 	// fontsToSubset is the set of fonts to subset before saving, which the
 	// content stream writing fills in.
@@ -225,8 +230,13 @@ func (d *PDDocument) Close() error {
 			firstException = err
 		}
 	}
-	// Java also closes the fonts it opened for subsetting; that set is only
-	// filled by the writing path, which is not ported.
+	// close fonts
+	for _, f := range d.fontsToClose {
+		if err := f.Close(); err != nil && firstException == nil {
+			firstException = err
+		}
+	}
+	d.fontsToClose = nil
 	return firstException
 }
 
@@ -517,3 +527,14 @@ func (d *PDDocument) SetSigningSupport(signingSupport io.Closer) {
 // Java reads the private pdfSource field in saveIncrementalForExternalSigning,
 // which lives in interactive/form here; see SignatureAdded.
 func (d *PDDocument) PDFSource() pdfio.RandomAccessRead { return d.pdfSource }
+
+// RegisterTrueTypeFontForClosing keeps a font program open until this document
+// is closed, so that it does not leak.
+//
+// Port of registerTrueTypeFontForClosing, whose javadoc says it is for internal
+// PDFBox use: a caller does not call it, the PDFont classes do. A subsetting
+// embedder needs it because the subset is not built until the document is
+// saved, so the font program has to stay readable until then.
+func (d *PDDocument) RegisterTrueTypeFontForClosing(f *ttf.TrueTypeFont) {
+	d.fontsToClose = append(d.fontsToClose, f)
+}
