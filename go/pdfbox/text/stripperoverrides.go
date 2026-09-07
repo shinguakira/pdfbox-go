@@ -124,3 +124,15 @@ func (w *stringWriter) Write(p []byte) (int, error) {
 }
 
 func (w *stringWriter) String() string { return string(w.builder) }
+
+// LineSeparatorDefault is Java's static PDFTextStripper.LINE_SEPARATOR, which
+// the subclasses in the `tools` module build their separators out of.
+//
+// Java reads System.lineSeparator; the port uses "\n" outright for the reason
+// given where the constant is declared.
+const LineSeparatorDefault = lineSeparatorDefault
+
+// Document returns the document writeText was given.
+//
+// Port of the protected field `document`, which PDFText2HTML.getTitle reads.
+func (s *PDFTextStripper) Document() *pdmodel.PDDocument { return s.document }
