@@ -679,3 +679,11 @@ func (f *TrueTypeFont) GsubData() (model.GsubData, error) {
 	}
 	return gsub.GsubData(), nil
 }
+
+// GPOS returns the "GPOS" table, or nil where the font has none.
+//
+// Java has no such accessor: its OTFParser answers a bare OTLTable for the tag
+// and nothing reads it. See glyphpositioning.go for why this port has one.
+func (f *TrueTypeFont) GPOS() (*GlyphPositioningTable, error) {
+	return tableAs[*GlyphPositioningTable](f, GlyphPositioningTag)
+}

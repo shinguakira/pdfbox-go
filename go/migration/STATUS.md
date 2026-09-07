@@ -4892,3 +4892,63 @@ The two backends, and only the two backends: `GlyphLayoutProcessorAwt`,
 `GlyphLayoutFontLoaderFop`, `FopStringTextFragment`, and the two examples
 `PLAN.md` puts out of scope. They wait on the shaper decision above, which is
 the user's.
+
+### GPOS — the missing half of a shaper, written
+
+The two backends need a shaper, and the answer to "which Go shaper" was that
+there is none to pick and none to port. What there *is* is half of one already
+in the tree, so this branch wrote the other half.
+
+**GSUB was ported by slice 4** — `fontbox/ttf/gsub/`, from PDFBox's own
+implementation. It decides *which* glyph to draw: an `f` and an `i` become an
+`fi`, an Arabic letter takes its initial or medial form, an Indic cluster
+reorders.
+
+**GPOS was not, in either language.** It decides *where* each glyph goes: the
+kern that pulls `V` under `A`, the vowel mark that sits over the right letter.
+PDFBox has no reader for it — `OTFParser.readTable` answers a bare `OTLTable`
+for the tag, with the comment "todo: this is a stub, a full implementation is
+needed" — because PDFBox never needed one: it borrows layout from
+`java.awt.font.TextLayout` or from Apache FOP, and that is exactly why the two
+`pdfbox-layout-*` modules exist.
+
+So `go/fontbox/ttf/glyphpositioning.go` and its subtables are **written from the
+OpenType specification, not ported**, and say so at the top of each file.
+
+| Lookup type | State |
+| --- | --- |
+| 1 — single adjustment | done |
+| 2 — pair adjustment (kerning), formats 1 and 2 | done |
+| 4 — mark to base | done |
+| 6 — mark to mark | done |
+| 9 — extension | done, indirecting to any of the above |
+| 3 — cursive attachment | not built; read far enough to skip |
+| 5 — mark to ligature | not built; read far enough to skip |
+| 7, 8 — contextual and chained contextual | not built; read far enough to skip |
+
+Device tables are read and dropped: they carry per-pixel-size corrections for a
+hinted rasteriser, and a PDF is laid out in font design units at no particular
+size.
+
+The header — script list, feature list, lookup list, coverage tables — is the
+same in GSUB and GPOS. `layoutcommon.go` holds one copy for GPOS to read
+through; `GlyphSubstitutionTable` keeps its own, because it is a port of
+PDFBox's class and that is how the Java is written.
+
+**How it is checked, with no Java to measure against.** There is none: this is
+the one piece of the migration with no reference implementation in the
+repository. Two things stand in for it.
+
+- **An independent oracle inside the font.** A font that carries both the old
+  `kern` table and a GPOS `kern` feature says the same thing twice, and fontbox
+  already reads the old one. Over every pair of a 30-character sample alphabet
+  in `DejaVuSans.ttf`, **89 of 89 pairs the `kern` table declares agree exactly
+  with what the GPOS reader answers**. A reader looking at the wrong bytes does
+  not do that.
+- **The table's own meaning.** `A` before `V` comes back with a *negative*
+  advance, because kerning pulls them together; `II`, which no font kerns, comes
+  back untouched; a feature the caller did not ask for does not run; an Arabic
+  fatha after a lam is placed *above* it, which is lookup types 4 and 6 working.
+
+All five layout-test fonts parse: `DejaVuSans`, `FiraCode-Regular`,
+`Arimo-Regular`, `NotoSansArabic-Regular`, `NotoSansThai-Regular`.

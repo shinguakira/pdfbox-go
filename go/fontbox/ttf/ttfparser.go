@@ -284,6 +284,8 @@ func (p *Parser) newTable(tag string) tableBase {
 		return &VerticalOriginTable{}
 	case GlyphSubstitutionTag:
 		return &GlyphSubstitutionTable{}
+	case GlyphPositioningTag:
+		return &GlyphPositioningTable{}
 	default:
 		return p.readTable(tag)
 	}

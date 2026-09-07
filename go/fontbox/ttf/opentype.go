@@ -193,7 +193,11 @@ func otfReadTable(tag string) tableBase {
 	switch tag {
 	case GlyphSubstitutionTag:
 		return &GlyphSubstitutionTable{}
-	case "BASE", "GDEF", "GPOS", OTLTag:
+	case GlyphPositioningTag:
+		// Java answers a bare OTLTable here, with the comment that a full
+		// implementation is needed. This port has one; see glyphpositioning.go.
+		return &GlyphPositioningTable{}
+	case "BASE", "GDEF", OTLTag:
 		return &OTLTable{}
 	case CFFTag:
 		return &CFFTable{}
