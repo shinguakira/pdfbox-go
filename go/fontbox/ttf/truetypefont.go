@@ -395,12 +395,19 @@ func (f *TrueTypeFont) UnicodeCmapLookupStrict() (CmapLookup, error) {
 // performs glyph substitution where any GSUB feature is enabled.
 //
 // Where isStrict is false and the font has no Unicode subtable at all, the
-// result is a nil subtable, which is what Java returns; calling through it
-// panics, as dereferencing Java's null does.
+// result is a nil CmapLookup, which is Java's null. Every caller of the
+// non-strict form checks for it -- PDType0Font's PDFBOX-5324 fallback is
+// `if (cmap != null)` -- and a *CmapSubtable that is nil put into the interface
+// would not answer that check, because an interface holding a typed nil is not
+// itself nil. A subsetted font has no cmap at all, so this is not a corner: it
+// is the ordinary state of a font this port has just written.
 func (f *TrueTypeFont) UnicodeCmapLookup(isStrict bool) (CmapLookup, error) {
 	cmap, err := f.unicodeCmapImpl(isStrict)
 	if err != nil {
 		return nil, err
+	}
+	if cmap == nil {
+		return nil, nil
 	}
 	if len(f.enabledGsubFeatures) != 0 {
 		table, err := f.GSUB()
