@@ -82,9 +82,15 @@ choice is the work — not the 7 files around it.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what the Go backend is** before writing any test. The tests
+- [x] A0. **Decide what the Go backend is** before writing any test. The tests
       assert shaped glyph runs; without a shaper there is nothing to assert
       against.
+  - **Taken, and the answer is that it cannot be chosen yet.** Three
+    substitutions have to be decided together and two belong to other work:
+    a shaper for layoutGlyphVector, a rasteriser without which no test in this
+    module asserts anything about the shaping, and a source of UAX#9 embedding
+    levels, which golang.org/x/text/unicode/bidi does not expose. Measured
+    against the running Java; see the branch section of migration/STATUS.md.
 - [ ] A1. Port the shared cases both backends run
   - `GlyphLayoutBidiTest`, `GlyphLayoutDin91379Test`,
     `GlyphLayoutDin91379FormTest`, `GlyphLayoutLigaturesAndKerningTest`,
@@ -207,7 +213,7 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] The branch itself. `PLAN.md` names this track, `BRANCHING.md` gives it no
-      branch. Nothing here starts until that is settled.
+- [x] The branch itself. `PLAN.md` names this track, `BRANCHING.md` gives it no
+      branch. **Settled** -- `track/pdfbox-layout` exists and A0 ran on it.
 - [ ] A0. The backend choice blocks every task in this file.
 - [ ] `slice/4`. Without fonts there is nothing to shape.

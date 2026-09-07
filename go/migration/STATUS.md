@@ -98,8 +98,11 @@ add surface on top of a base whose test coverage has a known hole.
 3. **`track/tools`** — **done as far as it can go.** 18 commands built, 7 held
    for the raster backend as expected, and 2 held for `multipdf`, which was not
    expected and which no branch claims.
-4. **`track/pdfbox-layout`** — last. Its A0 is choosing a Go text shaper, which
-   is entangled with whatever eventually implements `rendering.Backend`.
+4. **`track/pdfbox-layout`** — **A0 taken, and the answer is that it cannot
+   start.** Its shaper cannot be validated until `rendering.Backend` has an
+   implementation, and even AbstractGlyphLayoutProcessor needs UAX#9 embedding
+   levels that `golang.org/x/text/unicode/bidi` does not expose. See its
+   section.
 
 ### Rows this file had wrong
 
@@ -4628,3 +4631,160 @@ global help and then ran `decrypt` with no arguments. `split` now asks the
 command's own flag set which options take a separate value, and treats the one
 argument after `help` as its parameter — which it has to, because that argument
 is a subcommand name.
+
+## Track `pdfbox-layout` — A0, and why the branch stops there
+
+Branch `track/pdfbox-layout`, the last of the four the survey found.
+
+**Nothing was ported.** A0 is the whole of this branch's work, and its answer is
+that the backend cannot be chosen yet — not because the choice is hard, but
+because **three separate substitutions have to be decided together and two of
+them belong to other work**. What follows is the evidence, measured rather than
+argued, so that nobody has to take it again.
+
+### What the module actually is
+
+7 main files across two Maven modules, and 13 test classes.
+
+| Java | Lines | What it rests on |
+| --- | ---: | --- |
+| `awt/GlyphLayoutProcessorAwt` | 284 | `java.awt.Font.layoutGlyphVector`, `GlyphVector` |
+| `awt/GlyphLayoutFontLoaderAwt` | 199 | `java.awt.Font.createFont`, `java.awt.font.TextAttribute` |
+| `fop/GlyphLayoutProcessorFop` | 354 | `org.apache.fop.fonts.Font`, `GlyphMapping`, `MultiByteFont` |
+| `fop/GlyphLayoutFontLoaderFop` | 172 | the same |
+| `fop/FopStringTextFragment` | 84 | implements `org.apache.fop.fonts.TextFragment` |
+| `examples/GlyphLayoutHelloWorld{AWT,FOP}` | — | examples, which `PLAN.md` puts out of scope |
+
+The core interfaces are already ported: `GlyphLayoutProcessorInterface`,
+`ContentStreamForGlyphLayoutInterface` and `GlyphsAndPositions` are in
+`go/pdfbox/pdmodel/glyphsandpositions.go`, from slice 8. What this branch was
+for is the two backends and `AbstractGlyphLayoutProcessor`.
+
+### The three blockers, measured
+
+**1. There is no Go equivalent of `layoutGlyphVector`.** The whole AWT backend
+hangs off one call:
+
+```java
+return awtFont.layoutGlyphVector(fontRenderContext, chars, 0, chars.length, localFlags);
+```
+
+which is GSUB, GPOS and bidi-aware positioning together, answering per-glyph
+codes, positions and advances. The FOP backend is the same shape against FOP's
+own shaper. Choosing a Go one — a HarfBuzz binding, `x/image/font/shaping`, or
+something written here — **is** this branch, and it is not a transliteration.
+
+**2. Nothing in the ported tests can check a shaper without a rasteriser.**
+This is the fact that settles the order of the work. Every meaningful assertion
+in the 13 test classes goes through one helper:
+
+```java
+void checkRenderIdent(String outputName) {
+    ...
+    PDFRenderer r = new PDFRenderer(doc);
+    expectedImage = r.renderImage(0);
+    ...
+    // pixel by pixel against a reference PDF checked into the repository
+}
+```
+
+Counting every assertion across the seven AWT test files gives: two on relative
+string widths (`assertTrue(f4 < f3)`), one that two widths are equal, one page
+count, one exception message, and the two that `checkRenderIdent` makes on the
+image size before it compares every pixel. **Nothing else asserts anything about
+the shaping at all** — the rest of each test writes a PDF for a human to look
+at.
+
+So a Go shaper cannot be validated here until `rendering.Backend` has an
+implementation. Everything needed for that validation *is* in the repository —
+all seven fonts and a reference PDF per test, checked in — which makes the
+comparison worth doing properly rather than approximately, once it can be done
+at all.
+
+**3. Even `AbstractGlyphLayoutProcessor` cannot be ported faithfully**, and this
+is the finding that was not expected. It is the one class in this branch with no
+host-library dependency: `java.text.Bidi` and string slicing, and the survey
+counted it as the single unported `pdmodel` class. The port already substitutes
+`golang.org/x/text/unicode/bidi` for `java.text.Bidi` once, in
+`text/direction.go`.
+
+It does not work here. `doBidiSplittingAndReordering` answers a list of
+`(text, bidiLevel)` in **visual** order, and both halves are part of its
+contract: the level goes to the backend, which reads its parity, and the order
+is the order the runs are drawn in.
+
+The running Java, driven through the method by reflection:
+
+```
+--- "Hello السلام world"
+    0  "Hello "
+    1  "السلام"
+    0  " world"
+--- "السلام Hello شكرا"
+    1  " شكرا"
+    2  "Hello"
+    1  "السلام "
+--- "אבג abc"
+    2  "abc"
+    1  "אבג "
+--- "1 الس"
+    1  " الس"
+    2  "1"
+```
+
+`golang.org/x/text/unicode/bidi` on the same inputs:
+
+```
+"Hello السلام world"   LTR "Hello "     RTL "السلام"    LTR " world"
+"السلام Hello شكرا"    RTL "السلام "    LTR "Hello"     RTL " شكرا"
+"אבג abc"              RTL "אבג "       LTR "abc"
+"1 الس"                LTR "1"          RTL " الس"
+```
+
+The run *contents* agree in every case. Two things do not:
+
+- **The order is logical, not visual.** Java applies `Bidi.reorderVisually`;
+  `x/text`'s `Ordering` hands the runs back in source order.
+- **The embedding level is not reachable.** `Ordering` has `NumRuns`, `Run` and
+  `Direction`; `Run` has `String`, `Bytes`, `Direction` and `Pos`. There is no
+  level accessor anywhere in the package — the internal paragraph computes them
+  and exports nothing.
+
+Flattening a direction into a level does not work either. Java's own output
+above has an LTR run at **level 2** inside an RTL paragraph, and `reorderVisually`
+is defined over those numbers: with the levels flattened to 0 and 1 the same
+input reorders differently. Reproducing this method therefore needs UAX#9
+embedding levels from somewhere — a third substitution, and one nobody has
+chosen.
+
+### The decision
+
+**Do not choose a shaper yet, and do not port anything in this branch.**
+
+The task file already suspected this — "deciding the shaper alone, ahead of the
+rasteriser, risks doing both twice" — and the measurements above make it
+concrete rather than cautious:
+
+- the shaper cannot be *validated* until the rasteriser exists (blocker 2), so
+  choosing it first means writing it twice or shipping it unchecked;
+- the shaper choice and the rasteriser choice are the same family of decision,
+  and a HarfBuzz binding would answer both;
+- the bidi level problem (blocker 3) is a third choice that has to be made
+  whatever the other two are, and it is the only one of the three that could be
+  taken on its own.
+
+What the project needs before this branch can start, in the order the
+dependencies fall:
+
+1. **A rasteriser** — an implementation of `rendering.Backend`. It already
+   blocks 19 `graphics/shading` classes, 4 `rendering` classes and 7 of the 8
+   `tools` commands `track/tools` could not build. It is the largest open
+   decision in the project.
+2. **A shaper**, chosen with the rasteriser in view.
+3. **A source of UAX#9 embedding levels**, which `x/text` does not give.
+
+### What is recorded elsewhere
+
+`STATUS.md`'s survey section counts `pdmodel/AbstractGlyphLayoutProcessor` and
+the 7 `pdfbox-layout-*` files among the classes that are real and unported. They
+stay that way, and the branch that claimed them now says why.
