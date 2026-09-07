@@ -148,6 +148,10 @@ func (t *TextToPDF) convert() error {
 		}
 		t.font = standard
 	}
+	// Java routes every option through its setter, and one of them validates.
+	if err := t.SetLineSpacing(float32(t.lineSpacing)); err != nil {
+		return err
+	}
 	size, ok := pageSizes[strings.ToUpper(t.pageSize)]
 	if !ok {
 		return fmt.Errorf("unknown page size: %s", t.pageSize)
@@ -219,11 +223,11 @@ func (t *TextToPDF) CreatePDFFromText(doc *pdmodel.PDDocument, text io.Reader) e
 	fontSize := float32(t.fontSize)
 	lineHeight := fontHeight * fontSize * float32(t.lineSpacing)
 
-	data := bufio.NewScanner(text)
-	data.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	// BufferedReader.readLine splits on "\n", "\r" or "\r\n" and drops the
-	// ending, which bufio.ScanLines does not: it leaves a lone "\r" in a line.
-	data.Split(scanJavaLines)
+	// BufferedReader.readLine splits on "\n", "\r" or "\r\n", drops the ending,
+	// and has no limit on how long a line may be. bufio.Scanner would impose
+	// one -- and bufio.ScanLines would leave a lone "\r" inside a line -- so the
+	// port reads lines itself.
+	data := newJavaLineReader(text)
 
 	page := pdmodel.NewPDPageOfSize(actualMediaBox)
 	var contentStream *pdmodel.PDPageContentStream
@@ -259,8 +263,14 @@ func (t *TextToPDF) CreatePDFFromText(doc *pdmodel.PDDocument, text io.Reader) e
 		return contentStream.NewLineAtOffset(t.leftMargin, y)
 	}
 
-	for data.Scan() {
-		nextLine := data.Text()
+	for {
+		nextLine, more, err := data.ReadLine()
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
 		textIsEmpty = false
 		// Java's split(" ", -1) keeps every empty, leading and trailing.
 		lineWords := strings.Split(nextLine, " ")
@@ -336,10 +346,6 @@ func (t *TextToPDF) CreatePDFFromText(doc *pdmodel.PDDocument, text io.Reader) e
 			}
 		}
 	}
-	if err := data.Err(); err != nil {
-		return err
-	}
-
 	if textIsEmpty {
 		doc.AddPage(page)
 	}
@@ -435,3 +441,65 @@ func decodingReaderFor(input io.Reader, charset string) (io.Reader, error) {
 
 // SetMediaBox sets the page size the text is laid out on.
 func (t *TextToPDF) SetMediaBox(mediaBox *common.PDRectangle) { t.mediaBox = mediaBox }
+
+// SetLineSpacing sets the factor of the font size for the line height.
+//
+// Port of setLineSpacing(float), the one setter of this class that validates.
+// Java throws IllegalArgumentException, which is unchecked, so the port panics
+// -- and picocli answers ExitCode.SOFTWARE for it, which Execute does too.
+func (t *TextToPDF) SetLineSpacing(lineSpacing float32) error {
+	if lineSpacing <= 0 {
+		panic("line spacing must be positive: " +
+			strconv.FormatFloat(float64(lineSpacing), 'g', -1, 32))
+	}
+	t.lineSpacing = float64(lineSpacing)
+	return nil
+}
+
+// javaLineReader is BufferedReader.readLine: it splits on "\n", "\r" or
+// "\r\n", drops the ending, and has no limit on how long a line may be.
+//
+// bufio.Scanner cannot do the job twice over: its ScanLines leaves a lone "\r"
+// inside a line, and every Scanner has a maximum token size, which readLine
+// does not.
+type javaLineReader struct{ input *bufio.Reader }
+
+func newJavaLineReader(input io.Reader) *javaLineReader {
+	return &javaLineReader{input: bufio.NewReader(input)}
+}
+
+// ReadLine answers the next line, and whether there was one. The line is
+// returned without its ending, as readLine does.
+func (r *javaLineReader) ReadLine() (string, bool, error) {
+	var line strings.Builder
+	sawAny := false
+	for {
+		b, err := r.input.ReadByte()
+		if err == io.EOF {
+			// readLine answers null only where nothing at all was read; a last
+			// line with no ending is still a line.
+			return line.String(), sawAny, nil
+		}
+		if err != nil {
+			return "", false, err
+		}
+		sawAny = true
+		switch b {
+		case '\n':
+			return line.String(), true, nil
+		case '\r':
+			// "\r\n" is one ending; a lone "\r" is another.
+			next, err := r.input.ReadByte()
+			if err == nil && next != '\n' {
+				if unreadErr := r.input.UnreadByte(); unreadErr != nil {
+					return "", false, unreadErr
+				}
+			} else if err != nil && err != io.EOF {
+				return "", false, err
+			}
+			return line.String(), true, nil
+		default:
+			line.WriteByte(b)
+		}
+	}
+}

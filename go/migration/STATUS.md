@@ -4582,3 +4582,49 @@ that reported a problem, 2 from arguments that did not parse, 4 from an
 `IOException`, and `ExitCode.SOFTWARE` from a panic. Every error goes to stderr:
 a tool that prints its error to stdout breaks every pipeline that reads its
 output, and four cases assert that stdout is empty on the failing path.
+
+### E — the review round
+
+Five items, all real, all fixed. Each has a case that failed before its fix.
+
+**P1 — `escapeMarkdown` split every surrogate pair.** The Markdown escape walks
+UTF-16 units, because Java's table names `*`, `<` and the two superscripts by
+their unit value; but unlike the HTML one its default branch writes the
+character *through*, and the port decoded each unit on its own. A
+supplementary-plane character came back as two U+FFFD, silently corrupting the
+output. Java appends both units to one `StringBuilder` and the pair survives to
+`toString`, so the port now keeps a `utf16Buffer` and decodes once at the end —
+in `escapeMarkdown` and in `markdownFontState`, which interleaves tags with
+characters in the same buffer for the same reason.
+`TestMarkdownKeepsASurrogatePair` uses U+1F600, whose two halves are both in the
+default branch.
+
+**`PDDocument.protect` prepared the handler, and Java's does not.** That was
+mine, not a port of anything: Java's `protect` installs the handler and stops,
+and `COSWriter` prepares the document on every save. Doing it in both places ran
+the password hashing twice and threw the first result away, regenerating the
+revision 6 keys and salts. `TestProtectDoesNotPrepareTheHandler` checks the
+encryption dictionary has no `/Filter` and no `/R` straight after `protect`, and
+has them after the save.
+
+**`-lineSpacing` accepted zero and negatives.** Java's `call()` routes the
+parsed value through `setLineSpacing`, which throws `IllegalArgumentException`
+for anything `<= 0`; it is the only setter of that class that validates, and the
+port set the field directly. Zero gives overlapping lines and a negative walks
+up the page. The port panics as the unchecked exception, and `Execute` answers
+`ExitCode.SOFTWARE` as picocli does.
+
+**A 16 MiB cap on a line.** `bufio.Scanner` has a maximum token size and
+`BufferedReader.readLine` has none, so a longer line failed the conversion
+outright instead of being wrapped to the page width. `bufio.ScanLines` was
+already wrong for a second reason — it leaves a lone `\r` inside a line — so the
+port now reads lines itself, in `javaLineReader`.
+
+**The dispatcher split on a subcommand name wherever it appeared.** picocli
+knows each option's arity, so `pdfbox decrypt -i version` gives `-i` the file
+called `version`; the port started the `version` command and left `-i` with no
+value. And `pdfbox help decrypt`, which the footer advertises, printed the
+global help and then ran `decrypt` with no arguments. `split` now asks the
+command's own flag set which options take a separate value, and treats the one
+argument after `help` as its parameter — which it has to, because that argument
+is a subcommand name.

@@ -81,36 +81,55 @@ func (s *PDFText2Markdown) WriteParagraphEnd() error {
 
 // escapeMarkdown escapes some Markdown characters.
 //
-// Java walks by UTF-16 unit, as the HTML one does.
+// Java walks by UTF-16 unit, as the HTML one does, and its table names two
+// characters -- 178 and 179 -- by their unit value. But unlike the HTML one it
+// writes the *default* character through unchanged, so the buffer has to stay
+// in UTF-16 until the end: a supplementary-plane character is two units, and
+// decoding either on its own answers U+FFFD. Java appends both to one
+// StringBuilder and the pair survives to toString.
 func escapeMarkdown(chars string) string {
-	var builder strings.Builder
+	var buffer utf16Buffer
 	for _, unit := range utf16.Encode([]rune(chars)) {
-		appendEscapedMarkdown(&builder, unit)
+		appendEscapedMarkdown(&buffer, unit)
 	}
-	return builder.String()
+	return buffer.String()
 }
 
+// utf16Buffer is Java's StringBuilder for this file: a run of UTF-16 units that
+// becomes a string only once, so that a surrogate pair is never split.
+type utf16Buffer struct{ units []uint16 }
+
+// WriteUnit appends one UTF-16 unit.
+func (b *utf16Buffer) WriteUnit(unit uint16) { b.units = append(b.units, unit) }
+
+// WriteString appends a run of ASCII, which is every tag and entity here.
+func (b *utf16Buffer) WriteString(s string) {
+	b.units = append(b.units, utf16.Encode([]rune(s))...)
+}
+
+// String decodes the whole buffer at once.
+func (b *utf16Buffer) String() string { return string(utf16.Decode(b.units)) }
+
 // appendEscapedMarkdown writes one UTF-16 unit, escaped.
-func appendEscapedMarkdown(builder *strings.Builder, character uint16) {
+func appendEscapedMarkdown(buffer *utf16Buffer, character uint16) {
 	switch character {
 	case '*', '+', '-', '#', '\\', '`', '[', ']', '(', ')', '!', '_':
-		builder.WriteByte('\\')
-		builder.WriteByte(byte(character))
+		buffer.WriteUnit('\\')
+		buffer.WriteUnit(character)
 	// Escape HTML special characters in inline HTML
 	case '<':
-		builder.WriteString("&lt;")
+		buffer.WriteString("&lt;")
 	case '>':
-		builder.WriteString("&gt;")
+		buffer.WriteString("&gt;")
 	case '&':
-		builder.WriteString("&amp;")
+		buffer.WriteString("&amp;")
 	case 178:
-		builder.WriteString("<sup>2</sup>")
+		buffer.WriteString("<sup>2</sup>")
 	case 179:
-		builder.WriteString("<sup>3</sup>")
+		buffer.WriteString("<sup>3</sup>")
 	default:
-		// Java appends the char, which for a unit above 127 is that code unit;
-		// writing it as a rune is the same character back.
-		builder.WriteString(string(utf16.Decode([]uint16{character})))
+		// Java appends the char itself, and half a surrogate pair is a char.
+		buffer.WriteUnit(character)
 	}
 }
 
@@ -125,7 +144,7 @@ type markdownFontState struct {
 
 // push pushes new TextPositions into the font state.
 func (f *markdownFontState) push(str string, textPositions []*text.TextPosition) string {
-	var buffer strings.Builder
+	var buffer utf16Buffer
 	units := utf16.Encode([]rune(str))
 
 	if len(units) == len(textPositions) {
@@ -147,14 +166,14 @@ func (f *markdownFontState) push(str string, textPositions []*text.TextPosition)
 
 // clear closes all open Markdown formatting.
 func (f *markdownFontState) clear() string {
-	var buffer strings.Builder
+	var buffer utf16Buffer
 	f.closeUntil(&buffer, "", false)
 	f.stateList = nil
 	f.stateSet = nil
 	return buffer.String()
 }
 
-func (f *markdownFontState) pushUnit(buffer *strings.Builder, character uint16,
+func (f *markdownFontState) pushUnit(buffer *utf16Buffer, character uint16,
 	textPosition *text.TextPosition) {
 	bold := false
 	italics := false
@@ -198,7 +217,7 @@ func (f *markdownFontState) close(tag string) string {
 		return ""
 	}
 	// Close all tags until (but including) the one we should close
-	var tagsBuilder strings.Builder
+	var tagsBuilder utf16Buffer
 	index := f.closeUntil(&tagsBuilder, tag, true)
 
 	// Remove from state
@@ -212,7 +231,7 @@ func (f *markdownFontState) close(tag string) string {
 	return tagsBuilder.String()
 }
 
-func (f *markdownFontState) closeUntil(tagsBuilder *strings.Builder, endTag string,
+func (f *markdownFontState) closeUntil(tagsBuilder *utf16Buffer, endTag string,
 	hasEnd bool) int {
 	for i := len(f.stateList); i > 0; {
 		i--

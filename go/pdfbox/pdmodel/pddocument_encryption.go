@@ -101,9 +101,11 @@ func (d *PDDocument) Protect(policy encryption.ProtectionPolicy) error {
 		return fmt.Errorf("No security handler for policy %v", policy)
 	}
 
-	if err := securityHandler.PrepareDocumentForEncryption(d); err != nil {
-		return err
-	}
+	// Java installs the handler and stops here. Preparing the document is the
+	// writer's job -- COSWriter calls prepareDocumentForEncryption on every
+	// save -- and doing it here as well would run the password hashing twice
+	// and throw the first result away, regenerating the revision 6 keys and
+	// salts in the process.
 	d.Encryption().SetSecurityHandler(securityHandler)
 	return nil
 }
