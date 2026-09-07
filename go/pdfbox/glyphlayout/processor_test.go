@@ -306,30 +306,46 @@ func TestMissingGlyphIsRefused(t *testing.T) {
 	}
 }
 
-// TestSupportsFont checks the three answers supportsFont gives.
+// TestSupportsFont checks the answers supportsFont gives.
 //
-// The middle one is the one worth having: an OpenType font with PostScript
-// outlines carries every table the layout reads, so it would lay out, and
-// PDFBox does not support one here. A caller that is refused falls through to
-// the ordinary path instead of getting a page nothing can render.
+// The second one is what the case is for. The layout shapes with the font
+// program and hands `showTextUni` glyph ids of that program; `EncodeGlyphID`
+// writes each one as a two-byte code, which selects that glyph only when the
+// code is the CID and the CID is the glyph id -- Identity-H over an identity
+// CIDToGIDMap. That is what the constructor that embeds a font program builds,
+// and a font read out of a PDF may be anything at all: a predefined CMap, a
+// CIDToGIDMap stream, a substitute program whose glyph ids are not the
+// document's. Writing a glyph id into one of those selects an unrelated glyph.
+//
+// Java refuses it too, and more bluntly -- `awtFontMap.containsKey(font)`, the
+// fonts its own loader made.
 func TestSupportsFont(t *testing.T) {
 	document := pdmodel.NewPDDocument()
 	defer document.Close()
 
-	trueType := openLayoutFont(t, document, layoutFonts+"DejaVuSans.ttf")
-	if !glyphlayout.NewProcessor().SupportsFont(trueType) {
-		t.Error("a Type 0 font with a TrueType program was refused")
+	embedded := openLayoutFont(t, document, layoutFonts+"DejaVuSans.ttf")
+	if !glyphlayout.NewProcessor().SupportsFont(embedded) {
+		t.Error("a Type 0 font this port embedded was refused")
 	}
 
-	postScript := postScriptOutlineFont(t, document)
-	// Without this the next assertion would pass for the wrong reason: a font
-	// with no program at all is refused too.
-	if postScript.TrueTypeFont() == nil {
-		t.Fatal("the PostScript font carries no program, so nothing is being checked")
+	// The same font program, read from a dictionary instead of embedded by the
+	// loader. Nothing about the program has changed; what has changed is that
+	// the port did not choose the encoding and cannot assume it.
+	fromDocument := trueTypeFontFromDictionary(t, document)
+	if fromDocument.TrueTypeFont() == nil {
+		t.Fatal("the font read from a dictionary carries no program, so the " +
+			"next assertion would pass for the wrong reason")
 	}
-	if glyphlayout.NewProcessor().SupportsFont(postScript) {
-		t.Error("a Type 0 font with PostScript outlines was accepted; " +
-			"PDFBox does not support one for glyph layout")
+	if glyphlayout.NewProcessor().SupportsFont(fromDocument) {
+		t.Error("a Type 0 font read out of a document was accepted; its codes " +
+			"are not this port's glyph ids to write")
+	}
+
+	// An OpenType font with PostScript outlines, which PDFBox does not support
+	// here either. It is refused for the same reason -- it cannot be one this
+	// port embedded, because the embedder will not embed one.
+	if glyphlayout.NewProcessor().SupportsFont(postScriptOutlineFont(t, document)) {
+		t.Error("a Type 0 font with PostScript outlines was accepted")
 	}
 
 	// Anything that is not a Type 0 font at all.
@@ -550,4 +566,64 @@ func endOfLiteralString(contents string, open int) int {
 // textOf extracts the text of a document.
 func textOf(document *pdmodel.PDDocument) (string, error) {
 	return text.NewPDFTextStripper().GetText(document)
+}
+
+// trueTypeFontFromDictionary builds a Type 0 font over a TrueType program the
+// way a document carries one, rather than the way the loader embeds one.
+//
+// It is DejaVuSans, the same program every other case here uses. What differs
+// is only that this font was read rather than written, so nothing chose its
+// encoding on this port's behalf.
+func trueTypeFontFromDictionary(t *testing.T, document *pdmodel.PDDocument) *font.PDType0Font {
+	t.Helper()
+	return fontFromDictionary(t, document, layoutFonts+"DejaVuSans.ttf", "DejaVuSans",
+		func(d *font.PDFontDescriptor, s *common.PDStream) { d.SetFontFile2(s) })
+}
+
+// fontFromDictionary builds a Type 0 font from a dictionary that carries the
+// given program, which is what reading one out of a PDF gives.
+func fontFromDictionary(t *testing.T, document *pdmodel.PDDocument, path, name string,
+	embed func(*font.PDFontDescriptor, *common.PDStream)) *font.PDType0Font {
+	t.Helper()
+	program, err := os.ReadFile(path)
+	if err != nil {
+		t.Skipf("%s is not in this repository: %v", path, err)
+	}
+	stream, err := common.NewPDStreamOfInput(document.Document(),
+		bytes.NewReader(program), nil)
+	if err != nil {
+		t.Fatalf("embedding the font program: %v", err)
+	}
+
+	descriptor := font.NewPDFontDescriptor()
+	descriptor.SetFontName(name)
+	embed(descriptor, stream)
+
+	systemInfo := cos.NewDictionary()
+	systemInfo.SetItem(cos.GetPDFName("Registry"), cos.NewStringObj("Adobe"))
+	systemInfo.SetItem(cos.GetPDFName("Ordering"), cos.NewStringObj("Identity"))
+	systemInfo.SetItem(cos.GetPDFName("Supplement"), cos.GetInteger(0))
+
+	descendant := cos.NewDictionary()
+	descendant.SetItem(cos.GetPDFName("Type"), cos.GetPDFName("Font"))
+	descendant.SetItem(cos.GetPDFName("Subtype"), cos.GetPDFName("CIDFontType2"))
+	descendant.SetItem(cos.GetPDFName("BaseFont"), cos.GetPDFName(name))
+	descendant.SetItem(cos.GetPDFName("FontDescriptor"), descriptor.COSObject())
+	descendant.SetItem(cos.GetPDFName("CIDSystemInfo"), systemInfo)
+
+	descendants := cos.NewArray()
+	descendants.Add(descendant)
+
+	dictionary := cos.NewDictionary()
+	dictionary.SetItem(cos.GetPDFName("Type"), cos.GetPDFName("Font"))
+	dictionary.SetItem(cos.GetPDFName("Subtype"), cos.GetPDFName("Type0"))
+	dictionary.SetItem(cos.GetPDFName("BaseFont"), cos.GetPDFName(name))
+	dictionary.SetItem(cos.GetPDFName("Encoding"), cos.GetPDFName("Identity-H"))
+	dictionary.SetItem(cos.GetPDFName("DescendantFonts"), descendants)
+
+	loaded, err := font.NewPDType0Font(dictionary, nil)
+	if err != nil {
+		t.Fatalf("reading the font back: %v", err)
+	}
+	return loaded
 }

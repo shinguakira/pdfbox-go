@@ -290,7 +290,17 @@ func (t *pairAdjustment) position(glyphs []int, i int, out []GlyphPosition) int 
 }
 
 // anchor is a point on a glyph that another glyph attaches to.
-type anchor struct{ x, y int }
+//
+// `present` is the difference between an anchor at the origin and no anchor at
+// all. A base array holds one entry per mark class, and a NULL offset there --
+// which is what a zero says -- means this base takes no mark of that class.
+// Reading it as an anchor at (0,0) attaches the mark to the glyph origin
+// instead of declining, and the mark lands on the baseline at the left of the
+// letter.
+type anchor struct {
+	x, y    int
+	present bool
+}
 
 // readAnchor reads an anchor table. Formats 2 and 3 add a contour point and
 // device tables, which say how to snap the anchor to a hinted outline; the
@@ -306,7 +316,7 @@ func readAnchor(data DataStream, offset int64) (anchor, error) {
 	if r.err != nil {
 		return anchor{}, r.err
 	}
-	return anchor{x: x, y: y}, nil
+	return anchor{x: x, y: y, present: true}, nil
 }
 
 // markRecord is one mark: which class it belongs to and where it attaches.
@@ -495,6 +505,12 @@ func (t *markAttachment) position(glyphs []int, i int, out []GlyphPosition) int 
 		return 0
 	}
 	base := t.baseAnchors[baseIndex][mark.class]
+	// A NULL anchor on either side means this pairing is not one the font
+	// describes: the base takes no mark of that class, or the mark has no
+	// point to attach by. Neither is an anchor at the origin.
+	if !base.present || !mark.anchor.present {
+		return 0
+	}
 
 	// The mark is placed so that its anchor meets the base's. Both anchors are
 	// measured from the origin of the glyph they belong to, so what comes out

@@ -224,22 +224,34 @@ And for this branch in particular:
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
-  - Is it a port defect, a missing piece of scope, or a difference the Java
-    itself has?
-  - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
-    user is told why it stays.
+- [x] E2. For each item of feedback, judge it before acting
+  - Eight items. Seven real: a surrogate pair split across bidi runs, a
+    `supportsFont` that accepted fonts whose glyph ids it cannot write, NULL
+    anchors read as anchors at the origin, a required feature never run, every
+    language system applied at once, every script alias applied at once, and a
+    damaged GPOS table reported as a missing one.
+  - One declined: writing an empty `[] TJ` at the end of a run is what the
+    Java does, unconditionally, and skipping it would be a deviation from the
+    reference. Recorded in STATUS.md with the Java it was checked against.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
+  - Eight cases added: the bidi corpus grew by eight texts measured on the
+    running JDK, `TestSupportsFont` gained the font read from a document,
+    `TestNullBaseAnchorDoesNotAttach`, `TestRequiredFeatureRunsUnasked` over a
+    GPOS table written by hand because no layout font declares one, and
+    `TestDamagedGPOSIsReported`. Each was run against the code with its fix
+    taken out again, and each fails without it.
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
+  - In STATUS.md under "The feedback on the backend, and what it found", and
+    in the reply to the user.
 
 ---
 

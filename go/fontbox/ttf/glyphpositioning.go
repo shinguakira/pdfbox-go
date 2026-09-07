@@ -357,31 +357,38 @@ func (t *GlyphPositioningTable) lookupsFor(scriptTags, featureTags []string) []i
 		wanted[tag] = true
 	}
 
-	// Which feature indices the script's language systems turn on.
+	// One script and one language system, not every script and every language
+	// system the font has. A script's named language systems are alternatives
+	// to its default -- Turkish, Serbian, Romanian ways of setting the same
+	// letters -- and running all of them over one another sets the text in a
+	// language nobody asked for. This has no language argument, so the answer
+	// is the default language system, which is what a run with no language
+	// gets.
+	script := t.selectScript(scriptTags)
+	if script == nil {
+		return nil
+	}
+	langSys := script.DefaultLangSysTable()
+	if langSys == nil {
+		return nil
+	}
+
 	enabled := map[int]bool{}
-	for _, scriptTag := range t.selectScriptTags(scriptTags) {
-		script := t.scriptList[scriptTag]
-		if script == nil {
-			continue
-		}
-		langSysTables := []*common.LangSysTable{}
-		if script.DefaultLangSysTable() != nil {
-			langSysTables = append(langSysTables, script.DefaultLangSysTable())
-		}
-		for _, table := range script.LangSysTables() {
-			langSysTables = append(langSysTables, table)
-		}
-		for _, langSys := range langSysTables {
-			for _, index := range langSys.FeatureIndices() {
-				enabled[index] = true
-			}
-		}
+	for _, index := range langSys.FeatureIndices() {
+		enabled[index] = true
+	}
+	// A required feature runs whether or not the caller asked for it -- that is
+	// what the language system requiring it means. The ported GSUB reader does
+	// the same, in featureRecords.
+	required := langSys.RequiredFeatureIndex()
+	if required == noRequiredFeature {
+		required = -1
 	}
 
 	seen := map[int]bool{}
 	var lookups []int
 	for index, record := range t.featureList {
-		if !enabled[index] || !wanted[record.FeatureTag()] {
+		if index != required && (!enabled[index] || !wanted[record.FeatureTag()]) {
 			continue
 		}
 		for _, lookupIndex := range record.FeatureTable().LookupListIndices() {
@@ -395,21 +402,24 @@ func (t *GlyphPositioningTable) lookupsFor(scriptTags, featureTags []string) []i
 	return lookups
 }
 
-// selectScriptTags answers which of the wanted scripts the font carries,
+// noRequiredFeature is the RequiredFeatureIndex of a language system that
+// requires none.
+const noRequiredFeature = 0xffff
+
+// selectScript answers the first of the wanted scripts the font carries,
 // falling back to the default script every font is meant to have.
-func (t *GlyphPositioningTable) selectScriptTags(wanted []string) []string {
-	var found []string
+//
+// The wanted tags are a preference order, not a set: a font may carry both
+// `bng2` and `beng`, which are the version-2 and the original Bengali lookups
+// for the same script, and they are two ways of saying it rather than two
+// things to do.
+func (t *GlyphPositioningTable) selectScript(wanted []string) *common.ScriptTable {
 	for _, tag := range wanted {
-		if _, ok := t.scriptList[tag]; ok {
-			found = append(found, tag)
+		if script, ok := t.scriptList[tag]; ok {
+			return script
 		}
 	}
-	if len(found) == 0 {
-		if _, ok := t.scriptList["DFLT"]; ok {
-			found = append(found, "DFLT")
-		}
-	}
-	return found
+	return t.scriptList["DFLT"]
 }
 
 // sortInts puts the lookup indices in order, which is the order the

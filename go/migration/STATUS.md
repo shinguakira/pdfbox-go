@@ -5204,12 +5204,10 @@ and against the OpenType specification rather than against the tests.
 - `supportsFont` was documented as a port and is not one. Java's is
   `awtFontMap.containsKey(font)` -- the AWT backend supports the fonts its own
   loader handed it, and nothing else. This port has no such loader, because
-  there is no AWT font to keep beside the PDFBox one. What it can answer is the
-  question the loader answers when asked to load, and it now answers that,
-  including refusing an OpenType font with PostScript outlines, which PDFBox
-  does not support here. Written down at the site and tested by
-  `TestSupportsFont`, which builds such a font from a dictionary because the
-  embedder refuses to load one.
+  there is no AWT font to keep beside the PDFBox one. **The first answer to
+  that was to widen the question to "is this a Type 0 font with a TrueType
+  program", and it was wrong** -- see the feedback section below, which is
+  where it was caught and what it was replaced with.
 - Java's `delta` is applied to a distance in points and this port's `dx` is in
   thousandths of an em, so the same constant is not the same test. It cannot
   come to a different answer -- every `dx` here is a whole number of design
@@ -5243,3 +5241,84 @@ and against the OpenType specification rather than against the tests.
 
 The five deviations above, and the two things the GPOS reader does not do.
 Nothing found in this review is unrecorded, and nothing recorded is unmeasured.
+
+### The feedback on the backend, and what it found
+
+Eight review items on `track/pdfbox-layout`. Seven were real; each was measured
+before it was believed, and each fix has a test that fails without it.
+
+**A supplementary character was being torn in half.** The rules of UAX#9 are
+about characters, and the second unit of a surrogate pair is not one, so the
+port hid it from them by giving it class BN -- the class of a character X9
+removes. The last thing `resetSeparators` does is give every X9-removed
+character the level of the character that *follows* it, which is right for a
+formatting control and wrong for half a character: the two units ended up at
+different levels, `buildRuns` split them, and each half on its own decodes to a
+replacement character. An emoji beside a Hebrew word came out as two of those.
+
+Measured against the running JDK over eight texts with a supplementary
+character next to a right-to-left run: `java.text.Bidi` never puts a run
+boundary inside a pair, because it works in code points and never had the halves
+apart. The eight are now in the corpus, and `restoreSurrogatePairs` gives the
+second unit the level of the first.
+
+**`supportsFont` was accepting fonts whose glyph ids it cannot write.** The
+layout shapes with the font program and hands `showTextUni` glyph ids of that
+program; `EncodeGlyphID` writes each as a two-byte code, which selects the
+glyph it names only when the code is the CID and the CID is the glyph id --
+Identity-H over an identity CIDToGIDMap. That is what the embedding constructor
+builds. A font read out of a document may have a predefined CMap, a CIDToGIDMap
+stream, or a substitute program whose glyph ids are not the document's, and
+writing a glyph id into one of those draws an unrelated glyph.
+
+The widening recorded above was unsound, and the replacement is not a widening
+at all: `PDType0Font.cmapLookup` is set by the constructor that embeds a font
+program and left nil by the one that reads a font out of a PDF, so non-nil is
+the same set of fonts Java's `awtFontMap` holds. The PostScript check went with
+it -- the embedder will not embed one, so such a font cannot arrive this way.
+
+**A NULL anchor is not an anchor at the origin.** A mark attachment subtable
+holds one anchor per base glyph per mark class, and a zero offset there means
+this base takes no mark of that class. Reading it as (0, 0) attached the mark
+anyway, at minus its own anchor, which puts it at the far left of the letter on
+the baseline. It is not a rare case: of NotoSansArabic-Regular's 4665 base
+anchors **3431 are NULL** and 6 are genuinely at the origin, so the two have to
+be told apart.
+
+**A required feature was never run.** A language system's
+`RequiredFeatureIndex` names a feature that applies whether or not the caller
+asked for it, and the reader only enabled the optional ones. The ported GSUB
+reader has always handled it, in `featureRecords`; the GPOS reader now does too.
+
+**Every language system was being applied at once.** A script's named language
+systems are alternatives to its default -- the Turkish way of setting Latin,
+the Serbian way of setting Cyrillic -- and unioning them sets the text in a
+language nobody asked for. `Position` has no language argument, so it takes the
+default, which is what a run that names no language gets.
+
+**Every alias of a script was being applied at once.** A font may carry both
+`bng2` and `beng`, which are two ways of saying Bengali rather than two things
+to do. The tags handed down are now a preference order and the first the font
+carries wins, with the script the font's own GSUB data selected --
+`ActiveScriptName()` -- at the head of it.
+
+Neither of the last two nor the NULL anchors changed a single glyph or number
+on the four reference pages, which is what makes them worth writing down:
+nothing in this repository would have caught any of them.
+
+**A damaged positioning table was reported as no positioning table.**
+`position` treated an error from `GPOS()` the same as a font without the table,
+which would drop every kern and every mark and say nothing. It now returns the
+error. The path cannot be reached today -- `Parser.parseTables` reads every
+table of the directory when it parses a font, so a table that cannot be read
+stops the font from loading at all -- and `TestDamagedGPOSIsReported` asserts
+that, at the place it actually happens, so that the case moves if the reading
+ever becomes lazy.
+
+**The one item declined.** `showTextUni` calls `showGlyphsWithPositioning` at
+the end of a run whether or not anything is in it, which writes an empty
+`[] TJ`. That is what the Java does -- the final call in `showTextUni` is
+unconditional, and `PDAbstractContentStream.showGlyphsWithPositioning` writes
+the brackets and the operator before it looks at the list -- so skipping it
+would be a deviation from the reference for the sake of a few bytes. Ported as
+written.

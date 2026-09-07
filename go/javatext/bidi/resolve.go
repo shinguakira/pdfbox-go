@@ -12,13 +12,22 @@ import (
 // resolve fills in levels, paragraphLevel and runs.
 func (p *Paragraph) resolve(flags int) {
 	// The class of each unit. A surrogate pair takes its class on the first
-	// unit and BN on the second, so that indices stay UTF-16 throughout.
+	// unit and BN on the second, so that indices stay UTF-16 throughout: the
+	// rules of the annex are about characters, and the second unit of a pair
+	// is not one, so it has to be invisible to them the way an X9-removed
+	// character is.
+	//
+	// `trailing` remembers which units those are, because being invisible to
+	// the rules is not the same as taking whatever level they leave behind.
+	// See restoreSurrogatePairs.
 	classes := make([]xbidi.Class, len(p.units))
+	trailing := make([]bool, len(p.units))
 	for i := 0; i < len(p.units); {
 		r, size := decodeUnits(p.units[i:])
 		classes[i] = classOf(r)
 		for j := 1; j < size; j++ {
 			classes[i+j] = xbidi.BN
+			trailing[i+j] = true
 		}
 		i += size
 	}
@@ -54,7 +63,31 @@ func (p *Paragraph) resolve(flags int) {
 		p.paragraphLevel = paragraphLevel(nil, flags)
 	}
 
+	restoreSurrogatePairs(p.levels, trailing)
 	p.buildRuns()
+}
+
+// restoreSurrogatePairs gives the second unit of a surrogate pair the level of
+// the first.
+//
+// The rules of the annex ran over it as an X9-removed character, which is what
+// keeps a pair from counting as two characters, and X9-removed characters end
+// up with the level of the character that *follows* them. That is right for a
+// formatting control and wrong for half a character: it puts a run boundary
+// between the two units, `buildRuns` splits them, and each half on its own
+// decodes to a replacement character. An emoji beside a Hebrew word came out
+// as two of those.
+//
+// Java has nothing corresponding, because `java.text.Bidi` works in code
+// points and never had the two halves apart. Measured against it: over eight
+// texts with a supplementary character next to a right-to-left run, the JDK
+// puts no run boundary inside a pair in any of them.
+func restoreSurrogatePairs(levels []int, trailing []bool) {
+	for i := 1; i < len(levels); i++ {
+		if trailing[i] {
+			levels[i] = levels[i-1]
+		}
+	}
 }
 
 // resolveParagraph runs X, W, N, I and L1 over one paragraph of the text and

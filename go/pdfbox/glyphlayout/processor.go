@@ -100,47 +100,38 @@ func NewProcessorWithFeatures(features Features) *Processor {
 
 // SupportsFont reports whether this processor can lay text out in the font.
 //
-// **Not a port of supportsFont, and it cannot be one.** Java's is
+// **Not a port of supportsFont line for line, but the same rule.** Java's is
 // `awtFontMap.containsKey(font)`: the AWT backend supports exactly the fonts
 // its own loader was handed, because the loader is what built the
 // `java.awt.Font` beside each one. Nothing else can be laid out, whatever the
 // font is made of.
 //
-// This port has no such loader. Java's exists to keep an AWT font next to the
-// PDFBox one, and there is no AWT font here: the shaping reads the same
-// TrueType program `PDType0Font.load` already embedded. So there is nothing to
-// register and nothing to look up, and the question this can answer is the one
-// the loader answers when it is asked to load: is this a Type 0 font with a
-// TrueType program to read.
+// This port has no such loader -- there is no AWT font to keep beside the
+// PDFBox one, because the shaping reads the same TrueType program
+// `PDType0Font.load` already embedded -- so there is no map to look in. What
+// stands for it is `cmapLookup`, which `PDType0Font` sets in the constructor
+// that embeds a font program and leaves nil in the one that reads a font out
+// of a PDF. Non-nil means this font came through the loading path, which is
+// the same set Java's map holds.
 //
-// The difference shows in one case. A Type 0 font the caller loaded through
-// `PDType0Font.load` rather than through the layout's own loader is refused by
-// Java -- `showText` falls through to the ordinary PDFBox path -- and is
-// accepted here. Accepting it is the behaviour that makes sense without a
-// loader to have gone through, and it is what the reference comparison in
-// glyphlayout's tests relies on.
+// The check is not bookkeeping. The layout shapes with the font program and
+// hands showTextUni glyph ids of *that program*; `EncodeGlyphID` writes each
+// one as a two-byte code. That selects the glyph it names only when the code
+// is the CID and the CID is the glyph id -- Identity-H over an identity
+// CIDToGIDMap, which is what the embedding constructor builds. A font read out
+// of a document may have a predefined CMap, a CIDToGIDMap stream, or a
+// substitute program whose glyph ids are not the document's, and writing a
+// glyph id into one of those draws an unrelated glyph.
 //
-// A CFF-based OpenType font is refused, for the reason Java's loader refuses
-// it: PDFBox does not support one here.
+// An OpenType font with PostScript outlines is refused by the same test rather
+// than by one of its own: the embedder will not embed one -- "True Type fonts
+// using CFF outlines are not supported" -- so it cannot have come this way.
 func (p *Processor) SupportsFont(f font.PDFont) bool {
 	type0, isType0 := f.(*font.PDType0Font)
 	if !isType0 {
 		return false
 	}
-	program := type0.TrueTypeFont()
-	if program == nil {
-		return false
-	}
-	// An OpenType font with PostScript outlines carries the tables this reads
-	// -- cmap, hmtx, GSUB, GPOS -- so it would lay out; but PDFBox does not
-	// support one as a glyph-layout font, and a caller that is refused falls
-	// through to the ordinary path rather than getting a page this port cannot
-	// render. `AsOpenType`, not a type assertion: OpenTypeFont embeds
-	// TrueTypeFont rather than extending it, so `instanceof` has no equivalent.
-	if openType := program.AsOpenType(); openType != nil && openType.IsPostScript() {
-		return false
-	}
-	return true
+	return type0.CmapLookup() != nil
 }
 
 // positionedGlyph is one glyph of a laid-out run: which glyph, where it sits
@@ -305,7 +296,13 @@ func (p *Processor) position(program *ttf.TrueTypeFont, glyphs []int,
 		return nil
 	}
 	gpos, err := program.GPOS()
-	if err != nil || gpos == nil {
+	if err != nil {
+		// A table that could not be read is not a table that is not there.
+		// Dropping every kern and every mark over it would leave a page that
+		// is subtly wrong and nothing to say why.
+		return err
+	}
+	if gpos == nil {
 		// A font with no GPOS positions its glyphs by their advances alone,
 		// which is what `laid` already holds.
 		return nil
@@ -383,19 +380,27 @@ func (p *Processor) featureTags() []string {
 
 // scriptTagsFor answers which OpenType scripts to look the features up under.
 //
-// The font's own substitution data names a script, and that is the best answer
-// there is: it is what chose the GSUB worker, so positioning and substitution
-// agree about what is being written. Without it a Bengali font gets its
-// features looked up under "latn", finds none, and its vowel marks are never
-// placed.
+// The answer is a preference order and not a set: GlyphPositioningTable takes
+// the first of them the font carries and looks no further, because a font that
+// has both `bng2` and `beng` is saying the same thing twice rather than saying
+// two things.
 //
-// A run's direction is what is left, and it is what the two Java backends pass
-// down -- `Font.LAYOUT_LEFT_TO_RIGHT` or `LAYOUT_RIGHT_TO_LEFT`. "DFLT" is the
-// fallback every font is meant to carry, and GlyphPositioningTable falls back
-// to it on its own where none of these is present.
+// The first preference is the script record the font's substitution data
+// actually selected, which is the most precise answer there is: it is what
+// chose the GSUB worker, so positioning and substitution agree about what is
+// being written. The language's other spellings of that script come next, then
+// the run's direction -- which is what the two Java backends pass down,
+// `Font.LAYOUT_LEFT_TO_RIGHT` or `LAYOUT_RIGHT_TO_LEFT` -- and last "DFLT",
+// the fallback every font is meant to carry.
+//
+// Without the first two a Bengali font gets its features looked up under
+// "latn", finds none, and its vowel marks are never placed.
 func (p *Processor) scriptTagsFor(program *ttf.TrueTypeFont, bidiLevel int) []string {
 	var tags []string
 	if gsubData, err := program.GsubData(); err == nil && gsubData != nil {
+		if active := gsubData.ActiveScriptName(); active != "" {
+			tags = append(tags, active)
+		}
 		tags = append(tags, gsubData.Language().ScriptNames()...)
 	}
 	if bidiLevel%2 == 0 {
