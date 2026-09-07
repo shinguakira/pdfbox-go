@@ -163,6 +163,12 @@ the ported tests cannot answer.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
+  - The backend's numbers come from the reference PDFs, which are the AWT
+    backend's own output; the message of `testMissingGlyph` and the three
+    width relations come from the Java test source. Where a case asserts a
+    property rather than a number -- that a mark lands on its letter, that a
+    PostScript font is refused -- it says so, and where a number in a comment
+    was read off the port rather than off the Java, that is said too
 
 - [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green" -- green says the

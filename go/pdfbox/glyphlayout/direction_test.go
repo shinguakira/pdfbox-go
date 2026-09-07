@@ -113,10 +113,17 @@ func TestMarkSitsOverItsLetterInBothDirections(t *testing.T) {
 			}
 
 			// The mark has to land inside the letter, with a tenth of its width
-			// of slack for a mark that hangs over the edge. Measured, both of
-			// these sit close to the middle: the ogonek 900 units across a C
-			// that is 1479 wide, the fatha 396 across a lam that is 695. The
-			// defect this guards against moves the mark by a whole advance.
+			// of slack for a mark that hangs over the edge. Both sit close to
+			// the middle: the ogonek 900 units across a C that is 1479 wide,
+			// the fatha 396 across a lam that is 695.
+			//
+			// The first of those two numbers is the Java's. The AWT reference
+			// writes `C̨` as an adjustment of 282.71484, which in Arimo's 2048
+			// units to the em is 579 back from the pen, and the C is 1479 wide:
+			// 1479 - 579 = 900. The second has no Java counterpart, because the
+			// Arabic AWT laid out is shaped and this port's is not; what the
+			// case asserts there is the property, and the defect it guards
+			// against moves the mark by a whole advance.
 			width := hmtx.AdvanceWidth(glyphs[letter])
 			slack := width / 10
 			if ink[mark] < ink[letter]-slack || ink[mark] > ink[letter]+width+slack {
