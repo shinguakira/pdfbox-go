@@ -37,6 +37,7 @@ func (p *panicking) Call() int           { panic(p.failWith) }
 // `required = true`.
 type needsInput struct {
 	streams
+	mixinStandardHelpOptions
 	infile string
 }
 
@@ -196,6 +197,7 @@ func TestSingleDashLongOptionsParse(t *testing.T) {
 // flagShapes declares whatever its caller asks for.
 type flagShapes struct {
 	streams
+	mixinStandardHelpOptions
 	onFlags func(*flag.FlagSet)
 }
 

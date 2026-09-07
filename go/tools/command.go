@@ -70,6 +70,37 @@ type Command interface {
 	setStreams(out, errw io.Writer)
 }
 
+// standardHelpOptions is implemented by a command whose @Command carries
+// mixinStandardHelpOptions = true, which is what adds -h/--help and
+// -V/--version. It is not on every command: `version` has neither, and
+// `DecompressObjectstreams` declares its own -h/--help with usageHelp = true
+// and so has no -V. Adding the pair everywhere would accept arguments the Java
+// refuses, which is a difference no test would show.
+type standardHelpOptions interface{ standardHelpOptions() }
+
+// mixinStandardHelpOptions is embedded by a command that declares it. The
+// method is the marker; there is nothing to hold.
+type mixinStandardHelpOptions struct{}
+
+func (mixinStandardHelpOptions) standardHelpOptions() {}
+
+// usageHelpOption is implemented by a command that declares -h/--help with
+// picocli's usageHelp = true but no version option.
+type usageHelpOption interface{ usageHelpOption() }
+
+// mixinUsageHelpOption is embedded by such a command.
+type mixinUsageHelpOption struct{}
+
+func (mixinUsageHelpOption) usageHelpOption() {}
+
+// positional is implemented by a command that takes @Parameters rather than
+// options. Only WriteDecodedDoc does.
+type positional interface {
+	// setPositional takes the arguments left after the options, and reports a
+	// usage error where there are too many or too few.
+	setPositional(args []string) error
+}
+
 // streams is the pair of writers every command holds. Java's field names are
 // SYSOUT and SYSERR.
 type streams struct {
@@ -146,11 +177,19 @@ func Execute(command Command, args []string, out, errw io.Writer) (code int) {
 	// picocli prints usage itself, with the header first.
 	set.Usage = func() { writeUsage(errw, command, set) }
 
-	// mixinStandardHelpOptions = true.
-	help := set.Bool("h", false, "Show this help message and exit.")
-	set.BoolVar(help, "help", false, "Show this help message and exit.")
-	version := set.Bool("V", false, "Print version information and exit.")
-	set.BoolVar(version, "version", false, "Print version information and exit.")
+	// mixinStandardHelpOptions = true adds both; usageHelp = true adds only the
+	// first; `version` declares neither.
+	var help, version *bool
+	_, wantsStandard := command.(standardHelpOptions)
+	_, wantsUsageHelp := command.(usageHelpOption)
+	if wantsStandard || wantsUsageHelp {
+		help = set.Bool("h", false, "Show this help message and exit.")
+		set.BoolVar(help, "help", false, "Show this help message and exit.")
+	}
+	if wantsStandard {
+		version = set.Bool("V", false, "Print version information and exit.")
+		set.BoolVar(version, "version", false, "Print version information and exit.")
+	}
 
 	command.Flags(set)
 
@@ -158,13 +197,25 @@ func Execute(command Command, args []string, out, errw io.Writer) (code int) {
 		// flag prints the error and the usage itself.
 		return ExitUsage
 	}
-	if *help {
+	if help != nil && *help {
 		writeUsage(out, command, set)
 		return ExitOK
 	}
-	if *version {
+	if version != nil && *version {
 		fmt.Fprintln(out, versionLine(command.Name()))
 		return ExitOK
+	}
+	if p, ok := command.(positional); ok {
+		if err := p.setPositional(set.Args()); err != nil {
+			fmt.Fprintln(errw, err)
+			writeUsage(errw, command, set)
+			return ExitUsage
+		}
+	} else if set.NArg() != 0 {
+		// picocli refuses an argument a command declares no @Parameters for.
+		fmt.Fprintf(errw, "Unmatched argument at index 0: '%s'\n", set.Arg(0))
+		writeUsage(errw, command, set)
+		return ExitUsage
 	}
 	if err := validate(command, set); err != nil {
 		fmt.Fprintln(errw, err)
