@@ -49,15 +49,19 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-The five files `STATUS.md` records as `pdmodel/font at 34 of 39`, and the half
-of two ported classes that was deferred with them.
+The files `STATUS.md` records as left of `pdmodel/font`, and the half of two
+ported classes that was deferred with them.
+
+**`STATUS.md` says 34 of 39 with five left, and it is wrong: `ToUnicodeWriter`
+was ported by slice 7**, with its own test ported from `TestToUnicodeWriter`
+and JAVA-BUGS 33 recorded at the point of difference. It is 35 of 39 and four
+are left. Correct that row in C5.
 
 | Java source | Lines | What it does |
 | --- | ---: | --- |
 | `pdmodel/font/TrueTypeEmbedder.java` | 401 | reads a TTF, writes `/FontFile2` and the descriptor, drives the subsetter |
 | `pdmodel/font/PDCIDFontType2Embedder.java` | 738 | the CID half — `/CIDToGIDMap`, `/W`, the descendant font |
 | `pdmodel/font/PDTrueTypeFontEmbedder.java` | 135 | the simple-font half, with its encoding |
-| `pdmodel/font/ToUnicodeWriter.java` | 228 | the `/ToUnicode` CMap the embedded font needs |
 | `pdmodel/font/Subsetter.java` | 40 | the interface `addToSubset`/`subset` are declared on |
 
 And the embedding halves the read-side port left as holes, which are named in
@@ -116,11 +120,9 @@ In dependency order — the interface, then the shared base, then the two halves
   - 40 lines of interface. In Go it is the method set `PDType0Font` and
     `TrueTypeEmbedder` satisfy; check what the port already names before adding
     a second name for it
-- [ ] B2. `ToUnicodeWriter`
-  - **JAVA-BUGS entry 33 is about this class** — `allowDestinationRange` checks
-    only one of its two strings. It was found while reading, from the Java, when
-    nothing was ported. Port it as written and check the entry still describes
-    what the Go does
+- [x] B2. `ToUnicodeWriter` — **already ported by slice 7**, in
+      `tounicodewriter.go`, with JAVA-BUGS 33 written at the point of
+      difference. Check the entry still describes what the Go does and move on
 - [ ] B3. `TrueTypeEmbedder`
   - The descriptor, `/FontFile2`, the subsetting drive. Leans on
     `fontbox/ttf.TTFSubsetter`, which is ported
