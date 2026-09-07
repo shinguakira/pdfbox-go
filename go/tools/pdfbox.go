@@ -34,6 +34,8 @@ func Subcommands() []Subcommand {
 		{"encrypt", func() Command { return NewEncrypt() }},
 		{"decode", func() Command { return NewWriteDecodedDoc() }},
 		{"export:text", func() Command { return NewExtractText() }},
+		{"split", func() Command { return NewPDFSplit() }},
+		{"fromtext", func() Command { return NewTextToPDF() }},
 		{"version", func() Command { return NewVersion() }},
 	}
 }
