@@ -29,6 +29,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font/encoding"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/text"
 )
 
@@ -421,5 +422,64 @@ func wantShowTextPanic(t *testing.T, stream *pdmodel.PDPageContentStream,
 	}()
 	if err := stream.ShowText(message); err != nil {
 		t.Errorf("ShowText(%q) = %v, want the panic Java raises", message, err)
+	}
+}
+
+// TestSimpleTrueTypeFontEmbedding checks the other half of the branch, which
+// TestFontEmbedding has no case for at all: PDTrueTypeFont.load embeds a font
+// as a *simple* font -- one byte per character, an /Encoding and a /Widths
+// array -- and never subsets, because PDTrueTypeFontEmbedder.buildSubset throws
+// with the comment "use PDType0Font instead".
+//
+// Written from PDTrueTypeFontEmbedder and PDTrueTypeFont, since Java has no
+// test that goes through them. It asserts what the Java writes: the subtype,
+// the descriptor's symbolic flags, and that /FirstChar, /LastChar and /Widths
+// agree with each other and with the encoding.
+func TestSimpleTrueTypeFontEmbedding(t *testing.T) {
+	document := pdmodel.NewPDDocument()
+	defer document.Close()
+
+	embedded, err := font.LoadPDTrueTypeFont(document, openFont(t, liberationSans),
+		encoding.WinAnsiEncodingInstance)
+	if err != nil {
+		t.Fatalf("LoadPDTrueTypeFont: %v", err)
+	}
+
+	dict := embedded.COSObject().(*cos.Dictionary)
+	if got := dict.GetNameAsString(cos.Subtype, ""); got != "TrueType" {
+		t.Errorf("/Subtype = %q, want %q", got, "TrueType")
+	}
+
+	descriptor := embedded.FontDescriptor()
+	if descriptor == nil {
+		t.Fatal("FontDescriptor() = nil, want the descriptor the embedder built")
+	}
+	// the embedder sets these two the opposite way round from the CID one
+	if descriptor.IsSymbolic() {
+		t.Error("the descriptor is symbolic, want non-symbolic for a simple font")
+	}
+	if !descriptor.IsNonSymbolic() {
+		t.Error("the descriptor is not non-symbolic, want it to be")
+	}
+
+	firstChar := dict.GetIntDefault(cos.FirstChar, -1)
+	lastChar := dict.GetIntDefault(cos.LastChar, -1)
+	if firstChar < 0 || lastChar < firstChar {
+		t.Fatalf("/FirstChar %d and /LastChar %d do not describe a range",
+			firstChar, lastChar)
+	}
+	widths := dict.GetCOSArray(cos.Widths)
+	if widths == nil {
+		t.Fatal("/Widths is missing")
+	}
+	if widths.Size() != lastChar-firstChar+1 {
+		t.Errorf("/Widths holds %d entries, want %d for /FirstChar %d to /LastChar %d",
+			widths.Size(), lastChar-firstChar+1, firstChar, lastChar)
+	}
+	// 'A' is in WinAnsi and in this font, so it has a width
+	if 'A' >= firstChar && 'A' <= lastChar {
+		if got := widths.GetInt('A' - firstChar); got <= 0 {
+			t.Errorf("the width of 'A' is %d, want a positive advance", got)
+		}
 	}
 }
