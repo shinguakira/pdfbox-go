@@ -18,6 +18,7 @@ import (
 
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 )
 
 // toolsFixture is where this module's Java test resources are.
@@ -256,5 +257,73 @@ func TestWriteDecodedDocPositionalArity(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "index 2") {
 		t.Errorf("stderr is %q, want it to name the unmatched argument", errOut)
+	}
+}
+
+// TestImageToPDFWritesAPagePerImage is B8's command. It has no Java test, and
+// is worth one: what it adds over the library is a page size table, an
+// orientation rule and a resize, and none of the three is covered elsewhere.
+func TestImageToPDFWritesAPagePerImage(t *testing.T) {
+	const png = "../../pdfbox/src/test/resources/org/apache/pdfbox/cos/simple.png"
+	out := filepath.Join(t.TempDir(), "out.pdf")
+
+	code, _, stderr := run(NewImageToPDF(), "-i", png, "-i", png, "-o", out)
+	if code != ExitOK {
+		t.Fatalf("exited %d (%s), want %d", code, stderr, ExitOK)
+	}
+
+	document, err := pdfbox.LoadPDF(out)
+	if err != nil {
+		t.Fatalf("the output is not a PDF: %v", err)
+	}
+	defer document.Close()
+	if got := document.NumberOfPages(); got != 2 {
+		t.Errorf("the document has %d pages, want one per image", got)
+	}
+	// Letter is the default, and 612x792 points is what it is.
+	box := document.Page(0).MediaBox()
+	if box.Width() != 612 || box.Height() != 792 {
+		t.Errorf("page 1 is %vx%v, want Letter at 612x792", box.Width(), box.Height())
+	}
+}
+
+// TestImageToPDFPageSizeAndOrientation covers the table and the two orientation
+// options, which are the command's own logic.
+func TestImageToPDFPageSizeAndOrientation(t *testing.T) {
+	const png = "../../pdfbox/src/test/resources/org/apache/pdfbox/cos/simple.png"
+
+	// The wanted sizes are the rectangles themselves rather than transcribed
+	// numbers, so that the case is about which rectangle the name chose.
+	a4 := common.A4
+	letter := common.Letter
+	for _, row := range []struct {
+		name          string
+		args          []string
+		width, height float32
+	}{
+		{"A4 upright", []string{"-pageSize", "A4"}, a4.Width(), a4.Height()},
+		// The name is matched case-insensitively, as Java's equalsIgnoreCase.
+		{"a4 lower case", []string{"-pageSize", "a4"}, a4.Width(), a4.Height()},
+		// An unknown name is Letter, with Java's "wron size" comment.
+		{"unknown size", []string{"-pageSize", "B7"}, letter.Width(), letter.Height()},
+		{"landscape", []string{"-pageSize", "A4", "-landscape"}, a4.Height(), a4.Width()},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "out.pdf")
+			args := append(append([]string{}, row.args...), "-i", png, "-o", out)
+			if code, _, stderr := run(NewImageToPDF(), args...); code != ExitOK {
+				t.Fatalf("exited %d (%s)", code, stderr)
+			}
+			document, err := pdfbox.LoadPDF(out)
+			if err != nil {
+				t.Fatalf("the output is not a PDF: %v", err)
+			}
+			defer document.Close()
+			box := document.Page(0).MediaBox()
+			if box.Width() != row.width || box.Height() != row.height {
+				t.Errorf("the page is %vx%v, want %vx%v",
+					box.Width(), box.Height(), row.width, row.height)
+			}
+		})
 	}
 }

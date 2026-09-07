@@ -33,6 +33,7 @@ func Subcommands() []Subcommand {
 		{"decrypt", func() Command { return NewDecrypt() }},
 		{"encrypt", func() Command { return NewEncrypt() }},
 		{"decode", func() Command { return NewWriteDecodedDoc() }},
+		{"fromimage", func() Command { return NewImageToPDF() }},
 		{"export:xmp", func() Command { return NewExtractXMP() }},
 		{"export:text", func() Command { return NewExtractText() }},
 		{"export:fdf", func() Command { return NewExportFDF() }},
@@ -136,4 +137,16 @@ func (p *PDFBox) writeUsage(w io.Writer) {
 	sort.Strings(names)
 	fmt.Fprintln(w, "Commands: "+strings.Join(names, ", "))
 	fmt.Fprintln(w, "See 'pdfbox help <command>' to read about a specific subcommand")
+
+	// B10: the commands Java has and this port does not, so that a caller who
+	// asks for one is told what it waits for rather than that it does not exist.
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Not built in this port:")
+	for _, missing := range NotBuiltCommands {
+		if missing.Name == "" {
+			continue
+		}
+		fmt.Fprintf(w, "  %-14s %s (waiting for %s)\n",
+			missing.Name, missing.Java, missing.Waiting)
+	}
 }
