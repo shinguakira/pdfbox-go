@@ -324,8 +324,11 @@ func TestSurrogatePairCharacterExceptionIsBmpCodePoint(t *testing.T) {
 	if err := stream.BeginText(); err != nil {
 		t.Fatalf("BeginText: %v", err)
 	}
-	if err := stream.SetFont(embedded, 20); err != nil {
+	if err := stream.SetFont(embedded, 64); err != nil {
 		t.Fatalf("SetFont: %v", err)
+	}
+	if err := stream.NewLineAtOffset(100, 700); err != nil {
+		t.Fatalf("NewLineAtOffset: %v", err)
 	}
 
 	// U+3042 HIRAGANA LETTER A, inside the basic plane and not in this font
@@ -356,19 +359,28 @@ func TestSurrogatePairCharacterExceptionIsValidCodePoint(t *testing.T) {
 	if err := stream.BeginText(); err != nil {
 		t.Fatalf("BeginText: %v", err)
 	}
-	if err := stream.SetFont(embedded, 20); err != nil {
+	if err := stream.SetFont(embedded, 64); err != nil {
 		t.Fatalf("SetFont: %v", err)
+	}
+	if err := stream.NewLineAtOffset(100, 700); err != nil {
+		t.Fatalf("NewLineAtOffset: %v", err)
 	}
 
 	wantShowTextPanic(t, stream, "𩸽",
 		"could not find the glyphId for the character: 𩸽, codePoint: 171581 (0x29E3D)")
 }
 
-// TestEmbeddedFontWithZeroWidthChars is testEmbeddedFontWithZeroWidthChars: a
-// zero width non-joiner survives the round trip and stays zero width.
+// TestEmbeddedFontWithZeroWidthChars is testEmbeddedFontWithZeroWidthChars,
+// PDFBOX-5230: a zero-width character survives the round trip and stays
+// invisible.
+//
+// This is the case that checks the four forceInvisible calls in
+// TrueTypeEmbedder.subset: without them the subsetter would drop a glyph
+// nothing draws, and the character would come back with a width or no path at
+// all rather than an empty one.
 func TestEmbeddedFontWithZeroWidthChars(t *testing.T) {
-	// "abc" + U+200C ZERO WIDTH NON-JOINER + "def"
-	const message = "abc‌def"
+	// "AAA" + U+200C ZERO WIDTH NON-JOINER + "BBB", which is Java's string.
+	const message = "AAA‌BBB"
 
 	var out bytes.Buffer
 	document := pdmodel.NewPDDocument()
@@ -387,8 +399,19 @@ func TestEmbeddedFontWithZeroWidthChars(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
+	reloaded, err := pdfbox.LoadPDFBytes(out.Bytes())
+	if err != nil {
+		t.Fatalf("LoadPDFBytes: %v", err)
+	}
+	defer reloaded.Close()
+
 	// verify that the text still contains zero-width characters
-	extracted := strings.TrimSpace(unicodeText(t, out.Bytes()))
+	stripper := text.NewPDFTextStripper()
+	raw, err := stripper.GetTextOfPages(reloaded.Pages())
+	if err != nil {
+		t.Fatalf("GetTextOfPages: %v", err)
+	}
+	extracted := strings.TrimSpace(raw)
 	if extracted != message {
 		t.Errorf("extracted %q, want %q", extracted, message)
 	}
@@ -396,10 +419,49 @@ func TestEmbeddedFontWithZeroWidthChars(t *testing.T) {
 	// count is over runes, which is the same seven characters.
 	runes := []rune(extracted)
 	if len(runes) != 7 {
-		t.Errorf("extracted %d characters, want 7", len(runes))
+		t.Fatalf("extracted %d characters, want 7", len(runes))
 	}
-	if len(runes) > 3 && runes[3] != '‌' {
+	if runes[3] != '‌' {
 		t.Errorf("character 3 is %q, want the zero width non-joiner", runes[3])
+	}
+
+	// verify that the zero-width characters are invisible
+	names := reloaded.Page(0).Resources().FontNames()
+	if len(names) == 0 {
+		t.Fatal("the reloaded page has no font")
+	}
+	reloadedFont, err := reloaded.Page(0).Resources().GetFont(names[0])
+	if err != nil {
+		t.Fatalf("GetFont: %v", err)
+	}
+	type0, ok := reloadedFont.(*font.PDType0Font)
+	if !ok {
+		t.Fatalf("the reloaded font is %T, want *font.PDType0Font", reloadedFont)
+	}
+	encoded, err := type0.Encode("‌")
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	if len(encoded) != 2 {
+		t.Fatalf("Encode gave %d bytes, want 2", len(encoded))
+	}
+	code := int(encoded[0])<<8 | int(encoded[1])
+
+	if width, err := type0.Width(code); err != nil || width != 0 {
+		t.Errorf("Width(%d) = %v, %v; want 0", code, width, err)
+	}
+	if width, err := type0.WidthFromFont(code); err != nil || width != 0 {
+		t.Errorf("WidthFromFont(%d) = %v, %v; want 0", code, width, err)
+	}
+	path, err := type0.GetPath(code)
+	if err != nil {
+		t.Fatalf("GetPath(%d): %v", code, err)
+	}
+	if !path.Bounds2D().IsEmpty() {
+		t.Errorf("GetPath(%d) has bounds %v, want an empty rectangle", code, path.Bounds2D())
+	}
+	if type0.IsDamaged() {
+		t.Error("the reloaded font reports itself damaged")
 	}
 }
 
@@ -634,4 +696,119 @@ func mustOpenRead(t *testing.T, path string) pdfio.RandomAccessRead {
 		t.Fatalf("opening %s: %v", path, err)
 	}
 	return source
+}
+
+// TestEveryLoadOverload checks each of Java's nine PDType0Font load overloads
+// and four PDTrueTypeFont ones has a Go entry point that embeds the font.
+//
+// The Java test class exercises only load(PDDocument, InputStream, boolean).
+// The rest are public API, and three of them -- the four-argument
+// RandomAccessRead form, loadVertical(File) and loadVertical(TrueTypeFont,
+// boolean) -- were missing from the port until the review looked for them.
+//
+// What each asserts is what its arguments are for: that the font is embedded,
+// and that a vertical loader writes Identity-V where a horizontal one writes
+// Identity-H.
+func TestEveryLoadOverload(t *testing.T) {
+	type0 := []struct {
+		name     string
+		load     func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error)
+		vertical bool
+	}{
+		{"load(doc, InputStream)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0Font(doc, openFont(t, liberationSans))
+		}, false},
+		{"load(doc, InputStream, boolean)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontSubset(doc, openFont(t, liberationSans), false)
+		}, false},
+		{"load(doc, File)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontFile(doc, liberationSans)
+		}, false},
+		{"load(doc, RandomAccessRead, boolean, boolean)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontSource(doc, mustOpenRead(t, liberationSans), true, false)
+		}, false},
+		{"load(doc, TrueTypeFont, boolean)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontTTF(doc, mustParseFont(t, liberationSans), false)
+		}, false},
+		{"loadVertical(doc, InputStream)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontVertical(doc, openFont(t, liberationSans))
+		}, true},
+		{"loadVertical(doc, InputStream, boolean)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontVerticalSubset(doc, openFont(t, liberationSans), false)
+		}, true},
+		{"loadVertical(doc, File)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontVerticalFile(doc, liberationSans)
+		}, true},
+		{"loadVertical(doc, TrueTypeFont, boolean)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDType0Font, error) {
+			return font.LoadPDType0FontVerticalTTF(doc, mustParseFont(t, liberationSans), false)
+		}, true},
+	}
+	for _, row := range type0 {
+		t.Run(row.name, func(t *testing.T) {
+			document := pdmodel.NewPDDocument()
+			defer document.Close()
+			embedded, err := row.load(t, document)
+			if err != nil {
+				t.Fatalf("%s: %v", row.name, err)
+			}
+			if !embedded.IsEmbedded() {
+				t.Errorf("%s produced a font that is not embedded", row.name)
+			}
+			want := cos.IdentityH
+			if row.vertical {
+				want = cos.IdentityV
+			}
+			dict, _ := embedded.COSObject().(*cos.Dictionary)
+			if got := dict.GetCOSName(cos.Encoding); got != want {
+				t.Errorf("%s wrote /Encoding %v, want %v", row.name, got, want)
+			}
+		})
+	}
+
+	simple := []struct {
+		name string
+		load func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDTrueTypeFont, error)
+	}{
+		{"load(doc, InputStream, Encoding)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDTrueTypeFont, error) {
+			return font.LoadPDTrueTypeFont(doc, openFont(t, liberationSans), encoding.WinAnsiEncodingInstance)
+		}},
+		{"load(doc, File, Encoding)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDTrueTypeFont, error) {
+			return font.LoadPDTrueTypeFontFile(doc, liberationSans, encoding.WinAnsiEncodingInstance)
+		}},
+		{"load(doc, RandomAccessRead, Encoding)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDTrueTypeFont, error) {
+			return font.LoadPDTrueTypeFontSource(doc, mustOpenRead(t, liberationSans), encoding.WinAnsiEncodingInstance)
+		}},
+		{"load(doc, TrueTypeFont, Encoding)", func(t *testing.T, doc *pdmodel.PDDocument) (*font.PDTrueTypeFont, error) {
+			return font.LoadPDTrueTypeFontTTF(doc, mustParseFont(t, liberationSans), encoding.WinAnsiEncodingInstance)
+		}},
+	}
+	for _, row := range simple {
+		t.Run(row.name, func(t *testing.T) {
+			document := pdmodel.NewPDDocument()
+			defer document.Close()
+			embedded, err := row.load(t, document)
+			if err != nil {
+				t.Fatalf("%s: %v", row.name, err)
+			}
+			if !embedded.IsEmbedded() {
+				t.Errorf("%s produced a font that is not embedded", row.name)
+			}
+			dict, _ := embedded.COSObject().(*cos.Dictionary)
+			if got := dict.GetCOSName(cos.Subtype); got != cos.TrueType {
+				t.Errorf("%s wrote /Subtype %v, want %v", row.name, got, cos.TrueType)
+			}
+		})
+	}
+}
+
+// mustParseFont parses a font file, for the overloads that take one already
+// parsed and do not close it.
+func mustParseFont(t *testing.T, path string) *ttf.TrueTypeFont {
+	t.Helper()
+	parsed, err := ttf.NewParser().Parse(mustOpenRead(t, path))
+	if err != nil {
+		t.Fatalf("parsing %s: %v", path, err)
+	}
+	t.Cleanup(func() { parsed.Close() })
+	return parsed
 }

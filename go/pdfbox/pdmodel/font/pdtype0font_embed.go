@@ -15,7 +15,6 @@ package font
 
 import (
 	"io"
-	"os"
 
 	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
@@ -39,24 +38,42 @@ func LoadPDType0FontSubset(doc embeddingDocument, input io.Reader,
 	if err != nil {
 		return nil, err
 	}
-	return loadPDType0FontFromSource(doc, source, embedSubset, false)
+	return LoadPDType0FontSource(doc, source, embedSubset, false)
 }
 
 // LoadPDType0FontFile loads a TTF from a file to be embedded into a document as
 // a Type 0 font, subsetting it.
 //
-// Port of load(PDDocument, File).
+// Port of load(PDDocument, File), whose RandomAccessReadBufferedFile reads
+// through the file rather than copying it into memory.
 func LoadPDType0FontFile(doc embeddingDocument, path string) (*PDType0Font, error) {
-	file, err := os.Open(path)
+	source, err := pdfio.OpenBufferedFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-	source, err := pdfio.NewReadBufferFromReader(file)
+	return LoadPDType0FontSource(doc, source, true, false)
+}
+
+// LoadPDType0FontVerticalFile loads a TTF from a file to be embedded into a
+// document as a vertical Type 0 font, subsetting it.
+//
+// Port of loadVertical(PDDocument, File).
+func LoadPDType0FontVerticalFile(doc embeddingDocument, path string) (*PDType0Font, error) {
+	source, err := pdfio.OpenBufferedFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return loadPDType0FontFromSource(doc, source, true, false)
+	return LoadPDType0FontSource(doc, source, true, true)
+}
+
+// LoadPDType0FontVerticalTTF loads an already parsed TTF to be embedded into a
+// document as a vertical Type 0 font.
+//
+// Port of loadVertical(PDDocument, TrueTypeFont, boolean), which does not close
+// the font it is handed.
+func LoadPDType0FontVerticalTTF(doc embeddingDocument, font *ttf.TrueTypeFont,
+	embedSubset bool) (*PDType0Font, error) {
+	return newEmbeddedPDType0Font(doc, font, embedSubset, false, true)
 }
 
 // LoadPDType0FontTTF loads an already parsed TTF to be embedded into a document
@@ -87,14 +104,14 @@ func LoadPDType0FontVerticalSubset(doc embeddingDocument, input io.Reader,
 	if err != nil {
 		return nil, err
 	}
-	return loadPDType0FontFromSource(doc, source, embedSubset, true)
+	return LoadPDType0FontSource(doc, source, embedSubset, true)
 }
 
-// loadPDType0FontFromSource parses the font and embeds it.
+// LoadPDType0FontSource parses the font from the given source and embeds it.
 //
 // Port of load(PDDocument, RandomAccessRead, boolean, boolean), which is where
-// the stream overloads meet and which closes the font it parsed.
-func loadPDType0FontFromSource(doc embeddingDocument, source pdfio.RandomAccessRead,
+// every other overload meets and which closes the font it parsed.
+func LoadPDType0FontSource(doc embeddingDocument, source pdfio.RandomAccessRead,
 	embedSubset, vertical bool) (*PDType0Font, error) {
 	parsed, err := ttf.NewParser().Parse(source)
 	if err != nil {

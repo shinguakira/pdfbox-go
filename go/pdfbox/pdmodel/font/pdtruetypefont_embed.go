@@ -13,7 +13,6 @@ package font
 import (
 	"io"
 	"math"
-	"os"
 
 	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
@@ -132,25 +131,21 @@ func LoadPDTrueTypeFont(doc embeddingDocument, input io.Reader,
 	if err != nil {
 		return nil, err
 	}
-	return loadPDTrueTypeFontFromSource(doc, source, enc)
+	return LoadPDTrueTypeFontSource(doc, source, enc)
 }
 
 // LoadPDTrueTypeFontFile loads a TTF from a file to be embedded into a document
 // as a simple font.
 //
-// Port of load(PDDocument, File, Encoding).
+// Port of load(PDDocument, File, Encoding), whose RandomAccessReadBufferedFile
+// reads through the file rather than copying it into memory.
 func LoadPDTrueTypeFontFile(doc embeddingDocument, path string,
 	enc encoding.Encoding) (*PDTrueTypeFont, error) {
-	file, err := os.Open(path)
+	source, err := pdfio.OpenBufferedFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-	source, err := pdfio.NewReadBufferFromReader(file)
-	if err != nil {
-		return nil, err
-	}
-	return loadPDTrueTypeFontFromSource(doc, source, enc)
+	return LoadPDTrueTypeFontSource(doc, source, enc)
 }
 
 // LoadPDTrueTypeFontTTF loads an already parsed TTF to be embedded into a
@@ -163,11 +158,11 @@ func LoadPDTrueTypeFontTTF(doc embeddingDocument, font *ttf.TrueTypeFont,
 	return newEmbeddedPDTrueTypeFont(doc, font, enc, false)
 }
 
-// loadPDTrueTypeFontFromSource parses the font and embeds it.
+// LoadPDTrueTypeFontSource parses the font from the given source and embeds it.
 //
 // Port of load(PDDocument, RandomAccessRead, Encoding), which closes the font
 // it parsed.
-func loadPDTrueTypeFontFromSource(doc embeddingDocument, source pdfio.RandomAccessRead,
+func LoadPDTrueTypeFontSource(doc embeddingDocument, source pdfio.RandomAccessRead,
 	enc encoding.Encoding) (*PDTrueTypeFont, error) {
 	parsed, err := ttf.NewParser().Parse(source)
 	if err != nil {
