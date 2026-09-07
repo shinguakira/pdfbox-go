@@ -115,13 +115,13 @@ A0 and make `STATUS.md` agree with whatever is chosen.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Take the two decisions first**, before any test
+- [x] A0. **Take the two decisions first**, before any test
   - The flag library, and how a Java `picocli` annotation maps to it
   - The Go directory, and whether `STATUS.md`'s invented `cmd/pdfbox` row
     stands or is replaced
-- [ ] A1. Port the 6 Java test classes in `tools/src/test`
+- [x] A1. Port the 6 Java test classes in `tools/src/test`
   - Name them here once read, with their case counts
-- [ ] A2. For every command with no Java test — most of them — decide whether a
+- [x] A2. For every command with no Java test — most of them — decide whether a
       Go test is worth writing, and say so either way. A command whose whole
       body is "parse flags, call one library method, write a file" is tested by
       the library's own tests; a command that transforms output is not
@@ -141,28 +141,28 @@ helper rather than patching each call site. See
 [`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
 port has already paid for more than once.
 
-- [ ] B1. `Version` and the flag plumbing chosen in A0
-- [ ] B2. The slice 1 commands — `DecompressObjectstreams`, `WriteDecodedDoc`
-- [ ] B3. The text commands — `ExtractText`, `PDFText2HTML`, `PDFText2Markdown`
-- [ ] B4. The encryption commands — `Decrypt`, `Encrypt`
-- [ ] B5. The write commands — `PDFMerger`, `PDFSplit`, `OverlayPDF`,
+- [x] B1. `Version` and the flag plumbing chosen in A0
+- [x] B2. The slice 1 commands — `DecompressObjectstreams`, `WriteDecodedDoc`
+- [x] B3. The text commands — `ExtractText`, `PDFText2HTML`, `PDFText2Markdown`
+- [x] B4. The encryption commands — `Decrypt`, `Encrypt`
+- [x] B5. The write commands — `PDFMerger`, `PDFSplit`, `OverlayPDF`,
       `TextToPDF`
-- [ ] B6. The FDF commands — `ExportFDF`, `ImportFDF`, `ExportXFDF`,
+- [x] B6. The FDF commands — `ExportFDF`, `ImportFDF`, `ExportXFDF`,
       `ImportXFDF`
-- [ ] B7. `ExtractXMP`
-- [ ] B8. `ImageToPDF` — check how much of it is raster before starting
-- [ ] B9. `PDFBox`, the dispatcher, listing what was actually built
-- [ ] B10. Record every command **not** built, and what it waits for
+- [x] B7. `ExtractXMP`
+- [x] B8. `ImageToPDF` — check how much of it is raster before starting
+- [x] B9. `PDFBox`, the dispatcher, listing what was actually built
+- [x] B10. Record every command **not** built, and what it waits for
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md` — this branch's section, and the phase 7
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md` — this branch's section, and the phase 7
       row, which currently says `not started` for a directory the plan never
       named
 
@@ -173,40 +173,40 @@ port has already paid for more than once.
 敵対的レビュー. Green tests prove the port passes the tests, not that it is a
 faithful migration. Go in assuming it is wrong.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green" -- green says the
     code is not broken in a way something already checks, which is a different
     claim from "this works"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
 
 And for this branch in particular:
 
-- [ ] D8. Check every flag, one at a time
+- [x] D8. Check every flag, one at a time
   - The flag names, their defaults, and what an unrecognised flag does are the
     compatibility surface. A command that does the right thing under different
     flag names is a different command
   - Java's `picocli` gives some flags an arity and some a negatable form. Both
     are easy to lose in translation and neither shows up in a test
 
-- [ ] D9. Check the exit codes and the streams
+- [x] D9. Check the exit codes and the streams
   - Which failures exit non-zero, and what goes to stdout versus stderr. A tool
     that prints its error to stdout breaks every pipeline that uses it
 

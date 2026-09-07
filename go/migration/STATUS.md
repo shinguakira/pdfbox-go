@@ -25,7 +25,7 @@ Last updated: 2026-09-06
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `tools` | 26 | not started — `track/tools` claims it. The Go directory is settled in that branch A0; this row used to say `cmd/pdfbox`, which `PLAN.md` never said |
+| 7 | `tools` | 26 | **18 of 26**, finished by `track/tools` as far as it can go. The eight left are seven waiting for a raster backend and two waiting for `multipdf`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | not started — `track/pdfbox-layout` claims it, and its A0 is choosing a Go text shaper |
 
@@ -45,7 +45,7 @@ was wrong twice for exactly that reason, matching a class named in a Go comment
 that said the class was *not* ported. A `Port of <FQN>` comment, or a type, is
 evidence; a name is not.
 
-### 63 of 891 classes were unported. 24 of those are settled.
+### 66 of 891 classes were unported. 24 of those are settled.
 
 | Group | Files | Verdict |
 | --- | ---: | --- |
@@ -58,7 +58,7 @@ evidence; a name is not.
 Every one of those was already recorded here with a reason. Nothing in that
 group is a gap.
 
-### 39 were real, and each has a branch. Seven are now done.
+### 42 were real. Twenty-five are now done, and three have no branch.
 
 | Group | Files | Branch |
 | --- | ---: | --- |
@@ -66,7 +66,8 @@ group is a gap.
 | `pdmodel` resource cache factory | 3 | **done** — `track/test-backfill`, which was already in those files |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | `track/pdfbox-layout` |
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | `track/pdfbox-layout` |
-| `tools`, `tools/imageio` | 26 | `track/tools` |
+| `tools`, `tools/imageio` | 26 | **18 done** — `track/tools`. Eight left: see its section |
+| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **this survey missed them.** Slice 7 deferred all three to slice 8 and slice 8 never took them; no branch claims them |
 
 `io`, `fontbox` and `xmpbox` have no unported class at all.
 
@@ -94,8 +95,9 @@ add surface on top of a base whose test coverage has a known hole.
    port could write a PDF with an embedded font, and `PDType0Font`'s embedding
    methods panicked where the half was missing. **Done** — the port embeds and
    subsets TrueType fonts, and the three panics answer.
-3. **`track/tools`** — 22 commands, whose libraries all exist now. Seven are
-   held for the raster backend.
+3. **`track/tools`** — **done as far as it can go.** 18 commands built, 7 held
+   for the raster backend as expected, and 2 held for `multipdf`, which was not
+   expected and which no branch claims.
 4. **`track/pdfbox-layout`** — last. Its A0 is choosing a Go text shaper, which
    is entangled with whatever eventually implements `rendering.Backend`.
 
@@ -127,6 +129,14 @@ matched the class name in `tounicodewriter.go`'s header, which reads `Port of
 `Port of org.apache.pdfbox...` it was looking for, missed it, and then wrote the
 miss down as verified. **A survey that says a row was checked is worth no more
 than the matcher it was checked with.**
+
+`track/tools` then found the same matcher failing the other way. `multipdf` is
+3 of 6 -- `PDFMergerUtility`, `LayerUtility` and `Overlay` are not ported --
+and the survey counted all three as done, because `pdfcloneutility.go`'s package
+comment reads "PDFMergerUtility, LayerUtility and Overlay are **not** here". It
+read a name in a sentence saying the class is absent as evidence it is present.
+The count above is 66 rather than 63 because of it, and `merge` and `overlay`
+are the two commands `track/tools` could not build.
 
 The lesson for every branch from here: **C5 means the summary row and the row
 that deferred the work, not only your own section.**
@@ -4340,3 +4350,281 @@ port now keys a map on the pointer, which says the same thing;
 once and expects two. Neither side promises an order to close them in, and no
 public path registers a duplicate today — this is faithfulness to the declared
 type rather than a fix to observable behaviour.
+
+## Track `tools` — the command-line utilities
+
+Branch `track/tools`. The last of the four the survey found, and the one that
+was never in `PLAN.md` at all: the plan counted `tools` in scope, kept it out of
+the out-of-scope list, and then never mentioned it again.
+
+**18 of Java's 26 main files are built**, plus the dispatcher. The Go package is
+`go/tools` and the single binary `go/cmd/pdfbox`.
+
+### A0 — the two decisions, taken before any code
+
+**The flag parser is the standard library's `flag`.** picocli is annotation
+driven and has no Go equivalent worth transliterating, so this was always going
+to be a substitution; what settled which one is the shape of the flags
+themselves. picocli here declares long options with a **single** dash —
+`-alwaysNext`, `-encoding`, `-startPage`, `-rotationMagic` — with only a handful
+of `-i`/`--input` pairs. Go's `flag` reproduces that exactly: it treats `-name`
+and `--name` alike and takes both `-name value` and `-name=value`. A POSIX
+parser would not: `pflag` and `cobra` read `-addFileName` as a cluster of ten
+single-letter flags. It also needs no new dependency.
+
+What picocli gives and `flag` does not is written once in `command.go`:
+
+| picocli | here |
+| --- | --- |
+| `mixinStandardHelpOptions = true` | a marker a command embeds, adding `-h`/`--help` and `-V`/`--version` |
+| `usageHelp = true` on a command's own `-h` | a second marker, adding only the first pair |
+| `required = true` | `requireSet`, checked before `call()` |
+| `@Parameters` | `setPositional`, which only `WriteDecodedDoc` needs |
+| an option that repeats | a `flag.Value` that appends |
+| `subcommandsRepeatable = true` | the dispatcher splits the argument list at each name |
+| `ExitCode.OK`/`SOFTWARE`/`USAGE` | 0, 1, 2, with a `recover` turning a panic into 1 |
+
+**The package is `go/tools`, the binary `go/cmd/pdfbox`.** Every Java module
+already maps one for one — `pdfbox` to `go/pdfbox`, `fontbox` to `go/fontbox`,
+`xmpbox` to `go/xmpbox` — so `tools` to `go/tools` continues it, and the
+commands stay a library that a test can call. The one `main` goes where the
+empty `cmd/` placeholder had reserved it, which is Go's own convention.
+`STATUS.md` had been carrying a row for `cmd/pdfbox` that `PLAN.md` never said;
+that name is now true, but it is the binary and not the package.
+
+**A command keeps picocli's shape**: a struct with its options as fields, a
+`Call` answering the exit code, and `Execute` in place of
+`CommandLine.execute`. The two streams are passed in rather than taken from
+`os`, which is what makes the exit code and the output testable — D9 asks for
+both, and the Java tests read `System.out` after replacing it.
+
+### The one thing that makes this branch different
+
+**`tools` cannot be run here.** Every other module of this port can be compiled
+with `javac` and driven to settle an argument — `track/font-embedding` did it
+for the whole of `pdfbox`. This one cannot: picocli is not in the local Maven
+repository and there is no network to fetch it. So the CLI layer is ported from
+the source alone, and the assertion values that *are* Java's come from the four
+ported test classes.
+
+Two of picocli's three exit codes are therefore taken from its documented
+`CommandLine.ExitCode` rather than measured. The third, 0, the Java tests pin
+down: `assertEquals(0, exitCode)` in `TestExtractText` and `TestTextToPdf`.
+
+### What was built
+
+| Java | Subcommand | Notes |
+| --- | --- | --- |
+| `Version` | `version` | and `pdfbox/util/Version`, which was unported |
+| `PDFBox` | — | the dispatcher, with repeatable subcommands |
+| `DecompressObjectstreams` | — | not a subcommand in Java either |
+| `WriteDecodedDoc` | `decode` | the only command with positional `@Parameters` |
+| `ExtractText` | `export:text` | the largest: 17 options, embedded PDFs, `-rotationMagic` |
+| `PDFText2HTML` | — | extends `PDFTextStripper` |
+| `PDFText2Markdown` | — | extends `PDFTextStripper` |
+| `Decrypt` | `decrypt` | |
+| `Encrypt` | `encrypt` | minus `-certFile`, below |
+| `PDFSplit` | `split` | |
+| `TextToPDF` | `fromtext` | |
+| `ExportFDF` | `export:fdf` | |
+| `ExportXFDF` | `export:xfdf` | JAVA-BUGS 75 |
+| `ImportFDF` | `import:fdf` | |
+| `ImportXFDF` | `import:xfdf` | JAVA-BUGS 76 |
+| `ExtractXMP` | `export:xmp` | |
+| `ImageToPDF` | `fromimage` | no raster in it after all |
+
+### What was not built, and what each waits for
+
+`NotBuiltCommands` in `go/tools/notbuilt.go` is the list, the dispatcher's help
+prints it, and `TestSubcommandNamesAreJavas` checks that every name
+`PDFBox.main` registers is either built or recorded — so the two cannot drift
+apart.
+
+**Seven wait for a raster**, which is what the task file expected:
+`PDFToImage`, `PrintPDF`, `ExtractImages`, and the four `tools/imageio`
+helpers. `rendering.Backend` is the interface slice 9 defined and nothing
+implements it. **What Go draws with is a design decision outside this branch**,
+and it is named rather than taken in passing. `ImageIOUtil` and its three
+companions are `javax.imageio` writers and its metadata trees; Go's
+`image/png`, `image/jpeg` and a TIFF library are a substitution worth choosing
+once there is a raster to write.
+
+**Two wait for `multipdf`**, which the task file did not expect: `PDFMerger`
+needs `PDFMergerUtility` and `OverlayPDF` needs `Overlay`, and neither is
+ported. Slice 7 deferred `PDFMergerUtility`, `LayerUtility` and `Overlay` to
+slice 8; slice 8 never took them; the coverage survey counted them as done. No
+branch claims them. See "Rows this file had wrong" above.
+
+**`Encrypt -certFile` is not built.** Public key encryption needs an X.509
+certificate and the CMS enveloping around it, and the port's
+`PublicKeySecurityHandler` already reports that its encryption half is not
+ported. The option is refused by name with what it waits for, rather than
+silently writing a password-encrypted file instead.
+
+### What this branch had to add underneath
+
+**`PDFTextStripper` could not be extended.** Java's is designed to be:
+`writeText` calls `startDocument` and `endDocument`, `writePage` calls
+`startArticle`, `endArticle`, `writeString` and `writeParagraphEnd`, and
+`PDFText2HTML` overrides seven of them. Go has no dispatch from a base into an
+embedder, so a struct embedding `*PDFTextStripper` would have overridden
+**nothing**: every override would compile, never run, and leave the suite green.
+The base now holds a `TextStripperOverrides` and calls that, defaulting to
+itself — the shape `PDFStreamEngine` already uses. `writeText(PDDocument,
+Writer)` and `getText(PDDocument)` came with it; `GetTextOfPages` had stood in
+for them while `Loader` was unported.
+
+**`PDDocument.protect` was unported.** Slice 5 ported the policies, the factory
+and both handlers, but not the method that applies one, because nothing in the
+port encrypted a document it had built. `encrypt` is the first caller.
+
+**`pdfbox/util/Version` was unported.** Java reads `pdfbox.version` out of a
+properties resource that Maven fills with `${project.version}` at build time.
+There is no Maven here and nothing substitutes anything, so the number is a
+constant with a comment saying where it comes from and what has to move with it.
+
+### The Java bugs
+
+**JAVA-BUGS 75 — `ExportXFDF` reports "this PDF does not contain a form" and
+exits 0**, where its twin `ExportFDF` returns 1 for the same condition. The two
+commands are interchangeable to a caller, and `export:xfdf` reports success
+while writing no file at all.
+
+**JAVA-BUGS 76 — `ImportXFDF` raises NullPointerException on a document with no
+form.** Its twin has a null check and this one does not, and the exception is
+unchecked, so it goes past the `catch (IOException)` that would have reported
+it. `importfdf` saves the document unchanged and answers 0; `importxfdf`
+crashes.
+
+Both are carried, and both have a test that asserts **Java's** answer rather
+than the right one, so that the port keeps carrying the difference rather than
+quietly tidying it away.
+
+### The tests
+
+Four of the six Java test classes are ported whole:
+
+| Java test | Cases | Go |
+| --- | ---: | --- |
+| `TestExtractText` | 7 | `tools/extracttext_test.go` |
+| `TestPDFText2HTML` | 2 | `tools/pdftext2html_test.go` |
+| `TestTextToPdf` | 4 | `tools/texttopdf_test.go` |
+| `PDFBoxHeadlessTest`, `PDFBoxNonHeadlessTest` | 4 | `tools/pdfbox_test.go`, rewritten — see below |
+| `imageio/TestImageIOUtils` | — | not ported: it is the raster |
+
+`testOverflow` is the one worth naming: it compares two full pages of laid-out
+Lorem ipsum against Java's expected strings, and is the only thing in the suite
+that says the line breaking and the page breaking are right.
+
+The two `PDFBox*Test` classes assert the subcommand list through picocli's
+`CommandSpec`, which has no counterpart here. What they are really asserting is
+that a name a caller types reaches the command it should, and that is what the
+ported cases assert instead.
+
+**A2 — the commands with no Java test.** Most of them. The decision was to test
+one where what the command adds over the library call underneath is its own: a
+default output name, a filter, an exit code, a page-size table, an orientation
+rule. `DecompressObjectstreams`'s `-o` default, `WriteDecodedDoc`'s
+`-skipImages` and `_unc.pdf` naming, the encrypt/decrypt round trip and the
+eight `-can` permissions, `ImageToPDF`'s page sizes, both JAVA-BUGS, and the
+whole flag surface all have one. Nothing was written for a command whose body
+is one library call with no branch of its own.
+
+### What the review checked
+
+**D1 — every ported file read against its Java.** The command bodies are short
+and the reading turned up no missing branch. What it did turn up is above: two
+commands whose twins differ from them, which are the Java bugs.
+
+**D2 — silently dropped behaviour.** Java's commands end in
+`catch (IOException ioe)` printing `"[" + ioe.getClass().getSimpleName() + "]: "
++ ioe.getMessage()`. Go has no class name for an error, so the port prints the
+error itself and keeps the exit code, which is the part a caller acts on. Said
+at each site. `ExtractText`'s "you do not have permission" returns 1 from inside
+a try-with-resources; the port raises a sentinel so the two resources are still
+released and `Call` turns it back into 1.
+
+**D3 — the tests are Java-derived.** Every value in the four ported classes is,
+including the two Lorem ipsum pages. Three assertions I wrote myself were wrong
+and the port was right each time, which is worth recording because the pattern
+repeated: `Encrypt` on an encrypted document (the load fails before the branch I
+was testing), `hello3.pdf` having no XMP (it has), and A4's width as a float32
+(`595.2756`, not `595.27563`). The third is now compared against the rectangle
+rather than a transcription.
+
+**D4 — every function phase B touched has a test.** The flag plumbing has
+`command_test.go`; each command has at least the case that covers what it adds
+over its library; `TextToPDF`'s layout has `testOverflow`; the dispatcher has
+five. `PDFText2Markdown`'s escaping and its bold/italic rule have their own,
+because they differ from the HTML ones in three ways that nothing else would
+catch.
+
+**D5 — the deferrals.** Nine commands, listed above with what each waits for,
+and `TestSubcommandNamesAreJavas` keeps the list honest. The `-certFile` branch
+of `Encrypt` is the tenth.
+
+**D6 — the Java bugs.** Two, both recorded and both carried. Neither is
+measured, for the reason at the top of this section.
+
+**D8 — every flag, one at a time.** The compatibility surface is the flag names,
+their defaults and what an unrecognised flag does. Each command's `Flags`
+declares the names in the order the Java declares them, with Java's description
+text, so the two can be read side by side. The two commands that are **not**
+`mixinStandardHelpOptions` have a case each proving they refuse `-V`, which is
+the difference a test of the command's own behaviour would never show. picocli's
+`arity` has two shapes with no `flag` counterpart, and both are said where they
+are: `-margins` takes its four numbers separated rather than spaced, and a
+repeatable option like `-certFile` or `ImageToPDF`'s `-i` is given again rather
+than followed by a list.
+
+**D9 — the exit codes and the streams.** 0 from a command that ran, 1 from one
+that reported a problem, 2 from arguments that did not parse, 4 from an
+`IOException`, and `ExitCode.SOFTWARE` from a panic. Every error goes to stderr:
+a tool that prints its error to stdout breaks every pipeline that reads its
+output, and four cases assert that stdout is empty on the failing path.
+
+### E — the review round
+
+Five items, all real, all fixed. Each has a case that failed before its fix.
+
+**P1 — `escapeMarkdown` split every surrogate pair.** The Markdown escape walks
+UTF-16 units, because Java's table names `*`, `<` and the two superscripts by
+their unit value; but unlike the HTML one its default branch writes the
+character *through*, and the port decoded each unit on its own. A
+supplementary-plane character came back as two U+FFFD, silently corrupting the
+output. Java appends both units to one `StringBuilder` and the pair survives to
+`toString`, so the port now keeps a `utf16Buffer` and decodes once at the end —
+in `escapeMarkdown` and in `markdownFontState`, which interleaves tags with
+characters in the same buffer for the same reason.
+`TestMarkdownKeepsASurrogatePair` uses U+1F600, whose two halves are both in the
+default branch.
+
+**`PDDocument.protect` prepared the handler, and Java's does not.** That was
+mine, not a port of anything: Java's `protect` installs the handler and stops,
+and `COSWriter` prepares the document on every save. Doing it in both places ran
+the password hashing twice and threw the first result away, regenerating the
+revision 6 keys and salts. `TestProtectDoesNotPrepareTheHandler` checks the
+encryption dictionary has no `/Filter` and no `/R` straight after `protect`, and
+has them after the save.
+
+**`-lineSpacing` accepted zero and negatives.** Java's `call()` routes the
+parsed value through `setLineSpacing`, which throws `IllegalArgumentException`
+for anything `<= 0`; it is the only setter of that class that validates, and the
+port set the field directly. Zero gives overlapping lines and a negative walks
+up the page. The port panics as the unchecked exception, and `Execute` answers
+`ExitCode.SOFTWARE` as picocli does.
+
+**A 16 MiB cap on a line.** `bufio.Scanner` has a maximum token size and
+`BufferedReader.readLine` has none, so a longer line failed the conversion
+outright instead of being wrapped to the page width. `bufio.ScanLines` was
+already wrong for a second reason — it leaves a lone `\r` inside a line — so the
+port now reads lines itself, in `javaLineReader`.
+
+**The dispatcher split on a subcommand name wherever it appeared.** picocli
+knows each option's arity, so `pdfbox decrypt -i version` gives `-i` the file
+called `version`; the port started the `version` command and left `-i` with no
+value. And `pdfbox help decrypt`, which the footer advertises, printed the
+global help and then ran `decrypt` with no arguments. `split` now asks the
+command's own flag set which options take a separate value, and treats the one
+argument after `help` as its parameter — which it has to, because that argument
+is a subcommand name.

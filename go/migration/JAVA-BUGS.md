@@ -3220,3 +3220,95 @@ against `getTag({1: 2, 3: 4})` = `AAAAAL+` for an ordinary map. Go's `%` keeps
 the sign of the dividend exactly as Java's does, so the port reaches the same
 -23 and panics. `TestSubsetTagMatchesJava` in `truetypeembedder_test.go` holds
 both, with the Java values as the wanted ones.
+
+---
+
+## 75. `ExportXFDF` reports "this PDF does not contain a form" and exits 0
+
+**Where** `tools/src/main/java/org/apache/pdfbox/tools/ExportXFDF.java`, `call`.
+
+`ExportFDF` and `ExportXFDF` are the same class twice over, differing in the
+extension and which save they call. They differ in one more thing:
+
+```java
+// ExportFDF
+if( form == null )
+{
+    SYSERR.println( "Error: This PDF does not contain a form." );
+    return 1;
+}
+
+// ExportXFDF
+if( form == null )
+{
+    SYSERR.println( "Error: This PDF does not contain a form." );
+}
+```
+
+`ExportXFDF` falls out of the `if`, past the `else`, and reaches the `return 0`
+at the end of `call`.
+
+**What correct would be** `return 1`, as its twin does. Nothing else in either
+class differs on this path, and the message says it is an error.
+
+**Why it matters** the two commands are used interchangeably — `export:fdf` and
+`export:xfdf` differ only in the format the caller wants — and a script that
+checks the exit code gets a different answer from each for the same document.
+`export:xfdf` reports success while writing no file at all, which is the worst
+of the three possible outcomes.
+
+**Where the Go carries it** `go/tools/fdfcommands.go`, `noFormExit`, which is
+the one thing `exportForm` does not share between the two callers. Said there.
+
+**Confidence** certain, from the source: it is a missing statement, not a
+subtlety. Not measured, because the `tools` module cannot be run in this
+environment — picocli is not in the local Maven repository and there is no
+network to fetch it.
+
+---
+
+## 76. `ImportXFDF` raises NullPointerException on a document with no form
+
+**Where** `tools/src/main/java/org/apache/pdfbox/tools/ImportXFDF.java`,
+`importFDF`.
+
+```java
+// ImportFDF
+public void importFDF( PDDocument pdfDocument, FDFDocument fdfDocument ) throws IOException
+{
+    PDDocumentCatalog docCatalog = pdfDocument.getDocumentCatalog();
+    PDAcroForm acroForm = docCatalog.getAcroForm();
+    if (acroForm == null)
+    {
+        return;
+    }
+    acroForm.setCacheFields( true );
+    ...
+
+// ImportXFDF
+public void importFDF( PDDocument pdfDocument, FDFDocument fdfDocument ) throws IOException
+{
+    PDDocumentCatalog docCatalog = pdfDocument.getDocumentCatalog();
+    PDAcroForm acroForm = docCatalog.getAcroForm();
+    acroForm.setCacheFields( true );
+    ...
+```
+
+`getAcroForm()` answers null for a document with no `/AcroForm`, and the second
+one dereferences it.
+
+**What correct would be** the null check its twin has. `call` catches
+`IOException`; NullPointerException is unchecked and goes past it, so the
+command dies with a stack trace rather than the "Error importing XFDF data"
+message every other failure gets.
+
+**Why it matters** importing form data into a document that has no form is an
+ordinary mistake, and it is the one case this command handles worst: `importfdf`
+saves the document unchanged and answers 0, `importxfdf` crashes.
+
+**Where the Go carries it** `go/tools/fdfcommands.go`,
+`ImportXFDF.ImportFDFInto`, which dereferences the nil the same way and panics —
+which is what this port renders an unchecked exception as. Said at the site.
+
+**Confidence** certain, from the source. Not measured, for the reason entry 75
+gives.

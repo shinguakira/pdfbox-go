@@ -1,6 +1,9 @@
 package pdmodel
 
 import (
+	"fmt"
+	"log/slog"
+
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
@@ -75,3 +78,34 @@ func (d *PDDocument) String() string { return "PDDocument" }
 func (d *PDDocument) CreateStream() *cos.Stream { return d.document.CreateStream() }
 
 var _ common.COSDocumentLike = (*PDDocument)(nil)
+
+// Protect applies a protection policy to this document.
+//
+// Port of protect(ProtectionPolicy). Slice 5 ported everything under it -- the
+// policies, the factory and the two handlers -- but not this method, because
+// nothing in the port encrypted a document it had built. The `encrypt` command
+// of track/tools is the first caller.
+func (d *PDDocument) Protect(policy encryption.ProtectionPolicy) error {
+	if d.IsAllSecurityToBeRemoved() {
+		slog.Warn("pdmodel: do not call setAllSecurityToBeRemoved(true) before calling " +
+			"protect(), as protect() implies setAllSecurityToBeRemoved(false)")
+		d.SetAllSecurityToBeRemoved(false)
+	}
+
+	if !d.IsEncrypted() {
+		d.encryption = encryption.NewPDEncryption()
+	}
+
+	securityHandler := encryption.SecurityHandlerFactoryInstance.NewSecurityHandlerForPolicy(policy)
+	if securityHandler == nil {
+		return fmt.Errorf("No security handler for policy %v", policy)
+	}
+
+	// Java installs the handler and stops here. Preparing the document is the
+	// writer's job -- COSWriter calls prepareDocumentForEncryption on every
+	// save -- and doing it here as well would run the password hashing twice
+	// and throw the first result away, regenerating the revision 6 keys and
+	// salts in the process.
+	d.Encryption().SetSecurityHandler(securityHandler)
+	return nil
+}
