@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
@@ -31,6 +32,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font/encoding"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/text"
+	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
 
 // Where the Java test's fonts are. Java reaches them through the classpath;
@@ -482,4 +484,154 @@ func TestSimpleTrueTypeFontEmbedding(t *testing.T) {
 			t.Errorf("the width of 'A' is %d, want a positive advance", got)
 		}
 	}
+}
+
+// TestSubsetKeepsTheGlyphsThatWereAskedFor is the other half of the branch's
+// D8: read a document the port wrote back with the port's own fontbox parser,
+// and check the glyphs the subset kept are the glyphs the text asked for.
+//
+// A subsetted CIDFontType2 has no cmap -- the subsetter keeps ten tables and
+// cmap is not one of them -- so the way in is /CIDToGIDMap, which this branch
+// writes: the CID is the original font's glyph id, and the entry it indexes is
+// the id the same glyph has in the subset. The outline behind it has to be the
+// outline the original font had for that character.
+func TestSubsetKeepsTheGlyphsThatWereAskedFor(t *testing.T) {
+	const message = "Unicode русский язык Tiếng Việt"
+
+	document := pdmodel.NewPDDocument()
+	page := pdmodel.NewPDPageOfSize(common.A4)
+	document.AddPage(page)
+	embedded, err := font.LoadPDType0FontSubset(document, openFont(t, liberationSans), true)
+	if err != nil {
+		t.Fatalf("LoadPDType0FontSubset: %v", err)
+	}
+	writeText(t, document, page, embedded, 12, 50, 600, message)
+
+	var out bytes.Buffer
+	if err := document.Save(&out); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := document.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// The original, to compare against.
+	original, err := ttf.NewParser().Parse(mustOpenRead(t, liberationSans))
+	if err != nil {
+		t.Fatalf("parsing the original: %v", err)
+	}
+	defer original.Close()
+	originalCmap, err := original.UnicodeCmapLookup(true)
+	if err != nil {
+		t.Fatalf("UnicodeCmapLookup: %v", err)
+	}
+	originalGlyf, err := original.Glyph()
+	if err != nil {
+		t.Fatalf("Glyph: %v", err)
+	}
+
+	reloaded, err := pdfbox.LoadPDFBytes(out.Bytes())
+	if err != nil {
+		t.Fatalf("LoadPDFBytes: %v", err)
+	}
+	defer reloaded.Close()
+
+	names := reloaded.Page(0).Resources().FontNames()
+	if len(names) != 1 {
+		t.Fatalf("the reloaded page has %d fonts, want 1", len(names))
+	}
+	reloadedFont, err := reloaded.Page(0).Resources().GetFont(names[0])
+	if err != nil {
+		t.Fatalf("GetFont: %v", err)
+	}
+	type0, ok := reloadedFont.(*font.PDType0Font)
+	if !ok {
+		t.Fatalf("the reloaded font is %T, want *font.PDType0Font", reloadedFont)
+	}
+	if !type0.IsEmbedded() {
+		t.Fatal("the reloaded font is not embedded")
+	}
+	descendant, ok := type0.DescendantFont().(*font.PDCIDFontType2)
+	if !ok {
+		t.Fatalf("the descendant is %T, want *font.PDCIDFontType2", type0.DescendantFont())
+	}
+
+	// Parse the /FontFile2 this branch wrote with the port's own parser.
+	program := descendant.FontDescriptor().FontFile2()
+	if program == nil {
+		t.Fatal("the reloaded descendant has no /FontFile2")
+	}
+	programBytes, err := program.ToByteArray()
+	if err != nil {
+		t.Fatalf("reading /FontFile2: %v", err)
+	}
+	// The same call PDCIDFontType2 makes for an embedded program: a subsetted
+	// font is missing post, cmap and name, and only the lenient parser takes it.
+	subset, err := ttf.NewParserEmbedded(true).Parse(pdfio.NewReadBufferBytes(programBytes))
+	if err != nil {
+		t.Fatalf("parsing the embedded subset: %v", err)
+	}
+	defer subset.Close()
+	subsetGlyf, err := subset.Glyph()
+	if err != nil {
+		t.Fatalf("the subset has no glyf table: %v", err)
+	}
+
+	seen := map[rune]bool{}
+	for _, r := range message {
+		if seen[r] {
+			continue
+		}
+		seen[r] = true
+
+		// Identity-H: the code is the CID, and for a subset the CID is the
+		// original font's glyph id.
+		cid := originalCmap.GetGlyphID(int(r))
+		if cid == 0 {
+			t.Errorf("the original font has no glyph for %q", r)
+			continue
+		}
+		gid, err := descendant.CodeToGID(cid, type0)
+		if err != nil {
+			t.Errorf("CodeToGID(%d) for %q: %v", cid, r, err)
+			continue
+		}
+		if gid == 0 {
+			t.Errorf("/CIDToGIDMap maps CID %d (%q) to glyph 0; the subset dropped it", cid, r)
+			continue
+		}
+
+		want, err := originalGlyf.GetGlyph(cid)
+		if err != nil {
+			t.Fatalf("the original glyph %d: %v", cid, err)
+		}
+		got, err := subsetGlyf.GetGlyph(gid)
+		if err != nil {
+			t.Fatalf("the subset glyph %d: %v", gid, err)
+		}
+		if got == nil {
+			t.Errorf("the subset has no outline at glyph %d, for %q", gid, r)
+			continue
+		}
+		if got.NumberOfContours() != want.NumberOfContours() ||
+			got.XMinimum() != want.XMinimum() || got.YMinimum() != want.YMinimum() ||
+			got.XMaximum() != want.XMaximum() || got.YMaximum() != want.YMaximum() {
+			t.Errorf("the subset glyph %d for %q is %d contours in (%d,%d)-(%d,%d); "+
+				"the original glyph %d is %d contours in (%d,%d)-(%d,%d)",
+				gid, r, got.NumberOfContours(), got.XMinimum(), got.YMinimum(),
+				got.XMaximum(), got.YMaximum(),
+				cid, want.NumberOfContours(), want.XMinimum(), want.YMinimum(),
+				want.XMaximum(), want.YMaximum())
+		}
+	}
+}
+
+// mustOpenRead opens a font file as a RandomAccessRead.
+func mustOpenRead(t *testing.T, path string) pdfio.RandomAccessRead {
+	t.Helper()
+	source, err := pdfio.OpenBufferedFile(path)
+	if err != nil {
+		t.Fatalf("opening %s: %v", path, err)
+	}
+	return source
 }

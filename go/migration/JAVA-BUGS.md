@@ -1369,10 +1369,24 @@ rejects them first.
 checks `utf8.RuneCountInString(prev) == 1` and not `next`. The comment above it
 names this entry.
 
-**Confidence** high for the code reading; the failing case is derived from the
-method, not measured against a Java run, because there is no Maven in this
-environment to build PDFBox with. Every ported test of this class passes with
-the Java values.
+**Confidence** certain, and **measured** since `track/font-embedding`'s D9.
+`ToUnicodeWriter` and `util/Hex`/`util/StringUtil` compile on their own with
+`javac`, so the case above was run: for `add(0x400, "a")` and
+`add(0x401, "bc")` the running Java writes
+
+```
+1 beginbfrange
+<0400> <0401> <0061>
+endbfrange
+```
+
+with the `c` nowhere in the CMap, and answers `allowDestinationRange("a","bc")
+= true` against `allowDestinationRange("ab","c") = false`. The port writes the
+same bytes; `TestCMapDropsTheTailOfALongerDestination` in
+`tounicodewriter_test.go` holds both, with the Java output as the wanted value.
+(This entry previously said the case was derived rather than measured, "because
+there is no Maven in this environment" — Maven is not needed for a class whose
+only dependency is two utility classes.)
 
 ---
 

@@ -93,8 +93,7 @@ func (e *pdTrueTypeFontEmbedder) setWidths(font *cos.Dictionary,
 			charCode := firstCodePointOf(uni)
 			gid = e.cmapLookup.GetGlyphID(charCode)
 		}
-		widths[code-firstChar] = int(math.Round(
-			float64(float32(hmtx.AdvanceWidth(gid)) * scaling)))
+		widths[code-firstChar] = int(javaRound(float32(hmtx.AdvanceWidth(gid)) * scaling))
 	}
 
 	font.SetInt(cos.FirstChar, firstChar)

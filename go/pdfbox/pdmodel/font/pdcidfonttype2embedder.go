@@ -13,6 +13,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/shinguakira/pdfbox-go/go/fontbox/cff"
 	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -260,8 +261,12 @@ func (e *pdCIDFontType2Embedder) createCIDFont() (*cos.Dictionary, error) {
 		}
 	}
 
-	if _, isOpenType := any(e.ttf).(*ttf.OpenTypeFont); isOpenType && !e.NeedsSubset() {
-		if err := e.checkForCidGidIdentity(); err != nil {
+	// `ttf instanceof OpenTypeFont`. A Go type assertion cannot say it:
+	// OpenTypeFont embeds *TrueTypeFont rather than extending it, so the field
+	// never holds one. AsOpenType is the port's standing answer, and
+	// pdcidfonttype2.go asks the same question the same way.
+	if otf := e.ttf.AsOpenType(); otf != nil && !e.NeedsSubset() {
+		if err := e.checkForCidGidIdentity(otf); err != nil {
 			return nil, err
 		}
 	}
@@ -272,12 +277,39 @@ func (e *pdCIDFontType2Embedder) createCIDFont() (*cos.Dictionary, error) {
 	return cidFont, nil
 }
 
-// checkForCidGidIdentity is PDFBOX-6172: where a font is an OpenType font that
-// is not being subset, check that its CIDs and GIDs are the same, because a
-// subsetted one would fail anyway.
-func (e *pdCIDFontType2Embedder) checkForCidGidIdentity() error {
-	// The port reaches this only for an OpenTypeFont, which carries the CFF
-	// table this reads.
+// checkForCidGidIdentity is PDFBOX-6172: if somebody is using a not subsetted
+// otf font, check whether cid == gid (subsetted will fail anyway).
+func (e *pdCIDFontType2Embedder) checkForCidGidIdentity(otf *ttf.OpenTypeFont) error {
+	// Java calls getCFF() unguarded, and it throws UnsupportedOperationException
+	// -- unchecked -- for an OTF whose outlines are glyf rather than CFF. The
+	// port panics there for the same reason.
+	cffTable, err := otf.CFF()
+	if err != nil {
+		return err
+	}
+	if cffTable == nil {
+		return nil
+	}
+	cidKeyed, isCIDKeyed := cffTable.Font().(*cff.CFFCIDFont)
+	if !isCIDKeyed {
+		return nil
+	}
+	charset := cidKeyed.Charset()
+	if charset == nil {
+		return nil
+	}
+	glyphCount, err := otf.NumberOfGlyphs()
+	if err != nil {
+		return err
+	}
+	for gid := 0; gid < glyphCount; gid++ {
+		cid := charset.CIDForGID(gid)
+		if gid != cid {
+			// Java throws IllegalStateException, which is unchecked.
+			panic(fmt.Sprintf("CID and GID not identical: CID %d != GID %d, "+
+				"use a ttf font instead", cid, gid))
+		}
+	}
 	return nil
 }
 
@@ -365,7 +397,7 @@ func (e *pdCIDFontType2Embedder) buildWidthsOfSubset(cidToGid map[int]int) error
 	// Use a sorted list to get an optimal width array
 	for _, cid := range sortedCIDs(cidToGid) {
 		gid := cidToGid[cid]
-		width := int64(math.Round(float64(float32(hmtx.AdvanceWidth(gid)) * scaling)))
+		width := int64(javaRound(float32(hmtx.AdvanceWidth(gid)) * scaling))
 		if width == 1000 {
 			// skip default width
 			continue
@@ -410,8 +442,8 @@ func (e *pdCIDFontType2Embedder) buildVerticalHeader(cidFont *cos.Dictionary) (b
 		return false, err
 	}
 
-	v := int64(math.Round(float64(float32(vhea.Ascender()) * scaling)))
-	w1 := int64(math.Round(float64(float32(-vhea.AdvanceHeightMax()) * scaling)))
+	v := int64(javaRound(float32(vhea.Ascender()) * scaling))
+	w1 := int64(javaRound(float32(-vhea.AdvanceHeightMax()) * scaling))
 	if v != 880 || w1 != -1000 {
 		cosDw2 := cos.NewArray()
 		cosDw2.Add(cos.GetInteger(v))
@@ -454,8 +486,8 @@ func (e *pdCIDFontType2Embedder) buildVerticalMetricsOfSubset(cidToGid map[int]i
 		return err
 	}
 
-	vY := int64(math.Round(float64(float32(vhea.Ascender()) * scaling)))
-	w1 := int64(math.Round(float64(float32(-vhea.AdvanceHeightMax()) * scaling)))
+	vY := int64(javaRound(float32(vhea.Ascender()) * scaling))
+	w1 := int64(javaRound(float32(-vhea.AdvanceHeightMax()) * scaling))
 
 	heights := cos.NewArray()
 	w2 := cos.NewArray()
@@ -471,9 +503,9 @@ func (e *pdCIDFontType2Embedder) buildVerticalMetricsOfSubset(cidToGid map[int]i
 		if glyph == nil {
 			continue
 		}
-		height := int64(math.Round(float64(
-			float32(int(glyph.YMaximum())+vmtx.TopSideBearing(cid)) * scaling)))
-		advance := int64(math.Round(float64(float32(-vmtx.AdvanceHeight(cid)) * scaling)))
+		height := int64(javaRound(
+			float32(int(glyph.YMaximum())+vmtx.TopSideBearing(cid)) * scaling))
+		advance := int64(javaRound(float32(-vmtx.AdvanceHeight(cid)) * scaling))
 		if height == vY && advance == w1 {
 			// skip default metrics
 			continue
@@ -485,7 +517,7 @@ func (e *pdCIDFontType2Embedder) buildVerticalMetricsOfSubset(cidToGid map[int]i
 			heights.Add(w2)
 		}
 		w2.Add(cos.GetInteger(advance)) // w1_iy
-		width := int64(math.Round(float64(float32(hmtx.AdvanceWidth(cid)) * scaling)))
+		width := int64(javaRound(float32(hmtx.AdvanceWidth(cid)) * scaling))
 		w2.Add(cos.GetInteger(width / 2)) // v_ix
 		w2.Add(cos.GetInteger(height))    // v_iy
 		prev = cid
@@ -522,7 +554,8 @@ func (e *pdCIDFontType2Embedder) buildWidths(cidFont *cos.Dictionary) error {
 // getWidths compresses a cid/width sequence into the /W array's runs.
 func (e *pdCIDFontType2Embedder) getWidths(widths []int) (*cos.Array, error) {
 	if len(widths) < 2 {
-		return nil, fmt.Errorf("length of widths must be >= 2")
+		// Java throws IllegalArgumentException, which is unchecked.
+		panic("length of widths must be >= 2")
 	}
 
 	scaling, err := e.unitsScaling()
@@ -531,7 +564,7 @@ func (e *pdCIDFontType2Embedder) getWidths(widths []int) (*cos.Array, error) {
 	}
 
 	lastCid := int64(widths[0])
-	lastValue := int64(math.Round(float64(float32(widths[1]) * scaling)))
+	lastValue := int64(javaRound(float32(widths[1]) * scaling))
 
 	inner := cos.NewArray()
 	outer := cos.NewArray()
@@ -541,7 +574,7 @@ func (e *pdCIDFontType2Embedder) getWidths(widths []int) (*cos.Array, error) {
 
 	for i := 2; i < len(widths)-1; i += 2 {
 		cid := int64(widths[i])
-		value := int64(math.Round(float64(float32(widths[i+1]) * scaling)))
+		value := int64(javaRound(float32(widths[i+1]) * scaling))
 
 		switch state {
 		case stateFirst:
@@ -649,7 +682,8 @@ func (e *pdCIDFontType2Embedder) buildVerticalMetrics(cidFont *cos.Dictionary) e
 // runs.
 func (e *pdCIDFontType2Embedder) getVerticalMetrics(values []int) (*cos.Array, error) {
 	if len(values) < 4 {
-		return nil, fmt.Errorf("length of values must be at least 4")
+		// Java throws IllegalArgumentException, which is unchecked.
+		panic("length of values must be at least 4")
 	}
 
 	scaling, err := e.unitsScaling()
@@ -658,9 +692,9 @@ func (e *pdCIDFontType2Embedder) getVerticalMetrics(values []int) (*cos.Array, e
 	}
 
 	lastCid := int64(values[0])
-	lastW1Value := int64(math.Round(float64(float32(-values[1]) * scaling)))
-	lastVxValue := int64(math.Round(float64(float32(values[2]) * scaling / 2)))
-	lastVyValue := int64(math.Round(float64(float32(values[3]) * scaling)))
+	lastW1Value := int64(javaRound(float32(-values[1]) * scaling))
+	lastVxValue := int64(javaRound(float32(values[2]) * scaling / 2))
+	lastVyValue := int64(javaRound(float32(values[3]) * scaling))
 
 	inner := cos.NewArray()
 	outer := cos.NewArray()
@@ -674,9 +708,9 @@ func (e *pdCIDFontType2Embedder) getVerticalMetrics(values []int) (*cos.Array, e
 			// no glyph for this cid
 			continue
 		}
-		w1Value := int64(math.Round(float64(float32(-values[i+1]) * scaling)))
-		vxValue := int64(math.Round(float64(float32(values[i+2]) * scaling / 2)))
-		vyValue := int64(math.Round(float64(float32(values[i+3]) * scaling)))
+		w1Value := int64(javaRound(float32(-values[i+1]) * scaling))
+		vxValue := int64(javaRound(float32(values[i+2]) * scaling / 2))
+		vyValue := int64(javaRound(float32(values[i+3]) * scaling))
 
 		switch state {
 		case stateFirst:

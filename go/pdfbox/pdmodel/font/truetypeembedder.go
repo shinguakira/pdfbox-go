@@ -450,7 +450,7 @@ func createFontDescriptor(font *ttf.TrueTypeFont) (*PDFontDescriptor, error) {
 			return nil, err
 		}
 		if capHPath != nil {
-			fd.SetCapHeight(float32(math.Round(float64(capHPath.Bounds2D().MaxY()))) * scaling)
+			fd.SetCapHeight(float32(javaRoundLong(capHPath.Bounds2D().MaxY())) * scaling)
 		} else {
 			// estimate by summing the typographical +ve ascender and -ve
 			// descender
@@ -461,7 +461,7 @@ func createFontDescriptor(font *ttf.TrueTypeFont) (*PDFontDescriptor, error) {
 			return nil, err
 		}
 		if xPath != nil {
-			fd.SetXHeight(float32(math.Round(float64(xPath.Bounds2D().MaxY()))) * scaling)
+			fd.SetXHeight(float32(javaRoundLong(xPath.Bounds2D().MaxY())) * scaling)
 		} else {
 			// estimate by halving the typographical ascender
 			fd.SetXHeight(float32(os2.TypoAscender()) / 2.0 * scaling)
@@ -472,4 +472,20 @@ func createFontDescriptor(font *ttf.TrueTypeFont) (*PDFontDescriptor, error) {
 	fd.SetStemV(fd.FontBoundingBox().Width() * .13)
 
 	return fd, nil
+}
+
+// javaRound is java.lang.Math.round(float): the closest int, with a tie going
+// towards positive infinity. Go's math.Round takes a tie away from zero, which
+// is the other direction for a negative value -- and every /W2 entry of a
+// vertical font is a negated metric.
+//
+// The widening to float64 before the +0.5 is what keeps the two apart at the
+// one input floor(x + 0.5f) gets wrong in float arithmetic.
+func javaRound(v float32) int {
+	return int(math.Floor(float64(v) + 0.5))
+}
+
+// javaRoundLong is java.lang.Math.round(double), which answers a long.
+func javaRoundLong(v float64) int64 {
+	return int64(math.Floor(v + 0.5))
 }
