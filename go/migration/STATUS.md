@@ -25,7 +25,7 @@ Last updated: 2026-09-06
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `tools` | 26 | **22 of 26**, finished by `track/tools` as far as it could go and then by `track/imageio`, which took five: the four `tools/imageio` classes and `ExtractImages`. The four left are 2 for `track/multipdf` and 2 for `track/raster`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
+| 7 | `tools` | 26 | **24 of 26**, finished by `track/tools` as far as it could go and then by `track/imageio`, which took five: the four `tools/imageio` classes and `ExtractImages`. Then by `track/multipdf`, which took `PDFMerger` and `OverlayPDF`, so it is **24 of 26** and the two left are `track/raster`'s. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
@@ -67,7 +67,7 @@ group is a gap.
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
 | `tools`, `tools/imageio` | 26 | **22 done** — `track/tools`, then `track/imageio`. Four left: see its section |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
-| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **`track/multipdf`.** This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last four tracks were planned, and the miss is why the audit at the end of this file replaces this survey |
+| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **done** — `track/multipdf`, which also finished `Splitter`. This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last four tracks were planned, and the miss is why the audit at the end of this file replaces this survey |
 
 `io`, `fontbox` and `xmpbox` have no unported class at all.
 
@@ -1959,16 +1959,16 @@ the catalogue, which Java's constructor does, and it hands the document a
 passes the provider in, which is what keeps `cos` from importing `filter`, and
 without it a document built in memory could not write a Flate stream.
 
-### `pdfbox/multipdf` — 3 of 6 files
+### `pdfbox/multipdf` — **6 of 6 files**, finished by `track/multipdf`
 
 | Java file | Go file | Notes |
 | --- | --- | --- |
 | `PDFCloneUtility.java` | `pdfcloneutility.go` | done |
 | `PageExtractor.java` | `pageextractor.go` | done |
-| `Splitter.java` | `splitter.go` | the page splitting, not the structure tree — see below |
-| `PDFMergerUtility.java` | — | **deferred to slice 8** |
-| `LayerUtility.java` | — | **deferred to slice 8** |
-| `Overlay.java` | — | **deferred to slice 8** |
+| `Splitter.java` | `splitter.go`, `splitter_structure.go`, `splitter_kcloner.go` | done — the last two are `track/multipdf`'s; see below |
+| `PDFMergerUtility.java` | `pdfmergerutility.go`, `pdfmergerutility_structure.go` | done — `track/multipdf` |
+| `LayerUtility.java` | `layerutility.go` | done — `track/multipdf` |
+| `Overlay.java` | `overlay.go` | done — `track/multipdf` |
 
 `PDFMergerUtility` names 12 types from `pdmodel/interactive` and
 `pdmodel/documentinterchange/logicalstructure` — acroforms, annotations,
@@ -1977,16 +1977,28 @@ actions, destinations, outlines, the structure tree, viewer preferences — and
 `Overlay` needs `graphics/form/PDFormXObject`, which in turn needs
 `PDPropertyList`. All of that is slice 8's subtree.
 
-`Splitter` is ported as far as the same wall. `split`, `processPages`,
-`createNewDocumentIfNecessary`, `splitAtPage`, `createNewDocument`,
-`processPage` and the three setters are here, so the pages, their content and
-their resources are split exactly as Java splits them. Seven private methods are
-not: `fixDestinations`, `cloneStructureTree`, `cloneIDTree`, `cloneRoleMap`,
-`cloneTreeElement`, `processResources` and `processAnnotations`. What a split
-therefore leaves behind is the structure tree, the outline destinations and the
-annotations. The four `createNewDocument` catalogue copies — viewer preferences,
-language, mark info, metadata — are in the same position. Every one of them is
-named in the type comment on `Splitter`.
+The paragraph above is slice 7's, and every deferral in it is closed:
+`track/multipdf` ported all three classes. What follows is what it found on the
+way.
+
+**`Splitter` was ported as far as the same wall, and this branch took it the
+rest of the way.** Slice 7 left out seven private methods —
+`fixDestinations`, `cloneStructureTree`, `cloneIDTree`, `cloneRoleMap`,
+`cloneTreeElement`, `processResources` and `processAnnotations` — along with
+the `KCloner` inner class and the four catalogue copies of
+`createNewDocument`, on the ground that all of them work on
+`pdmodel/interactive` and `documentinterchange/logicalstructure`, which slice 8
+would bring. Slice 8 and slice 9 merged and nothing came back for them: a split
+still left the structure tree, the outline destinations and the annotations
+behind, and a split document lost its viewer preferences, its language, its
+mark info and its metadata.
+
+**`PDFMergerUtilityTest` is what found it.** Eight of that class's thirty cases
+split a tagged document and check what came with it, and they sit in the
+merger's test class because they use its structure-tree helpers —
+`checkForPageOrphans` and the two static tree flatteners. So they could not be
+ported until this branch brought the flatteners, and once brought, they failed.
+Seven of the eight pass now; the eighth reads `target/pdfs`.
 
 ### Which Java tests are ported, and which are not
 
@@ -1999,10 +2011,12 @@ named in the type comment on `Splitter`.
 | `COSWriterCompressionPoolTest` | — | needs `PDDocumentOutline` and `PDOutlineItem` — slice 8 |
 | `COSDocumentCompressionTest` | — | all 5 need `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox` or `protect` |
 | `ContentStreamWriterTest` | — | needs `PDFRenderer` and `TestPDFToImage` — slice 9 |
-| `PDFCloneUtilityTest` | — | all 3 need `PDPageContentStream`, `PDFMergerUtility` or `PDOptionalContentProperties` |
-| `OverlayTest` | — | needs `PDPageContentStream` and `PDFRenderer` |
-| `TestLayerUtility` | — | needs `LayerUtility` |
-| `MergeAcroFormsTest`, `MergeAnnotationsTest`, `PDFMergerUtilityTest` | — | need `PDFMergerUtility` |
+| `PDFCloneUtilityTest` | `multipdf/pdfcloneutility_test.go` | all 3 — `track/multipdf` |
+| `OverlayTest` | `multipdf/overlay_test.go` | all 3 — `track/multipdf`, comparing content streams where the Java compares pixels |
+| `TestLayerUtility` | `multipdf/layerutility_test.go` | complete — `track/multipdf` |
+| `PDFMergerUtilityTest` | `multipdf/pdfmergerutility_test.go`, `multipdf/splitwithstructure_test.go` | 22 of 30 — `track/multipdf`; the other 8 read `target/pdfs` |
+| `MergeAcroFormsTest` | `multipdf/mergeacroforms_test.go` | 1 of 3 — the other 2 read `target/pdfs` |
+| `MergeAnnotationsTest` | — | its one case reads `target/pdfs` |
 | `TestFontEmbedding` | — | needs `PDPageContentStream` and `TestPDFToImage`; the other half of slice 3's A3 deferral |
 
 `COSWriterTest`'s two that are not ported: `testPDFBox5945` builds an AcroForm
@@ -5342,7 +5356,7 @@ the audit recorded at the end of this file.
 | --- | ---: | --- | --- |
 | `track/stale-deferrals` | 3 test classes, 3 methods | nothing | article beads, `sh`, public-key encryption |
 | `track/imageio` | 5 | nothing | **done** — `export:images` |
-| `track/multipdf` | 5 + 1 test | nothing | `merge`, `overlay` |
+| `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay` |
 | `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
 
 **`track/imageio` is on the critical path and `track/multipdf` is not.**
@@ -5875,3 +5889,73 @@ had to agree before that lands.
 image: a `SubImage` shares its parent's buffer and stride and its slice runs to
 the end of that buffer. One grey pixel outside the bounds would send a bitonal
 image out at eight bits per pixel instead of one. It walks the rows now.
+
+## Track `multipdf` — D7, the adversarial review
+
+Read every ported file against its Java. `multipdf` is 37 passing tests now,
+across six Java test classes.
+
+### What was found and fixed
+
+**`mergeOpenAction` read both open actions where Java reads one.** Java puts
+both `getOpenAction()` calls inside one `try` and catches an `IOException` out
+of either, so when the *destination's* throws, the source's is never assigned:
+both locals stay null and the block does nothing. Two Go calls that each answer
+an error leave both values in hand, so the port merged a source open action
+into a destination whose own could not be read. It now says what the Java's
+control flow says.
+
+**`GetIDTreeAsMap` walked a nil kids list.** `PDNameTreeNode.getKids()` answers
+nil where Java's returns null and is checked; found by running
+`testStructureTreeMerge4`.
+
+**`mergeThreads` handed a typed nil to `cloneForNewDocument`.** A nil
+`*cos.Array` inside a `cos.Base` is not a nil `cos.Base`, so the guard the Java
+method opens with -- `if (base == null) return null` -- does not fire on one.
+Java reaches it because a Java null is a null whatever its static type; the port
+has to not make the call. Found by running `testClonePDFWithCosArrayStream2`.
+
+**`PDAnnotationPopup.Parent()` could not answer a subclass.** Java's
+`(PDAnnotationMarkup)` is a cast and every markup annotation satisfies it; the
+port narrowed with a Go type assertion to `*PDAnnotationMarkup`, which a
+`*PDAnnotationText` does not satisfy -- it embeds one. So a popup whose
+`/Parent` was a text annotation answered nil and logged an error.
+`PDAnnotationMarkup` now has `MarkupAnnotation()`, promoted onto every
+subclass, and the assertion is on that. The defect is slice 8's and the test is
+in the annotation package, where it lives.
+
+**`Splitter` was half a port.** See the `pdfbox/multipdf` section above.
+
+### What was checked and found sound
+
+- Every method of `PDFMergerUtility`, `Overlay` and `LayerUtility` is ported,
+  in the order `appendDocument` runs them, including the three the Java gets
+  wrong (JAVA-BUGS.md 82, 83, 84).
+- Every `finally`: `optimizedMergeDocuments` closes each source however the
+  loop leaves, `legacyMergeDocuments` closes and logs, `Overlay.Close` closes
+  the six named documents and then the ones it opened, and the two content
+  streams `LayerUtility` writes are closed on the error path.
+- Every place Java logs and swallows -- the metadata that could not be read
+  (PDFBOX-4227), the invalid open action (PDFBOX-4223), the page label index
+  that is not a number, the /IDTree and /RoleMap keys that already exist, the
+  orphan annotation -- swallows in the port too, and nothing that Java throws
+  became a log.
+- `mergeInto`'s exclusion set is compared by pointer, which is sound because
+  `cos.Name` is interned.
+- The four numbers `PDFMergerUtilityTest` pins -- 104 structure elements
+  doubling to 208, 192 IDTree entries, page index 4 for the open action, the
+  126/2/6 and 7/4 and six-way ParentTree and RoleMap counts of the splits --
+  all come out of the port unchanged.
+
+### What is still open
+
+- Twelve of `PDFMergerUtilityTest`'s thirty cases, two of three of
+  `MergeAcroFormsTest` and the one of `MergeAnnotationsTest` read `target/pdfs`,
+  which the Maven build downloads. Listed in the file comment of each ported
+  test.
+- The pixel half of `OverlayTest` and of `checkMergeIdentical`. The port
+  compares content streams and form XObjects instead, against the same model
+  files; what a renderer would add is a second opinion on identical marks.
+- `PDFMergerUtility` writes the destination's own /Threads back into itself and
+  never merges the source's, never writes /UserProperties, and never merges the
+  /PageMode. All three are the Java's; JAVA-BUGS.md 82, 83 and 84.

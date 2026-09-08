@@ -47,9 +47,4 @@ type NotBuilt struct {
 var NotBuiltCommands = []NotBuilt{
 	{Java: "PDFToImage", Name: "render", Waiting: "a rendering.Backend implementation"},
 	{Java: "PrintPDF", Name: "print", Waiting: "a rendering.Backend implementation"},
-
-	{Java: "PDFMerger", Name: "merge",
-		Waiting: "multipdf/PDFMergerUtility, which track/multipdf claims"},
-	{Java: "OverlayPDF", Name: "overlay",
-		Waiting: "multipdf/Overlay, which track/multipdf claims"},
 }

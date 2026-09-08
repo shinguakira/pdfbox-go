@@ -28,11 +28,12 @@ func TestSubcommandNamesAreJavas(t *testing.T) {
 		"import:fdf": true, "import:xfdf": true,
 		"split": true, "fromimage": true, "fromtext": true,
 		"version": true,
+		"merge":   true,
+		"overlay": true,
 	}
 	// And the ones it registers that this port does not build.
 	notBuilt := map[string]bool{
-		"overlay": true, "print": true,
-		"render": true, "merge": true,
+		"print": true, "render": true,
 	}
 
 	got := map[string]bool{}
@@ -108,13 +109,15 @@ func TestAnUnknownSubcommandIsAUsageError(t *testing.T) {
 	}
 }
 
-// TestHelpNamesWhatIsNotBuilt is B10: a caller who asks for `merge` should
-// learn what it waits for, not that pdfbox has no such thing.
+// TestHelpNamesWhatIsNotBuilt is B10: a caller who asks for `render` should
+// learn what it waits for, not that pdfbox has no such thing. The commands it
+// does build are named too.
 func TestHelpNamesWhatIsNotBuilt(t *testing.T) {
 	_, out, _ := runPDFBox("help")
 	for _, want := range []string{
-		"merge", "PDFMergerUtility",
+		"merge", "overlay",
 		"render", "rendering.Backend",
+		"print",
 		"export:images",
 	} {
 		if !strings.Contains(out, want) {

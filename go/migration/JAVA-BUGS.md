@@ -3566,3 +3566,126 @@ from `tools/pom.xml` and from what the writer loop is for: the two
 `com.github.jai-imageio` jars are not in the local Maven repository and there
 is no network to fetch them, so the run with them present could not be made
 here.
+
+## 82. `PDFMergerUtility.appendDocument` merges the destination's /Threads into itself
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java`,
+`appendDocument`.
+
+```java
+COSArray destThreads = destCatalog.getCOSObject().getCOSArray(COSName.THREADS);
+COSArray srcThreads = cloner.cloneForNewDocument(destCatalog.getCOSObject().getCOSArray(
+        COSName.THREADS));
+if (destThreads == null)
+{
+    destCatalog.getCOSObject().setItem(COSName.THREADS, srcThreads);
+}
+else
+{
+    destThreads.addAll(srcThreads);
+}
+```
+
+Both lines read `destCatalog`. The variable called `srcThreads` is a clone of
+the **destination's** article thread array, not the source's, and the block
+below then appends the destination's threads to themselves.
+
+**What correct would be** `srcCatalog.getCOSObject().getCOSArray(COSName.THREADS)`
+on the second line. Every other block of `appendDocument` reads the source and
+writes the destination; this one reads the destination twice.
+
+**Why it matters** Two things, in opposite directions. A source document's
+article threads are silently dropped by every merge -- the reading order they
+describe is lost, which is what /Threads is for. And a destination that has
+threads gets them **twice**: the clone is a fresh array of fresh dictionaries,
+and `addAll` appends it, so a document merged with N others ends up with
+2^N copies of its own threads. The second is the one a user would notice.
+
+**Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility.go`,
+`mergeThreads`, which reads the destination twice and says so at the site.
+
+**Confidence** certain, from the source: the two `getCOSArray` calls are on the
+same expression, five words apart.
+
+## 83. `PDFMergerUtility.mergeMarkInfo` writes /Suspect twice and /UserProperties never
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java`,
+`mergeMarkInfo`.
+
+```java
+destMark.setMarked(true);
+destMark.setSuspect(srcMark.isSuspect() || destMark.isSuspect());
+destMark.setSuspect(srcMark.usesUserProperties() || destMark.usesUserProperties());
+destCatalog.setMarkInfo(destMark);
+```
+
+The third line reads `usesUserProperties` and writes `setSuspect`. Its setter
+should be `setUserProperties`, which `PDMarkInfo` has and nothing in this class
+calls.
+
+**What correct would be**
+`destMark.setUserProperties(srcMark.usesUserProperties() || destMark.usesUserProperties());`
+
+**Why it matters** The merged document's /MarkInfo never gets a
+/UserProperties entry, so a viewer is told that no structure element carries
+user properties even when the source said it did. And /Suspect is decided by
+the wrong question: the second call overwrites the first, so a document whose
+structure is suspect but which has no user properties comes out marked as not
+suspect. Both entries are ISO 32000-1 table 321 and both are read by assistive
+technology.
+
+**Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility_structure.go`,
+`mergeMarkInfo`, which calls `SetSuspect` twice with the same arguments in the
+same order. Said at the site.
+
+**Confidence** certain, from the source.
+
+## 84. `PDFMergerUtility` never merges the page mode, because the branch that would cannot run
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java`,
+`appendDocument`, against
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentCatalog.java`,
+`getPageMode`.
+
+```java
+PageMode destPageMode = destCatalog.getPageMode();
+if (destPageMode == null)
+{
+    PageMode srcPageMode = srcCatalog.getPageMode();
+    destCatalog.setPageMode(srcPageMode);
+}
+```
+
+`getPageMode` cannot answer null:
+
+```java
+String mode = root.getNameAsString(COSName.PAGE_MODE);
+if (mode != null)
+{
+    try { return PageMode.fromString(mode); }
+    catch (IllegalArgumentException e) { ...; return PageMode.USE_NONE; }
+}
+else
+{
+    return PageMode.USE_NONE;
+}
+```
+
+so the `if` never fires and the whole block is dead.
+
+**What correct would be** asking whether the entry is there --
+`destCatalog.getCOSObject().containsKey(COSName.PAGE_MODE)` -- rather than
+whether the accessor answered null. The accessor used to be able to; the
+`else` returning USE_NONE is the newer half.
+
+**Why it matters** A merge into an empty destination loses the source's
+/PageMode. That is the case the command line tool takes: `pdfbox merge` starts
+with `new PDDocument()`, so a source that asks to open with its bookmarks
+showing, or in full screen, is merged into a document that asks for nothing.
+
+**Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility.go`,
+`mergePageMode`, which is a function with the comment and no condition,
+because the port's `PageMode()` answers `PageModeUseNone` for the same reason
+and a condition there would read as though it did something.
+
+**Confidence** certain, from the source, both halves quoted above.

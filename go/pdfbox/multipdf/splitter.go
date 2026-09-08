@@ -38,6 +38,13 @@ type Splitter struct {
 	annotDictMap map[*cos.Dictionary]*cos.Dictionary
 	// annotDictMaps is the list of these maps for all destination documents
 	annotDictMaps []map[*cos.Dictionary]*cos.Dictionary
+	// structDictMap maps a source structure element to its clone
+	structDictMap map[*cos.Dictionary]*cos.Dictionary
+	// destToFix is the destinations whose page has still to be adjusted
+	destToFix []destinationToFix
+	// idSet and roleSet are the /ID and /S values the cloned tree used
+	idSet   map[string]bool
+	roleSet map[*cos.Name]bool
 
 	currentPageNumber int
 }
@@ -60,13 +67,22 @@ func (s *Splitter) Split(document *pdmodel.PDDocument) ([]*pdmodel.PDDocument, e
 	s.sourceDocument = document
 	s.pageDictMaps = nil
 	s.annotDictMaps = nil
+	s.destToFix = nil
+	s.idSet = map[string]bool{}
+	s.roleSet = map[*cos.Name]bool{}
 
 	if err := s.processPages(); err != nil {
 		return nil, err
 	}
 
-	// Java walks the destination documents here and calls cloneStructureTree and
-	// fixDestinations on each. Both need slice 8; see the type comment.
+	for i, destinationDocument := range s.destinationDocuments {
+		s.pageDictMap = s.pageDictMaps[i]
+		s.annotDictMap = s.annotDictMaps[i]
+		if err := s.cloneStructureTree(destinationDocument); err != nil {
+			return nil, err
+		}
+		s.fixDestinations(destinationDocument)
+	}
 
 	return s.destinationDocuments, nil
 }
@@ -149,9 +165,11 @@ func (s *Splitter) CreateNewDocument() (*pdmodel.PDDocument, error) {
 			pdmodel.NewPDDocumentInformation(destDocumentInformationDictionary))
 	}
 	destCatalog := document.DocumentCatalog()
-	// Java copies the viewer preferences, the language, the mark info and the
-	// metadata from the source catalog here. All four need types slice 8 brings;
-	// see the type comment.
+	sourceCatalog := s.SourceDocument().DocumentCatalog()
+	destCatalog.SetViewerPreferences(sourceCatalog.ViewerPreferences())
+	destCatalog.SetLanguage(sourceCatalog.Language())
+	destCatalog.SetMarkInfo(sourceCatalog.MarkInfo())
+	destCatalog.SetMetadata(sourceCatalog.Metadata())
 	// reset reused object keys to avoid gaps in the xref table
 	destCatalog.Dictionary().ResetImportedObjectKeys()
 	return document, nil
@@ -175,8 +193,10 @@ func (s *Splitter) processPage(page *pdmodel.PDPage) error {
 		imported.Dictionary().RemoveItem(cos.B)
 		slog.Warn("multipdf: /B entry (beads) removed by splitter")
 	}
-	// Java removes the page links here, with processAnnotations; that needs
-	// slice 8, so the annotations of the imported page are left as they are.
+	// remove page links to avoid copying not needed resources
+	if err := s.processAnnotations(imported); err != nil {
+		return err
+	}
 
 	s.pageDictMap[page.Dictionary()] = imported.Dictionary()
 	return nil

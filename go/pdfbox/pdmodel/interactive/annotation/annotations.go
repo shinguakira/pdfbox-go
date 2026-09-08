@@ -149,6 +149,15 @@ func (a *PDAnnotationMarkup) Popup() *PDAnnotationPopup {
 	return nil
 }
 
+// MarkupAnnotation returns this markup annotation, which is Java's upcast to
+// PDAnnotationMarkup.
+//
+// Every markup subclass embeds PDAnnotationMarkup by value, so this method is
+// promoted onto all of them: an interface assertion on it is the cast that
+// `(PDAnnotationMarkup) annotation` is in Java, where a Go assertion to
+// *PDAnnotationMarkup is not -- a *PDAnnotationText is not one, it has one.
+func (a *PDAnnotationMarkup) MarkupAnnotation() *PDAnnotationMarkup { return a }
+
 // SetPopup sets the /Popup annotation.
 func (a *PDAnnotationMarkup) SetPopup(popup *PDAnnotationPopup) {
 	setAnnotationItem(a.AnnotationDictionary(), cos.Popup, popup)
@@ -686,13 +695,13 @@ func (a *PDAnnotationPopup) Parent() *PDAnnotationMarkup {
 		// Couldn't construct the annotation, so return null i.e. do nothing
 		return nil
 	}
-	markup, ok := ann.(*PDAnnotationMarkup)
+	markup, ok := ann.(interface{ MarkupAnnotation() *PDAnnotationMarkup })
 	if !ok {
 		slog.Error("annotation: parent annotation is not a markup annotation",
 			"type", ann)
 		return nil
 	}
-	return markup
+	return markup.MarkupAnnotation()
 }
 
 // PDAnnotationSound plays a sound.
