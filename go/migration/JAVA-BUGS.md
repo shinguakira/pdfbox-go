@@ -1356,6 +1356,16 @@ recorded because the next caller would not know that.
 **Where the Go carries it** `go/pdfbox/filter/lzw.go`, `findPatternCode`, which
 writes `int(int8(pattern[0]))` to keep the sign, with a comment.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 28. `findPatternCode` reads
+the single byte unsigned, so the code it answers is the index its own comment
+names and the encoder's other single-byte code, `by & 0xff`, already uses.
+Nothing calls the branch today, so the test calls the function, which is
+unexported here and private in the Java; the expected value is the table
+`createCodeTable` builds, where entry N is the one-byte pattern N.
+`TestFindPatternCodeOfOneByteIsItsIndex` in
+`go/pdfbox/filter/javabug28_test.go` checks the answer against that table as
+well as against the value.
+
 **Confidence** high, for the arithmetic. That nothing reaches it is from
 reading the one caller.
 
