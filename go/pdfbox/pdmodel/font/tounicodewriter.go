@@ -208,11 +208,13 @@ func allowCodeRange(prev, next int) bool {
 // allowDestinationRange returns true if the code points represented by the
 // strings are sequential and differ only in the low-order byte.
 //
-// JAVA BUG 33: only prev is checked for being a single code point, next is not,
-// so a one-character destination followed by a longer one extends the range and
-// everything after the first character of the longer one is lost --- 0x400 to
-// "a" and 0x401 to "bc" becomes the range 0x400..0x401 starting at "a", and
-// 0x401 then decodes to "b". Ported as written; see migration/JAVA-BUGS.md.
+// Java checks only prev for being a single code point, so a one-character
+// destination followed by a longer one extends the range and everything after
+// the first character of the longer one is lost --- 0x400 to "a" and 0x401 to
+// "bc" becomes the range 0x400..0x401 starting at "a", and 0x401 then decodes
+// to "b". Both sides are checked here: a range is one destination the reader
+// increments, so it holds only where every destination in it is one code
+// point. See migration/JAVA-BUGS.md 33.
 func allowDestinationRange(prev, next string) bool {
 	if prev == "" || next == "" {
 		return false
@@ -222,7 +224,8 @@ func allowDestinationRange(prev, next string) bool {
 
 	// Allow the new destination string if:
 	// 1. It is sequential with the previous one and differs only in the low-order byte
-	// 2. The previous string does not contain any UTF-16 surrogates
+	// 2. Neither string is more than one code point
 	return allowCodeRange(int(prevCode), int(nextCode)) &&
-		utf8.RuneCountInString(prev) == 1
+		utf8.RuneCountInString(prev) == 1 &&
+		utf8.RuneCountInString(next) == 1
 }

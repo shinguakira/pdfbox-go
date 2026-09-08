@@ -1629,6 +1629,19 @@ rejects them first.
 checks `utf8.RuneCountInString(prev) == 1` and not `next`. The comment above it
 names this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 33. `allowDestinationRange`
+counts the code points of `next` as well as of `prev`, which is the check the
+entry names and the only one under which the predicate is symmetric — a
+bfrange is one destination the reader increments, so it holds exactly where
+every destination in it is a single code point. With 0x400 mapped to `a` and
+0x401 mapped to `bc` the writer now emits two ranges of one, `<0400> <0400>
+<0061>` and `<0401> <0401> <00620063>`, and the `c` survives. Tested by
+`TestDestinationRangeChecksBothSides` and
+`TestCMapKeepsTheTailOfALongerDestination` in
+`go/pdfbox/pdmodel/font/javabug33_test.go`. The measured pin,
+`TestCMapDropsTheTailOfALongerDestination`, is gone; the Java output it held is
+quoted above and in the new test.
+
 **Confidence** certain, and **measured** since `track/font-embedding`'s D9.
 `ToUnicodeWriter` and `util/Hex`/`util/StringUtil` compile on their own with
 `javac`, so the case above was run: for `add(0x400, "a")` and
