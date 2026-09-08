@@ -5996,3 +5996,113 @@ long as porting continues, "the Go does X, is that a port defect?" is answered
 by opening the Java; that answer stops working the day the Go is allowed to
 differ on purpose. Finishing the port first keeps it cheap while it is still
 needed.
+
+### A0 — the triage
+
+Every entry of `JAVA-BUGS.md`, in one of four columns. **Fix is the default**;
+a **keep** names one of the four reasons the task file allows.
+
+| # | Column | Why |
+| ---: | --- | --- |
+| 1 | fix | `equals` truncating to 32 bits is reachable from every `indexOf` |
+| 2 | fix | a `-1` accumulated into a byte count |
+| 3 | fix | the same accumulation |
+| 4 | test only | the Java test forgets to compare the lengths |
+| 5 | fix | an interned name hands out the array a caller can write through |
+| 6 | **keep** | judgement: keeping a null key may be deliberate, and the entry says so |
+| 7 | not carried | |
+| 8 | fix | the sibling branch keeps the `#`; this one drops it |
+| 9 | fix | a depth counter that never comes back down |
+| 10 | fix | two bytes lost from a truncated inline image |
+| 11 | **keep** | unobservable: the offset is computed and never read |
+| 12 | fix | a null cmap dereferenced where the method answers 0 three lines up |
+| 13 | not carried | |
+| 14 | fix | a missing `/Panose` dereferenced |
+| 15 | fix | text outside the basic plane comes out reversed |
+| 16 | fix | `% 0xFF` where the two branches beside it use `& 0xFF` |
+| 17 | fix | one cell of a matrix multiply reads the wrong operand |
+| 18 | fix | a width walked one UTF-16 unit at a time |
+| 19 | fix | a sign-extended byte written as eight hex digits |
+| 20 | fix | `&` between two disjoint byte lanes |
+| 21 | fix | an entry built with a null parent |
+| 22 | **keep** | new functionality: reaching the branch means implementing version 1 kerning |
+| 23 | fix | a zero-length code read as the two-byte code 0 |
+| 24 | fix | a predicate that answers the opposite of its name |
+| 25 | fix | a missing `/Recipients` dereferenced |
+| 26 | fix | a duplicate policy registration that the javadoc says is refused |
+| 27 | fix | a 0xFF data byte read as the end of the stream |
+| 28 | fix | a negative code returned for a high byte |
+| 29 | fix | arithmetic negation where the specification says complement |
+| 30 | fix | -1 added to the output for a digit that is not hexadecimal |
+| 31 | fix | a region written to the wrong rows |
+| 32 | fix | a truncated stream repeating its last complete group |
+| 33 | fix | one of two strings checked |
+| 34 | fix | the method's own javadoc promises the blank document it throws instead of |
+| 35 | not carried | the port already had `/Bead` |
+| 36 | fix | the setter writes the key the getter does not read |
+| 37 | fix | a setter that ignores its argument |
+| 38 | fix | `/P` read without checking it is there |
+| 39 | fix | an insert at -1 |
+| 40 | fix | the writer and the reader disagree about the type |
+| 41 | fix | a four-entry array padded to five |
+| 42 | not carried | |
+| 43 | fix | the getter reads names where the setter writes strings, and the specification says strings |
+| 44 | fix | the same shape: the getter reads a string where the setter wrote an integer |
+| 45 | fix | `get` where every sibling accessor uses `getObject` |
+| 46 | test only | the Java test builds its filter names from `toString()` |
+| 47 | not carried | |
+| 48 | **keep** | judgement: the javadoc documents the mutation, so the getter that repairs is the design |
+| 49 | fix | nothing restored when the pattern stream fails |
+| 50 | fix | the page left rotated when an annotation fails |
+| 51 | fix | the resources dropped from a pattern's underlying colour space |
+| 52 | not carried | |
+| 53 | fix | a merge that stops at the first value both sides have |
+| 54 | fix | a setter that stores a type its own getter cannot see |
+| 55 | fix | the wrong kind of array written |
+| 56 | fix | an index past the end of a short instruction |
+| 57 | not carried | |
+| 58 | fix | a method that ignores its argument |
+| 59 | not carried | |
+| 60 | not carried | |
+| 61 | fix | nulls put into a list the caller walks |
+| 62 | fix | a loop that walks to `count` rather than `off + count` |
+| 63 | fix | the predictor skipped on the fast path |
+| 64 | fix | the doc comment repeats a claim that does not hold |
+| 65 | not carried | |
+| 66 | fix | two locks taken in both orders |
+| 67 | fix | a rewind that reads outside the view |
+| 68 | fix | a byte count that can be negative |
+| 69 | fix | a write at an exact chunk boundary landing on the wrong byte |
+| 70 | not carried | |
+| 71 | not carried | |
+| 72 | fix | a list walked without the lock it has |
+| 73 | not carried | |
+| 74 | fix | an alphabet indexed with a negative remainder |
+| 75 | fix | a failure reported and exit 0 |
+| 76 | fix | a null dereference where the twin command checks |
+| 77 | fix | half a surrogate pair printed |
+| 78 | not carried | nothing to carry: the fixture is the Java's |
+| 79 | fix | one recipient object added N times |
+| 80 | not carried | |
+| 81 | not carried | |
+| 82 | fix | the destination's threads merged into themselves |
+| 83 | fix | `/Suspect` written twice and `/UserProperties` never |
+| 84 | fix | a branch that cannot run, so the page mode is never merged |
+
+**63 fix, 4 keep, 15 not carried, 2 test only.**
+
+The four kept, with their reasons in full:
+
+- **6** — *judgement*. The entry itself says "keeping it may be deliberate: a
+  damaged file's entry is". A parser that drops what it cannot key may lose a
+  recoverable object; a parser that keeps it may key on null. There is no
+  correct to fix *to*.
+- **11** — *unobservable*. `parseHex` computes a whitespace offset and indexes
+  from zero. The offset is never read, so no caller can tell the difference.
+- **22** — *new functionality*. `KerningTable.read` switches on `1` where the
+  version is `0x10000`, so the version 1 branch is dead. Making it live means
+  implementing version 1 kerning subtables, which is a port task and not a fix.
+- **48** — *judgement*. `getAcroForm()` repairs the document it is asked to
+  read, and its own javadoc says so. A getter that mutates is a design smell,
+  not a defect, and every caller in both trees is written against the repair
+  happening.
