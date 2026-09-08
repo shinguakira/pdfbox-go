@@ -256,3 +256,54 @@ func TestPublicKeyVersionNumber(t *testing.T) {
 		}
 	}
 }
+
+// TestRecipientWithoutPermissionPanics pins a convention rather than a
+// behaviour worth having.
+//
+// Java's computeRecipientsField reads `recipient.getPermission().
+// getPermissionBytesForPublicKey()` with no null check, and
+// `PublicKeyRecipient.permission` has no default, so a recipient added without
+// one throws NullPointerException. That is unchecked, and this port renders an
+// unchecked exception as a panic.
+//
+// A review asked for this to fail gracefully or to default the permissions.
+// Both would be fixing a bug that is in the Java, which this migration does not
+// do -- the port would then accept a document Java refuses, and the two would
+// disagree about what a policy with a half-built recipient means. The case is
+// here so the convention is written down and nobody quietly changes it.
+func TestRecipientWithoutPermissionPanics(t *testing.T) {
+	certificate, _ := selfSignedCertificate(t)
+
+	policy := NewPublicKeyProtectionPolicy()
+	recipient := &PublicKeyRecipient{}
+	recipient.SetX509(certificate)
+	// No SetPermission, which is what NewPublicKeyProtectionPolicy's own test
+	// does and what Java throws on.
+	policy.AddRecipient(recipient)
+
+	handler := NewPublicKeySecurityHandlerOfPolicy(policy)
+	defer func() {
+		if recover() == nil {
+			t.Error("a recipient with no permissions was accepted; Java throws " +
+				"NullPointerException here")
+		}
+	}()
+	_, _ = handler.computeRecipientsField(make([]byte, 20))
+}
+
+// TestRecipientWithoutCertificatePanics is the other half of the same
+// convention: `recipient.getX509()` is read with no null check either.
+func TestRecipientWithoutCertificatePanics(t *testing.T) {
+	policy := NewPublicKeyProtectionPolicy()
+	recipient := &PublicKeyRecipient{}
+	recipient.SetPermission(NewAccessPermission())
+	policy.AddRecipient(recipient)
+
+	handler := NewPublicKeySecurityHandlerOfPolicy(policy)
+	defer func() {
+		if recover() == nil {
+			t.Error("a recipient with no certificate was accepted")
+		}
+	}()
+	_, _ = handler.computeRecipientsField(make([]byte, 20))
+}

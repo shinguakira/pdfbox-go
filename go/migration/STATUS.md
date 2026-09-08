@@ -5549,3 +5549,44 @@ written; **JAVA-BUGS.md 79**.
 Nothing this branch touched. `TestPDFBox5927` and the pixel half of
 `TestImageIOUtils` stay where they were, for reasons that are still true: a PDF
 the Maven build downloads, and a rasteriser.
+
+### The feedback on `track/stale-deferrals`
+
+Two items. One was the branch's own failure mode, committed by the branch that
+exists to catch it.
+
+**A deferral this branch created the conditions to close, and left standing.**
+`publickey_test.go` ported four of `TestPublicKeyEncryption`'s seven cases and
+deferred `testProtection`, `testProtectionError` and `testMultipleRecipients`
+because they "encrypt a document and save it, which needs the writer of slice 7
+and the CMS encoder that goes with it". This branch wrote the CMS encoder and
+did not go back — which is exactly what its own D8 says to check for, over a
+file its two comment sweeps did not reach because the sentence names no
+package the sweeps grep for.
+
+All three are ported now, in `publickeyprotect_test.go`, at all three key
+lengths the Java parameterises over. They are the end-to-end evidence the
+synthetic round trip is not: a real document protected, saved, and opened again
+from a keystore this port did not write; the wrong certificate refused with the
+message the Java asserts, `serial-#: rid 2 vs. cert 3`; and two recipients each
+getting their own permissions out of one file, which is the case that would
+catch a seed shared where it should not be.
+
+**A panic that is the Java's.** `computeRecipientsField` reads
+`recipient.getPermission().getPermissionBytesForPublicKey()` and
+`recipient.getX509()` with no null check, and neither field has a default, so
+Java throws NullPointerException for a half-built recipient. The review asked
+for this to fail gracefully or to default the permissions; both would be fixing
+a bug that is in the Java, and the port would then accept a policy Java refuses.
+Declined, and pinned instead: `TestRecipientWithoutPermissionPanics` and
+`TestRecipientWithoutCertificatePanics` say the convention out loud so nobody
+quietly changes it.
+
+**The lesson, which is the branch's own.** A comment sweep finds deferrals that
+name a type or a package. It does not find one that names a *slice* — "needs
+the writer of slice 7" — and that is the form the missed one took. The audit in
+this file gets a third grep for the next time:
+
+```sh
+rg -n 'slice [0-9]|track/[a-z-]+' --glob '*_test.go' go/ | rg -i 'needs|waits|deferred|not ported'
+```

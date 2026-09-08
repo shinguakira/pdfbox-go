@@ -182,21 +182,21 @@ And for this branch in particular:
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
-  - Is it a port defect, a missing piece of scope, or a difference the Java
-    itself has?
-  - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
-    user is told why it stays.
+- [x] E2. For each item of feedback, judge it before acting
+  - Two items. One real: three deferred end-to-end encryption cases this branch
+    unblocked and did not go back for, which is the branch's own failure mode.
+    One declined: a panic on a half-built recipient, which is the Java's
+    NullPointerException and this port's convention for one.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 
