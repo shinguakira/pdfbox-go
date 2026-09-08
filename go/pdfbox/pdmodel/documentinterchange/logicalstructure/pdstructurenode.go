@@ -155,10 +155,11 @@ func (n *PDStructureNode) InsertObjectableBefore(newKid common.COSObjectable, re
 // InsertBeforeBase inserts a COS object before the given child, which is Java's
 // protected insertBefore(COSBase, Object).
 //
-// JAVA BUG: a refKid the /K array does not hold, or a marked-content identifier
-// as getKids returns it, gives an index of -1, and inserting at -1 throws
-// instead of doing nothing. See migration/JAVA-BUGS.md entry 39. The port
-// keeps it: AddAt at -1 panics.
+// Java takes the index of refKid without checking it, so a refKid the /K array
+// does not hold — including any marked-content identifier, which getKids
+// returns as an Integer and so never converts to a COSBase — gives -1 and
+// throws. Nothing is inserted for one that is not there, which is what the
+// single-kid branch below already does. See migration/JAVA-BUGS.md 39.
 func (n *PDStructureNode) InsertBeforeBase(newKid cos.Base, refKid any) {
 	if newKid == nil || refKid == nil {
 		return
@@ -173,7 +174,9 @@ func (n *PDStructureNode) InsertBeforeBase(newKid cos.Base, refKid any) {
 	}
 	if array, isArray := k.(*cos.Array); isArray {
 		refIndex := array.IndexOfObject(refKidBase)
-		array.AddAt(refIndex, newKid.COSObject())
+		if refIndex >= 0 {
+			array.AddAt(refIndex, newKid.COSObject())
+		}
 		return
 	}
 	onlyKid := cos.Equal(k, refKidBase)

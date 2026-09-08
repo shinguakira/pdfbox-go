@@ -1953,6 +1953,18 @@ neither exception.
 `InsertBeforeBase`, with the comment above it naming this entry. `Array.AddAt`
 at -1 panics on the slice bounds, which is the same failure.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 39. The array branch checks
+the index before inserting and does nothing when the reference kid is not
+there, which is the check the entry names and what the single-kid branch below
+it already does. The scope stops there: a marked-content identifier still finds
+nothing, because `Kids` hands those back as plain integers and nothing converts
+one back to the `COSInteger` in the array — making that work is a lookup the
+method does not have and would be new functionality, not this fix. It no longer
+throws for it. Tested by `TestInsertBeforeAKidThatIsNotThereDoesNothing` in
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug39_test.go`,
+with `TestInsertBeforeAKidThatIsThereStillInserts` beside it for the insert the
+check must not swallow.
+
 **Confidence** high. Both the -1 and the throw follow from the two library
 contracts, and the sibling branch shows the check that is missing.
 
