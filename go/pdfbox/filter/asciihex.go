@@ -79,11 +79,17 @@ func (ASCIIHex) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary,
 			break
 		}
 
-		if reverseHex[firstByte] == -1 {
+		// Java logs the byte and then multiplies its table entry, -1, so a bad
+		// first digit takes 16 off the value. Read as zero here, which is what
+		// this method already does for a second digit it does not have. See
+		// migration/JAVA-BUGS.md 30.
+		firstNibble := reverseHex[firstByte]
+		if firstNibble == -1 {
 			slog.Error("filter: invalid hex", "int", firstByte,
 				"char", string(rune(firstByte)), "position", "1st byte")
+			firstNibble = 0
 		}
-		value := reverseHex[firstByte] * 16
+		value := firstNibble * 16
 		secondByte, err := encoded.ReadByte()
 		if err != nil || isHexEOD(secondByte) {
 			// second value behaves like 0 in case of EOD
@@ -92,11 +98,13 @@ func (ASCIIHex) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary,
 			}
 			break
 		}
-		if reverseHex[secondByte] == -1 {
+		secondNibble := reverseHex[secondByte]
+		if secondNibble == -1 {
 			slog.Error("filter: invalid hex", "int", secondByte,
 				"char", string(rune(secondByte)), "position", "2nd byte")
+			secondNibble = 0
 		}
-		value += reverseHex[secondByte]
+		value += secondNibble
 		if err := decoded.WriteByte(byte(value)); err != nil {
 			return result, err
 		}

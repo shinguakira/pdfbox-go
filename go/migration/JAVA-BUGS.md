@@ -1449,6 +1449,17 @@ than the byte itself, and the error is silent past the log.
 multiplies and adds the table entry as Java does; `TestASCIIHexTolerance` in
 `fromsource_test.go` pins both cases with the arithmetic written out.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 30. `Decode` logs a byte that
+is not a hexadecimal digit and then reads it as zero, so one bad digit changes
+its own nibble and nothing else. Of the two answers the entry names, this is
+the one the method already gives for a digit it does not have — "second value
+behaves like 0 in case of EOD", four lines above — and refusing the stream
+would make the filter stricter than the reader it is, which drops the `>` and
+the whitespace without a word. Tested by `TestASCIIHexTreatsABadDigitAsZero` in
+`go/pdfbox/filter/javabug30_test.go`; the two rows of `TestASCIIHexTolerance`
+in `fromsource_test.go` that held 63 and 0xF4 now hold 0x40 and 0x04, with the
+Java's values in the comment.
+
 **Confidence** high. The port's test was written expecting 64 and measured 63.
 
 ## 31. `SampledImageReader.from8bit` writes a region to the wrong rows

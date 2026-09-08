@@ -243,11 +243,12 @@ func TestASCIIHexTolerance(t *testing.T) {
 		{"486>", []byte{0x48, 0x60}},
 		// and so does an odd digit at the end of the stream
 		{"486", []byte{0x48, 0x60}},
-		// A digit that is not one is logged and its table entry, -1, is added
-		// anyway: "4Z" is 4*16 + (-1) = 63, not 64. An invalid FIRST digit is
-		// worse -- -1*16 -- and "Z4" comes out as 0xF4. That is what Java does.
-		{"4Z65", []byte{63, 0x65}},
-		{"Z465", []byte{0xF4, 0x65}},
+		// A digit that is not one is logged and read as zero, so it changes its
+		// own nibble and nothing else. Java adds the table entry, -1, and
+		// answers 63 for "4Z" and 0xF4 for "Z4"; see JAVA-BUGS.md 30 and
+		// TestASCIIHexTreatsABadDigitAsZero.
+		{"4Z65", []byte{0x40, 0x65}},
+		{"Z465", []byte{0x04, 0x65}},
 		{"", nil},
 		{">", nil},
 	}
