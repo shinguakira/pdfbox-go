@@ -1719,6 +1719,18 @@ which has the same guard and the same order of the two setters, and
 `TestExtractBeyondTheDocumentPanics` in `pageextractor_test.go` pins it and
 names this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 34. `Extract` also answers
+the blank document when the start page is past the last one, which is the
+clamp the entry names and the second half of the sentence the javadoc already
+makes. Reordering the two setters was the other candidate and is not it: that
+would drop `SetEndPage`'s cross-check for every caller, and the javadoc does
+not promise the panic goes away, it promises a blank document. Tested by
+`TestExtractBeyondTheDocumentIsBlank` in
+`go/pdfbox/multipdf/javabug34_test.go`, with
+`TestExtractToBeyondTheDocumentStillClamps` beside it so an end page past the
+last one still extracts the rest of the file. The pin that held the panic,
+`TestExtractBeyondTheDocumentPanics`, is gone with it.
+
 **Confidence** high. Read from the two methods and confirmed by the port
 panicking with `End page is smaller than startPage` for pages 30 to 40 of the
 28 page `cweb.pdf`, which is the document `PageExtractorTest` uses.

@@ -44,7 +44,11 @@ func NewPageExtractorOfRange(sourceDocument *pdmodel.PDDocument, startPage, endP
 // with page 1. If startPage is greater than endPage or greater than the number
 // of pages in the source document, a blank document will be returned.
 func (e *PageExtractor) Extract() (*pdmodel.PDDocument, error) {
-	if e.endPage-e.startPage+1 <= 0 {
+	// Java guards only the first half of the sentence above, so a start page
+	// past the last one reaches SetEndPage with the clamped end below it and
+	// throws IllegalArgumentException instead of answering the blank document.
+	// See migration/JAVA-BUGS.md 34.
+	if e.endPage-e.startPage+1 <= 0 || e.startPage > e.sourceDocument.NumberOfPages() {
 		return pdmodel.NewPDDocument(), nil
 	}
 	splitter := NewSplitter()
