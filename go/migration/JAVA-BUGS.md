@@ -946,6 +946,13 @@ but it is written into the on-disk cache and handed to anyone reading
 **Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
 `addTrueTypeFontImpl`, which writes the same `&` with a comment.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 20. The two bytes are ORed,
+in `cidSupplementVersion`, which the test can reach on its own. Java's `&`
+between a value whose low eight bits are zero and one whose high bits are zero
+is zero for every input, so the supplement was always 0. Tested by
+`TestCIDSupplementIsTheTwoBytesJoined` in
+`go/pdfbox/pdmodel/font/javabug20_test.go`.
+
 **Confidence** high. `&` between disjoint byte lanes cannot be what was meant.
 
 ## 21. `FileSystemFontProvider.createFSIgnored` builds an entry with a null parent

@@ -802,10 +802,7 @@ func (p *fileSystemFontProvider) addTrueTypeFontImpl(fontHeaders *ttf.FontHeader
 			registryName := reg[:strings.IndexByte(reg, 0)]
 			ord := string(bytes[76 : 76+64])
 			orderName := ord[:strings.IndexByte(ord, 0)]
-			// JAVA-BUGS entry 20: Java ANDs the two halves of the supplement
-			// where it means to OR them, so the value is always zero. Ported as
-			// written.
-			supplementVersion := int(int8(bytes[140])) << 8 & (int(bytes[141]) & 0xFF)
+			supplementVersion := cidSupplementVersion(bytes[140], bytes[141])
 			ros = NewCIDSystemInfo(registryName, orderName, supplementVersion)
 		}
 		format = FontFormatTTF
@@ -918,4 +915,14 @@ func computeHash(is io.Reader) (string, error) {
 		}
 	}
 	return strconv.FormatUint(uint64(crc.Sum32()), 16), nil
+}
+
+// cidSupplementVersion joins the two bytes of a CID system info supplement.
+//
+// Java writes `bytes[140] << 8 & (bytes[141] & 0xFF)`: an AND between a value
+// whose low eight bits are zero and one whose high bits are zero, which is zero
+// for every input. The two bytes are the halves of one number. See
+// migration/JAVA-BUGS.md 20.
+func cidSupplementVersion(high, low byte) int {
+	return int(int8(high))<<8 | int(low)
 }
