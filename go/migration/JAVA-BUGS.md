@@ -1180,6 +1180,12 @@ gets a NullPointerException rather than zero.
 `RecipientsLength` and `RecipientStringAt`, which assert the type without the
 comma-ok and so panic where Java throws.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 25. `RecipientsLength`
+answers 0 for a dictionary with no /Recipients, which is what a count of
+nothing is and what every other accessor on the class answers for a missing
+entry. Tested by `TestRecipientsLengthOfADictionaryWithNone` in
+`go/pdfbox/pdmodel/encryption/javabug25_test.go`.
+
 **Confidence** high. `getItem` is documented to return null for an absent key.
 
 ## 26. `SecurityHandlerFactory.registerHandler` does not refuse a duplicate policy
