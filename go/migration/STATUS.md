@@ -6005,8 +6005,8 @@ a **keep** names one of the four reasons the task file allows.
 | # | Column | Why |
 | ---: | --- | --- |
 | 1 | fix | `equals` truncating to 32 bits is reachable from every `indexOf` |
-| 2 | fix | a `-1` accumulated into a byte count |
-| 3 | fix | the same accumulation |
+| 2 | **keep** | unobservable: a `ReadBuffer` owns its bytes, so the -1 cannot reach the count. A0 said fix |
+| 3 | fix | the same accumulation, and reachable: a view can declare a length its source cannot supply |
 | 4 | test only | the Java test forgets to compare the lengths |
 | 5 | fix | an interned name hands out the array a caller can write through |
 | 6 | **keep** | judgement: keeping a null key may be deliberate, and the entry says so |
@@ -6089,7 +6089,12 @@ a **keep** names one of the four reasons the task file allows.
 | 83 | fix | `/Suspect` written twice and `/UserProperties` never |
 | 84 | fix | a branch that cannot run, so the page mode is never merged |
 
-**63 fix, 4 keep, 15 not carried, 2 test only.**
+**62 fix, 5 keep, 15 not carried, 2 test only.** A0 first said 63 and 4. Entry 2
+moved to keep once it was checked — the task file calls that a normal outcome
+and says hiding it is not. Entry 3 is the same arithmetic and stayed a fix,
+because a `ReadView` can declare a length its source cannot supply and then the
+-1 is reached: without the fix the port answered **0 bytes and EOF** for a
+sequence over a ten-byte source.
 
 The four kept, with their reasons in full:
 

@@ -117,6 +117,16 @@ the same byte twice. The loop condition bounds the damage to one byte per read.
 
 **Where the Go carries it** `go/pdfio/readbuffer.go`, `ReadBuffer.Read`.
 
+**Kept in the Go** `track/java-bug-fixes`: unobservable. A0 marked this **fix**;
+it is right about the arithmetic and wrong about the reach. `readFromChunk`
+answers -1 in exactly two cases -- the cursor is past the end, or the chunk is
+spent -- and the loop that would add it checks `remaining() > 0` and moves to
+the next chunk before every call, so neither can happen there. A `ReadBuffer`
+owns its own bytes, so nothing can tell it there are more than it has; entry 3
+is the same arithmetic and **is** reachable, because a view can. See its
+**Fixed in the Go**, and `TestSequenceReadCannotAccumulateMinusOne` in
+`go/pdfio/javabugfixes_test.go` for the case that stays correct here.
+
 **Confidence** high.
 
 ---
@@ -165,6 +175,16 @@ the port had been keeping the position where Java loses a byte from it.
 
 No test pins the spin. A test that hangs when it succeeds is worse than no test;
 this entry is the record.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 3. `SequenceRead.Read` stops
+on a non-positive inner read rather than adding it to the total. Without it the
+port lost the data outright: a sequence over a `ReadView(source, 0, 100)` whose
+source holds ten bytes answered **0 bytes and EOF**, because the -1 was added
+until the count went negative. That case is the one this entry's Confidence
+line names, and it is why entry 2 is kept and this one is not -- a view can
+declare a length its source cannot supply, and a `ReadBuffer` has no such
+second party. Tested by `TestSequenceReadOverALyingView` in
+`go/pdfio/javabugfixes_test.go`.
 
 **Confidence** reproduced. A `SequenceRandomAccessRead` over a single
 `RandomAccessReadView(source, 0, 100)` whose source holds 10 bytes hung on the
