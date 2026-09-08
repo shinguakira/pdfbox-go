@@ -2054,6 +2054,14 @@ PDF 32000-1:2008 Table 344 gives `/BorderColor` as one colour or exactly four.
 `go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdfourcolours.go`,
 `NewPDFourColoursOfArray`, with the comment above it naming this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 41. The padding loop starts
+at `Size()`, so an array shorter than four is padded to exactly four — the
+number the comment above the loop names and the number table 344 requires of
+`/BorderColor` when it is not one colour. Tested by
+`TestFourColoursPadsToFour` in
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/javabug41_test.go`, over every
+starting length from zero to four.
+
 **Confidence** high. The loop bound is off by one against its own comment, and
 the arithmetic is not in doubt.
 
