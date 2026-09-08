@@ -551,6 +551,13 @@ table lookup first, which an embedded subset with no `post` names will.
 back inside a `CmapLookup` interface, and `cmap.GetGlyphID(uni)` dereferences
 nil and panics — which is what this port does with an unchecked Java exception.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 12. `NameToGID` answers 0
+where the font has no Unicode cmap, which is what it answers for every other
+name it cannot resolve — the branch three lines above and the one three lines
+below both do. Without it the port panicked on a subsetted font, which usually
+has no cmap at all. Tested by `TestNameToGIDOfAUniNameWithoutACmap` in
+`go/fontbox/ttf/javabugfixes_test.go`.
+
 **Confidence** high. The null return is explicit three lines up in the same
 class, and no caller of the lenient form checks it.
 

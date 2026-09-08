@@ -342,6 +342,14 @@ func (f *TrueTypeFont) NameToGID(name string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		if cmap == nil {
+			// The non-strict lookup answers null for a font with no Unicode
+			// subtable, which a subsetted font usually is, and Java
+			// dereferences it. Every other name this method cannot resolve
+			// answers 0, three lines above and three below. See
+			// migration/JAVA-BUGS.md 12.
+			return 0, nil
+		}
 		return cmap.GetGlyphID(uni), nil
 	}
 
