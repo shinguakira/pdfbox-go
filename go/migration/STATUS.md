@@ -5728,3 +5728,99 @@ dispatched and the command wrote nothing while exiting 0. `addAllOperators` in
 `go/tools/extractimages.go` is the same list `go/pdfbox/rendering/operators.go`
 has. The test that caught it is `TestExtractImagesCopiesADeviceRGBJPEG`, over
 `input/merge/jpegrgb.pdf`.
+
+### `-noColorConvert` reaches only one colour space, and that is not this branch's
+
+`ExtractImages` with `-noColorConvert` asks for `pdImage.getRawImage()` and
+writes that: a PNG, or a TIFF where the raster has more than three bands,
+"that's likely CMYK". `getRawImage` is `getColorSpace().toRawImage(raster)`,
+and **six of the port's eight `ToRawImage` implementations answer nil**:
+
+| Colour space | Java | The port |
+| --- | --- | --- |
+| `PDDeviceGray` | a `TYPE_BYTE_GRAY` image | an `image.Gray` |
+| `PDSeparation` | a CS_GRAY colour model over the same samples | delegates to `PDDeviceGray` |
+| `PDDeviceRGB`, `PDDeviceCMYK` | null | nil, the same |
+| `PDICCBased` | wraps the raster in a colour model carrying the profile | nil: there is no profile to carry |
+| `PDIndexed` | an `IndexColorModel` over an sRGB profile | nil: Go has no indexed colour model |
+| `PDCIEBasedColorSpace` | null | nil, the same |
+| `PDDeviceN` | null | nil, the same |
+
+So `-noColorConvert` writes a PNG for a grey or separation image and otherwise
+falls through to the ordinary path, which is what Java does for the four it
+answers null for and is not what Java does for `PDICCBased` or `PDIndexed`.
+Those two are deferred for want of an ICC engine and of an indexed colour
+model, both recorded against slice 6; the deferral is named here because this
+is the branch that gave it a caller. `channelsOf` in `go/tools/extractimages.go`
+says the same at the site: only its first arm can be reached today, so the TIFF
+half of the branch waits on those two.
+
+## Track `imageio` — D7, the adversarial review
+
+Read every ported file against its Java. Seven things the green tests did not
+say, all fixed on the branch, each with a test that fails without the fix.
+
+**`showGlyph` was missing.** Java's `ImageGraphicsEngine` overrides it to
+process the colour a glyph is painted in -- and does not call super, so no
+glyph is drawn: the method is there for the colour. A page whose text is
+filled with a tiling pattern therefore gives up the images inside that pattern.
+The port had no override, so `PDFStreamEngine`'s own ran and the pattern was
+never walked. No checked-in PDF paints text that way, so
+`TestExtractImagesFindsAnImageInsidePatternedText` builds one.
+
+**No operators were registered.** `contentstream.NewPDFGraphicsStreamEngine`
+registers none -- the operator packages import `contentstream`, so it cannot
+import them back -- and the first version of the engine called `SetOverrides`
+and stopped. `Do` was never dispatched: the command wrote nothing and exited 0,
+which is the worst shape a defect can take. Caught by the first test written
+against a real document.
+
+**The JPEG filter list was one name short.** Java's is `DCTDecode` and its
+abbreviation `DCT`; the port had only the first, so a stream filtered `/DCT`
+would have been decoded rather than copied.
+
+**The `jp2` conversion arm returned an error.** Java asks `ImageIOUtil` for a
+"jpeg2000" writer, finds none without the JAI jars, logs two lines and answers
+false -- leaving the file it has already created empty and carrying on. The
+port failed the whole command instead. It now makes the same call and gets the
+same answer.
+
+**The `tiff` arm compared colour spaces by name.** Java is
+`pdImage.getColorSpace().equals(PDDeviceGray.INSTANCE)`, which `PDDeviceGray`
+does not override, so it is identity. The port now compares against the
+`color.DeviceGray` singleton.
+
+**`WriteImageToFile` wrote nothing for a format it could not write.** Java
+opens the file first and takes the format off the name inside the
+try-with-resources, so an unwritable format leaves an empty file behind. The
+port buffered, which is tidier and is not the Java.
+
+**`channelsOf` answered 4 for an `image.RGBA`.** Java counts the bands of the
+raster the colour space wrapped, and an RGB raster is three; the alpha of a Go
+pixel type is not a fourth, because "we have no alpha information here".
+
+### What was checked and found sound
+
+- Every method of `ImageIOUtil`, `TIFFUtil`, `JPEGUtil` and `MetaUtil` is
+  either ported or recorded above as a deliberate non-port.
+- The `seen` set, the counter, the suffix table, `hasMasks`, the default prefix,
+  the two exit codes -- 4 for the `IOException` catch and 1 for the permission
+  refusal, both literals in the Java rather than picocli constants -- and the
+  order in which the file is created, announced and written.
+- Every `finally` the Java has: the writer it disposes has no counterpart, and
+  the stream it closes is a `defer file.Close()` that runs on the error path.
+- Nothing the Java logs and swallows is turned into an error, and nothing it
+  throws is turned into a log.
+
+### What is still open
+
+- The TIFF is uncompressed and JPEG 2000 cannot be written, both recorded
+  above with the reason.
+- `-noColorConvert` reaches one colour space, for the reason in the section
+  above.
+- The iCCP chunk, the six-argument `writeImage`, and
+  `MetaUtil.debugLogMetadata`, all recorded above.
+- `jpegWithResolution`'s branch for a JPEG that already carries a JFIF segment
+  cannot be reached through this package, because `image/jpeg` writes none. It
+  is the port of `JPEGUtil`'s "use the `app0JFIF` node if it is there" and is
+  kept for that reason.

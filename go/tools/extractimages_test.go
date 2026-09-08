@@ -373,3 +373,65 @@ func jpegBytes(t *testing.T) []byte {
 	}
 	return out.Bytes()
 }
+
+// TestExtractImagesWithoutColorConvertWritesPNG is the -noColorConvert branch.
+//
+// Java asks for `pdImage.getRawImage()`, and where there is one it writes a
+// PNG -- or a TIFF where the raster has more than three bands, "that's likely
+// CMYK". The images in multitiff.pdf are DeviceGray, whose `toRawImage`
+// answers a one-band grey raster, so the suffix that was "tiff" becomes "png".
+func TestExtractImagesWithoutColorConvertWritesPNG(t *testing.T) {
+	input := copiedResource(t, multiTIFFPDF)
+	dir := filepath.Dir(input)
+
+	code, _, stderr := runCommand(tools.NewExtractImages(),
+		"-i", input, "-noColorConvert")
+	if code != 0 {
+		t.Fatalf("exited %d; stderr is %q", code, stderr)
+	}
+	written := extractedFiles(t, dir)
+	want := []string{"multitiff-1.png", "multitiff-2.png", "multitiff-3.png"}
+	if len(written) != len(want) {
+		t.Fatalf("the command wrote %v, want %v", written, want)
+	}
+	for i, name := range want {
+		if written[i] != name {
+			t.Fatalf("the command wrote %v, want %v", written, want)
+		}
+	}
+	content, err := os.ReadFile(filepath.Join(dir, written[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := filetypedetector.DetectFileTypeOfBytes(content); got != filetypedetector.PNG {
+		t.Errorf("%s is %v, want PNG", written[0], got)
+	}
+}
+
+// TestExtractImagesDirectJPEGStillCopies is the -useDirectJPEG flag, which
+// forces the copy for a colour space that would otherwise be converted.
+//
+// The image in jpegrgb.pdf is DeviceRGB and takes the direct path either way,
+// so what this says is that the flag does not send it down another one: the
+// file is still the stream that was in the PDF.
+func TestExtractImagesDirectJPEGStillCopies(t *testing.T) {
+	input := copiedResource(t, jpegRGBPDF)
+	dir := filepath.Dir(input)
+
+	code, _, stderr := runCommand(tools.NewExtractImages(),
+		"-i", input, "-useDirectJPEG")
+	if code != 0 {
+		t.Fatalf("exited %d; stderr is %q", code, stderr)
+	}
+	written := extractedFiles(t, dir)
+	if len(written) != 1 || written[0] != "jpegrgb-1.jpg" {
+		t.Fatalf("the command wrote %v, want [jpegrgb-1.jpg]", written)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, written[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(sha256Of(content)); got != jpegRGBStreamDigest {
+		t.Errorf("the file digests to %s, want %s", got, jpegRGBStreamDigest)
+	}
+}

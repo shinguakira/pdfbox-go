@@ -71,7 +71,7 @@ the two branches.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what writes PNG, JPEG and TIFF.** Java uses `javax.imageio`,
+- [x] A0. **Decide what writes PNG, JPEG and TIFF.** Java uses `javax.imageio`,
       which is a registry of plugins; Go has `image/png` and `image/jpeg` in
       the standard library and **no TIFF writer at all**.
   - PNG and JPEG are settled by the standard library. TIFF is the decision:
@@ -82,13 +82,13 @@ the two branches.
     and `JPEGUtil` are for. Go's encoders write none of that. Decide whether to
     write those bytes by hand or to record the loss.
 
-- [ ] A1. Port `TestImageIOUtils`
+- [x] A1. Port `TestImageIOUtils`
   - It renders pages and writes them, which needs a raster this branch does not
     have. Port what it asserts about the *writing* — the formats, the file
     names, the resolution written into the file — over images this branch can
     make without a renderer, and record what is left for `track/raster`.
 
-- [ ] A2. `ExtractImages` has no Java test. Write from source, the way
+- [x] A2. `ExtractImages` has no Java test. Write from source, the way
       `track/tools` did for its 18 commands, and assert against images
       extracted from the checked-in PDFs.
 
@@ -98,19 +98,19 @@ the two branches.
 
 **Every function this phase touches needs a test that says it works.**
 
-- [ ] B1. `ImageIOUtil` — the entry points `ExtractImages` and `PDFToImage` use
-- [ ] B2. `JPEGUtil`, `MetaUtil`, `TIFFUtil`, as A0 decided
-- [ ] B3. `ExtractImages`, and its row out of `go/tools/notbuilt.go`
+- [x] B1. `ImageIOUtil` — the entry points `ExtractImages` and `PDFToImage` use
+- [x] B2. `JPEGUtil`, `MetaUtil`, `TIFFUtil`, as A0 decided
+- [x] B3. `ExtractImages`, and its row out of `go/tools/notbuilt.go`
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
       this branch closes — the dispatcher's help reads that list, so a command
       that now exists must come out of it
 
@@ -122,39 +122,39 @@ the two branches.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 ---

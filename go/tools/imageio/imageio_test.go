@@ -217,3 +217,88 @@ func TestWriteImageToFileLeavesAnEmptyFileForAFormatItCannotWrite(t *testing.T) 
 		t.Errorf("the file is %d bytes, want none written into it", info.Size())
 	}
 }
+
+// TestFilenameOverloadPicksTheSameQuality is the quality Java's filename
+// overload chooses, which is the one the format overload chooses: 0 for PNG --
+// "PDFBOX-4655: prevent huge PNG files on jdk11 / jdk12 / jdk13" -- and 1 for
+// everything else.
+//
+// The two are the same code in Java and are two functions here, so the check is
+// that the files come out identical.
+func TestFilenameOverloadPicksTheSameQuality(t *testing.T) {
+	for _, format := range []string{"png", "jpg", "gif", "bmp", "tiff"} {
+		t.Run(format, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "page-1."+format)
+			if _, err := imageio.WriteImageToFile(sampleImage(), path, dpi); err != nil {
+				t.Fatalf("WriteImageToFile: %v", err)
+			}
+			viaName, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var viaFormat bytes.Buffer
+			if _, err := imageio.WriteImageOfDPI(sampleImage(), format, &viaFormat, dpi); err != nil {
+				t.Fatalf("WriteImageOfDPI: %v", err)
+			}
+			if !bytes.Equal(viaName, viaFormat.Bytes()) {
+				t.Errorf("the file written by name is %d bytes and the one written "+
+					"by format is %d; the two overloads pick the same quality",
+					len(viaName), viaFormat.Len())
+			}
+		})
+	}
+}
+
+// TestWBMPLengthsRunToMoreThanOneByte is the format's variable-length integer,
+// which the eight-pixel images above never reach the second byte of.
+//
+// A page rendered at the Java test's 36 dpi is about 300 pixels across, so
+// every real WBMP takes two bytes for its width.
+func TestWBMPLengthsRunToMoreThanOneByte(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 300, 130))
+	img.SetGray(0, 0, color.Gray{Y: 255})
+
+	var out bytes.Buffer
+	if _, err := imageio.WriteImageOfDPI(img, "wbmp", &out, dpi); err != nil {
+		t.Fatalf("WriteImage: %v", err)
+	}
+	content := out.Bytes()
+	// 300 is 0b10_0101100: 0x82 0x2c, the high bit set on all but the last.
+	// 130 is 0b1_0000010: 0x81 0x02.
+	want := []byte{0, 0, 0x82, 0x2c, 0x81, 0x02}
+	if len(content) < len(want) || !bytes.Equal(content[:len(want)], want) {
+		t.Fatalf("the header is % x, want % x", content[:min(len(want), len(content))], want)
+	}
+	if got := len(content) - len(want); got != (300+7)/8*130 {
+		t.Errorf("the rows are %d bytes, want %d", got, (300+7)/8*130)
+	}
+}
+
+// TestGreyTIFFStaysEightBit is the middle arm of tiffSamples: an image that is
+// grey but uses more than two values is one channel and eight bits, not one
+// bit.
+func TestGreyTIFFStaysEightBit(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 8, 6))
+	for y := 0; y < 6; y++ {
+		for x := 0; x < 8; x++ {
+			img.SetGray(x, y, color.Gray{Y: uint8(x*30 + y)})
+		}
+	}
+
+	var out bytes.Buffer
+	if _, err := imageio.WriteImageOfDPI(img, "tiff", &out, dpi); err != nil {
+		t.Fatalf("WriteImage: %v", err)
+	}
+	content := out.Bytes()
+	if got := bitsPerSampleOfTIFF(t, content); got != 8 {
+		t.Errorf("BitsPerSample is %d, want 8", got)
+	}
+	if got := tiffTagValue(t, content, 0x0115); got != 1 {
+		t.Errorf("SamplesPerPixel is %d, want 1", got)
+	}
+	if got := tiffTagValue(t, content, 0x0106); got != 1 {
+		t.Errorf("PhotometricInterpretation is %d, want 1 (BlackIsZero); "+
+			"WhiteIsZero is the bitonal case and this is not one", got)
+	}
+}
