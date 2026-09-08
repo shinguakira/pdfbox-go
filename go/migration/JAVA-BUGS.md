@@ -1806,6 +1806,14 @@ can never say `"print"`.
 `go/pdfbox/pdmodel/interactive/action/actions.go`, `SetOperation`, with the
 comment above it naming this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 36. `SetOperation` writes
+`/O`, the key its own getter reads, so the operation is stored and the
+directory is left alone. Tested by `TestSetOperationWritesTheOperationKey` in
+`go/pdfbox/pdmodel/interactive/action/javabug36_test.go`, which sets a
+directory and then an operation and checks both, with
+`TestOperationStillDefaultsToOpen` beside it for the default the getter
+carries.
+
 **Confidence** high. It is two adjacent methods reading and writing different
 constants, and `PDWindowsLaunchParams` has no other use of either key beyond
 `getDirectory` and `setDirectory`, which is what makes the collision real rather
