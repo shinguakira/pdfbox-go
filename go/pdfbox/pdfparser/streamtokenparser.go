@@ -384,6 +384,24 @@ func (p *StreamTokenParser) parseInlineImageData() (any, error) {
 			return nil, err
 		}
 		if atEOF {
+			// The two bytes in hand are written on the *next* turn, so Java
+			// drops them when the input runs out: a truncated inline image
+			// comes out two bytes shorter than it is on disk, silently. See
+			// migration/JAVA-BUGS.md 10.
+			//
+			// Unless they are the EI. An image that ends `...EI` with nothing
+			// behind it reaches here too -- `atEndOfInlineImage` wants a
+			// whitespace after the EI and there is none -- and there the two
+			// bytes are the terminator, not data. Java drops them by accident
+			// in both cases and is right in one.
+			if lastByte != 'E' || currentByte != 'I' {
+				if lastByte != eof {
+					imageData.WriteByte(byte(lastByte))
+				}
+				if currentByte != eof {
+					imageData.WriteByte(byte(currentByte))
+				}
+			}
 			break
 		}
 		imageData.WriteByte(byte(lastByte))

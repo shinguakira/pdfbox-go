@@ -436,6 +436,20 @@ instead of reporting that the image never terminated.
 **Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
 `parseInlineImageData`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 10. `parseInlineImageData`
+writes the two bytes it is holding when the input runs out, so an inline image
+with no closing `EI` comes out the length it is on disk rather than two bytes
+shorter.
+
+The first attempt was **wider than the entry** and the ported Java tests caught
+it: an image that ends `...EI` with nothing behind it reaches the same branch --
+`atEndOfInlineImage` wants a whitespace after the `EI` and there is none -- and
+there the two bytes in hand are the terminator, not data. Java drops them in
+both cases and is right in one, so the port drops them only when they are `E`
+and `I`. `TestInlineImages` pins the three cases that end that way and passes
+unchanged. Tested by `TestTruncatedInlineImageKeepsItsLastTwoBytes` in
+`go/pdfbox/pdfparser/javabug10_test.go`.
+
 **Confidence** medium. The loss is provable from the loop shape, but every
 answer on a truncated stream is somewhat arbitrary and this may be a deliberate
 "stop at whatever we have" choice.
