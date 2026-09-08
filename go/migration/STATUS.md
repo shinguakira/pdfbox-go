@@ -5444,3 +5444,108 @@ carries name a dependency that has since been ported.
 
 The `tools` count — 18 of 26, in this file and in `go/tools/notbuilt.go` — was
 wrong the same way. 17 are ported and 9 are not.
+
+## `track/stale-deferrals` — the deferrals whose reason had stopped being true
+
+The first of the last four branches, and the one that could find defects in work
+already merged rather than adding more. Everything below was deferred by a slice
+that named a dependency, and the dependency landed, and nothing came back.
+
+| What | The reason it recorded | What was true by the time it was read |
+| --- | --- | --- |
+| `PDFTextStripper.fillBeadRectangles` | "PDThreadBead is a slice this port has not reached" | slice 8 ported `PDThreadBead` and `PDPage.ThreadBeads` |
+| `PDAbstractContentStream.shadingFill` | "it names PDShading ... and PDResources cannot add one either" | slice 9 ported `PDShading`; `PDResources.AddShading` was already there |
+| `PublicKeySecurityHandler.PrepareDocumentForEncryption` | "needs a CMS encoder, which is slice 7" | slice 7 merged, and `rc2.go` plus the CMS structures came in with the decrypting side |
+| `tools` `-certFile` | "PublicKeySecurityHandler's encryption half is not ported" | the line above |
+| `COSWriterCompressionPoolTest` | needs `PDDocumentOutline`, `PDOutlineItem` | both ported |
+| `COSDocumentCompressionTest` | needs `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox`, `protect` | all five ported |
+| `contentstream/operator/text` | "Tj, TJ, ' and " ... need PDFont, which this port has not reached" | slice 3 ported PDFont **and all four operators**; only the sentence was left |
+| `TestPDDocument`, 6 cases | **nothing — recorded nowhere** | it was missed, not deferred |
+
+### What each one turned out to be
+
+**Article beads were disabled, and everything above them worked.**
+`fillBeadRectangles` set the list to nil, so every glyph on every page fell into
+one article. `processTextPosition` had been dividing glyphs by bead rectangle,
+`charactersByArticle` had been keeping a list per division and `writePage` had
+been walking them in order the whole time — being handed an empty list.
+`TestTextIsSortedByArticleBeads` puts two beads on a page and writes the text in
+the other order; it fails against the stub and passes against the port of the
+Java.
+
+**`sh` could not be written.** `PDResources.AddShading` existed and nothing
+called it. `ShadingFill` is nine lines and needs no rasteriser: what a reader
+does with a shading later is the renderer's business, not the writer's.
+
+**Public-key encryption was half here.** The port refuses to encrypt to a
+certificate because Java gets its CMS enveloped-data blob from BouncyCastle and
+Go's standard library has none. But `rc2.go` implements `cipher.Block` — it
+encrypts as well as it decrypts — and `cms.go` declares every ASN.1 structure a
+blob is made of, because it reads one. What was missing was the direction, and
+`cmsencode.go` is it: RC2-CBC content encryption under a fresh key, that key
+wrapped to each certificate with RSA PKCS#1 v1.5, and the whole thing wrapped in
+a ContentInfo. `TestPublicKeyEnvelopeRoundTrips` seals a seed and opens it
+again.
+
+One trap worth writing down: `encoding/asn1` writes a `RawValue`'s `FullBytes`
+verbatim and **ignores the field's own tagging parameters**, so a ContentInfo
+whose content is `[0] EXPLICIT` comes out untagged and nothing reads it back.
+The wrapper has to be marshalled by hand.
+
+**The compression tests were about what a document still says after it has been
+written out compressed** — the same pages, the same thirteen fields, the same
+attachment at the same length. Four of the five cases port; `testPDFBox5927`
+loads a PDF the Maven build downloads and this repository does not carry.
+
+### One assertion that could not be ported, and why
+
+`COSDocumentCompressionTest.testAlteredDoc` asserts the new page's content
+stream is **43 bytes**, which is its `/Length`: the stream after it was
+deflated. That number is not this port's to match. Measured over the identical
+35 bytes of content, `java.util.zip.Deflater` answers 43 and Go's
+`compress/zlib` answers 47, at every compression level from 1 to 9. Both are
+valid Flate streams and both inflate to the same bytes; it is the deflate
+implementation and has nothing to do with PDFBox. The case asserts the content
+instead, which is what the number stands for.
+
+### And a Java bug on the way past
+
+`Encrypt` builds one `PublicKeyRecipient` outside its loop and adds the same
+object once per `-certFile`, overwriting its certificate each time, so only the
+last certificate survives and the document is encrypted to it twice. Ported as
+written; **JAVA-BUGS.md 79**.
+
+### The adversarial review of `track/stale-deferrals`
+
+**Found by reading the Java side by side**
+
+- `computeRecipientInfo` takes the whole `AlgorithmIdentifier` off the
+  certificate's `SubjectPublicKeyInfo`, which for an RSA key carries an
+  **explicit ASN.1 NULL** in its parameters; the first cut wrote the OID with
+  the parameters absent. RFC 3370 section 4.2.1 requires the NULL, so a strict
+  reader is entitled to refuse what was written. Fixed, and checked by dumping
+  the DER rather than by trusting `encoding/asn1`: `0500` follows the
+  rsaEncryption OID.
+- Java's encrypting path does **not** append the four `0xFF` bytes for
+  unencrypted metadata that its decrypting path handles. The port does not
+  either. Faithful, and written down because it looks like an omission.
+
+**Checked and found to be nothing**
+
+- `fillBeadRectangles` mutates the rectangle it is handed — `rect.setLowerLeftY`
+  and three more — which would write through to the document if
+  `PDThreadBead.getRectangle()` returned a view. It does not: Java's
+  `PDRectangle(COSArray)` copies into a fresh `COSArray`, and so does the
+  port's. Extracting text twice gives the same answer, and the case asserts it.
+
+**Found by counting branches**
+
+- `computeVersionNumber` had one of its four arms exercised.
+  `TestPublicKeyVersionNumber` walks all four, with the values from
+  `SecurityHandler.computeVersionNumber`.
+
+**Still open**
+
+Nothing this branch touched. `TestPDFBox5927` and the pixel half of
+`TestImageIOUtils` stay where they were, for reasons that are still true: a PDF
+the Maven build downloads, and a rasteriser.

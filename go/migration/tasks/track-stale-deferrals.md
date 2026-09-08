@@ -77,7 +77,7 @@ that is merely terse is not in scope.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what to do about public-key encryption.** Java builds a CMS
+- [x] A0. **Decide what to do about public-key encryption.** Java builds a CMS
       enveloped-data blob per recipient through BouncyCastle. Go's standard
       library has `crypto/x509` and no CMS encoder, and there is no network to
       add one.
@@ -85,16 +85,19 @@ that is merely terse is not in scope.
     of RFC 5652, one recipient info per certificate — or record the capability
     as permanently absent and correct the reason, which today names a slice
     that merged.
-  - **If the decision is to write it, it is its own branch, not this one.**
-    Say so in `STATUS.md` and leave the task here closed with the reason.
-    This branch is a sweep; it must not swallow a decision that size.
+  - **Taken: write it here.** It is not the size the task feared. `rc2.go`
+    implements `cipher.Block` -- it encrypts as well as it decrypts -- and
+    `cms.go` declares every ASN.1 structure an enveloped-data blob is made of,
+    because it reads one. What was missing was the direction, and that is
+    `cmsencode.go`: 160 lines, no new dependency, no cgo. The recorded reason
+    was stale twice over.
 
-- [ ] A1. Port `TestPDDocument` — 6 cases, and nothing in this repository has
+- [x] A1. Port `TestPDDocument` — 6 cases, and nothing in this repository has
       ever run them
-- [ ] A2. Port `COSWriterCompressionPoolTest` and `COSDocumentCompressionTest`
-- [ ] A3. Write the case for article beads. `PDFTextStripper` sorts by article
+- [x] A2. Port `COSWriterCompressionPoolTest` and `COSDocumentCompressionTest`
+- [x] A3. Write the case for article beads. `PDFTextStripper` sorts by article
       when a page has thread beads; the Java corpus has pages that do
-- [ ] A4. Write the case for `shadingFill` — the `sh` operator, written and read
+- [x] A4. Write the case for `shadingFill` — the `sh` operator, written and read
       back
 
 ---
@@ -103,23 +106,23 @@ that is merely terse is not in scope.
 
 **Every function this phase touches needs a test that says it works.**
 
-- [ ] B1. `PDFTextStripper.fillBeadRectangles`, over the `PDThreadBead` that is
+- [x] B1. `PDFTextStripper.fillBeadRectangles`, over the `PDThreadBead` that is
       now there
-- [ ] B2. `PDAbstractContentStream.shadingFill`, and `PDResources` adding a
+- [x] B2. `PDAbstractContentStream.shadingFill`, and `PDResources` adding a
       shading, which the same comment says it cannot
-- [ ] B3. Public-key encryption, as A0 decided
-- [ ] B4. Correct the `contentstream/operator/text` package comment, and every
+- [x] B3. Public-key encryption, as A0 decided
+- [x] B4. Correct the `contentstream/operator/text` package comment, and every
       other comment this branch proves false
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
       this branch closes — the dispatcher's help reads that list, so a command
       that now exists must come out of it
 
@@ -131,44 +134,44 @@ that is merely terse is not in scope.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D8. Re-run the audit, and leave it re-runnable
+- [x] D8. Re-run the audit, and leave it re-runnable
   - The three buckets over `src/main/java` and over `src/test/java`, then the
     two comment sweeps, then the step that pays: **check whether each stated
     reason is still true.** The commands are in `STATUS.md`.

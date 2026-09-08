@@ -3389,3 +3389,55 @@ space glyph from both sides, and says why.
 **Confidence** certain, and measured both ways: the twenty lines are exactly
 the twenty that ended with `G:0020` in the dump of the reference PDF, and the
 Java source lines they come from were read as bytes.
+
+## 79. `Encrypt` adds one recipient object N times, so only the last `-certFile` survives
+
+**Where** `tools/src/main/java/org/apache/pdfbox/tools/Encrypt.java`, the
+`certFileList` branch of `call()`.
+
+**What**
+
+```java
+PublicKeyProtectionPolicy ppp = new PublicKeyProtectionPolicy();
+PublicKeyRecipient recip = new PublicKeyRecipient();
+recip.setPermission(ap);
+
+CertificateFactory cf = CertificateFactory.getInstance("X.509");
+
+for (File certFile : certFileList)
+{
+    try (InputStream inStream = new FileInputStream(certFile))
+    {
+        X509Certificate certificate = (X509Certificate) cf.generateCertificate(inStream);
+        recip.setX509(certificate);
+    }
+    ppp.addRecipient(recip);
+}
+```
+
+The recipient is built **once, outside the loop**, and the loop overwrites its
+certificate and adds the same object again. `-certFile a.cer -certFile b.cer`
+gives a policy holding two references to one recipient, and that recipient
+carries `b.cer`. The document is then encrypted to `b.cer` twice and not to
+`a.cer` at all.
+
+`PublicKeyProtectionPolicy.addRecipient` keeps a `List`, not a `Set`, so the
+duplicate is not folded away: the /Recipients array comes out with two entries
+that unwrap to the same thing.
+
+**What correct would be** constructing the recipient inside the loop, which is
+one line moved.
+
+**Why it matters** `-certFile` is repeatable and documented as repeatable —
+"path to a certificate file, can be used multiple times". A user who encrypts a
+document for a team gets a document only the last of them can open, and nothing
+says so: the command succeeds and the file is written.
+
+**Where the Go carries it** `go/tools/encrypt.go`, in the `certFileList`
+branch, which builds the recipient outside the loop the same way. Said at the
+site.
+
+**Confidence** certain, from the source. Not measured: `tools` cannot be run
+here, because picocli is not in the local Maven repository and there is no
+network to fetch it — the same reason `track/tools` gives for its measurements.
+The aliasing is plain in the seven lines above and needs no run to see.

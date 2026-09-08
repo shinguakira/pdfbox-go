@@ -1,6 +1,7 @@
 package encryption
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
@@ -18,15 +19,6 @@ import (
 //
 // Port of PublicKeySecurityHandler.FILTER.
 const PublicKeySecurityHandlerFilter = "Adobe.PubSec"
-
-// errPublicKeyEncryptionNotPorted is what PrepareDocumentForEncryption reports.
-//
-// Java builds a CMS enveloped-data blob per recipient, which it gets from
-// BouncyCastle; Go's standard library has no CMS encoder, and nothing can save
-// a document until the writer lands in slice 7, so the encrypting half waits
-// for it. See migration/STATUS.md.
-var errPublicKeyEncryptionNotPorted = errors.New(
-	"encryption: encrypting with a public key needs a CMS encoder, which is slice 7")
 
 // PublicKeySecurityHandler is the public key security handler, which protects
 // a document for one or more recipients named by their X509 certificates.
@@ -251,6 +243,146 @@ func distinguishedNameText(der []byte) string {
 }
 
 // PrepareDocumentForEncryption prepares everything to encrypt the document.
+//
+// Port of prepareDocumentForEncryption. Java generates a 20-byte seed, wraps it
+// with each recipient's permissions into a CMS enveloped-data blob per
+// recipient, and derives the encryption key by digesting the seed followed by
+// every one of those blobs -- so a recipient who can unwrap any one of them
+// recovers the seed and, with the blobs from the document, the same key.
 func (h *PublicKeySecurityHandler) PrepareDocumentForEncryption(doc PDDocumentLike) error {
-	return errPublicKeyEncryptionNotPorted
+	if h.policy == nil || h.policy.NumberOfRecipients() == 0 {
+		return fmt.Errorf("encryption: a public key policy needs at least one recipient")
+	}
+
+	dictionary := doc.Encryption()
+	if dictionary == nil {
+		dictionary = NewPDEncryption()
+	}
+	dictionary.SetFilter(PublicKeySecurityHandlerFilter)
+	dictionary.SetLength(h.KeyLength())
+	version := h.computeVersionNumber()
+	dictionary.SetVersion(version)
+
+	// Remove CF, StmF and StrF entries that may be left from a previous
+	// encryption.
+	dictionary.RemoveV45filters()
+
+	// Java asks a KeyGenerator for a 192-bit AES key and takes the first 20
+	// bytes of it, which is a roundabout way of asking for 20 random bytes.
+	seed := make([]byte, 20)
+	if _, err := rand.Read(seed); err != nil {
+		return fmt.Errorf("encryption: generating the seed: %w", err)
+	}
+
+	recipientsFields, err := h.computeRecipientsField(seed)
+	if err != nil {
+		return err
+	}
+
+	shaInput := make([]byte, 0, len(seed))
+	shaInput = append(shaInput, seed...)
+	for _, field := range recipientsFields {
+		shaInput = append(shaInput, field...)
+	}
+
+	var digest []byte
+	switch version {
+	case 4:
+		dictionary.SetSubFilter(publicKeySubFilter5)
+		sum := sha1.Sum(shaInput)
+		digest = sum[:]
+		h.prepareEncryptionDictAES(dictionary, cos.AESV2, recipientsFields)
+	case 5:
+		dictionary.SetSubFilter(publicKeySubFilter5)
+		sum := sha256.Sum256(shaInput)
+		digest = sum[:]
+		h.prepareEncryptionDictAES(dictionary, cos.AESV3, recipientsFields)
+	default:
+		dictionary.SetSubFilter(publicKeySubFilter4)
+		sum := sha1.Sum(shaInput)
+		digest = sum[:]
+		dictionary.SetRecipients(recipientsFields)
+	}
+
+	key := make([]byte, h.KeyLength()/8)
+	copy(key, digest)
+	h.SetEncryptionKey(key)
+
+	doc.SetEncryptionDictionary(dictionary)
+	doc.COSDocument().SetEncryptionDictionary(dictionary.COSObject())
+	return nil
+}
+
+// The two subfilters a public key encryption dictionary carries, which say
+// which of the two layouts the recipients are in.
+const (
+	publicKeySubFilter4 = "adbe.pkcs7.s4"
+	publicKeySubFilter5 = "adbe.pkcs7.s5"
+)
+
+// computeVersionNumber is the base SecurityHandler.computeVersionNumber, which
+// the port has on StandardSecurityHandler and needs here as well.
+func (h *PublicKeySecurityHandler) computeVersionNumber() int {
+	switch {
+	case h.KeyLength() == 40:
+		return 1
+	case h.KeyLength() == 128 && h.policy.IsPreferAES():
+		return 4
+	case h.KeyLength() == 256:
+		return 5
+	}
+	return 2
+}
+
+// computeRecipientsField builds one CMS enveloped-data blob per recipient.
+//
+// Port of computeRecipientsField. What is enveloped is the seed followed by
+// that recipient's permission bits, big-endian, which is what ties a
+// recipient's permissions to a key only they can unwrap.
+func (h *PublicKeySecurityHandler) computeRecipientsField(seed []byte) ([][]byte, error) {
+	recipientsField := make([][]byte, 0, h.policy.NumberOfRecipients())
+	for _, recipient := range h.policy.Recipients() {
+		permission := recipient.Permission().PermissionBytesForPublicKey()
+
+		pkcs7input := make([]byte, 24)
+		copy(pkcs7input, seed)
+		pkcs7input[20] = byte(uint32(permission) >> 24)
+		pkcs7input[21] = byte(uint32(permission) >> 16)
+		pkcs7input[22] = byte(uint32(permission) >> 8)
+		pkcs7input[23] = byte(permission)
+
+		blob, err := newCMSEnvelopedDataFor(pkcs7input,
+			[]*x509.Certificate{recipient.X509()})
+		if err != nil {
+			return nil, err
+		}
+		recipientsField = append(recipientsField, blob)
+	}
+	return recipientsField, nil
+}
+
+// prepareEncryptionDictAES writes the crypt filter an AES public key document
+// carries, with the recipients on the filter rather than on the dictionary.
+//
+// Port of the private prepareEncryptionDictAES of this class, which is not the
+// StandardSecurityHandler one of the same name: that one has no recipients to
+// put anywhere.
+func (h *PublicKeySecurityHandler) prepareEncryptionDictAES(dictionary *PDEncryption,
+	aesVName *cos.Name, recipients [][]byte) {
+	cryptFilterDictionary := NewPDCryptFilterDictionary()
+	cryptFilterDictionary.SetCryptFilterMethod(aesVName)
+	cryptFilterDictionary.SetLength(h.KeyLength())
+
+	array := cos.NewArray()
+	for _, recipient := range recipients {
+		array.Add(cos.NewStringObjBytes(recipient))
+	}
+	cryptFilterDictionary.COSObject().SetItem(cos.Recipients, array)
+	array.SetDirect(true)
+
+	dictionary.SetDefaultCryptFilterDictionary(cryptFilterDictionary)
+	dictionary.SetStreamFilterName(cos.DefaultCryptFilter)
+	dictionary.SetStringFilterName(cos.DefaultCryptFilter)
+	cryptFilterDictionary.COSObject().SetDirect(true)
+	h.SetAES(true)
 }

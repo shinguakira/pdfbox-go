@@ -9,6 +9,12 @@ package tools
 // The count was "18 of them plus the dispatcher" until track/imageio,
 // track/multipdf and track/raster were planned and the classes were counted
 // against the list below: 17 ported and 9 here is 26, and 18 was not.
+//
+// `Encrypt` was on this list a third time, for -certFile, and is not any more:
+// track/stale-deferrals found that PublicKeySecurityHandler reported its
+// encrypting half unported for a reason -- the writer of slice 7 -- that had
+// stopped being true, and wrote the CMS encoder over the RC2 cipher and ASN.1
+// structures the decrypting side already had.
 
 // NotBuilt is one command that is not here.
 type NotBuilt struct {
