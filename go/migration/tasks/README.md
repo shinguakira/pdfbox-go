@@ -28,18 +28,25 @@ change it to suit one branch — change the copy.
 | `track/font-embedding` | [`track-font-embedding.md`](track-font-embedding.md) | **merged** |
 | `track/tools` | [`track-tools.md`](track-tools.md) | **merged** — 17 of 26, the 9 left are these last three tracks |
 | `track/pdfbox-layout` | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | **merged** |
+| `track/stale-deferrals` | [`track-stale-deferrals.md`](track-stale-deferrals.md) | open — **take first**, depends on nothing |
 | `track/imageio` | [`track-imageio.md`](track-imageio.md) | open — depends on nothing |
 | `track/multipdf` | [`track-multipdf.md`](track-multipdf.md) | open — depends on nothing |
 | `track/raster` | [`track-raster.md`](track-raster.md) | open — **take last**, see its A0 |
 
-**Every slice and every earlier track is merged.** The three open branches are
+**Every slice and every earlier track is merged.** The four open branches are
 what is left of the migration: work `PLAN.md` counts in scope that no slice
-claimed and no earlier track could reach.
+claimed, no earlier track could reach, or that was deferred for a reason which
+has since stopped being true.
 
-## Order for the last three tracks
+## Order for the last four tracks
 
-**`track/imageio` first**, even though it is the smallest and `track/raster` is
-the one everyone is waiting for. It is on the critical path and nothing else is:
+**`track/stale-deferrals` first**, on the same argument `track/test-backfill`
+was taken on: it is the only one of the four that can find a defect in work
+already merged. Four deferrals in the tree name a dependency that has since been
+ported, and `TestPDDocument` was recorded nowhere at all.
+
+**`track/imageio` next**, even though it is small and `track/raster` is the one
+everyone is waiting for. It is on the critical path and nothing else is:
 `track/raster`'s last task, the `render` command, writes its output through
 `ImageIOUtil`.
 
@@ -58,6 +65,13 @@ from where the classes sit in the Java tree. `ExtractImages` does not import
 imports both `rendering` and `imageio`, and is the single edge between two
 branches that are otherwise independent. [`../BRANCHING.md`](../BRANCHING.md)
 carries the graph.
+
+The **contents** came from an audit, not from the 891-class survey that missed
+`multipdf`. The first cut of these tracks had three; the audit added a fourth
+and put two more classes into `track/raster` and one more test class into
+`track/multipdf`. `../STATUS.md` carries the method and the commands to re-run
+it -- the important half of which is not finding unported classes but checking
+whether the reason each recorded deferral gives is **still true**.
 
 ## The order the four earlier tracks were taken in
 
@@ -131,12 +145,12 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) — **done** |
 | `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` |
 | `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) — **done** |
-| `pdfbox/multipdf` | 6 | slice 7 (3), `track/multipdf` (the other 3) |
+| `pdfbox/multipdf` | 6 | slice 7 (3), `track/multipdf` (the other 3, and `PDFCloneUtilityTest`) |
 | `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 conditionally, slice 8 for `FDFParser` |
 | `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
 | `pdfbox/pdfwriter` | 3 | slice 7 |
 | `pdfbox/pdfwriter/compress` | 4 | slice 7 |
-| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio) |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio), `track/raster` (`PDPatternContentStream`), `track/stale-deferrals` (`TestPDDocument`) |
 | `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
 | `pdmodel/common/filespecification` | 4 | slice 8 |
 | `pdmodel/common/function` | 6 | slice 9 |
@@ -148,7 +162,7 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdmodel/font` | 39 | slice 3 (~12), slice 4 (rest), `track/font-embedding` (the 5 embedders) |
 | `pdmodel/font/encoding` | 12 | slice 3 |
 | `pdmodel/graphics` | 4 | slice 2 (1), slice 6 (2), slice 9 (`PDFontSetting`) |
-| `pdmodel/graphics/blend` | 2 | slice 2 (1), slice 9 (1) |
+| `pdmodel/graphics/blend` | 2 | slice 2 (1), `track/raster` (`BlendComposite`) |
 | `pdmodel/graphics/color` | 23 | slice 2 (3), slice 9 (rest) |
 | `pdmodel/graphics/form` | 3 | slice 9 |
 | `pdmodel/graphics/image` | 9 | slice 6 |

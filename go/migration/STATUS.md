@@ -67,7 +67,7 @@ group is a gap.
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
 | `tools`, `tools/imageio` | 26 | **18 done** — `track/tools`. Eight left: see its section |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
-| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **`track/multipdf`.** This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last three tracks were planned |
+| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **`track/multipdf`.** This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last four tracks were planned, and the miss is why the audit at the end of this file replaces this survey |
 
 `io`, `fontbox` and `xmpbox` have no unported class at all.
 
@@ -5323,19 +5323,20 @@ the brackets and the operator before it looks at the list -- so skipping it
 would be a deviation from the reference for the sake of a few bytes. Ported as
 written.
 
-## What is left, and the three branches that claim it
+## What is left, and the four branches that claim it
 
-Every slice and every earlier track is merged. Three things `PLAN.md` counts in
-scope are not in the port, and each now has a branch. The grouping and the
-critical path are in [`BRANCHING.md`](BRANCHING.md); the order was taken from
-the imports of the five commands that are missing, not from where the classes
-sit in the Java tree.
+Every slice and every earlier track is merged. What `PLAN.md` counts in scope
+and the port has not got is below, and each item now has a branch. The grouping
+and the critical path are in [`BRANCHING.md`](BRANCHING.md); the order was taken
+from the imports of the five commands that are missing, and the contents from
+the audit recorded at the end of this file.
 
 | Branch | Java | Depends on | Unblocks |
 | --- | ---: | --- | --- |
+| `track/stale-deferrals` | 3 test classes, 3 methods | nothing | article beads, `sh`, public-key encryption |
 | `track/imageio` | 5 | nothing | `export:images` |
-| `track/multipdf` | 5 | nothing | `merge`, `overlay` |
-| `track/raster` | 25 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
+| `track/multipdf` | 5 + 1 test | nothing | `merge`, `overlay` |
+| `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
 
 **`track/imageio` is on the critical path and `track/multipdf` is not.**
 `ExtractImages` never imports `rendering` — it walks the content stream with
@@ -5343,6 +5344,10 @@ sit in the Java tree.
 already answers a `go image.Image`, so nothing about writing an image out waits
 for a rasteriser. `PDFToImage` imports both `rendering` and `imageio`, and that
 single command is the only edge between the two branches.
+
+**`track/stale-deferrals` should be taken first**, on the argument
+`track/test-backfill` was taken on: it is the only one of the four that can find
+a defect in work already merged. It is not on the critical path either way.
 
 **`track/raster` is the last decision this migration has.** Slice 9 ported
 everything in the renderer that computes and put only the drawing behind
@@ -5359,3 +5364,83 @@ them plus the dispatcher". Counting the classes against that file's own list:
 17 are ported, the dispatcher among them, and 9 are not. 17 and 9 is 26. Both
 are corrected, and the nine are what the three branches above divide between
 them.
+
+## The audit that found what the survey missed
+
+The 891-class survey recorded above **missed `multipdf` entirely**, and its
+subtotals do not add up to its own headings (28 and 45 under headings of 24 and
+42). Its matcher counted a class as ported if its name appeared anywhere in the
+Go tree, which is how a comment saying `LayerUtility` and `Overlay` are *absent*
+was read as evidence that they are present.
+
+This is the audit that replaces it. It is written down because the failure will
+recur otherwise, and because it found four things the first plan for the
+remaining work did not have.
+
+### The method: three buckets, not one
+
+A class is **not** ported because its name appears. Sort every Java class into
+one of three buckets and read the last two by hand.
+
+```sh
+# 1. every in-scope Java main class, as "SimpleName<TAB>fqn"
+for m in io fontbox xmpbox pdfbox pdfbox-layout-awt pdfbox-layout-fop tools; do
+  find $m/src/main/java -name '*.java'
+done | sed 's|^[a-z0-9-]*/src/main/java/||; s|\.java$||; s|/|.|g' \
+     | awk -F. '{print $NF"\t"$0}' | sort > java_classes.tsv
+
+# 2. strong evidence: a Go declaration of that name, or an explicit "Port of X"
+cd go
+rg -o --no-filename '^(type|func) +([A-Z][A-Za-z0-9_]*)' -r '$2' --glob '*.go' . \
+  | sort -u > go_decls.txt
+rg -o --no-filename '[Pp]ort of ([a-zA-Z0-9_.]*[A-Z][A-Za-z0-9_]*)' -r '$1' --glob '*.go' . \
+  | sed 's/.*\.//' | sort -u >> go_decls.txt
+
+# 3. of what is left, split by whether the name reaches any line that is not a
+#    comment. Comment-only is the bucket the last survey got wrong.
+```
+
+Over 891 classes that gives **100 with no strong evidence**, of which 27 appear
+nowhere in the Go tree at all and 51 appear **only in comments**. Every one of
+the 51 has to be read: most are ports under a Go name the matcher could not see
+— `COSBase` is `cos.Base`, `Hex` is `cos.ParseHexString` — and a few are the
+real gaps, indistinguishable from the rest without reading.
+
+Run the same three buckets over `src/test/java` for the 237 test classes. That
+pass is what found `TestPDDocument`.
+
+### A class-level audit cannot see a method-level gap, and that is where they hide
+
+`multipdf` was a whole package and the survey still lost it. The gaps below are
+smaller than a class and no class-level pass of any quality would have found
+them:
+
+```sh
+rg -n '//.*\b(is not ported|has not reached|not built|waits for|deferred)\b' \
+   --glob '*.go' --glob '!*_test.go' go/
+rg -n 'errors\.New\(|panic\(' --glob '*.go' --glob '!*_test.go' go/ \
+   | rg -i 'not ported|not built|no backend|not implemented'
+```
+
+Then — and this is the step that pays — **check whether each stated reason is
+still true.** A deferral records what was missing on the day it was written, and
+nothing goes back to look when that thing lands. Four of the ones this port
+carries name a dependency that has since been ported.
+
+### What it found
+
+| Found | Where | Now claimed by |
+| --- | --- | --- |
+| `PDPatternContentStream` unported | `pdmodel` | `track/raster` |
+| `BlendComposite` unported | `graphics/blend` | `track/raster` |
+| `PDFTextStripper.fillBeadRectangles` disabled — `PDThreadBead` is ported now | `text` | `track/stale-deferrals` |
+| `PDAbstractContentStream.shadingFill` missing — `PDShading` is ported now | `pdmodel` | `track/stale-deferrals` |
+| `PublicKeySecurityHandler` cannot encrypt — the recorded reason is "slice 7", which merged | `encryption` | `track/stale-deferrals`, and its A0 |
+| `COSWriterCompressionPoolTest`, `COSDocumentCompressionTest` — every blocker they name is ported | `pdfwriter` | `track/stale-deferrals` |
+| `TestPDDocument`, 6 cases — **recorded nowhere at all** | `pdmodel` | `track/stale-deferrals` |
+| `PDFCloneUtilityTest` — 2 of its 3 blockers are ported, the third is `PDFMergerUtility` | `multipdf` | `track/multipdf` |
+| `ContentStreamWriterTest` | `pdfwriter` | `track/raster` |
+| `contentstream/operator/text` says `Tj`, `TJ`, `'` and `"` are absent; they were ported by slice 3 | doc comment | `track/stale-deferrals` |
+
+The `tools` count — 18 of 26, in this file and in `go/tools/notbuilt.go` — was
+wrong the same way. 17 are ported and 9 are not.

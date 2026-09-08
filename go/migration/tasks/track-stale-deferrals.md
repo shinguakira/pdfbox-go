@@ -1,12 +1,17 @@
 # Implementation Plan
 
-Track — `multipdf`. Combining documents: merge, overlay, layers.
+Track — deferrals whose reason no longer holds, and what was never recorded.
 
-**Branch: `track/multipdf`** — from and back to `migration-base`.
+**Branch: `track/stale-deferrals`** — from and back to `migration-base`.
 
-Depends on **nothing**, and is **off the critical path**. It can be worked at
-any time, in parallel with `track/imageio` and `track/raster`, and merged
-whenever it is ready.
+Depends on **nothing**. **Take it first**, for the reason `track/test-backfill`
+was taken first: it is the only one of the four that can find a defect in work
+already merged, rather than adding more work on top of it.
+
+A deferral records what was missing on the day it was written. Nothing goes back
+to look when that thing lands, so a port accumulates work that is blocked by
+something which is no longer there. This branch is the sweep for that, and it
+exists because an audit found four of them at once.
 
 ## Rules — do not break these
 
@@ -49,50 +54,48 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-3 Java classes, 2 commands, 4 Java test classes.
+No new Java package. Everything here is a piece of an already-merged slice that
+was put off, plus one class of test that was missed outright.
 
-| Java | Files | What it is |
-| --- | ---: | --- |
-| `multipdf/PDFMergerUtility` | 1 | merges documents, including their AcroForms |
-| `multipdf/Overlay` | 1 | stamps one document over another |
-| `multipdf/LayerUtility` | 1 | imports a page as an optional content group |
-| `tools/PDFMerger`, `tools/OverlayPDF` | 2 | the `merge` and `overlay` commands |
-| `PDFMergerUtilityTest`, `MergeAcroFormsTest`, `MergeAnnotationsTest`, `OverlayTest`, `TestLayerUtility`, `PDFCloneUtilityTest` | 6 tests | the Java tests |
+| Item | Recorded reason | Why it is stale |
+| --- | --- | --- |
+| `PDFTextStripper.fillBeadRectangles` | "PDThreadBead is a slice this port has not reached" | slice 8 ported `PDThreadBead`; the method still sets `beadRectangles = nil`, so every glyph falls into one article |
+| `PDAbstractContentStream.shadingFill` | "it names PDShading, which belongs to the rendering this port has not reached" | slice 9 ported `PDShading`; `sh` cannot be written to a content stream |
+| `PublicKeySecurityHandler.PrepareDocumentForEncryption` | "nothing can save a document until the writer lands in slice 7" | slice 7 merged. The real reason is a CMS encoder, which Go's standard library has not got — see A0 |
+| `COSWriterCompressionPoolTest` | needs `PDDocumentOutline`, `PDOutlineItem` | both ported |
+| `COSDocumentCompressionTest` | needs `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox`, `protect` | all five ported |
+| `TestPDDocument`, 6 cases | **none — recorded nowhere at all** | it was missed, not deferred |
+| `contentstream/operator/text` package comment | says `Tj`, `TJ`, `'` and `"` are not here | slice 3 ported all four; the comment is wrong |
 
-`multipdf` is 6 files; `Splitter`, `PageExtractor` and `PDFCloneUtility` are
-already ported by slice 7. This is the other half.
+`STATUS.md` carries the audit that found them and the commands to re-run it.
 
-**How it was missed.** Slice 7 deferred all three to slice 8, slice 8 never took
-them, and the coverage survey counted them as ported because their names appear
-in a Go comment saying they are *absent*. `track/tools` then found the same
-matcher failing the other way. Nothing about the work is hard or blocked — it
-simply had no branch.
-
-`PDFCloneUtility` is the piece the other three are written against, and it is
-in. Read it first.
+**What this branch is not.** It is not a licence to tidy. Every item above is
+either behaviour the port does not have or a record that is false. A comment
+that is merely terse is not in scope.
 
 ---
 
 # Phase A — Write the tests
 
-- [ ] A1. Port `PDFMergerUtilityTest` — the biggest of the five, and the one
-      that carries the merged-document corpus
-- [ ] A2. Port `MergeAcroFormsTest` and `MergeAnnotationsTest`
-  - Both are about what merging does to slice 8's structures: field names that
-    collide, annotation appearance streams that move. Slice 8 is merged, so
-    there is something to assert against.
-- [ ] A3. Port `OverlayTest`
-- [ ] A4. Port `TestLayerUtility`
-  - It renders to compare, which needs `track/raster`. Port what it asserts
-    about the object graph and record the pixel half.
+- [ ] A0. **Decide what to do about public-key encryption.** Java builds a CMS
+      enveloped-data blob per recipient through BouncyCastle. Go's standard
+      library has `crypto/x509` and no CMS encoder, and there is no network to
+      add one.
+  - Either write the enveloped-data encoder this needs — it is a narrow subset
+    of RFC 5652, one recipient info per certificate — or record the capability
+    as permanently absent and correct the reason, which today names a slice
+    that merged.
+  - **If the decision is to write it, it is its own branch, not this one.**
+    Say so in `STATUS.md` and leave the task here closed with the reason.
+    This branch is a sweep; it must not swallow a decision that size.
 
-- [ ] A5. Port `PDFCloneUtilityTest`
-  - `PDFCloneUtility` was ported by slice 7 and its test was not: `STATUS.md`
-    records all three of its cases as needing `PDPageContentStream`,
-    `PDFMergerUtility` or `PDOptionalContentProperties`, and two of those three
-    have since been ported. This branch brings the third, so the whole class
-    can go in. **Port it before B1** -- it tests the machinery the other three
-    classes are written against.
+- [ ] A1. Port `TestPDDocument` — 6 cases, and nothing in this repository has
+      ever run them
+- [ ] A2. Port `COSWriterCompressionPoolTest` and `COSDocumentCompressionTest`
+- [ ] A3. Write the case for article beads. `PDFTextStripper` sorts by article
+      when a page has thread beads; the Java corpus has pages that do
+- [ ] A4. Write the case for `shadingFill` — the `sh` operator, written and read
+      back
 
 ---
 
@@ -100,12 +103,13 @@ in. Read it first.
 
 **Every function this phase touches needs a test that says it works.**
 
-- [ ] B1. `PDFMergerUtility` — the destination document, the source list, and
-      what it does with each of the catalog's dictionaries
-- [ ] B2. `Overlay`, whose `Position` enum the command takes as an option
-- [ ] B3. `LayerUtility`
-- [ ] B4. `PDFMerger` and `OverlayPDF`, and their rows out of
-      `go/tools/notbuilt.go`
+- [ ] B1. `PDFTextStripper.fillBeadRectangles`, over the `PDThreadBead` that is
+      now there
+- [ ] B2. `PDAbstractContentStream.shadingFill`, and `PDResources` adding a
+      shading, which the same comment says it cannot
+- [ ] B3. Public-key encryption, as A0 decided
+- [ ] B4. Correct the `contentstream/operator/text` package comment, and every
+      other comment this branch proves false
 
 ---
 
@@ -162,6 +166,15 @@ the ported tests cannot answer.
 - [ ] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
+And for this branch in particular:
+
+- [ ] D8. Re-run the audit, and leave it re-runnable
+  - The three buckets over `src/main/java` and over `src/test/java`, then the
+    two comment sweeps, then the step that pays: **check whether each stated
+    reason is still true.** The commands are in `STATUS.md`.
+  - Every deferral this branch leaves standing must name a reason that is true
+    on the day the branch merges, not on the day it was written.
+
 ---
 
 # Phase E — User feedback
@@ -183,10 +196,9 @@ the ported tests cannot answer.
 - [ ] E4. Report back
   - What was changed, what was not, and why for each
 
----
 
 # Blocked
 
-- [ ] `TestLayerUtility` and any other case that compares rendered pages. Held
-      for `track/raster`; port the rest of the class and record the omission
-      rather than skipping the file.
+Nothing, unless A0 decides that public-key encryption needs a branch of its
+own — in which case B3 is that branch's, not this one's, and this file records
+the decision and moves on.

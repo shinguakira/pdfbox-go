@@ -215,18 +215,31 @@ before slice 9 for its backend-interface shape.
 
 ## What is left
 
-Every slice above is merged, and so is every track. Three things this plan
-counts in scope are not in the port:
+Every slice above is merged, and so is every track. Four things this plan counts
+in scope are not in the port:
 
-- **the raster backend** -- see slice 9 above;
+- **the raster backend** -- see slice 9 above, and with it `BlendComposite` and
+  `PDPatternContentStream`, which are raster classes in all but name;
 - **`multipdf`** -- `PDFMergerUtility`, `LayerUtility` and `Overlay`, deferred
   by slice 7 to slice 8, which never took them;
-- **8 of the 26 `tools`** -- five commands and the four `tools/imageio`
-  classes, each waiting on one of the two above.
+- **9 of the 26 `tools`** -- five commands and the four `tools/imageio`
+  classes, each waiting on one of the two above;
+- **deferrals whose reason has stopped being true** -- article beads in
+  `PDFTextStripper`, `sh` in a written content stream, public-key encryption,
+  and three test classes, one of which was never recorded at all.
 
-They are grouped into three branches, with the order taken from what the five
-missing commands import. [`BRANCHING.md`](BRANCHING.md) carries the grouping,
-the dependency edges and the critical path; `tasks/` carries one file each.
+They are grouped into four branches. The order came from what the five missing
+commands import; the **contents** came from an audit, because the 891-class
+survey this plan leaned on missed `multipdf` outright.
+[`BRANCHING.md`](BRANCHING.md) carries the grouping and the critical path,
+[`STATUS.md`](STATUS.md) carries the audit and the commands to re-run it, and
+`tasks/` carries one file per branch.
+
+**A deferral is not a record of what is missing; it is a record of what was
+missing on the day it was written.** Nothing in this plan went back to check
+when the thing it named was ported, and four deferrals now name a dependency
+that is in the tree. Re-checking them is a task in its own right, and it is
+`track/stale-deferrals`.
 
 ---
 

@@ -55,7 +55,7 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-23 Java classes, 2 commands.
+25 Java classes, 2 commands.
 
 | Java | Files | What it is |
 | --- | ---: | --- |
@@ -63,6 +63,8 @@ defect, write a strict failing test first and only then fix.
 | `graphics/shading` `*ShadingPaint` | 8 | the `java.awt.Paint` each one is reached through |
 | `rendering/GroupGraphics`, `SoftMask` | 2 | transparency groups and soft masks |
 | `rendering/TilingPaint`, `TilingPaintFactory` | 2 | tiling patterns |
+| `graphics/blend/BlendComposite` | 1 | the `java.awt.Composite` the blend modes are applied through |
+| `pdmodel/PDPatternContentStream` | 1 | writing a tiling pattern's own content stream |
 | `tools/PDFToImage`, `tools/PrintPDF` | 2 | the `render` and `print` commands |
 
 The model half of all of these is ported and runs: `shading.Shading` evaluates
@@ -101,8 +103,11 @@ comparisons possible for the first time.
 
 - [ ] A1. Port the pixel comparisons the earlier branches deferred
   - They are the tests this branch exists to make possible. `STATUS.md` records
-    them per slice; `TestLayerUtility`, `TestImageIOUtils` and every
-    `checkRenderIdent` in `pdfbox-layout-awt` are among them.
+    them per slice: `ContentStreamWriterTest`, `TestFontEmbedding`,
+    `PDAcroFormFlattenTest`, `TestLayerUtility`, `TestImageIOUtils` and every
+    `checkRenderIdent` in `pdfbox-layout-awt` and `pdfbox-layout-fop`.
+  - `PDAcroFormFlattenTest` also downloads its PDFs, which is a second reason
+    and does not go away with this branch. Record what is left.
   - Do this **before** B, not after. A backend written first and compared
     afterwards is a backend written to whatever it happens to produce.
 
@@ -129,10 +134,15 @@ Ordered so that each step is testable before the next needs it.
 - [ ] B3. The shading contexts and paints, type by type
   - 1, 2 and 3 first — function, axial, radial. Then the mesh types 4 to 7,
     which share `TriangleBasedShadingContext` and `PatchMeshesShadingContext`.
-- [ ] B4. `TilingPaint`, `TilingPaintFactory`, `GroupGraphics`, `SoftMask`
+- [ ] B4. `TilingPaint`, `TilingPaintFactory`, `GroupGraphics`, `SoftMask`,
+      `BlendComposite`
   - Transparency groups, blend modes and soft masks are `PushGroup`/`PopGroup`
     and `SoftMaskedPaint`. This is the part Java gets from `Graphics2D` for
     free and the part a Go backend has to write.
+  - `PDPatternContentStream` goes here too: `pdformcontentstream.go` says it is
+    not ported because it names `PDTilingPattern`, which this task brings.
+  - `textmarkuphandlers.go` says `generateNormalAppearance` for the squiggly
+    annotation is not ported for the same reason. Close it or restate it.
 - [ ] B5. `PDFToImage` and `PrintPDF`, and their rows out of
       `go/tools/notbuilt.go`
   - **B5 needs `track/imageio` merged.** `PDFToImage` writes through
