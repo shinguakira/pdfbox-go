@@ -1572,6 +1572,17 @@ likely to look.
 `Read`, which keep the same order; `TestASCII85DamageTolerance` in
 `fromsource_test.go` asserts the repeat and says why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 32. Both paths that give up
+part way through a group set `n` to 0 beside `eof`, which is the first of the
+two answers the entry names; the second — resetting `index` only once a group
+has been read — would move a line the terminator path also depends on. A
+truncated stream now decodes to a prefix of the original and stops. Tested by
+`TestASCII85TruncatedStreamDoesNotRepeatItsLastGroup` in
+`go/pdfbox/filter/javabug32_test.go`, with
+`TestASCII85WholeStreamIsUnchanged` beside it for the end that is not
+truncation. `TestASCII85DamageTolerance` in `fromsource_test.go`, which
+asserted the repeat, now asserts the prefix.
+
 **Confidence** high. Measured: the port decoded 680 bytes from a stream whose
 first 676 are the original, and the last four repeat bytes 672 to 675.
 

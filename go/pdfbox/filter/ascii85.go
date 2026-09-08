@@ -112,7 +112,11 @@ func (a *ascii85Reader) readByte() (byte, error) {
 
 		z, ok := a.readSignificant()
 		if !ok {
+			// Java leaves n at the previous group's count on this path, and it
+			// has just reset index to 0, so the next read finds index < n and
+			// hands that group out a second time. See migration/JAVA-BUGS.md 32.
 			a.eof = true
+			a.n = 0
 			return 0, io.EOF
 		}
 
@@ -132,7 +136,9 @@ func (a *ascii85Reader) readByte() (byte, error) {
 			for ; k < 5; k++ {
 				z, ok = a.readSignificant()
 				if !ok {
+					// the same repeat, from inside the group: JAVA-BUGS 32
 					a.eof = true
+					a.n = 0
 					return 0, io.EOF
 				}
 				a.ascii[k] = z
