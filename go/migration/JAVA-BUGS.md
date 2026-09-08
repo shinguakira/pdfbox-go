@@ -875,6 +875,19 @@ why it has gone unnoticed.
 `StringWidth`, which walks `utf16Units` one at a time with `codePointAt`, both
 written out beside it.
 
+**Kept in the Go** `track/java-bug-fixes`: unobservable. A0 marked this
+**fix**; it is right about the walk and wrong about the reach. The second visit
+only happens if the first one succeeded, and the first one cannot: the name the
+walk measures by is `getGlyphList().codePointToName(codePoint)`, the Adobe
+Glyph List holds no code point outside the basic plane -- `glyphlist.txt`,
+`additional.txt` and `zapfdingbats.txt` are all four hex digits -- so every
+supplementary code point comes back `.notdef`, and `.notdef` is the one name
+`CFFType1Font.hasGlyph` can never answer true for, because its SID is 0 and
+`getGIDForSID(0)` is the GID 0 the test rejects. The character therefore throws
+on its first unit, before the index that was not advanced can be read. The same
+two facts hold in the Java, so this is the Java's own behaviour and not a
+divergence.
+
 **Confidence** high. The correct walk is in the same package, in the method
 this one exists to complement.
 

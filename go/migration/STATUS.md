@@ -6021,7 +6021,7 @@ a **keep** names one of the four reasons the task file allows.
 | 15 | fix | text outside the basic plane comes out reversed |
 | 16 | fix | `% 0xFF` where the two branches beside it use `& 0xFF` |
 | 17 | fix | one cell of a matrix multiply reads the wrong operand |
-| 18 | fix | a width walked one UTF-16 unit at a time |
+| 18 | **keep** | unobservable: every supplementary code point is named `.notdef`, which never has a glyph, so the second visit is unreachable. A0 said fix |
 | 19 | fix | a sign-extended byte written as eight hex digits |
 | 20 | fix | `&` between two disjoint byte lanes |
 | 21 | fix | an entry built with a null parent |
@@ -6089,14 +6089,21 @@ a **keep** names one of the four reasons the task file allows.
 | 83 | fix | `/Suspect` written twice and `/UserProperties` never |
 | 84 | fix | a branch that cannot run, so the page mode is never merged |
 
-**62 fix, 5 keep, 15 not carried, 2 test only.** A0 first said 63 and 4. Entry 2
+**61 fix, 6 keep, 15 not carried, 2 test only.** A0 first said 63 and 4. Entry 2
 moved to keep once it was checked — the task file calls that a normal outcome
 and says hiding it is not. Entry 3 is the same arithmetic and stayed a fix,
 because a `ReadView` can declare a length its source cannot supply and then the
 -1 is reached: without the fix the port answered **0 bytes and EOF** for a
 sequence over a ten-byte source.
 
-The four kept, with their reasons in full:
+Entry 18 moved the same way, and for the same kind of reason: the walk really
+does read a supplementary character twice, but the second read is unreachable.
+The name it measures by comes from `codePointToName`, no glyph list in the tree
+holds a code point outside the basic plane, so the character is named `.notdef`
+— and `.notdef` is the one name `hasGlyph` can never answer true for. The first
+read throws before the index that was not advanced is used again.
+
+The four A0 kept, with their reasons in full:
 
 - **6** — *judgement*. The entry itself says "keeping it may be deliberate: a
   damaged file's entry is". A parser that drops what it cannot key may lose a
