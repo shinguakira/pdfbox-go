@@ -487,3 +487,20 @@ func (f *PDType0Font) Subset() error {
 	}
 	return nil
 }
+
+// TrueTypeFont returns the font program this font is laid out with, or nil.
+//
+// Java's GlyphLayoutProcessorAwt does not need one: it loads a java.awt.Font
+// beside the PDType0Font and lays out with that. This port's layout backend
+// shapes with the program itself, so it asks for it here -- from the embedding
+// half where the font was built to be written, and from the descendant where it
+// was read out of a document.
+func (f *PDType0Font) TrueTypeFont() *ttf.TrueTypeFont {
+	if f.ttf != nil {
+		return f.ttf
+	}
+	if descendant, ok := f.descendantFont.(*PDCIDFontType2); ok {
+		return descendant.TrueTypeFont()
+	}
+	return nil
+}

@@ -82,15 +82,21 @@ choice is the work — not the 7 files around it.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what the Go backend is** before writing any test. The tests
+- [x] A0. **Decide what the Go backend is** before writing any test. The tests
       assert shaped glyph runs; without a shaper there is nothing to assert
       against.
-- [ ] A1. Port the shared cases both backends run
+  - **Taken, and the answer is that it cannot be chosen yet.** Three
+    substitutions have to be decided together and two belong to other work:
+    a shaper for layoutGlyphVector, a rasteriser without which no test in this
+    module asserts anything about the shaping, and a source of UAX#9 embedding
+    levels, which golang.org/x/text/unicode/bidi does not expose. Measured
+    against the running Java; see the branch section of migration/STATUS.md.
+- [x] A1. Port the shared cases both backends run
   - `GlyphLayoutBidiTest`, `GlyphLayoutDin91379Test`,
     `GlyphLayoutDin91379FormTest`, `GlyphLayoutLigaturesAndKerningTest`,
     `GlyphLayoutSMPTest` — each exists twice, once per backend
-- [ ] A2. Port `TestBase` — the AWT side's shared fixture
-- [ ] A3. Port the hello-world tests, if A0 leaves them meaningful
+- [x] A2. Port `TestBase` — the AWT side's shared fixture
+- [x] A3. Port the hello-world tests, if A0 leaves them meaningful
 
 ---
 
@@ -107,22 +113,29 @@ helper rather than patching each call site. See
 [`../conventions/java-to-go.md`](../conventions/java-to-go.md) for the ones this
 port has already paid for more than once.
 
-- [ ] B1. The interface both backends implement
+- [x] B1. The interface both backends implement
   - `GlyphLayoutProcessor` and `GlyphLayoutFontLoader` in the core, whichever
     slice ported them, and the contract they define
-- [ ] B2. One backend, chosen in A0
-- [ ] B3. `FopStringTextFragment` and whatever the second backend needs, if a
+- [x] B2. One backend, chosen in A0
+  - `go/pdfbox/glyphlayout`, which is a substitution for both -- see STATUS.md.
+    Neither `*Awt` nor `*Fop` is ported by name: each is a shell around a
+    library Go has not got
+- [x] B3. `FopStringTextFragment` and whatever the second backend needs, if a
       second backend is in scope at all
+  - It is not. `FopStringTextFragment` exists to hand a string to FOP, which
+    is the library that is absent; there is nothing behind it to port to. One
+    backend serves both, and the `Features` on it are what the two font
+    loaders configure
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`
 
 ---
 
@@ -132,82 +145,122 @@ port has already paid for more than once.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
+  - The backend's numbers come from the reference PDFs, which are the AWT
+    backend's own output; the message of `testMissingGlyph` and the three
+    width relations come from the Java test source. Where a case asserts a
+    property rather than a number -- that a mark lands on its letter, that a
+    PostScript font is refused -- it says so, and where a number in a comment
+    was read off the port rather than off the Java, that is said too
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green" -- green says the
     code is not broken in a way something already checks, which is a different
     claim from "this works"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
+  - `supportsFont` had none for its PostScript branch: `TestSupportsFont`,
+    which builds such a font from a dictionary because the embedder refuses to
+    load one. `resolveAttachments` had none for its right-to-left half, which
+    the reference comparison cannot reach -- the Arabic it would compare
+    against is shaped by the platform:
+    `TestMarkSitsOverItsLetterInBothDirections`. Both were checked against the
+    code with the fix taken out again, and both fail without it
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
+  - The backend's pass is in STATUS.md under "The adversarial review of the
+    backend": three findings from reading the Java, three from reading the
+    OpenType specification, and one the reference comparison caught with every
+    test green
 
 And for this branch in particular:
 
-- [ ] D8. This is a substitution, not a transliteration — say so plainly
+- [x] D8. This is a substitution, not a transliteration — say so plainly
   - Whatever Go shaper was chosen, it is not `java.awt.font.TextLayout`.
     Record every case where it shapes differently, in `STATUS.md`, as a
     deviation. Do not let "the test passes" stand in for "it shapes the same".
+  - Five deviations, each measured against the AWT backend's own output and
+    pinned in the tests: a deviation that disappears fails the test as loudly
+    as one that appears.
 
-- [ ] D9. Check bidi and the supplementary plane against the Java output
+- [x] D9. Check bidi and the supplementary plane against the Java output
   - `GlyphLayoutBidiTest` and `GlyphLayoutSMPTest` are the two that will expose
     a shaper difference first.
+  - Done by comparing against the reference PDFs the Java tests render, which
+    are the AWT backend's own output. SMP agrees on all 7 text objects; bidi
+    agrees on the run order and differs on Arabic joining, which is recorded.
+    `GlyphLayoutDin91379Test` was added to the same comparison and agrees on
+    40 of 41.
 
 ---
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
-  - Is it a port defect, a missing piece of scope, or a difference the Java
-    itself has?
-  - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
-    user is told why it stays.
+- [x] E2. For each item of feedback, judge it before acting
+  - Eight items. Seven real: a surrogate pair split across bidi runs, a
+    `supportsFont` that accepted fonts whose glyph ids it cannot write, NULL
+    anchors read as anchors at the origin, a required feature never run, every
+    language system applied at once, every script alias applied at once, and a
+    damaged GPOS table reported as a missing one.
+  - One declined: writing an empty `[] TJ` at the end of a run is what the
+    Java does, unconditionally, and skipping it would be a deviation from the
+    reference. Recorded in STATUS.md with the Java it was checked against.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
+  - Eight cases added: the bidi corpus grew by eight texts measured on the
+    running JDK, `TestSupportsFont` gained the font read from a document,
+    `TestNullBaseAnchorDoesNotAttach`, `TestRequiredFeatureRunsUnasked` over a
+    GPOS table written by hand because no layout font declares one, and
+    `TestDamagedGPOSIsReported`. Each was run against the code with its fix
+    taken out again, and each fails without it.
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
+  - In STATUS.md under "The feedback on the backend, and what it found", and
+    in the reply to the user.
 
 ---
 
 # Blocked
 
-- [ ] The branch itself. `PLAN.md` names this track, `BRANCHING.md` gives it no
-      branch. Nothing here starts until that is settled.
-- [ ] A0. The backend choice blocks every task in this file.
-- [ ] `slice/4`. Without fonts there is nothing to shape.
+- [x] The branch itself. `PLAN.md` names this track, `BRANCHING.md` gives it no
+      branch. **Settled** -- `track/pdfbox-layout` exists and A0 ran on it.
+- [x] A0. The backend choice blocks every task in this file. **Settled** -- the
+      backend is `go/pdfbox/glyphlayout`, built on this branch over ported GSUB
+      and GPOS written from the specification. No third-party shaper is used,
+      and none is needed.
+- [x] `slice/4`. Without fonts there is nothing to shape. Merged long since.

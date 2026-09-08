@@ -27,7 +27,7 @@ Last updated: 2026-09-06
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
 | 7 | `tools` | 26 | **18 of 26**, finished by `track/tools` as far as it can go. The eight left are seven waiting for a raster backend and two waiting for `multipdf`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
-| — | `pdfbox/glyphlayout` | 7 | not started — `track/pdfbox-layout` claims it, and its A0 is choosing a Go text shaper |
+| — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
 
 ## What is left, and the four tracks that claim it
@@ -64,9 +64,9 @@ group is a gap.
 | --- | ---: | --- |
 | `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | **done** — `track/font-embedding`. Four, not five: `ToUnicodeWriter` was already ported and this survey missed it |
 | `pdmodel` resource cache factory | 3 | **done** — `track/test-backfill`, which was already in those files |
-| `pdmodel/AbstractGlyphLayoutProcessor` | 1 | `track/pdfbox-layout` |
-| `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | `track/pdfbox-layout` |
+| `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
 | `tools`, `tools/imageio` | 26 | **18 done** — `track/tools`. Eight left: see its section |
+| `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
 | `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **this survey missed them.** Slice 7 deferred all three to slice 8 and slice 8 never took them; no branch claims them |
 
 `io`, `fontbox` and `xmpbox` have no unported class at all.
@@ -98,8 +98,15 @@ add surface on top of a base whose test coverage has a known hole.
 3. **`track/tools`** — **done as far as it can go.** 18 commands built, 7 held
    for the raster backend as expected, and 2 held for `multipdf`, which was not
    expected and which no branch claims.
-4. **`track/pdfbox-layout`** — last. Its A0 is choosing a Go text shaper, which
-   is entangled with whatever eventually implements `rendering.Backend`.
+4. **`track/pdfbox-layout`** -- **the backend is built, and measured against the
+   Java's own output.** AbstractGlyphLayoutProcessor is in, on
+   `go/javatext/bidi`, which is UAX#9 written out because
+   `golang.org/x/text/unicode/bidi` exposes no embedding level. GPOS is in,
+   written from the OpenType specification because neither PDFBox nor Go has
+   one. On top of the two, `go/pdfbox/glyphlayout` is the shaper the two Java
+   backends borrow from the platform. It is a substitution and not a
+   transliteration, so what it does differently is measured against the
+   reference PDFs the Java tests render, and listed. See its section.
 
 ### Rows this file had wrong
 
@@ -4628,3 +4635,690 @@ global help and then ran `decrypt` with no arguments. `split` now asks the
 command's own flag set which options take a separate value, and treats the one
 argument after `help` as its parameter — which it has to, because that argument
 is a subcommand name.
+
+## Track `pdfbox-layout` — A0, and why the branch stops there
+
+Branch `track/pdfbox-layout`, the last of the four the survey found.
+
+**Nothing was ported.** A0 is the whole of this branch's work, and its answer is
+that the backend cannot be chosen yet — not because the choice is hard, but
+because **three separate substitutions have to be decided together and two of
+them belong to other work**. What follows is the evidence, measured rather than
+argued, so that nobody has to take it again.
+
+### What the module actually is
+
+7 main files across two Maven modules, and 13 test classes.
+
+| Java | Lines | What it rests on |
+| --- | ---: | --- |
+| `awt/GlyphLayoutProcessorAwt` | 284 | `java.awt.Font.layoutGlyphVector`, `GlyphVector` |
+| `awt/GlyphLayoutFontLoaderAwt` | 199 | `java.awt.Font.createFont`, `java.awt.font.TextAttribute` |
+| `fop/GlyphLayoutProcessorFop` | 354 | `org.apache.fop.fonts.Font`, `GlyphMapping`, `MultiByteFont` |
+| `fop/GlyphLayoutFontLoaderFop` | 172 | the same |
+| `fop/FopStringTextFragment` | 84 | implements `org.apache.fop.fonts.TextFragment` |
+| `examples/GlyphLayoutHelloWorld{AWT,FOP}` | — | examples, which `PLAN.md` puts out of scope |
+
+The core interfaces are already ported: `GlyphLayoutProcessorInterface`,
+`ContentStreamForGlyphLayoutInterface` and `GlyphsAndPositions` are in
+`go/pdfbox/pdmodel/glyphsandpositions.go`, from slice 8. What this branch was
+for is the two backends and `AbstractGlyphLayoutProcessor`.
+
+### The three blockers, measured
+
+**1. There is no Go equivalent of `layoutGlyphVector`.** The whole AWT backend
+hangs off one call:
+
+```java
+return awtFont.layoutGlyphVector(fontRenderContext, chars, 0, chars.length, localFlags);
+```
+
+which is GSUB, GPOS and bidi-aware positioning together, answering per-glyph
+codes, positions and advances. The FOP backend is the same shape against FOP's
+own shaper. Choosing a Go one — a HarfBuzz binding, `x/image/font/shaping`, or
+something written here — **is** this branch, and it is not a transliteration.
+
+**2. The Java tests cannot be ported as written, but a shaper can still be
+checked — and this entry said the opposite at first, wrongly.**
+
+Every meaningful assertion in the 13 test classes goes through one helper:
+
+```java
+void checkRenderIdent(String outputName) {
+    ...
+    PDFRenderer r = new PDFRenderer(doc);
+    expectedImage = r.renderImage(0);
+    ...
+    // pixel by pixel against a reference PDF checked into the repository
+}
+```
+
+Counting every assertion across the seven AWT test files gives: two on relative
+string widths (`assertTrue(f4 < f3)`), one that two widths are equal, one page
+count, one exception message, and the two that `checkRenderIdent` makes on the
+image size before it compares every pixel. **Nothing else asserts anything about
+the shaping at all** — the rest of each test writes a PDF for a human to look
+at.
+
+So `checkRenderIdent` itself needs `rendering.Backend`, and until that exists
+the 13 classes cannot be ported as they stand.
+
+**That is not the same as saying a shaper cannot be checked**, which is what
+this entry claimed until it was read again. The reference PDFs are checked into
+the repository, and what they carry is exactly what `showTextUni` wrote — the
+glyph codes and the positioning, as `TJ` arrays and `Ts` operators. Opening
+`pdf/GlyphLayoutBidi.pdf` with the port's own reader gives:
+
+```
+BT
+12 780 Td
+/F1 12 Tf
+-2.784 Ts
+[-215.00015 (=)] TJ
+0 Ts
+[215.00015 ( e )] TJ
+...
+```
+
+A Go shaper can therefore be compared against the running Java **byte for
+byte, with no renderer at all** — the same move `track/font-embedding`'s D8
+made when it stopped comparing structures and started comparing `/FontFile2`.
+Seven fonts and a reference PDF per test are already here. The oracle is
+strong; it is the thing being tested that does not exist.
+
+**3. `AbstractGlyphLayoutProcessor` needs UAX#9 embedding levels from
+somewhere**, and this is the finding that was not expected. It was the third
+blocker when A0 was written and it is the one that turned out to be work rather
+than a wall -- see "What was built after all" below. It is the one class in this branch with no
+host-library dependency: `java.text.Bidi` and string slicing, and the survey
+counted it as the single unported `pdmodel` class. The port already substitutes
+`golang.org/x/text/unicode/bidi` for `java.text.Bidi` once, in
+`text/direction.go`.
+
+It does not work here. `doBidiSplittingAndReordering` answers a list of
+`(text, bidiLevel)` in **visual** order, and both halves are part of its
+contract: the level goes to the backend, which reads its parity, and the order
+is the order the runs are drawn in.
+
+The running Java, driven through the method by reflection:
+
+```
+--- "Hello السلام world"
+    0  "Hello "
+    1  "السلام"
+    0  " world"
+--- "السلام Hello شكرا"
+    1  " شكرا"
+    2  "Hello"
+    1  "السلام "
+--- "אבג abc"
+    2  "abc"
+    1  "אבג "
+--- "1 الس"
+    1  " الس"
+    2  "1"
+```
+
+`golang.org/x/text/unicode/bidi` on the same inputs:
+
+```
+"Hello السلام world"   LTR "Hello "     RTL "السلام"    LTR " world"
+"السلام Hello شكرا"    RTL "السلام "    LTR "Hello"     RTL " شكرا"
+"אבג abc"              RTL "אבג "       LTR "abc"
+"1 الس"                LTR "1"          RTL " الس"
+```
+
+The run *contents* agree in every case. Two things do not:
+
+- **The order is logical, not visual.** Java applies `Bidi.reorderVisually`;
+  `x/text`'s `Ordering` hands the runs back in source order.
+- **The embedding level is not reachable.** `Ordering` has `NumRuns`, `Run` and
+  `Direction`; `Run` has `String`, `Bytes`, `Direction` and `Pos`. There is no
+  level accessor anywhere in the package — the internal paragraph computes them
+  and exports nothing.
+
+Flattening a direction into a level does not work either. Java's own output
+above has an LTR run at **level 2** inside an RTL paragraph, and `reorderVisually`
+is defined over those numbers: with the levels flattened to 0 and 1 the same
+input reorders differently. Reproducing this method therefore needs UAX#9
+embedding levels from somewhere — a third substitution, and one nobody has
+chosen.
+
+### The decision
+
+**Do not choose a shaper yet. One of the three blockers turned out to be work
+rather than a wall, and it is done: `AbstractGlyphLayoutProcessor` is ported,
+and `go/javatext/bidi` is the UAX#9 it needed.**
+
+The reason is narrower than blockers 1 to 3 together, and worth stating exactly,
+because it is the only branch of this migration where it holds:
+
+**there is nothing here to port.** Every other branch had Java to read and
+transliterate. PDFBox has no shaper of its own — it borrows Java's and FOP's,
+which is why there are two backend modules and not one implementation. Writing
+`layoutGlyphVector` in Go is not a port of anything in this repository; it is a
+new component, and a large one. What is offline here is `x/image/font/sfnt`,
+which gives outlines and advances and does no shaping; there is no HarfBuzz
+binding and no `go-text/typesetting` in the module cache, and no network.
+`fontbox` has GSUB — slice 4 ported it, and `fontbox/ttf/gsub` is in the tree —
+but for positioning it has only the old `kern` table's `KerningSubtable`, no
+GPOS.
+
+So the choice in front of the project is not "which Go shaper", it is "does
+this port build one". That is the user's to make, and it wants the rasteriser
+decided first: they are the same family of question, a HarfBuzz binding would
+answer both, and `rendering.Backend` already blocks far more.
+
+The bidi level problem (blocker 3) is a third choice, and the only one of the
+three that could be taken on its own.
+
+What the project needs before this branch can start, in the order the
+dependencies fall:
+
+1. **A rasteriser** -- an implementation of `rendering.Backend`. It already
+   blocks 19 `graphics/shading` classes, 4 `rendering` classes and 7 of the 8
+   `tools` commands `track/tools` could not build. It is the largest open
+   decision in the project.
+2. **A shaper** -- and first, whether this port writes one at all. There is
+   none to port and none available offline. Chosen with the rasteriser in view.
+3. **A source of UAX#9 embedding levels**, which `x/text` computes and does not
+   export. Vendoring its `core.go` or writing the level resolution are both
+   open; this is the one of the three that could be decided alone.
+
+### What is recorded elsewhere
+
+`STATUS.md`'s survey section counts `pdmodel/AbstractGlyphLayoutProcessor` and
+the 7 `pdfbox-layout-*` files among the classes that are real and unported. They
+stay that way, and the branch that claimed them now says why.
+
+### What was built after all
+
+Blocker 3 was the one that was work rather than a wall, and it is done.
+
+**`go/javatext/bidi` — UAX#9, written out.** It sits beside `go/awt` and
+`go/w3c` for the same reason those do: `java.text.Bidi` is a JDK class the Java
+being migrated uses, and Go has no equivalent.
+`golang.org/x/text/unicode/bidi` is not one — it runs the same algorithm and
+exposes no embedding level, and hands its runs back in logical order — but its
+**character data** is exported, and `bidi.LookupRune(r).Class()` is the Unicode
+BidiClass property. The algorithm on top of it is P2/P3, X1–X10, W1–W7, N0–N2,
+I1–I2, L1 and L2, including the paired-bracket rule, which the corpus proved is
+needed rather than optional.
+
+**`pdmodel/AbstractGlyphLayoutProcessor`** is ported on top of it — the class
+the survey counted as the single unported `pdmodel` file. Java's two abstract
+methods are function fields, filled in by whatever backend embeds it, which is
+the same shape `TrueTypeEmbedder.buildSubset` took in `track/font-embedding`.
+
+**It is measured, not asserted.** `pdfbox` compiles here, so the corpus in
+`abstractglyphlayoutprocessor_test.go` was generated by driving the running Java
+through `doBidiSplittingAndReordering` by reflection: 65 inputs covering pure
+and mixed direction, European and Arabic numbers, brackets nested and
+unbalanced, isolates, embeddings, overrides, combining marks, a surrogate pair,
+tabs, newlines and segment separators. **63 agree exactly**, run text and
+embedding level and visual order.
+
+Three disagreements were found this way and all three were the port's:
+
+- `Bidi.requiresBidi` counts an Arabic-Indic number. Latin text followed by
+  Arabic-Indic digits comes back from the running Java as two runs at levels 0
+  and 2, so the analysis ran; the port had skipped it.
+- `new Bidi(String, int)` splits at a paragraph separator and gives each
+  paragraph its own P2 and P3. Hebrew, a newline and then Latin is two
+  paragraphs, at levels 1 and 0; the port had treated it as one.
+- A character rule X9 removes takes the level of the one after it. The corpus
+  has an RLE, `abc` and a PDF, and the running Java puts the RLE at the level of
+  the text it opened rather than the level it was pushed from.
+
+### The two that remain, recorded as D8 asks
+
+`TestKnownDeviationsFromTheJDK` pins them rather than hiding them.
+
+Both are a **directional override spanning a whole paragraph** — LRO or RLO,
+which Unicode deprecated in favour of the isolates. An override in the middle of
+a paragraph agrees exactly: for `abc <RLO>def<PDF> ghi` the running Java answers
+`0 0 0 0 | 1 1 1 1 | 0 0 0 0 0`, which is the annex and is what the port gives.
+For an override that covers everything the JDK reports the base level for every
+character — `0 0 0 0 0 0` where UAX#9 raises to the least greater even — and the
+port follows the annex.
+
+The consequence for a layout backend is one extra run at a level of the same
+parity, and parity is all `GlyphLayoutProcessorAwt` reads
+(`bidiLevel % 2 == 0 ? LAYOUT_LEFT_TO_RIGHT : LAYOUT_RIGHT_TO_LEFT`), so the
+text lays out the same way. It is recorded because it is a difference, not
+because it is known to matter.
+
+### The two backends, and what stands in for them
+
+None of `GlyphLayoutProcessorAwt`, `GlyphLayoutFontLoaderAwt`,
+`GlyphLayoutProcessorFop`, `GlyphLayoutFontLoaderFop` or
+`FopStringTextFragment` is ported by name, and none will be: each is a shell
+around a call into a library Go does not have. What they do is done by
+`go/pdfbox/glyphlayout`, described at the end of this section. The two examples
+`PLAN.md` puts out of scope stay out of scope.
+
+### GPOS — the missing half of a shaper, written
+
+The two backends need a shaper, and the answer to "which Go shaper" was that
+there is none to pick and none to port. What there *is* is half of one already
+in the tree, so this branch wrote the other half.
+
+**GSUB was ported by slice 4** — `fontbox/ttf/gsub/`, from PDFBox's own
+implementation. It decides *which* glyph to draw: an `f` and an `i` become an
+`fi`, an Arabic letter takes its initial or medial form, an Indic cluster
+reorders.
+
+**GPOS was not, in either language.** It decides *where* each glyph goes: the
+kern that pulls `V` under `A`, the vowel mark that sits over the right letter.
+PDFBox has no reader for it — `OTFParser.readTable` answers a bare `OTLTable`
+for the tag, with the comment "todo: this is a stub, a full implementation is
+needed" — because PDFBox never needed one: it borrows layout from
+`java.awt.font.TextLayout` or from Apache FOP, and that is exactly why the two
+`pdfbox-layout-*` modules exist.
+
+So `go/fontbox/ttf/glyphpositioning.go` and its subtables are **written from the
+OpenType specification, not ported**, and say so at the top of each file.
+
+| Lookup type | State |
+| --- | --- |
+| 1 — single adjustment | done |
+| 2 — pair adjustment (kerning), formats 1 and 2 | done |
+| 4 — mark to base | done |
+| 6 — mark to mark | done |
+| 9 — extension | done, indirecting to any of the above |
+| 3 — cursive attachment | not built; read far enough to skip |
+| 5 — mark to ligature | not built; read far enough to skip |
+| 7, 8 — contextual and chained contextual | not built; read far enough to skip |
+
+Device tables are read and dropped: they carry per-pixel-size corrections for a
+hinted rasteriser, and a PDF is laid out in font design units at no particular
+size.
+
+The header — script list, feature list, lookup list, coverage tables — is the
+same in GSUB and GPOS. `layoutcommon.go` holds one copy for GPOS to read
+through; `GlyphSubstitutionTable` keeps its own, because it is a port of
+PDFBox's class and that is how the Java is written.
+
+**How it is checked, with no Java to measure against.** There is none: this is
+the one piece of the migration with no reference implementation in the
+repository. Two things stand in for it.
+
+- **An independent oracle inside the font.** A font that carries both the old
+  `kern` table and a GPOS `kern` feature says the same thing twice, and fontbox
+  already reads the old one. Over every pair of a 30-character sample alphabet
+  in `DejaVuSans.ttf`, **89 of 89 pairs the `kern` table declares agree exactly
+  with what the GPOS reader answers**. A reader looking at the wrong bytes does
+  not do that.
+- **The table's own meaning.** `A` before `V` comes back with a *negative*
+  advance, because kerning pulls them together; `II`, which no font kerns, comes
+  back untouched; a feature the caller did not ask for does not run; an Arabic
+  fatha after a lam is placed *above* it, which is lookup types 4 and 6 working.
+
+All five layout-test fonts parse: `DejaVuSans`, `FiraCode-Regular`,
+`Arimo-Regular`, `NotoSansArabic-Regular`, `NotoSansThai-Regular`.
+
+### The backend — `go/pdfbox/glyphlayout`
+
+This is the substitution the branch exists for, and it is **not a port**. There
+is no third Java implementation to translate: `GlyphLayoutProcessorAwt` is a
+shell around `java.awt.Font.layoutGlyphVector` and `GlyphLayoutProcessorFop` a
+shell around Apache FOP's `GlyphMapping`, and Go has neither library. The two
+modules exist *because* PDFBox has no shaper of its own.
+
+So the package is the shaper, assembled from the two halves the port has:
+
+- **GSUB**, ported by slice 4 from PDFBox's own reader, decides which glyph.
+- **GPOS**, written on this branch from the specification, decides where.
+
+Above it, `pdmodel.AbstractGlyphLayoutProcessor` — which *is* a port — splits
+the text into runs of one direction over `go/javatext/bidi`. Below it,
+`showTextUni` and `getStringWidthUni` are close ports: everything they do after
+the shaping is arithmetic that follows the Java line for line.
+
+Two of those lines needed the shaping to be modelled the way AWT models it
+rather than the way an OpenType table states it, and getting them wrong is
+invisible in a test that only checks that something was written:
+
+- **A kern reaches the page through the advance, not the placement.** Java
+  compares each glyph's laid-out position against the pen plus the *unadjusted*
+  advance of the glyph before it — `getGlyphMetrics(i-1).getAdvanceX()` — and
+  writes the difference. A port that reads only the placement writes nothing at
+  all for a pure kern. So `positionedGlyph` carries both numbers.
+- **A mark's anchor is measured from its letter's origin**, which the pen has
+  left behind by the time the mark is drawn — and in a right-to-left run has not
+  reached yet. `GlyphPosition.AttachedTo` names the glyph a mark hangs off and
+  leaves the arithmetic to `resolveAttachments`, which knows the drawing order.
+  Folding the pen into the offset inside the subtable put a Thai tone mark two
+  letters to the left.
+
+**Right-to-left runs are turned round.** `layoutGlyphVector` is called with
+`Font.LAYOUT_RIGHT_TO_LEFT` and answers a vector already in visual order; the
+bidi split above only places the run on the line, not the letters inside it. The
+port shapes in logical order — a letter takes its form from the letters around
+it in the text, not on the page — and reverses at the end.
+
+#### How it is measured: the Java's own output
+
+`pdfbox-layout-awt/src/test/resources/pdf/` holds the PDFs the Java tests
+compare against, and they are the output of the real AWT backend, checked into
+the repository. `TestBase.checkRenderIdent` uses them by rendering both
+documents and comparing pixels, which this port cannot do — nothing implements
+`rendering.Backend`, and that is slice 9's. But the shaping is *in the content
+stream*: which glyph, in which order, moved by how much.
+
+`go/pdfbox/glyphlayout/testdata/awt-*.txt` is those PDFs read back — one line
+per text object, each glyph written as the characters its ToUnicode gives, with
+the positioning adjustments and text rises in place. The tests lay the same
+pages out with the Go backend and compare. A line that differs has to be listed
+as a known deviation with a reason, and **a line listed there that stops
+differing fails too**, so neither a new deviation nor a fixed one can pass
+unnoticed.
+
+| Java test | Text objects | Agree with AWT |
+| --- | ---: | ---: |
+| `GlyphLayoutLigaturesAndKerningTest` | 9 | 4 |
+| `GlyphLayoutBidiTest` | 2 | 0 |
+| `GlyphLayoutSMPTest` | 7 | **7** |
+| `GlyphLayoutDin91379Test` | 41 | **40** |
+
+Agreement means every glyph and every number, at a tolerance of 0.02
+thousandths of the font size — a fifty-thousandth of an em. The tolerance is not
+zero because AWT lays a run out in points at the size asked for and this port in
+font design units: a kern the font declares as 9 units comes back out of the
+reference PDF as 8.99506.
+
+The four agreeing lines of the ligature test are the four DejaVu lines — plain,
+ligatures, kerning, and both — which carry `AVATAR, effective, affiliation,
+float, film, affluent`. Every ligature AWT formed, the port forms; every kern
+AWT applied, the port applies, to the same value. The seven agreeing lines of
+the SMP test are the whole page: every letter on it is a surrogate pair, and
+none was taken apart. The DIN 91379 page is 41 lines of every letter that can
+appear in a European name, and then the sequences — a letter with one or two
+combining marks over it, which is the widest mark-positioning case there is;
+40 of the 41 agree, and the one that does not is a single `j`.
+
+**The reference PDFs are pixel-equal to the Java that renders them, not
+byte-equal, and this comparison found where.** Twenty lines of
+`GlyphLayoutDIN91379.pdf` end with a space that `LATIN_CHARS_DIN_91379` does not
+have: the PDF was rendered from an earlier spelling of the string, and
+`checkRenderIdent` never noticed, because a space at the end of a line paints
+nothing. Neither side's trailing space is a shaping difference and the
+comparison drops it. Nothing was changed in the Java, which is the rule and also
+the right answer — the PDF is a reference, and it is only wrong about something
+invisible.
+
+#### Deviations, measured — and the one cause behind nearly all of them
+
+Every deviation but one is a **GSUB** difference, and every GSUB difference but
+one has the same cause: **PDFBox's substitution reader implements lookup types
+1, 2, 3, 4 and 7, and drops 5 and 6.** `GlyphSubstitutionTable.
+readLookupSubtable` says so in a comment — "Other lookup types are not
+supported" — and logs each one it throws away. Counting those logs over the
+layout fonts:
+
+| Font | Lookups dropped |
+| --- | --- |
+| `FiraCode-Regular` | 111 of type 6 |
+| `NotoSansArabic-Regular` | 7 of type 6, 2 of type 5 |
+| `NotoSansThai-Regular` | 5 of type 6, 1 of type 5 |
+| `DejaVuSans` | 4 of type 6 |
+| `Arimo-Regular` | 2 of type 6 |
+| `Lohit-Bengali` | none |
+
+Type 6 is chained contextual substitution: *replace this glyph when it stands
+between those glyphs*. It is how a font says almost everything that depends on
+what is next to what, so the port asks for the features and the substitutions
+are not in the data it was given.
+
+Where the glyph run does agree, the positioning agrees: the Thai line's first
+eleven glyphs and the Bengali marks match the AWT reference to the last design
+unit.
+
+1. **FiraCode's `!=` and `>=`** are drawn with contextual alternates — 111
+   type 6 lookups, all dropped. AWT draws the joined forms; the port draws `!`
+   and `=`.
+2. **Thai contextual forms.** A vowel or tone sign over a tall consonant has a
+   lowered variant, and U+0E33 decomposes into U+0E4D and U+0E32. Six dropped
+   lookups.
+3. **The dotless `j`.** In `j́` the platform puts U+0237 LATIN SMALL LETTER
+   DOTLESS J under the accent, so the accent does not land on the dot. Arimo
+   spells that as `ccmp`, in two type 6 lookups. It is the only difference on
+   the whole DIN 91379 page: 40 of its 41 lines agree exactly.
+4. **Bengali conjuncts differ** — and this one is not a dropped lookup, because
+   Lohit-Bengali is the one layout font whose GSUB the reader reads in full.
+   `GsubWorkerForBengali` reorders and substitutes, and the page comes out
+   legible: the pre-base vowel moves ahead of its consonant, the conjuncts
+   form. It picks a different set of pre-base forms than the platform does, in
+   both directions — at one place the port substitutes where AWT does not, at
+   another the reverse.
+5. **Arabic joining is not applied at all**, and this one is a missing shaper
+   rather than a missing lookup type. A letter's initial, medial and final
+   forms are the `init`/`medi`/`fina` features, chosen by the Unicode joining
+   types of the letters around it, and **PDFBox has no Arabic worker**:
+   `GsubWorkerFactory` covers Bengali, Devanagari, Gujarati, Latin and DFLT.
+   The port draws the isolated forms. The bidi ordering — which is what
+   `GlyphLayoutBidiTest` is named for — is right: the runs are placed by
+   `ReorderVisually` and the letters inside each are reversed.
+
+The shape of all five is the same: **the port substitutes exactly what PDFBox
+can substitute, and positions exactly what the OpenType specification defines.**
+Closing them means adding contextual substitution to a ported reader that
+deliberately does without it, and writing an Arabic shaper PDFBox has never
+had. Both are larger than this branch and are the user's call, not a defect to
+fix quietly.
+
+#### Which features the backend asks for, and why
+
+The Java font loader has two switches, `setKerningOn` and `setLigaturesOn`, and
+they do not mean "all the shaping" — measuring the reference PDFs says which
+features the platform applies regardless:
+
+| Feature | When |
+| --- | --- |
+| `ccmp`, `calt` | always |
+| `liga`, `clig` | with `Ligatures` |
+| `kern` (GPOS) | with `Kerning` |
+| `mark`, `mkmk`, `abvm`, `blwm` (GPOS) | always |
+
+The evidence for the first row is the FiraCode line written with no options at
+all, which carries the contextual forms, and the `j́` of the DIN 91379 page,
+which carries the dotless `j`. The evidence for the second is the DejaVu line
+written with no options, which has `ffi` in three separate letters, against the
+one written with them, which has the ligature.
+
+The last row is four features and not two because `mark` and `mkmk` are the
+Latin and Arabic spellings of mark positioning and `abvm` and `blwm` are the
+Indic ones — above-base and below-base. Asking only for the first two leaves a
+Bengali vowel sign on the baseline, because Lohit-Bengali files its anchors
+under the other two.
+
+Java has one GSUB worker per script, each with a feature list fixed in its
+class, and no way to ask for some of them and not others. `gsub.
+GsubWorkerForFeatures` is that: **not a port**, but not new machinery either --
+the same `featureApplier` the ported workers run, over a list the caller
+chooses. The script-specific workers are still used unchanged where a script
+has one, because they reorder as well as substitute.
+
+The script a feature is looked up under is the font's own GSUB language first
+and the run's direction second, so a Bengali font is not asked for its `latn`
+features and told it has none.
+#### What the Java tests could not be ported as
+
+Every assertion in the five shared test classes that checks the shaping goes
+through `checkRenderIdent`. Those are not ported; the reference comparison above
+replaces them, and asserts more than a pixel diff would about *why* two pages
+differ. What is ported straight is everything else the Java asserts:
+
+| Java assertion | Go test |
+| --- | --- |
+| `testMissingGlyph`'s message, character for character | `TestMissingGlyphIsRefused` |
+| `assertEquals(f1, f2)`, `f4 < f1`, `f4 < f3` | `TestStringWidthWithAndWithoutKerning` |
+| `assertEquals(1, doc.getNumberOfPages())` | implied by the DIN comparison, which reads page 0 of a one-page document |
+
+`GlyphLayoutDin91379Test` **is** ported, as the reference comparison above:
+its own assertion is `assertEquals(1, doc.getNumberOfPages())`, and the
+extracted text it writes to a file carries a TODO saying the comparison is "Not
+yet correct as of 4.7.2026", so there is nothing else in it to port.
+
+`GlyphLayoutDin91379FormTest` is not: it needs `PDAcroForm` field appearances
+driven by a layout processor, which is slice 8's `generateAppearance` path over
+a backend that does not exist yet. The two hello-world classes are examples,
+which `PLAN.md` puts out of scope.
+
+#### What the GPOS reader does not do
+
+Beyond the lookup types in the table above:
+
+- **Lookup flags are not applied.** `ignoreBaseGlyphs`, `ignoreLigatures`,
+  `ignoreMarks`, the mark attachment type in the flag's high byte and the mark
+  filtering set all say which glyphs a lookup should skip while matching, and
+  none of them is honoured: a kern lookup that asks to ignore marks still sees
+  them, so a pair with a mark between it does not kern. Applying them needs the
+  GDEF table, which neither PDFBox nor this port reads. `useMarkFilteringSet`
+  is the one flag the reader looks at, and only to step over the extra field it
+  adds to the lookup header.
+- **Device tables are read and dropped**, as above.
+
+Two things it does that a first cut did not, both found by reading it against
+the specification rather than by a test:
+
+- **A lookup walks the run once, not once per subtable.** The specification
+  tries a lookup's subtables in order at each position and takes the first that
+  applies; walking the run once per subtable lets two subtables of one lookup
+  both adjust the same glyph. It changed nothing measurable in the five test
+  fonts, and it is what the specification says.
+- **`ValueRecord` zero is zero.** `IsZero` gained a field when attachment
+  moved onto `GlyphPosition`, and a value record built without setting it
+  answered false — which made pair adjustment consume two glyphs where it
+  should consume one, and dropped every second kern in `AVATAR`. The reference
+  comparison caught it; the kerning test did not, because there were still
+  kerns in the stream.
+
+### The adversarial review of the backend
+
+Phase D over `go/pdfbox/glyphlayout` and the GPOS reader, read against the Java
+and against the OpenType specification rather than against the tests.
+
+**Found by reading the Java side by side**
+
+- `supportsFont` was documented as a port and is not one. Java's is
+  `awtFontMap.containsKey(font)` -- the AWT backend supports the fonts its own
+  loader handed it, and nothing else. This port has no such loader, because
+  there is no AWT font to keep beside the PDFBox one. **The first answer to
+  that was to widen the question to "is this a Type 0 font with a TrueType
+  program", and it was wrong** -- see the feedback section below, which is
+  where it was caught and what it was replaced with.
+- Java's `delta` is applied to a distance in points and this port's `dx` is in
+  thousandths of an em, so the same constant is not the same test. It cannot
+  come to a different answer -- every `dx` here is a whole number of design
+  units, four orders of magnitude above the threshold -- and it is now said in
+  the comment rather than left to be discovered.
+- The Java class documents "Use an object of this class only in one thread".
+  The port keeps a map of GSUB workers with nothing guarding it, so it needs
+  the same sentence, and now has it.
+
+**Found by reading the OpenType specification**
+
+- A lookup walked the run once per subtable rather than once per lookup. See
+  above.
+- Lookup flags are not applied at all. Recorded, not fixed: it needs GDEF.
+- Mark-to-base looked back for its letter over the marks *this subtable*
+  covers, and a letter can carry two marks of different classes, covered by
+  different subtables. `C̨̆` -- C, ogonek, breve -- lost the breve entirely,
+  because the ogonek is not in the breve's subtable and the scan stopped on it.
+  The table now collects every mark glyph any of its attachment subtables
+  covers and hands the set to all of them, which is what GDEF would say if the
+  port read GDEF.
+
+**Found by the reference comparison, which the tests already had green**
+
+- `IsZero` gained a field and a zero value record stopped answering true to it,
+  which made pair adjustment consume two glyphs where it should consume one.
+  Half the kerns in `AVATAR` disappeared and every kerning test stayed green,
+  because there were still kerns in the stream.
+
+**Still open**
+
+The five deviations above, and the two things the GPOS reader does not do.
+Nothing found in this review is unrecorded, and nothing recorded is unmeasured.
+
+### The feedback on the backend, and what it found
+
+Eight review items on `track/pdfbox-layout`. Seven were real; each was measured
+before it was believed, and each fix has a test that fails without it.
+
+**A supplementary character was being torn in half.** The rules of UAX#9 are
+about characters, and the second unit of a surrogate pair is not one, so the
+port hid it from them by giving it class BN -- the class of a character X9
+removes. The last thing `resetSeparators` does is give every X9-removed
+character the level of the character that *follows* it, which is right for a
+formatting control and wrong for half a character: the two units ended up at
+different levels, `buildRuns` split them, and each half on its own decodes to a
+replacement character. An emoji beside a Hebrew word came out as two of those.
+
+Measured against the running JDK over eight texts with a supplementary
+character next to a right-to-left run: `java.text.Bidi` never puts a run
+boundary inside a pair, because it works in code points and never had the halves
+apart. The eight are now in the corpus, and `restoreSurrogatePairs` gives the
+second unit the level of the first.
+
+**`supportsFont` was accepting fonts whose glyph ids it cannot write.** The
+layout shapes with the font program and hands `showTextUni` glyph ids of that
+program; `EncodeGlyphID` writes each as a two-byte code, which selects the
+glyph it names only when the code is the CID and the CID is the glyph id --
+Identity-H over an identity CIDToGIDMap. That is what the embedding constructor
+builds. A font read out of a document may have a predefined CMap, a CIDToGIDMap
+stream, or a substitute program whose glyph ids are not the document's, and
+writing a glyph id into one of those draws an unrelated glyph.
+
+The widening recorded above was unsound, and the replacement is not a widening
+at all: `PDType0Font.cmapLookup` is set by the constructor that embeds a font
+program and left nil by the one that reads a font out of a PDF, so non-nil is
+the same set of fonts Java's `awtFontMap` holds. The PostScript check went with
+it -- the embedder will not embed one, so such a font cannot arrive this way.
+
+**A NULL anchor is not an anchor at the origin.** A mark attachment subtable
+holds one anchor per base glyph per mark class, and a zero offset there means
+this base takes no mark of that class. Reading it as (0, 0) attached the mark
+anyway, at minus its own anchor, which puts it at the far left of the letter on
+the baseline. It is not a rare case: of NotoSansArabic-Regular's 4665 base
+anchors **3431 are NULL** and 6 are genuinely at the origin, so the two have to
+be told apart.
+
+**A required feature was never run.** A language system's
+`RequiredFeatureIndex` names a feature that applies whether or not the caller
+asked for it, and the reader only enabled the optional ones. The ported GSUB
+reader has always handled it, in `featureRecords`; the GPOS reader now does too.
+
+**Every language system was being applied at once.** A script's named language
+systems are alternatives to its default -- the Turkish way of setting Latin,
+the Serbian way of setting Cyrillic -- and unioning them sets the text in a
+language nobody asked for. `Position` has no language argument, so it takes the
+default, which is what a run that names no language gets.
+
+**Every alias of a script was being applied at once.** A font may carry both
+`bng2` and `beng`, which are two ways of saying Bengali rather than two things
+to do. The tags handed down are now a preference order and the first the font
+carries wins, with the script the font's own GSUB data selected --
+`ActiveScriptName()` -- at the head of it.
+
+Neither of the last two nor the NULL anchors changed a single glyph or number
+on the four reference pages, which is what makes them worth writing down:
+nothing in this repository would have caught any of them.
+
+**A damaged positioning table was reported as no positioning table.**
+`position` treated an error from `GPOS()` the same as a font without the table,
+which would drop every kern and every mark and say nothing. It now returns the
+error. The path cannot be reached today -- `Parser.parseTables` reads every
+table of the directory when it parses a font, so a table that cannot be read
+stops the font from loading at all -- and `TestDamagedGPOSIsReported` asserts
+that, at the place it actually happens, so that the case moves if the reading
+ever becomes lazy.
+
+**The one item declined.** `showTextUni` calls `showGlyphsWithPositioning` at
+the end of a run whether or not anything is in it, which writes an empty
+`[] TJ`. That is what the Java does -- the final call in `showTextUni` is
+unconditional, and `PDAbstractContentStream.showGlyphsWithPositioning` writes
+the brackets and the operator before it looks at the list -- so skipping it
+would be a deviation from the reference for the sake of a few bytes. Ported as
+written.

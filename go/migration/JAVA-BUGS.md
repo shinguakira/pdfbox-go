@@ -3312,3 +3312,80 @@ which is what this port renders an unchecked exception as. Said at the site.
 
 **Confidence** certain, from the source. Not measured, for the reason entry 75
 gives.
+
+## 77. `GlyphLayoutProcessorAwt.checkMissingGlyphs` prints half a surrogate pair
+
+**Where** `pdfbox-layout-awt/src/main/java/org/apache/pdfbox/glyphlayout/awt/
+GlyphLayoutProcessorAwt.java`, `checkMissingGlyphs`.
+
+**What**
+
+```java
+int firstMissingCharacter = awtFont.canDisplayUpTo(text);
+if (firstMissingCharacter != -1)
+{
+    char c = text.charAt(firstMissingCharacter);
+    int codepoint = text.codePointAt(firstMissingCharacter);
+
+    throw new IllegalArgumentException(
+            String.format("Missing glyph in font '%s' for the character '%c', codePoint: %d (U+%04x).",
+                    awtFont.getName(), c, codepoint, codepoint));
+}
+```
+
+`c` is a `char`, which is one UTF-16 code unit; `codepoint` is the whole
+character. For anything outside the basic multilingual plane the two disagree:
+`charAt` answers the high surrogate, and `'%c'` formats it on its own. The
+message then carries an unpaired surrogate — an ill-formed string that prints as
+a replacement character or nothing at all — beside the correct code point.
+
+`GlyphLayoutSMPTest` is entirely about characters in that plane, so a font
+missing one of them is not a hypothetical case for this class.
+
+**What correct would be** formatting the code point rather than the code unit:
+`String.format("...'%s'...", new String(Character.toChars(codepoint)), ...)`.
+The `%04x` half of the message is already right.
+
+**Why it matters** the message names the character that could not be drawn, and
+for exactly the characters this module has a test class about, it names half of
+one.
+
+**Where the Go carries it** `go/pdfbox/glyphlayout/processor.go`,
+`missingGlyph`, which takes the first UTF-16 unit of the character for the
+`'%c'` position and the whole rune for the code point, the same way. Said at the
+site.
+
+**Confidence** certain, from the source. The Java's behaviour was not measured
+for a supplementary character: `canDisplayUpTo` has to answer the index of one,
+which needs a font missing a supplementary character that the test resources do
+not have. The basic-plane message was measured, and matches — see
+`TestMissingGlyphIsRefused`, which asserts it character for character.
+
+## 78. `GlyphLayoutDIN91379.pdf` was rendered from a string the test no longer has
+
+**Where** `pdfbox-layout-awt/src/test/resources/pdf/GlyphLayoutDIN91379.pdf`,
+against `GlyphLayoutDin91379Test.LATIN_CHARS_DIN_91379`.
+
+**What** twenty of the reference PDF's forty-one lines end with a space glyph.
+No line of `LATIN_CHARS_DIN_91379` ends with a space: every one of them ends
+`...\n"`, checked byte by byte. The PDF was rendered from an earlier spelling of
+the string and has not been regenerated since the spaces were taken out.
+
+`testGlyphLayoutDin91379` still passes, because `TestBase.checkRenderIdent`
+renders both documents and compares pixels, and a space at the end of a line
+paints nothing. The reference is stale in the one way that comparison cannot
+see.
+
+**What correct would be** regenerating the PDF from the current string, which
+is what `target/GlyphLayoutDIN91379.pdf` already is on every run — the test
+writes it and then compares. Nothing in the Java's behaviour is wrong; the
+resource is.
+
+**Where the Go carries it** nowhere: there is nothing to carry. It is recorded
+because a Go test does compare against that PDF and had to be told to ignore
+it. `go/pdfbox/glyphlayout/reference_test.go`, `movingFields`, drops a trailing
+space glyph from both sides, and says why.
+
+**Confidence** certain, and measured both ways: the twenty lines are exactly
+the twenty that ended with `G:0020` in the dump of the reference PDF, and the
+Java source lines they come from were read as bytes.
