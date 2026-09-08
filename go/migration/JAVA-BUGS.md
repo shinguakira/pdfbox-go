@@ -383,6 +383,15 @@ added to stop runaway recursion; here it fires on a document that has none.
 **Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
 `parseBeginInlineImage` — the decrement is inside the same `if`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 9. The decrement moved out of
+the branch that handles a complete inline image, so it runs however the image
+ended. The counter guards against a `BI` nested inside a `BI` (PDFBOX-6038) and
+a malformed one has ended either way; Java leaves it at 1 and refuses every
+later `BI` in the stream. Tested by
+`TestMalformedInlineImageDoesNotBlockTheNextOne` in
+`go/pdfbox/pdfparser/javabug9_test.go`, over a `BI` whose dictionary ends in a
+string rather than an `ID`.
+
 **Confidence** high that the code does this; it is plain from the placement of
 the decrement. Medium that it is unintended rather than a deliberate "give up on
 this stream" stance, since the `else` branch only warns and carries on.

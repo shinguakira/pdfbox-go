@@ -309,11 +309,15 @@ func (p *StreamTokenParser) parseBeginInlineImage() (any, error) {
 			slog.Warn("empty inline image", "offset", p.offsetOrEOF())
 		}
 		beginImageOP.SetImageData(imageData.ImageData())
-		p.inlineImageDepth--
 	} else {
 		slog.Warn("unexpected token", "token", nextToken, "offset", p.offsetOrEOF(),
 			"expected", operator.BeginInlineImageData)
 	}
+	// Java decrements inside the branch above, so a malformed inline image
+	// leaves the depth at 1 and every later BI in the same stream is refused as
+	// nested. The counter guards against a BI *inside* a BI (PDFBOX-6038), and
+	// this one has ended either way. See migration/JAVA-BUGS.md 9.
+	p.inlineImageDepth--
 	return beginImageOP, nil
 }
 
