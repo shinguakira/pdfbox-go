@@ -2,14 +2,38 @@
 
 Defects and surprising behaviour noticed in the Java source during the port.
 
-**Nothing here is fixed, in the Java or in the Go.** The port reproduces every
-one of these, because the Java is the reference and a silently corrected bug
-makes the Go behave differently from the thing it exists to reproduce. See
+**Nothing here is ever fixed in the Java.** The Java is the reference and this
+repository does not edit it.
+
+**Nothing here was fixed in the Go while the port was being written**, either.
+Every branch that ported code reproduced these deliberately, because a silently
+corrected bug makes the Go behave differently from the thing it exists to
+reproduce, and because "the Java does the same thing" is the answer that made
+every odd behaviour cheap to investigate. See
 [`conventions/java-to-go.md`](conventions/java-to-go.md).
 
+**One branch changes that, once the port is finished:
+[`track/java-bug-fixes`](tasks/track-java-bug-fixes.md).** It goes through this
+file entry by entry and fixes in the Go the ones worth fixing. It changes no
+Java. It deletes no entry.
+
+So an entry here is in one of three states, and says which:
+
+| State | The line that says so |
+| --- | --- |
+| carried in the Go, on purpose | **Where the Go carries it** — every entry has this |
+| fixed in the Go, deliberately differing from the Java | **Fixed in the Go** |
+| carried on purpose after the fix branch judged it | **Kept in the Go** |
+
+**An entry is never removed, and its "Where the Go carries it" line is never
+rewritten.** That line is the record of what the port did while it was a port;
+past-tensing it would lose the fact that the reproduction was deliberate. A fix
+adds a line, it does not edit one.
+
 This file exists so the knowledge is not lost. A reader who later finds the Go
-behaving oddly can look here and see that the Java does the same thing, on
-purpose, and that it was noticed rather than missed.
+behaving oddly can look here and see whether the Java does the same thing, on
+purpose, and that it was noticed rather than missed — and, where the two now
+differ, why.
 
 **Do not report any of this upstream.** `AGENTS.md` forbids agents from filing
 findings to a public tracker, and this repository has no relationship with
@@ -25,6 +49,10 @@ as if they were the same.
 Add the entry when you port the code, not later. The point at which you are
 reading the Java closely enough to notice is the only point at which it is cheap
 to write down.
+
+**Keep the numbering stable.** Do not renumber, compact or reorder. A later
+reader's only handle on any of this is "JAVA-BUGS.md 47", and the task files,
+the commit messages and the comments in the Go all use it.
 
 ---
 

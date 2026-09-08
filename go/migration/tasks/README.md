@@ -28,15 +28,15 @@ change it to suit one branch — change the copy.
 | `track/font-embedding` | [`track-font-embedding.md`](track-font-embedding.md) | **merged** |
 | `track/tools` | [`track-tools.md`](track-tools.md) | **merged** — 17 of 26, the 9 left are these last three tracks |
 | `track/pdfbox-layout` | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | **merged** |
-| `track/stale-deferrals` | [`track-stale-deferrals.md`](track-stale-deferrals.md) | open — **take first**, depends on nothing |
-| `track/imageio` | [`track-imageio.md`](track-imageio.md) | open — depends on nothing |
-| `track/multipdf` | [`track-multipdf.md`](track-multipdf.md) | open — depends on nothing |
-| `track/raster` | [`track-raster.md`](track-raster.md) | open — **take last**, see its A0 |
+| `track/stale-deferrals` | [`track-stale-deferrals.md`](track-stale-deferrals.md) | **merged** |
+| `track/imageio` | [`track-imageio.md`](track-imageio.md) | **merged** |
+| `track/multipdf` | [`track-multipdf.md`](track-multipdf.md) | **merged** — also finished `Splitter` |
+| `track/raster` | [`track-raster.md`](track-raster.md) | open — the last port, see its A0 |
+| `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | open — **after `track/raster`**; not a port |
 
-**Every slice and every earlier track is merged.** The four open branches are
-what is left of the migration: work `PLAN.md` counts in scope that no slice
-claimed, no earlier track could reach, or that was deferred for a reason which
-has since stopped being true.
+**Every slice and every earlier track is merged.** Two branches are open:
+`track/raster`, which is the last of the port, and `track/java-bug-fixes`,
+which is not a port at all.
 
 ## Order for the last four tracks
 
@@ -58,6 +58,19 @@ only things downstream of it.
 `track/imageio`; the backend, the nineteen shading contexts and paints, and the
 four transparency classes above it do not. What it must not start without is its
 own A0, which is the last design decision this migration has.
+
+## And then `track/java-bug-fixes`, which is not one of the four
+
+It ports nothing. It goes through [`../JAVA-BUGS.md`](../JAVA-BUGS.md) entry by
+entry and fixes in the Go the defects the port reproduced from the Java on
+purpose — the only branch in this migration where "never fix a bug that is in
+the Java" does not apply, and the only one that makes the Go deliberately
+differ from its reference.
+
+**It goes after `track/raster`**, because every branch before it adds entries to
+the file it works from, and because "the Go does X, is that a defect?" is
+answered by reading the Java right up until the Go is allowed to differ on
+purpose.
 
 The order was taken from the imports of the five commands that are missing, not
 from where the classes sit in the Java tree. `ExtractImages` does not import

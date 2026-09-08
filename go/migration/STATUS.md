@@ -5354,10 +5354,11 @@ the audit recorded at the end of this file.
 
 | Branch | Java | Depends on | Unblocks |
 | --- | ---: | --- | --- |
-| `track/stale-deferrals` | 3 test classes, 3 methods | nothing | article beads, `sh`, public-key encryption |
+| `track/stale-deferrals` | 3 test classes, 3 methods | nothing | **done** — article beads, `sh`, public-key encryption |
 | `track/imageio` | 5 | nothing | **done** — `export:images` |
-| `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay` |
+| `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay`, and `Splitter`'s other half |
 | `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
+| `track/java-bug-fixes` | **none — it is not a port** | nothing, and goes last | the 84 entries of `JAVA-BUGS.md` |
 
 **`track/imageio` is on the critical path and `track/multipdf` is not.**
 `ExtractImages` never imports `rendering` — it walks the content stream with
@@ -5959,3 +5960,39 @@ in the annotation package, where it lives.
 - `PDFMergerUtility` writes the destination's own /Threads back into itself and
   never merges the source's, never writes /UserProperties, and never merges the
   /PageMode. All three are the Java's; JAVA-BUGS.md 82, 83 and 84.
+
+## `track/java-bug-fixes` — the branch that is not a port
+
+`JAVA-BUGS.md` has 84 entries. Every one of them is a defect in Apache PDFBox
+that this port noticed while reading the Java closely enough to translate it,
+and roughly **seventy of them are live in the Go on purpose**: the port
+reproduces them, each with a comment at the site saying so and pointing at the
+entry.
+
+That was the right rule for a port and it expires with the port. The last
+branch of this migration goes through the file entry by entry and fixes the
+ones worth fixing — **in the Go**. It changes no Java, and it deletes no entry:
+a fixed bug is still a bug in the Java, and the entry gains a **Fixed in the
+Go** line rather than going away.
+
+Its first task is a triage of all 84 into four columns, written here before any
+code moves:
+
+| Column | What it means |
+| --- | --- |
+| **fix** | the Go carries it, correct is a fact rather than a judgement, and a caller can tell the difference. **The default.** |
+| **keep** | one of four named reasons, per entry: a reader depends on it, "correct" is a judgement, fixing it is new functionality, or it is unobservable |
+| **not carried** | the entry already says the Go does not reproduce it. Verify the claim still holds |
+| **test only** | the defect is in a Java *test*; the Go test is what changes. Entries 4, 46 and 78 |
+
+The counts and the per-entry reasons go in this section when A0 runs. It is the
+document the branch is judged on; the code is downstream of it.
+
+**Why it goes after `track/raster` rather than alongside it.** Two reasons, and
+neither is caution. Every branch before it adds entries to the file it works
+from, so taking it early means doing it twice — `track/raster` is 27 Java
+classes of shading and blending arithmetic and will find its own. And for as
+long as porting continues, "the Go does X, is that a port defect?" is answered
+by opening the Java; that answer stops working the day the Go is allowed to
+differ on purpose. Finishing the port first keeps it cheap while it is still
+needed.
