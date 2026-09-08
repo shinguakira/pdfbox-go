@@ -448,13 +448,14 @@ func from8bit(pdImage PDImage, raster *awtimage.Raster, clipped awtgeom.Rectangl
 			// Not the entire region was requested, but if no subsampling should
 			// be performed, we can still copy the entire part of this row
 			//
-			// JAVA BUG 31: the destination offset is the *source* row times the
-			// *source* width, where the raster being filled is the destination
-			// region. For any region that is a strict subset this writes to the
-			// wrong place and runs off the end of the raster; Java throws
-			// ArrayIndexOutOfBoundsException, which getRGBImage does not catch.
-			// The port indexes the same way and panics for the same.
-			dst := y * inputWidth * numComponents
+			// Java writes `y * inputWidth * numComponents`, which is the source
+			// row and the source stride where the raster being filled is the
+			// region; for any region that is a strict subset that lands on the
+			// wrong row and, once y is large enough, past the end of the
+			// raster. The row is y - starty and the stride is width, which is
+			// what the subsampled branch below reaches by running an index. See
+			// migration/JAVA-BUGS.md 31.
+			dst := (y - starty) * width * numComponents
 			for c := 0; c < scanWidth*numComponents; c++ {
 				bank[dst+c] = uint16(tempBytes[startx*numComponents+c])
 			}

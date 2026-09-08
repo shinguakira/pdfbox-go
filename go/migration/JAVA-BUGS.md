@@ -1509,6 +1509,20 @@ index correctly.
 `from8bit`, which computes the same offset and so panics where Java throws. The
 comment there names this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 31. `from8bit` writes the row
+at `(y - starty) * width * numComponents`, the destination row and the
+destination stride, which is the offset the entry names and the one the
+subsampled branch below reaches by running an index. The filter-subsampled arm
+is untouched by construction: it sets `startx` and `starty` to 0 and
+`inputWidth` to `width`, so the two expressions are the same there. Tested by
+`TestFrom8BitRegionLandsOnTheRightRows` in
+`go/pdfbox/pdmodel/graphics/image/javabug31_test.go`, which asks for a
+rectangle away from both edges of an eight by six image and compares every
+pixel with the source; without the fix it does not merely differ, it panics on
+the region's second row, which is the Java's
+`ArrayIndexOutOfBoundsException`. `TestFrom8BitWholeImageIsUnchanged` beside it
+keeps the whole-image fast path.
+
 **Confidence** high. The line beside it, for the subsampled case, does the same
 job with a running index and gets it right.
 
