@@ -61,9 +61,13 @@ func (a *PDStandardAttributeObject) SetString(name string, value string) {
 
 // GetArrayOfString returns an array attribute of strings, or nil.
 //
-// JAVA BUG: it reads each entry as a name, while SetArrayOfString writes
-// strings, so a round trip throws. See migration/JAVA-BUGS.md entry 40. The
-// port keeps it: the type assertion panics on anything but a name.
+// Java reads each entry as a name where SetArrayOfString writes strings, so a
+// round trip throws ClassCastException. /Headers, the one attribute that uses
+// these, is an array of byte strings in PDF 32000-1:2008 table 337, so the
+// setter is the half that is right and the entries are read as strings. An
+// entry of any other type contributes nothing rather than throwing, which is
+// what the rest of this class does with a value it cannot read. See
+// migration/JAVA-BUGS.md 40.
 func (a *PDStandardAttributeObject) GetArrayOfString(name string) []string {
 	v := a.Dictionary().GetDictionaryObject(cos.GetPDFName(name))
 	array, isArray := v.(*cos.Array)
@@ -72,7 +76,9 @@ func (a *PDStandardAttributeObject) GetArrayOfString(name string) []string {
 	}
 	strings := make([]string, array.Size())
 	for i := 0; i < array.Size(); i++ {
-		strings[i] = array.GetObject(i).(*cos.Name).Name()
+		if value, isString := array.GetObject(i).(*cos.StringObj); isString {
+			strings[i] = value.Value()
+		}
 	}
 	return strings
 }

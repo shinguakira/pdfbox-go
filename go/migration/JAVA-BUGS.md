@@ -2005,6 +2005,15 @@ the same reason: the file holds strings.
 `GetArrayOfString`, with the comment above it naming this entry. The type
 assertion panics where the cast throws.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 40. `GetArrayOfString` reads
+each entry as a string, which is what `SetArrayOfString` writes and what table
+337 gives `/Headers` as. An entry of another type contributes the empty string
+rather than throwing, which is how the rest of the class treats a value it
+cannot read. Tested by `TestHeadersRoundTrip` in
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/javabug40_test.go`, over both
+classes the entry names, with `TestHeadersInAStringOfTheirOwn` for the
+`toString` that calls the getter.
+
 **Confidence** high. The two methods are next to each other and disagree on the
 element type; only one of them can match the specification, and it is not the
 getter.
