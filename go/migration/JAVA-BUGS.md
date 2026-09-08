@@ -238,6 +238,14 @@ writes to it today, which is why it has never bitten.
 
 **Where the Go carries it** `go/pdfbox/cos/name.go`, `Name.Bytes`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 5. `Name.Bytes` answers a
+copy. Names are interned, so the array Java hands out is shared by every holder
+of that name and a caller who writes through it renames all of them. Nothing in
+either tree does, which is why the entry's confidence separates the hazard from
+the defect — and why removing it costs nothing: `Bytes` has no caller inside
+the port. Tested by `TestNameBytesIsACopy` in
+`go/pdfbox/cos/javabugfixes_test.go`.
+
 **Confidence** high that it is a hazard; lower that it is a *bug*, since nothing
 currently exploits it. Filed because the Go inherits it and callers should know.
 

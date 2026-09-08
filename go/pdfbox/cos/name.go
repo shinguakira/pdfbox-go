@@ -101,7 +101,10 @@ func (n *Name) Name() string {
 // array it hands back is equally shared and mutable — and it is carried over
 // rather than closed, so that the two behave the same. Do not write to this.
 func (n *Name) Bytes() []byte {
-	return n.nameBytes
+	// Java hands out the array itself, and names are interned, so a caller who
+	// writes through it changes the name for everyone holding it. See
+	// migration/JAVA-BUGS.md 5.
+	return append([]byte(nil), n.nameBytes...)
 }
 
 // IsEmpty reports whether the name is the empty string.

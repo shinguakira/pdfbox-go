@@ -43,3 +43,27 @@ func TestIntegerEqualsDoesNotTruncate(t *testing.T) {
 		t.Errorf("IntValue() is %d, want 0: it is still the (int) cast", got)
 	}
 }
+
+// TestNameBytesIsACopy is JAVA-BUGS 5.
+//
+// `COSName.getBytes` hands out the array the interned name is built on, so a
+// caller who writes through it changes the name for every holder of it —
+// `COSName.getPDFName` returns the same object to everyone. Nothing in either
+// tree does, which is why this is a hazard rather than a live defect, but the
+// hazard is free to remove: an accessor that answers bytes answers bytes, not
+// the storage.
+func TestNameBytesIsACopy(t *testing.T) {
+	name := cos.GetPDFName("Type")
+	taken := name.Bytes()
+	if len(taken) == 0 {
+		t.Fatal("Bytes() answered nothing")
+	}
+	taken[0] = 'X'
+
+	if got := cos.GetPDFName("Type").Name(); got != "Type" {
+		t.Errorf("the interned /Type is now /%s; Bytes() handed out the storage", got)
+	}
+	if got := string(name.Bytes()); got != "Type" {
+		t.Errorf("Bytes() now answers %q; it handed out the storage", got)
+	}
+}
