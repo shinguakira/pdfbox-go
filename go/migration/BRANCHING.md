@@ -71,6 +71,11 @@ graph LR
   S4 --> TL["track/pdfbox-layout"]
   S9 --> TT["track/tools"]
   TB["track/test-backfill<br/>no dependencies"]
+  TI["track/imageio<br/>no dependencies"]
+  TD["track/stale-deferrals<br/>no dependencies"]
+  TM["track/multipdf<br/>no dependencies"]
+  S9 --> TR["track/raster"]
+  TI --> TR
 ```
 
 **`slice/1` is the bottleneck, and the only one.** It carries the COS object
@@ -98,6 +103,10 @@ plus the raster backend decision `PLAN.md` says to take before starting.
 | `track/font-embedding` | `slice/4`, `slice/7` | once both are merged |
 | `track/tools` | every slice | once they are all merged |
 | `track/pdfbox-layout` | `slice/4`, and a decision | after the text shaper is chosen |
+| `track/stale-deferrals` | **nothing** | today, and **first** — it is the only one that can find defects in merged work |
+| `track/imageio` | **nothing** | today — `PDImage.Image()` already answers pixels |
+| `track/multipdf` | **nothing** | today — slice 7's writer is all it needs |
+| `track/raster` | `track/imageio`, for one task of it | today; merge after `track/imageio` |
 
 The last four were added once every slice had merged, from a survey that
 compared all 891 in-scope Java classes and 237 Java test classes against the Go
@@ -165,3 +174,64 @@ against the 40-document corpus is recorded in the merge message.
 Whether `migration-base` eventually becomes the default branch, and whether the
 Java tree is eventually deleted once the port no longer needs it as a reference.
 Both stay open until the port does something useful.
+
+## The last four tracks (残りの四本)
+
+Added once all fifteen earlier branches had merged. **Not from the 891-class
+survey** -- that survey missed `multipdf` outright and its subtotals do not add
+up to its own headings -- but from the audit that replaced it, which is written
+down in [`STATUS.md`](STATUS.md) with the commands to re-run it. The first cut
+of this section had three tracks and the audit added a fourth, plus items to
+two of the other three.
+
+| Track | Java classes | What it unblocks |
+| --- | ---: | --- |
+| `track/stale-deferrals` | none -- pieces of merged slices | article beads, `sh` in a written stream, 3 test classes |
+| `track/imageio` | `tools/imageio` ×4, `tools/ExtractImages` | `export:images` |
+| `track/multipdf` | `multipdf` ×3, `tools/PDFMerger`, `tools/OverlayPDF` | `merge`, `overlay` |
+| `track/raster` | `graphics/shading` ×19, `rendering` ×4, `BlendComposite`, `PDPatternContentStream`, `tools/PDFToImage`, `tools/PrintPDF` | `render`, `print`, every deferred pixel comparison |
+
+**Two of the three depend on nothing and can be worked at the same time.** The
+ordering was taken from the imports of the five commands that are missing, not
+from where the classes sit:
+
+- **`ExtractImages` does not import `rendering`.** It walks the content stream
+  with `PDFGraphicsStreamEngine`, which slice 9 ported, and writes what it finds
+  with `ImageIOUtil`. The port already decodes an embedded image to pixels —
+  `PDImage.Image()` answers a `go image.Image` — so nothing here waits for a
+  rasteriser. `track/imageio` is therefore small, independent, and worth taking
+  first even though `track/raster` is the branch everyone is waiting for.
+- **`PDFMerger` and `OverlayPDF` import only `multipdf`.** No raster, no
+  imageio. `track/multipdf` is off the critical path entirely.
+- **`PDFToImage` imports both `rendering` and `imageio`.** That single command
+  is the only edge between the two branches, and it is the last task of
+  `track/raster`, so the two can be worked in parallel as long as
+  `track/imageio` merges first.
+
+**The critical path is `track/imageio` → `track/raster`, and nothing else is on
+it.** `track/multipdf` and `track/stale-deferrals` run alongside and merge
+whenever they are ready.
+
+```mermaid
+graph LR
+  TI["track/imageio<br/>4 + 1 classes<br/>small"] --> TR["track/raster<br/>25 + 2 classes<br/>the big one"]
+  TM["track/multipdf<br/>3 + 2 classes<br/>off the critical path"]
+  TD["track/stale-deferrals<br/>no new classes<br/>take it first"]
+```
+
+**`track/stale-deferrals` is not on the critical path and should still be taken
+first.** It is the only one of the four that can find a defect in work already
+merged; the other three add surface on top of it. That is the argument
+`track/test-backfill` was taken on, and this branch exists because the same
+argument was not applied a second time: four deferrals in the tree name a
+dependency that has since been ported, and one test class was never recorded at
+all.
+
+`track/raster` is the last decision this migration has left. `PLAN.md`'s slice 9
+section names three ways to take it and slice 9 took the fourth — put the raster
+behind an interface and ship everything above it — which is why `rendering.
+Backend` exists with no implementation. Choosing one is that branch's A0, and it
+is a substitution rather than a port: `java.awt.Graphics2D` has no Go
+equivalent, so what the branch writes is measured against the Java's output
+rather than translated from its source. `track/pdfbox-layout` is the worked
+precedent for how that is done.

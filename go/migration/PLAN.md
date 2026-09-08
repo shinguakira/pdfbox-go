@@ -168,7 +168,7 @@ CCITT and LZW need porting.
 signatures — and `pdfbox/pdmodel/interchange/*`. Large, but each subtree is
 independent of the others and can be picked up separately.
 
-## Slice 9 — rendering (deferred, needs a decision first)
+## Slice 9 — rendering (merged, minus the raster)
 
 The hard part. Java2D does the drawing in PDFBox: paths, clipping, compositing,
 blend modes, soft masks, seven shading types, anti-aliasing. Go has no
@@ -188,6 +188,19 @@ against two backends.
 PdfPig shipped no renderer at all and still became the standard .NET choice for
 reading PDFs. Cutting this slice permanently is a legitimate outcome.
 
+**What happened: the third was taken, and the slice merged without the raster.**
+Everything that computes is ported and runs — which paint applies, what the
+stroke is made of, what the clip intersects to, which shading is evaluated
+where. Only the last step is behind `rendering.Backend`, and nothing implements
+it. The 19 `graphics/shading` `*ShadingContext`/`*ShadingPaint` classes and the
+4 `rendering` classes that produce pixels are unported for that reason, and
+`rendering.ErrNoBackend` is what every entry point answers that would have to
+make them.
+
+Choosing an implementation is still open, and it is now the **last decision this
+migration has left**. It belongs to `track/raster`; see
+[`BRANCHING.md`](BRANCHING.md).
+
 ## Parallel track — `xmpbox`
 
 74 files, 12.3k lines, **no dependency on anything else in the build** —
@@ -199,6 +212,34 @@ the only part of this project with no ordering constraint.
 
 5 files. Only meaningful once slice 4 gives it fonts to shape, but worth reading
 before slice 9 for its backend-interface shape.
+
+## What is left
+
+Every slice above is merged, and so is every track. Four things this plan counts
+in scope are not in the port:
+
+- **the raster backend** -- see slice 9 above, and with it `BlendComposite` and
+  `PDPatternContentStream`, which are raster classes in all but name;
+- **`multipdf`** -- `PDFMergerUtility`, `LayerUtility` and `Overlay`, deferred
+  by slice 7 to slice 8, which never took them;
+- **9 of the 26 `tools`** -- five commands and the four `tools/imageio`
+  classes, each waiting on one of the two above;
+- **deferrals whose reason has stopped being true** -- article beads in
+  `PDFTextStripper`, `sh` in a written content stream, public-key encryption,
+  and three test classes, one of which was never recorded at all.
+
+They are grouped into four branches. The order came from what the five missing
+commands import; the **contents** came from an audit, because the 891-class
+survey this plan leaned on missed `multipdf` outright.
+[`BRANCHING.md`](BRANCHING.md) carries the grouping and the critical path,
+[`STATUS.md`](STATUS.md) carries the audit and the commands to re-run it, and
+`tasks/` carries one file per branch.
+
+**A deferral is not a record of what is missing; it is a record of what was
+missing on the day it was written.** Nothing in this plan went back to check
+when the thing it named was ported, and four deferrals now name a dependency
+that is in the tree. Re-checking them is a task in its own right, and it is
+`track/stale-deferrals`.
 
 ---
 

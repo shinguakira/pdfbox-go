@@ -2,9 +2,19 @@ package tools
 
 // The commands this port does not build, and what each waits for.
 //
-// B10. Java's `tools` module has 26 main files; this package has 18 of them
-// plus the dispatcher. The eight that are missing are missing for two different
-// reasons, and only one of them is the reason the task file expected.
+// B10. Java's `tools` module has 26 main files. This package ports 17 of them,
+// the dispatcher among them, and the nine below are missing for two different
+// reasons -- only one of which is the reason the task file expected.
+//
+// The count was "18 of them plus the dispatcher" until track/imageio,
+// track/multipdf and track/raster were planned and the classes were counted
+// against the list below: 17 ported and 9 here is 26, and 18 was not.
+//
+// `Encrypt` was on this list a third time, for -certFile, and is not any more:
+// track/stale-deferrals found that PublicKeySecurityHandler reported its
+// encrypting half unported for a reason -- the writer of slice 7 -- that had
+// stopped being true, and wrote the CMS encoder over the RC2 cipher and ASN.1
+// structures the decrypting side already had.
 
 // NotBuilt is one command that is not here.
 type NotBuilt struct {

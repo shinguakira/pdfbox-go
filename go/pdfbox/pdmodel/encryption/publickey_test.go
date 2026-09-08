@@ -13,15 +13,15 @@ import (
 
 // Port of org.apache.pdfbox.encryption.TestPublicKeyEncryption.
 //
-// Four of its seven tests are ported: the four that read a file encrypted by
+// Four of its seven tests are here: the four that read a file encrypted by
 // something other than PDFBox and open it with a certificate from a checked-in
-// keystore. testProtection, testProtectionError and testMultipleRecipients
-// encrypt a document and save it, which needs the writer of slice 7 and the CMS
-// encoder that goes with it.
+// keystore. Neither the files nor the keystores were made by this port, so
+// nothing about them can pass by agreeing with itself.
 //
-// The four here are the evidence that matters for this branch: neither the
-// files nor the keystores were made by this port, so nothing about them can
-// pass by agreeing with itself.
+// The other three -- testProtection, testProtectionError and
+// testMultipleRecipients -- encrypt a document and save it, which needed the
+// writer of slice 7 and the CMS encoder that goes with it. Both are in, and the
+// three are in `publickeyprotect_test.go`.
 
 func openKeyStore(t *testing.T, name string) *os.File {
 	t.Helper()

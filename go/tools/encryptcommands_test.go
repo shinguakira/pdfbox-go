@@ -9,10 +9,16 @@ package tools_test
 // the pair works.
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
 	"github.com/shinguakira/pdfbox-go/go/tools"
@@ -160,16 +166,67 @@ func TestEncryptPermissionsReachTheDocument(t *testing.T) {
 }
 
 // TestEncryptRefusesACertificate records the one branch that is not ported.
-func TestEncryptRefusesACertificate(t *testing.T) {
+// TestEncryptWithACertificate is the -certFile branch, which this port refused
+// until track/stale-deferrals: `PublicKeySecurityHandler`'s encrypting half
+// reported itself unported for a reason -- the writer of slice 7 -- that had
+// stopped being true.
+//
+// The case that used to be here asserted the refusal. It is gone because the
+// behaviour it asserted is gone.
+func TestEncryptWithACertificate(t *testing.T) {
+	certificate := writeSelfSignedCertificate(t)
+	out := filepath.Join(t.TempDir(), "out.pdf")
+
+	code, _, stderr := runCommand(tools.NewEncrypt(),
+		"-i", testFile2, "-o", out, "-certFile", certificate)
+	if code != 0 {
+		t.Fatalf("exited %d, want 0; stderr is %q", code, stderr)
+	}
+
+	// The document is encrypted, so reading it without the private key fails.
+	if _, err := pdfbox.LoadPDF(out); err == nil {
+		t.Error("the encrypted document was read without the certificate's key")
+	}
+}
+
+// TestEncryptReportsAMissingCertificate is the other half: a certificate file
+// that is not there is a failure of the command, not a panic.
+func TestEncryptReportsAMissingCertificate(t *testing.T) {
 	code, _, stderr := runCommand(tools.NewEncrypt(),
 		"-i", testFile2, "-o", filepath.Join(t.TempDir(), "out.pdf"),
 		"-certFile", "nosuch.cer")
 	if code != 4 {
 		t.Errorf("exited %d, want 4", code)
 	}
-	if want := "certFile"; !strings.Contains(stderr, want) {
-		t.Errorf("stderr is %q, want it to name the option that is not supported", stderr)
+	if want := "nosuch.cer"; !strings.Contains(stderr, want) {
+		t.Errorf("stderr is %q, want it to name the file it could not read", stderr)
 	}
+}
+
+// writeSelfSignedCertificate writes a DER certificate to a temporary file and
+// answers its path.
+func writeSelfSignedCertificate(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generating a key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(20260908),
+		Subject:      pkix.Name{CommonName: "pdfbox-go recipient"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("creating a certificate: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "recipient.cer")
+	if err := os.WriteFile(path, der, 0o644); err != nil {
+		t.Fatalf("writing the certificate: %v", err)
+	}
+	return path
 }
 
 // runCommand runs one command on its own.

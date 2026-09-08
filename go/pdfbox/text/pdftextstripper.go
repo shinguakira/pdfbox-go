@@ -239,10 +239,38 @@ func (s *PDFTextStripper) ProcessPage(page *pdmodel.PDPage) error {
 // fillBeadRectangles works out where the article beads of the page sit, in the
 // coordinates the glyphs are in.
 func (s *PDFTextStripper) fillBeadRectangles(page *pdmodel.PDPage) {
-	// The thread beads of a page need PDThreadBead, which is a slice this port
-	// has not reached; without them every glyph falls into one article, which
-	// is what a page with no beads does anyway. See migration/STATUS.md.
-	s.beadRectangles = nil
+	threadBeads := page.ThreadBeads().ToSlice()
+	s.beadRectangles = make([]*common.PDRectangle, 0, len(threadBeads))
+	for _, bead := range threadBeads {
+		if bead == nil || bead.Rectangle() == nil {
+			// Can't skip, because of nil entry handling in
+			// processTextPosition().
+			s.beadRectangles = append(s.beadRectangles, nil)
+			continue
+		}
+
+		rect := bead.Rectangle()
+
+		// The bead rectangle is in PDF coordinates (y=0 is bottom) and the
+		// glyphs are in image coordinates (y=0 is top), so it has to be
+		// flipped.
+		mediaBox := page.MediaBox()
+		upperRightY := mediaBox.UpperRightY() - rect.LowerLeftY()
+		lowerLeftY := mediaBox.UpperRightY() - rect.UpperRightY()
+		rect.SetLowerLeftY(lowerLeftY)
+		rect.SetUpperRightY(upperRightY)
+
+		// Adjust for the crop box.
+		cropBox := page.CropBox()
+		if cropBox.LowerLeftX() != 0 || cropBox.LowerLeftY() != 0 {
+			rect.SetLowerLeftX(rect.LowerLeftX() - cropBox.LowerLeftX())
+			rect.SetLowerLeftY(rect.LowerLeftY() - cropBox.LowerLeftY())
+			rect.SetUpperRightX(rect.UpperRightX() - cropBox.LowerLeftX())
+			rect.SetUpperRightY(rect.UpperRightY() - cropBox.LowerLeftY())
+		}
+
+		s.beadRectangles = append(s.beadRectangles, rect)
+	}
 }
 
 // StartArticle writes whatever opens an article.

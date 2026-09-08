@@ -19,6 +19,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/shading"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
@@ -36,10 +37,6 @@ var (
 //
 // Port of PDAbstractContentStream, which Java declares package-private and
 // abstract; the page, appearance, form and pattern content streams embed it.
-//
-// shadingFill is not here: it names PDShading, which belongs to the rendering
-// this port has not reached, and PDResources cannot add one either. See
-// migration/STATUS.md.
 type pdAbstractContentStream struct {
 	document     *PDDocument // may be nil
 	outputStream io.WriteCloser
@@ -892,6 +889,23 @@ func (c *pdAbstractContentStream) Fill() error {
 		panic("Error: fill is not allowed within a text block.")
 	}
 	return c.writeOperator(operator.FillNonZero)
+}
+
+// ShadingFill paints the given shading into the current clip.
+//
+// Port of shadingFill. Slice 9 left it out because it names PDShading, which
+// belonged to "the rendering this port has not reached"; the shading model has
+// been ported since and PDResources.AddShading was already there, so the reason
+// stopped being true. Writing `sh` needs no rasteriser: what a reader does with
+// the shading later is the renderer's business, not the writer's.
+func (c *pdAbstractContentStream) ShadingFill(sh shading.Shading) error {
+	if c.inTextMode {
+		panic("Error: shadingFill is not allowed within a text block.")
+	}
+	if err := c.writeOperandName(c.resources.AddShading(sh)); err != nil {
+		return err
+	}
+	return c.writeOperator(operator.ShadingFill)
 }
 
 // FillEvenOdd fills the current path with the even odd rule.

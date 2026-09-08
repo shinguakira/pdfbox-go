@@ -7,7 +7,11 @@ package tools
 // Port of org.apache.pdfbox.tools.Encrypt.
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"flag"
+	"fmt"
+	"os"
 	"strings"
 
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
@@ -144,10 +148,32 @@ func (e *Encrypt) encrypt(ap *encryption.AccessPermission) error {
 	}
 
 	if len(e.certFileList) != 0 {
-		// Public key encryption needs an X.509 certificate and the CMS
-		// enveloping around it. The port's PublicKeySecurityHandler reports
-		// that its encryption half is not ported; see migration/STATUS.md.
-		return errPublicKeyEncryptNotPorted
+		ppp := encryption.NewPublicKeyProtectionPolicy()
+		// One recipient for every certificate, which is Java's -- and it is
+		// Java's bug: the object is built once, outside the loop, and the loop
+		// overwrites its certificate and adds the same object again. With two
+		// -certFile options the policy holds two references to one recipient
+		// carrying the second certificate, and the first is lost. Ported as
+		// written; see migration/JAVA-BUGS.md.
+		recip := &encryption.PublicKeyRecipient{}
+		recip.SetPermission(ap)
+
+		for _, certFile := range e.certFileList {
+			certificate, err := readX509Certificate(certFile)
+			if err != nil {
+				return err
+			}
+			recip.SetX509(certificate)
+			ppp.AddRecipient(recip)
+		}
+
+		if err := ppp.SetEncryptionKeyLength(e.keyLength); err != nil {
+			return err
+		}
+		if err := document.Protect(ppp); err != nil {
+			return err
+		}
+		return document.SaveToFile(e.outfile)
 	}
 
 	spp := encryption.NewStandardProtectionPolicy(e.ownerPassword, e.userPassword, ap)
@@ -158,12 +184,6 @@ func (e *Encrypt) encrypt(ap *encryption.AccessPermission) error {
 		return err
 	}
 	return document.SaveToFile(e.outfile)
-}
-
-// errPublicKeyEncryptNotPorted is what -certFile answers.
-var errPublicKeyEncryptNotPorted = &notPortedError{
-	what: "encrypting with a certificate (-certFile)",
-	why:  "PublicKeySecurityHandler's encryption half is not ported",
 }
 
 // notPortedError says what a command cannot do and what it waits for.
@@ -180,4 +200,21 @@ func (f *repeatedFiles) String() string { return strings.Join(*f, ",") }
 func (f *repeatedFiles) Set(value string) error {
 	*f = append(*f, value)
 	return nil
+}
+
+// readX509Certificate reads a certificate file, in either of the two shapes
+// Java's CertificateFactory takes: DER, or the PEM that wraps it.
+func readX509Certificate(path string) (*x509.Certificate, error) {
+	der, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("tools: reading the certificate %s: %w", path, err)
+	}
+	if block, _ := pem.Decode(der); block != nil {
+		der = block.Bytes
+	}
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, fmt.Errorf("tools: reading the certificate %s: %w", path, err)
+	}
+	return certificate, nil
 }

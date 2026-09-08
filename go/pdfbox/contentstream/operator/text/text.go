@@ -4,9 +4,11 @@
 // processor a file of its own; they are a few lines each, so the port keeps
 // them together.
 //
-// The processors that put glyphs on the page are not here — Tj, TJ, ' and ",
-// along with Tf, which resolves the font they use. All of them need PDFont,
-// which this port has not reached. See migration/STATUS.md.
+// All sixteen are here, the four that put glyphs on the page included: Tj, TJ,
+// ' and ", along with Tf, which resolves the font they use. This comment used
+// to say they were absent because they need PDFont, "which this port has not
+// reached"; slice 3 ported PDFont and slice 3 ported them, and nothing came
+// back to correct the sentence.
 package text
 
 import (

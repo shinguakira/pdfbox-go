@@ -25,7 +25,7 @@ Last updated: 2026-09-06
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `tools` | 26 | **18 of 26**, finished by `track/tools` as far as it can go. The eight left are seven waiting for a raster backend and two waiting for `multipdf`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package |
+| 7 | `tools` | 26 | **17 of 26**, finished by `track/tools` as far as it could go. The nine left are claimed now: 5 by `track/imageio`, 2 by `track/multipdf`, 2 by `track/raster`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
@@ -58,7 +58,7 @@ evidence; a name is not.
 Every one of those was already recorded here with a reason. Nothing in that
 group is a gap.
 
-### 42 were real. Twenty-five are now done, and three have no branch.
+### 42 were real. Every one of them now has a branch.
 
 | Group | Files | Branch |
 | --- | ---: | --- |
@@ -67,7 +67,7 @@ group is a gap.
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
 | `tools`, `tools/imageio` | 26 | **18 done** — `track/tools`. Eight left: see its section |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
-| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **this survey missed them.** Slice 7 deferred all three to slice 8 and slice 8 never took them; no branch claims them |
+| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **`track/multipdf`.** This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last four tracks were planned, and the miss is why the audit at the end of this file replaces this survey |
 
 `io`, `fontbox` and `xmpbox` have no unported class at all.
 
@@ -5322,3 +5322,271 @@ unconditional, and `PDAbstractContentStream.showGlyphsWithPositioning` writes
 the brackets and the operator before it looks at the list -- so skipping it
 would be a deviation from the reference for the sake of a few bytes. Ported as
 written.
+
+## What is left, and the four branches that claim it
+
+Every slice and every earlier track is merged. What `PLAN.md` counts in scope
+and the port has not got is below, and each item now has a branch. The grouping
+and the critical path are in [`BRANCHING.md`](BRANCHING.md); the order was taken
+from the imports of the five commands that are missing, and the contents from
+the audit recorded at the end of this file.
+
+| Branch | Java | Depends on | Unblocks |
+| --- | ---: | --- | --- |
+| `track/stale-deferrals` | 3 test classes, 3 methods | nothing | article beads, `sh`, public-key encryption |
+| `track/imageio` | 5 | nothing | `export:images` |
+| `track/multipdf` | 5 + 1 test | nothing | `merge`, `overlay` |
+| `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
+
+**`track/imageio` is on the critical path and `track/multipdf` is not.**
+`ExtractImages` never imports `rendering` — it walks the content stream with
+`PDFGraphicsStreamEngine` and writes what it finds, and `PDImage.Image()`
+already answers a `go image.Image`, so nothing about writing an image out waits
+for a rasteriser. `PDFToImage` imports both `rendering` and `imageio`, and that
+single command is the only edge between the two branches.
+
+**`track/stale-deferrals` should be taken first**, on the argument
+`track/test-backfill` was taken on: it is the only one of the four that can find
+a defect in work already merged. It is not on the critical path either way.
+
+**`track/raster` is the last decision this migration has.** Slice 9 ported
+everything in the renderer that computes and put only the drawing behind
+`rendering.Backend`; the 19 `graphics/shading` contexts and paints and the 4
+`rendering` classes that make pixels are unported for that reason. Choosing what
+draws is that branch's A0, and it is a substitution rather than a port —
+`java.awt.Graphics2D` has no Go equivalent. `track/pdfbox-layout` is the worked
+precedent for how a substitution is measured and its deviations pinned.
+
+### The tools count was wrong
+
+This file said `tools` was **18 of 26** and `go/tools/notbuilt.go` said "18 of
+them plus the dispatcher". Counting the classes against that file's own list:
+17 are ported, the dispatcher among them, and 9 are not. 17 and 9 is 26. Both
+are corrected, and the nine are what the three branches above divide between
+them.
+
+## The audit that found what the survey missed
+
+The 891-class survey recorded above **missed `multipdf` entirely**, and its
+subtotals do not add up to its own headings (28 and 45 under headings of 24 and
+42). Its matcher counted a class as ported if its name appeared anywhere in the
+Go tree, which is how a comment saying `LayerUtility` and `Overlay` are *absent*
+was read as evidence that they are present.
+
+This is the audit that replaces it. It is written down because the failure will
+recur otherwise, and because it found four things the first plan for the
+remaining work did not have.
+
+### The method: three buckets, not one
+
+A class is **not** ported because its name appears. Sort every Java class into
+one of three buckets and read the last two by hand.
+
+```sh
+# 1. every in-scope Java main class, as "SimpleName<TAB>fqn"
+for m in io fontbox xmpbox pdfbox pdfbox-layout-awt pdfbox-layout-fop tools; do
+  find $m/src/main/java -name '*.java'
+done | sed 's|^[a-z0-9-]*/src/main/java/||; s|\.java$||; s|/|.|g' \
+     | awk -F. '{print $NF"\t"$0}' | sort > java_classes.tsv
+
+# 2. strong evidence: a Go declaration of that name, or an explicit "Port of X"
+cd go
+rg -o --no-filename '^(type|func) +([A-Z][A-Za-z0-9_]*)' -r '$2' --glob '*.go' . \
+  | sort -u > go_decls.txt
+rg -o --no-filename '[Pp]ort of ([a-zA-Z0-9_.]*[A-Z][A-Za-z0-9_]*)' -r '$1' --glob '*.go' . \
+  | sed 's/.*\.//' | sort -u >> go_decls.txt
+
+# 3. of what is left, split by whether the name reaches any line that is not a
+#    comment. Comment-only is the bucket the last survey got wrong.
+```
+
+Over 891 classes that gives **100 with no strong evidence**, of which 27 appear
+nowhere in the Go tree at all and 51 appear **only in comments**. Every one of
+the 51 has to be read: most are ports under a Go name the matcher could not see
+— `COSBase` is `cos.Base`, `Hex` is `cos.ParseHexString` — and a few are the
+real gaps, indistinguishable from the rest without reading.
+
+Run the same three buckets over `src/test/java` for the 237 test classes. That
+pass is what found `TestPDDocument`.
+
+### A class-level audit cannot see a method-level gap, and that is where they hide
+
+`multipdf` was a whole package and the survey still lost it. The gaps below are
+smaller than a class and no class-level pass of any quality would have found
+them:
+
+```sh
+rg -n '//.*\b(is not ported|has not reached|not built|waits for|deferred)\b' \
+   --glob '*.go' --glob '!*_test.go' go/
+rg -n 'errors\.New\(|panic\(' --glob '*.go' --glob '!*_test.go' go/ \
+   | rg -i 'not ported|not built|no backend|not implemented'
+```
+
+Then — and this is the step that pays — **check whether each stated reason is
+still true.** A deferral records what was missing on the day it was written, and
+nothing goes back to look when that thing lands. Four of the ones this port
+carries name a dependency that has since been ported.
+
+### What it found
+
+| Found | Where | Now claimed by |
+| --- | --- | --- |
+| `PDPatternContentStream` unported | `pdmodel` | `track/raster` |
+| `BlendComposite` unported | `graphics/blend` | `track/raster` |
+| `PDFTextStripper.fillBeadRectangles` disabled — `PDThreadBead` is ported now | `text` | `track/stale-deferrals` |
+| `PDAbstractContentStream.shadingFill` missing — `PDShading` is ported now | `pdmodel` | `track/stale-deferrals` |
+| `PublicKeySecurityHandler` cannot encrypt — the recorded reason is "slice 7", which merged | `encryption` | `track/stale-deferrals`, and its A0 |
+| `COSWriterCompressionPoolTest`, `COSDocumentCompressionTest` — every blocker they name is ported | `pdfwriter` | `track/stale-deferrals` |
+| `TestPDDocument`, 6 cases — **recorded nowhere at all** | `pdmodel` | `track/stale-deferrals` |
+| `PDFCloneUtilityTest` — 2 of its 3 blockers are ported, the third is `PDFMergerUtility` | `multipdf` | `track/multipdf` |
+| `ContentStreamWriterTest` | `pdfwriter` | `track/raster` |
+| `contentstream/operator/text` says `Tj`, `TJ`, `'` and `"` are absent; they were ported by slice 3 | doc comment | `track/stale-deferrals` |
+
+The `tools` count — 18 of 26, in this file and in `go/tools/notbuilt.go` — was
+wrong the same way. 17 are ported and 9 are not.
+
+## `track/stale-deferrals` — the deferrals whose reason had stopped being true
+
+The first of the last four branches, and the one that could find defects in work
+already merged rather than adding more. Everything below was deferred by a slice
+that named a dependency, and the dependency landed, and nothing came back.
+
+| What | The reason it recorded | What was true by the time it was read |
+| --- | --- | --- |
+| `PDFTextStripper.fillBeadRectangles` | "PDThreadBead is a slice this port has not reached" | slice 8 ported `PDThreadBead` and `PDPage.ThreadBeads` |
+| `PDAbstractContentStream.shadingFill` | "it names PDShading ... and PDResources cannot add one either" | slice 9 ported `PDShading`; `PDResources.AddShading` was already there |
+| `PublicKeySecurityHandler.PrepareDocumentForEncryption` | "needs a CMS encoder, which is slice 7" | slice 7 merged, and `rc2.go` plus the CMS structures came in with the decrypting side |
+| `tools` `-certFile` | "PublicKeySecurityHandler's encryption half is not ported" | the line above |
+| `COSWriterCompressionPoolTest` | needs `PDDocumentOutline`, `PDOutlineItem` | both ported |
+| `COSDocumentCompressionTest` | needs `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox`, `protect` | all five ported |
+| `contentstream/operator/text` | "Tj, TJ, ' and " ... need PDFont, which this port has not reached" | slice 3 ported PDFont **and all four operators**; only the sentence was left |
+| `TestPDDocument`, 6 cases | **nothing — recorded nowhere** | it was missed, not deferred |
+
+### What each one turned out to be
+
+**Article beads were disabled, and everything above them worked.**
+`fillBeadRectangles` set the list to nil, so every glyph on every page fell into
+one article. `processTextPosition` had been dividing glyphs by bead rectangle,
+`charactersByArticle` had been keeping a list per division and `writePage` had
+been walking them in order the whole time — being handed an empty list.
+`TestTextIsSortedByArticleBeads` puts two beads on a page and writes the text in
+the other order; it fails against the stub and passes against the port of the
+Java.
+
+**`sh` could not be written.** `PDResources.AddShading` existed and nothing
+called it. `ShadingFill` is nine lines and needs no rasteriser: what a reader
+does with a shading later is the renderer's business, not the writer's.
+
+**Public-key encryption was half here.** The port refuses to encrypt to a
+certificate because Java gets its CMS enveloped-data blob from BouncyCastle and
+Go's standard library has none. But `rc2.go` implements `cipher.Block` — it
+encrypts as well as it decrypts — and `cms.go` declares every ASN.1 structure a
+blob is made of, because it reads one. What was missing was the direction, and
+`cmsencode.go` is it: RC2-CBC content encryption under a fresh key, that key
+wrapped to each certificate with RSA PKCS#1 v1.5, and the whole thing wrapped in
+a ContentInfo. `TestPublicKeyEnvelopeRoundTrips` seals a seed and opens it
+again.
+
+One trap worth writing down: `encoding/asn1` writes a `RawValue`'s `FullBytes`
+verbatim and **ignores the field's own tagging parameters**, so a ContentInfo
+whose content is `[0] EXPLICIT` comes out untagged and nothing reads it back.
+The wrapper has to be marshalled by hand.
+
+**The compression tests were about what a document still says after it has been
+written out compressed** — the same pages, the same thirteen fields, the same
+attachment at the same length. Four of the five cases port; `testPDFBox5927`
+loads a PDF the Maven build downloads and this repository does not carry.
+
+### One assertion that could not be ported, and why
+
+`COSDocumentCompressionTest.testAlteredDoc` asserts the new page's content
+stream is **43 bytes**, which is its `/Length`: the stream after it was
+deflated. That number is not this port's to match. Measured over the identical
+35 bytes of content, `java.util.zip.Deflater` answers 43 and Go's
+`compress/zlib` answers 47, at every compression level from 1 to 9. Both are
+valid Flate streams and both inflate to the same bytes; it is the deflate
+implementation and has nothing to do with PDFBox. The case asserts the content
+instead, which is what the number stands for.
+
+### And a Java bug on the way past
+
+`Encrypt` builds one `PublicKeyRecipient` outside its loop and adds the same
+object once per `-certFile`, overwriting its certificate each time, so only the
+last certificate survives and the document is encrypted to it twice. Ported as
+written; **JAVA-BUGS.md 79**.
+
+### The adversarial review of `track/stale-deferrals`
+
+**Found by reading the Java side by side**
+
+- `computeRecipientInfo` takes the whole `AlgorithmIdentifier` off the
+  certificate's `SubjectPublicKeyInfo`, which for an RSA key carries an
+  **explicit ASN.1 NULL** in its parameters; the first cut wrote the OID with
+  the parameters absent. RFC 3370 section 4.2.1 requires the NULL, so a strict
+  reader is entitled to refuse what was written. Fixed, and checked by dumping
+  the DER rather than by trusting `encoding/asn1`: `0500` follows the
+  rsaEncryption OID.
+- Java's encrypting path does **not** append the four `0xFF` bytes for
+  unencrypted metadata that its decrypting path handles. The port does not
+  either. Faithful, and written down because it looks like an omission.
+
+**Checked and found to be nothing**
+
+- `fillBeadRectangles` mutates the rectangle it is handed — `rect.setLowerLeftY`
+  and three more — which would write through to the document if
+  `PDThreadBead.getRectangle()` returned a view. It does not: Java's
+  `PDRectangle(COSArray)` copies into a fresh `COSArray`, and so does the
+  port's. Extracting text twice gives the same answer, and the case asserts it.
+
+**Found by counting branches**
+
+- `computeVersionNumber` had one of its four arms exercised.
+  `TestPublicKeyVersionNumber` walks all four, with the values from
+  `SecurityHandler.computeVersionNumber`.
+
+**Still open**
+
+Nothing this branch touched. `TestPDFBox5927` and the pixel half of
+`TestImageIOUtils` stay where they were, for reasons that are still true: a PDF
+the Maven build downloads, and a rasteriser.
+
+### The feedback on `track/stale-deferrals`
+
+Two items. One was the branch's own failure mode, committed by the branch that
+exists to catch it.
+
+**A deferral this branch created the conditions to close, and left standing.**
+`publickey_test.go` ported four of `TestPublicKeyEncryption`'s seven cases and
+deferred `testProtection`, `testProtectionError` and `testMultipleRecipients`
+because they "encrypt a document and save it, which needs the writer of slice 7
+and the CMS encoder that goes with it". This branch wrote the CMS encoder and
+did not go back — which is exactly what its own D8 says to check for, over a
+file its two comment sweeps did not reach because the sentence names no
+package the sweeps grep for.
+
+All three are ported now, in `publickeyprotect_test.go`, at all three key
+lengths the Java parameterises over. They are the end-to-end evidence the
+synthetic round trip is not: a real document protected, saved, and opened again
+from a keystore this port did not write; the wrong certificate refused with the
+message the Java asserts, `serial-#: rid 2 vs. cert 3`; and two recipients each
+getting their own permissions out of one file, which is the case that would
+catch a seed shared where it should not be.
+
+**A panic that is the Java's.** `computeRecipientsField` reads
+`recipient.getPermission().getPermissionBytesForPublicKey()` and
+`recipient.getX509()` with no null check, and neither field has a default, so
+Java throws NullPointerException for a half-built recipient. The review asked
+for this to fail gracefully or to default the permissions; both would be fixing
+a bug that is in the Java, and the port would then accept a policy Java refuses.
+Declined, and pinned instead: `TestRecipientWithoutPermissionPanics` and
+`TestRecipientWithoutCertificatePanics` say the convention out loud so nobody
+quietly changes it.
+
+**The lesson, which is the branch's own.** A comment sweep finds deferrals that
+name a type or a package. It does not find one that names a *slice* — "needs
+the writer of slice 7" — and that is the form the missed one took. The audit in
+this file gets a third grep for the next time:
+
+```sh
+rg -n 'slice [0-9]|track/[a-z-]+' --glob '*_test.go' go/ | rg -i 'needs|waits|deferred|not ported'
+```

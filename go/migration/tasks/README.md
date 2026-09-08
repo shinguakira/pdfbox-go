@@ -24,15 +24,57 @@ change it to suit one branch — change the copy.
 | `slice/9-rendering` | [`slice-9-rendering.md`](slice-9-rendering.md) | **merged** — minus the raster half, behind `rendering.Backend` |
 | `track/xmpbox` | [`track-xmpbox.md`](track-xmpbox.md) | **merged** |
 | `track/scratchfile` | [`track-scratchfile.md`](track-scratchfile.md) | **merged** |
-| `track/test-backfill` | [`track-test-backfill.md`](track-test-backfill.md) | open — depends on nothing |
-| `track/font-embedding` | [`track-font-embedding.md`](track-font-embedding.md) | open — needs 4 and 7, both merged |
-| `track/tools` | [`track-tools.md`](track-tools.md) | open — needs every slice, all merged |
-| `track/pdfbox-layout` | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | open — **take last**, see its A0 |
+| `track/test-backfill` | [`track-test-backfill.md`](track-test-backfill.md) | **merged** |
+| `track/font-embedding` | [`track-font-embedding.md`](track-font-embedding.md) | **merged** |
+| `track/tools` | [`track-tools.md`](track-tools.md) | **merged** — 17 of 26, the 9 left are these last three tracks |
+| `track/pdfbox-layout` | [`track-pdfbox-layout.md`](track-pdfbox-layout.md) | **merged** |
+| `track/stale-deferrals` | [`track-stale-deferrals.md`](track-stale-deferrals.md) | open — **take first**, depends on nothing |
+| `track/imageio` | [`track-imageio.md`](track-imageio.md) | open — depends on nothing |
+| `track/multipdf` | [`track-multipdf.md`](track-multipdf.md) | open — depends on nothing |
+| `track/raster` | [`track-raster.md`](track-raster.md) | open — **take last**, see its A0 |
 
-Every slice in `PLAN.md` is merged. The four open branches are tracks: work
-`PLAN.md` counts in scope that no slice claimed.
+**Every slice and every earlier track is merged.** The four open branches are
+what is left of the migration: work `PLAN.md` counts in scope that no slice
+claimed, no earlier track could reach, or that was deferred for a reason which
+has since stopped being true.
 
-## Order for the four open tracks
+## Order for the last four tracks
+
+**`track/stale-deferrals` first**, on the same argument `track/test-backfill`
+was taken on: it is the only one of the four that can find a defect in work
+already merged. Four deferrals in the tree name a dependency that has since been
+ported, and `TestPDDocument` was recorded nowhere at all.
+
+**`track/imageio` next**, even though it is small and `track/raster` is the one
+everyone is waiting for. It is on the critical path and nothing else is:
+`track/raster`'s last task, the `render` command, writes its output through
+`ImageIOUtil`.
+
+**`track/multipdf` alongside it**, whenever there is someone to take it. It
+depends on nothing and unblocks nothing else — `merge` and `overlay` are the
+only things downstream of it.
+
+**`track/raster` last, and it can start today.** Only its B5 needs
+`track/imageio`; the backend, the nineteen shading contexts and paints, and the
+four transparency classes above it do not. What it must not start without is its
+own A0, which is the last design decision this migration has.
+
+The order was taken from the imports of the five commands that are missing, not
+from where the classes sit in the Java tree. `ExtractImages` does not import
+`rendering`; `PDFMerger` and `OverlayPDF` import only `multipdf`; `PDFToImage`
+imports both `rendering` and `imageio`, and is the single edge between two
+branches that are otherwise independent. [`../BRANCHING.md`](../BRANCHING.md)
+carries the graph.
+
+The **contents** came from an audit, not from the 891-class survey that missed
+`multipdf`. The first cut of these tracks had three; the audit added a fourth
+and put two more classes into `track/raster` and one more test class into
+`track/multipdf`. `../STATUS.md` carries the method and the commands to re-run
+it -- the important half of which is not finding unported classes but checking
+whether the reason each recorded deferral gives is **still true**.
+
+## The order the four earlier tracks were taken in
+
 
 **`track/test-backfill` first.** It is the only one that can find defects in
 work already merged; the other three add surface area on top of a base whose
@@ -103,12 +145,12 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) — **done** |
 | `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` |
 | `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) — **done** |
-| `pdfbox/multipdf` | 6 | slice 7 |
+| `pdfbox/multipdf` | 6 | slice 7 (3), `track/multipdf` (the other 3, and `PDFCloneUtilityTest`) |
 | `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 conditionally, slice 8 for `FDFParser` |
 | `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
 | `pdfbox/pdfwriter` | 3 | slice 7 |
 | `pdfbox/pdfwriter/compress` | 4 | slice 7 |
-| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio) |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio), `track/raster` (`PDPatternContentStream`), `track/stale-deferrals` (`TestPDDocument`) |
 | `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
 | `pdmodel/common/filespecification` | 4 | slice 8 |
 | `pdmodel/common/function` | 6 | slice 9 |
@@ -120,19 +162,19 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `pdmodel/font` | 39 | slice 3 (~12), slice 4 (rest), `track/font-embedding` (the 5 embedders) |
 | `pdmodel/font/encoding` | 12 | slice 3 |
 | `pdmodel/graphics` | 4 | slice 2 (1), slice 6 (2), slice 9 (`PDFontSetting`) |
-| `pdmodel/graphics/blend` | 2 | slice 2 (1), slice 9 (1) |
+| `pdmodel/graphics/blend` | 2 | slice 2 (1), `track/raster` (`BlendComposite`) |
 | `pdmodel/graphics/color` | 23 | slice 2 (3), slice 9 (rest) |
 | `pdmodel/graphics/form` | 3 | slice 9 |
 | `pdmodel/graphics/image` | 9 | slice 6 |
 | `pdmodel/graphics/optionalcontent` | 3 | slice 8 |
 | `pdmodel/graphics/pattern` | 3 | slice 9 |
-| `pdmodel/graphics/shading` | 37 | slice 9 |
+| `pdmodel/graphics/shading` | 37 | slice 9 (18), `track/raster` (the 19 contexts and paints) |
 | `pdmodel/graphics/state` | 6 | slice 2 (4), slice 9 (2) |
 | `pdmodel/interactive/*` | 144 | slice 8 |
 | `pdfbox/printing` | 4 | slice 9 |
-| `pdfbox/rendering` | 10 | slice 9 |
+| `pdfbox/rendering` | 10 | slice 9 (6), `track/raster` (the 4 that make pixels) |
 | `pdfbox/text` | 6 | slice 3 |
-| `pdfbox/tools`, `tools/imageio` | 26 | `track/tools` |
+| `pdfbox/tools`, `tools/imageio` | 26 | `track/tools` (17), `track/imageio` (5), `track/multipdf` (2), `track/raster` (2) |
 | `pdfbox/util` | 9 | slice 2 (2), slice 3 (2), slice 6 (1), slice 7 (2), slice 8 (1), `tools` (1) — see below |
 | `pdfbox/util/filetypedetector` | 3 | slice 6 |
 | `xmpbox/*` | 74 | `track/xmpbox` |
