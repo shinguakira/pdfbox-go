@@ -279,10 +279,10 @@ func (p *fileSystemFontProvider) createFSIgnored(file string, format FontFormat,
 			hash = computed
 		}
 	}
-	// JAVA-BUGS entry 21: Java passes null for the parent here, so Font() on an
-	// ignored entry dereferences it. Ported as written; the Go panics where
-	// Java throws NullPointerException.
-	return newFSFontInfo(file, format, postScriptName, nil, 0, 0, 0, 0, 0, nil, nil, hash,
+	// JAVA-BUGS 21: Java passes null for the parent here, where the other two
+	// call sites pass `this`, so Font() on an ignored entry dereferences it —
+	// `parent.cache` is the first thing that method reads.
+	return newFSFontInfo(file, format, postScriptName, nil, 0, 0, 0, 0, 0, nil, p, hash,
 		lastModified(file))
 }
 

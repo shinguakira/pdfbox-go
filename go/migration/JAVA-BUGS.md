@@ -990,6 +990,12 @@ be crafted to reach it, which is why it has gone unnoticed.
 `createFSIgnored`, which passes nil for the parent with a comment; the Go panics
 on the nil dereference where Java throws.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 21. `createFSIgnored` passes
+the provider, as the other two call sites of the constructor do. Without it
+`Font()` on an entry the provider decided to ignore dereferenced the null
+parent on its first line. Tested by `TestIgnoredFontInfoHasItsParent` in
+`go/pdfbox/pdmodel/font/javabug21_test.go`.
+
 **Confidence** high. The parameter list is unambiguous and the other two call
 sites pass `this`.
 
