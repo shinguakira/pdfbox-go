@@ -1108,6 +1108,12 @@ it has gone unnoticed.
 which falls through to the two-byte table for a zero-length code exactly as Java
 does, with a comment saying why the length-0 case is not special-cased.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 23. `GetMapping` answers
+nothing for a zero-length code, which is the answer the arm for a code longer
+than two bytes gives — the ternary has two arms for three cases and no bytes at
+all is the third. Tested by `TestGetMappingOfAnEmptyCode` in
+`go/fontbox/cmap/javabug23_test.go`.
+
 **Confidence** high. The two arms of the caller disagree about the same input.
 
 ## 24. `PDEncryption.hasSecurityHandler` answers the opposite of its name

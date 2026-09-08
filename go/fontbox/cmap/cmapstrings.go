@@ -59,12 +59,12 @@ func decodeLatin1(data []byte) string {
 //
 // Java returns null there, and its callers null-check.
 //
-// JAVA-BUGS entry 23: Java's ternary has two arms for three cases, so a
-// zero-length code falls into the two-byte arm and comes back as U+0000 rather
-// than as the empty string its caller's other arm would give it. Ported as
-// written; do not special-case the empty code here.
+// JAVA-BUGS 23: Java's ternary has two arms for three cases, so a zero-length
+// code falls into the two-byte arm and comes back as U+0000 rather than as
+// nothing. The arm for a code longer than two bytes answers null, and no bytes
+// at all is the same kind of answer.
 func GetMapping(bytes []byte) (string, bool) {
-	if len(bytes) > 2 {
+	if len(bytes) > 2 || len(bytes) == 0 {
 		return "", false
 	}
 	if len(bytes) == 1 {
