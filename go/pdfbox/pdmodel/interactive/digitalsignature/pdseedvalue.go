@@ -190,15 +190,29 @@ func (v *PDSeedValue) SetV(minimumRequiredCapability float32) {
 // Reasons returns the reasons that may be used for the signing, which is empty
 // where there are none.
 //
-// SetReasons writes strings and this reads names, so it panics on anything
-// SetReasons wrote and on any conforming file. That is the Java, which throws
-// ClassCastException there; see migration/JAVA-BUGS.md.
+// Java reads names where SetReasons writes strings, so it throws
+// ClassCastException on anything the setter wrote and on any conforming file;
+// PDF 32000-1:2008 table 234 gives /Reasons as an array of text strings. See
+// migration/JAVA-BUGS.md 43.
 func (v *PDSeedValue) Reasons() []string {
 	fields := v.dictionary.GetCOSArray(cos.Reasons)
 	if fields != nil {
-		return fields.ToNameStringList()
+		return textStrings(fields)
 	}
 	return []string{}
+}
+
+// textStrings reads an array of text strings, passing over an entry that is
+// not one, which is what PDSeedValueCertificate.KeyUsage does for the same
+// shape of entry.
+func textStrings(array *cos.Array) []string {
+	out := []string{}
+	for _, item := range array.ToList() {
+		if str, isString := item.(*cos.StringObj); isString {
+			out = append(out, str.Value())
+		}
+	}
+	return out
 }
 
 // SetReasons sets the reasons that may be used for the signing.
@@ -258,13 +272,12 @@ func (v *PDSeedValue) SetTimeStamp(timestamp *PDSeedValueTimeStamp) {
 // LegalAttestation returns the legal attestations that may be used, which is
 // empty where there are none.
 //
-// SetLegalAttestation writes strings and this reads names, so it panics on
-// anything SetLegalAttestation wrote and on any conforming file. That is the
-// Java, which throws ClassCastException there; see migration/JAVA-BUGS.md.
+// Java reads names where SetLegalAttestation writes strings, the same pair as
+// Reasons above. See migration/JAVA-BUGS.md 43.
 func (v *PDSeedValue) LegalAttestation() []string {
 	fields := v.dictionary.GetCOSArray(cos.LegalAttestation)
 	if fields != nil {
-		return fields.ToNameStringList()
+		return textStrings(fields)
 	}
 	return []string{}
 }

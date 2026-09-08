@@ -2158,6 +2158,16 @@ class are correct, because `setSubFilter` and `setDigestMethod` write names.
 on an entry that is not a name — Go's answer to the `ClassCastException`. Both
 carry a comment pointing here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 43. `Reasons` and
+`LegalAttestation` read text strings, which is what their setters write and
+what table 234 gives both entries as. The reading is
+`PDSeedValueCertificate.KeyUsage`'s, in a small `textStrings` helper the two
+share: an entry that is not a string is passed over rather than thrown on.
+Tested by `TestSeedValueReasonsRoundTrip` and
+`TestSeedValueLegalAttestationRoundTrip` in
+`go/pdfbox/pdmodel/interactive/digitalsignature/javabug43_test.go`, with
+`TestSeedValueReasonsOfNothing` for the empty answer the getter already gave.
+
 **Confidence** high. The cast is unconditional and the setter is right next to
 it.
 
