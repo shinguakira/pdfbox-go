@@ -5663,7 +5663,7 @@ run and is asserted in `go/tools/imageio/javavalues_test.go`.
 | TIFF bitonal | `PhotometricInterpretation` 0, WhiteIsZero | the same, with the bits that way round |
 | TIFF byte order | big-endian, "MM" | little-endian, "II", which the format allows and the first two bytes say |
 | TIFF compression | 4 (CCITT T.6) bitonal, 5 (LZW) otherwise | 1, none — the deviation above |
-| BMP resolution | **zero** | the pixels per metre — see JAVA-BUGS.md 81 |
+| BMP resolution | **zero** on a plain JDK — see JAVA-BUGS.md 81 | the pixels per metre |
 
 Two of these are worth saying out loud, because they were not guesses that
 happened to be right.
@@ -5678,11 +5678,25 @@ preview". That decides what the bits mean, so the port had to invert them to
 match: a clear bit is white. The Java's file round-trips through `ImageIO.read`
 to the image it was given, and so does this one.
 
-**The BMP is the one row where the port and the Java differ on purpose.** The
-Java's `setDPI` is guarded by `!metadata.isReadOnly()`, and the JDK's BMP
-writer answers read-only metadata, so the fields stay zero -- while the Java's
-own test asserts they hold the dpi. The guard is a property of a JDK plugin and
-has no counterpart in Go. Recorded as JAVA-BUGS.md 81.
+**The BMP is the one row where the measurement is of the wrong environment,
+and the port follows the Java's test rather than the run.** The Java's `setDPI`
+is guarded by `!metadata.isReadOnly()`; the JDK's BMP writer answers read-only
+metadata, so with nothing but `log4j-api` on the class path the fields stay
+zero. `ImageIOUtil` picks its writer with a loop that prefers one whose
+metadata *is* writable, and `tools/pom.xml` puts `jai-imageio-core` -- which
+registers such a BMP writer -- on the class path **in test scope**, which is
+why the Java's own `checkBmpResolution` asserts 36 and gets it. The JAI jars
+are not in the local Maven repository and there is no network, so that run
+could not be made here. The port has no plugin registry and no read-only
+metadata, so it writes the fields always: the JAI-present behaviour, and what
+the test asserts. Recorded as JAVA-BUGS.md 81.
+
+The same dependency explains two other rows. The JDK has had a TIFF writer
+since 9, so the CCITT T.6 and LZW figures above were measured without JAI; JPEG
+2000 comes only from `jai-imageio-jpeg2000`, also test scope, which is why
+`ImageIOUtil`'s javadoc says a TIFF "is only supported if the jai_imageio
+library ... is in the class path" and why writing a `.jp2` is something
+`pdfbox-tools` cannot do for a user either.
 
 ### What is not ported from `ImageIOUtil`
 

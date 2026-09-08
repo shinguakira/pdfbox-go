@@ -19,15 +19,26 @@ package tools_test
 // that the files it writes land there and never beside the Java it read.
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	pdimage "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/pattern"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util/filetypedetector"
 	"github.com/shinguakira/pdfbox-go/go/tools"
 )
@@ -251,4 +262,114 @@ func tiffShape(t *testing.T, content []byte) (int, int, int) {
 		}
 	}
 	return values[0x0100], values[0x0101], values[0x0102]
+}
+
+// TestExtractImagesFindsAnImageInsidePatternedText is the `showGlyph`
+// override, which the checked-in PDFs cannot reach.
+//
+// Java overrides it to process the colour a glyph is painted in, and does not
+// call super, so no glyph is drawn: the method is there for the colour. Where
+// that colour is a tiling pattern, `processColor` runs the pattern's content
+// stream and the images inside it are extracted. Without the override the
+// engine's own `showGlyph` runs, the pattern is never walked, and the image is
+// lost.
+//
+// No checked-in PDF paints text with a patterned colour, so this one is built.
+func TestExtractImagesFindsAnImageInsidePatternedText(t *testing.T) {
+	dir := t.TempDir()
+	input := documentWithPatternedText(t, dir)
+
+	code, _, stderr := runCommand(tools.NewExtractImages(), "-i", input)
+	if code != 0 {
+		t.Fatalf("exited %d; stderr is %q", code, stderr)
+	}
+	written := extractedFiles(t, dir)
+	if len(written) != 1 || written[0] != "patterned-1.jpg" {
+		t.Fatalf("the command wrote %v, want [patterned-1.jpg]: the glyph is "+
+			"filled with a tiling pattern and the pattern draws an image",
+			written)
+	}
+}
+
+// documentWithPatternedText writes a one-page PDF whose only mark is a glyph
+// filled with a tiling pattern, the pattern's one cell drawing a JPEG.
+func documentWithPatternedText(t *testing.T, dir string) string {
+	t.Helper()
+	document := pdmodel.NewPDDocument()
+	defer document.Close()
+	page := pdmodel.NewPDPageOfSize(common.A4)
+	document.AddPage(page)
+
+	xobject, err := pdimage.CreateFromByteArray(document, jpegBytes(t), "")
+	if err != nil {
+		t.Fatalf("CreateFromByteArray: %v", err)
+	}
+
+	// The pattern: one 16 by 16 cell, which draws the image.
+	tiling := pattern.NewPDTilingPattern(filter.Provider{})
+	tiling.SetPaintType(1) // coloured
+	tiling.SetTilingType(1)
+	tiling.SetBBox(common.NewPDRectangleOfSize(16, 16))
+	tiling.SetXStep(16)
+	tiling.SetYStep(16)
+	cell := pdmodel.NewPDResources()
+	imageName := cell.AddImageXObject(xobject)
+	tiling.SetResources(cell)
+	writeStream(t, tiling.ContentStream(),
+		"q 16 0 0 16 0 0 cm /"+imageName.Name()+" Do Q\n")
+
+	// The page: a font, and the pattern under a name of its own.
+	resources := pdmodel.NewPDResources()
+	helvetica, err := font.NewPDType1FontStandard14(font.Helvetica)
+	if err != nil {
+		t.Fatalf("NewPDType1FontStandard14: %v", err)
+	}
+	fontName := resources.AddFont(helvetica)
+	patterns := cos.NewDictionary()
+	patterns.SetItem(cos.GetPDFName("P0"), tiling.ContentStream().COSObject())
+	resources.Dictionary().SetItem(cos.Pattern, patterns)
+	page.SetResources(resources)
+
+	contents := common.NewPDStreamOfDocument(document)
+	writeStream(t, contents, "/Pattern cs /P0 scn\nBT /"+fontName.Name()+
+		" 36 Tf 20 700 Td (A) Tj ET\n")
+	page.SetContents(contents)
+
+	path := filepath.Join(dir, "patterned.pdf")
+	if err := document.SaveToFile(path); err != nil {
+		t.Fatalf("SaveToFile: %v", err)
+	}
+	return path
+}
+
+// writeStream puts the given content into a stream.
+func writeStream(t *testing.T, stream *common.PDStream, content string) {
+	t.Helper()
+	output, err := stream.CreateOutputStream()
+	if err != nil {
+		t.Fatalf("CreateOutputStream: %v", err)
+	}
+	if _, err := output.Write([]byte(content)); err != nil {
+		t.Fatalf("writing a stream: %v", err)
+	}
+	if err := output.Close(); err != nil {
+		t.Fatalf("closing a stream: %v", err)
+	}
+}
+
+// jpegBytes encodes a small JPEG in DeviceRGB, which is the colour space that
+// takes the direct path out of write2file.
+func jpegBytes(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 16), G: uint8(y * 16), B: 64, A: 255})
+		}
+	}
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, img, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("encoding a JPEG: %v", err)
+	}
+	return out.Bytes()
 }

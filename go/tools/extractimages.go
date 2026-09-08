@@ -28,10 +28,12 @@ import (
 	textpr "github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator/text"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
+	pdfont "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/pattern"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 	"github.com/shinguakira/pdfbox-go/go/tools/imageio"
 )
 
@@ -39,6 +41,7 @@ import (
 // names a JPEG stream can carry.
 var jpegFilters = []string{
 	cos.DCTDecode.Name(),
+	cos.DCT.Name(),
 }
 
 // ExtractImages extracts the images from a PDF file.
@@ -228,6 +231,30 @@ func (e *imageGraphicsEngine) DrawImage(pdImage image.PDImage) error {
 		e.command.noColorConvert)
 }
 
+// ShowGlyph processes the colour a glyph is painted in, which may be a tiling
+// pattern with images inside it.
+//
+// Java overrides showGlyph and does not call super, so no glyph is drawn: the
+// method is here for the colour and nothing else. `PDFGraphicsStreamEngine`
+// leaves it alone, so without this a page whose *text* is filled with a
+// patterned colour loses the images in that pattern.
+func (e *imageGraphicsEngine) ShowGlyph(textRenderingMatrix *util.Matrix,
+	f pdfont.PDFont, code int, displacement util.Vector) error {
+	graphicsState := e.GraphicsState()
+	renderingMode := graphicsState.TextState().RenderingMode()
+	if renderingMode.IsFill() {
+		if err := e.processColor(graphicsState.NonStrokingColor()); err != nil {
+			return err
+		}
+	}
+	if renderingMode.IsStroke() {
+		if err := e.processColor(graphicsState.StrokingColor()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // processColor finds out if it is a tiling pattern, then processes that one.
 func (e *imageGraphicsEngine) processColor(pdColor *color.PDColor) error {
 	if pdColor == nil {
@@ -351,15 +378,19 @@ func (e *ExtractImages) writeImageBody(pdImage image.PDImage, suffix string,
 			// stream
 			return copyEncodedStream(pdImage, []string{cos.JPXDecode.Name()}, output)
 		}
-		// for CMYK and other "unusual" colorspaces, the image would be
-		// converted -- and cannot be. Go has no JPEG 2000 encoder and this port
-		// has no JPX support at all; see migration/STATUS.md.
-		return fmt.Errorf("tools: writing a JPEG 2000 image in the %s colour "+
-			"space needs a JPEG 2000 encoder, which this port has not got",
-			colorSpaceNameOf(colorSpace))
+		// for CMYK and other "unusual" colorspaces, the image will be converted
+		//
+		// Java asks ImageIOUtil for a "jpeg2000" writer, which is there only
+		// with the JAI Image I/O Tools on the class path and is not there here
+		// either: Go has no JPEG 2000 encoder and this port has no JPX support
+		// at all; see migration/STATUS.md. The call is made anyway, because
+		// what Java does when the writer is missing is log two lines and answer
+		// false, leaving the file it has already created empty -- and that is
+		// what this does.
+		return e.convertAndWriteAs(pdImage, "jpeg2000", output)
 
 	case "tiff":
-		if colorSpace != nil && colorSpace.Name() == color.DeviceGray.Name() {
+		if colorSpace == color.DeviceGray {
 			decoded, err := pdImage.Image()
 			if err != nil {
 				return err
@@ -379,8 +410,17 @@ func (e *ExtractImages) writeImageBody(pdImage image.PDImage, suffix string,
 	return e.convertAndWrite(pdImage, suffix, output)
 }
 
-// convertAndWrite decodes the image and writes it in the given format.
+// convertAndWrite decodes the image and writes it in the format its suffix
+// names.
 func (e *ExtractImages) convertAndWrite(pdImage image.PDImage, suffix string,
+	output io.Writer) error {
+	return e.convertAndWriteAs(pdImage, suffix, output)
+}
+
+// convertAndWriteAs is the same with the format named separately, which the
+// JPEG 2000 arm needs: its suffix is "jp2" and the format it asks for is
+// "jpeg2000".
+func (e *ExtractImages) convertAndWriteAs(pdImage image.PDImage, formatName string,
 	output io.Writer) error {
 	decoded, err := pdImage.Image()
 	if err != nil {
@@ -389,7 +429,7 @@ func (e *ExtractImages) convertAndWrite(pdImage image.PDImage, suffix string,
 	if decoded == nil {
 		return nil
 	}
-	_, err = imageio.WriteImage(decoded, suffix, output)
+	_, err = imageio.WriteImage(decoded, formatName, output)
 	return err
 }
 
@@ -415,18 +455,26 @@ func (e *ExtractImages) hasMasks(pdImage image.PDImage) (bool, error) {
 	return xobject.Mask() != nil || xobject.SoftMask() != nil, nil
 }
 
-// channelsOf answers how many channels a decoded image carries, which is
-// Java's `image.getRaster().getNumDataElements()`.
+// channelsOf answers how many channels a raw image carries, which is Java's
+// `image.getRaster().getNumDataElements()` -- the bands of the raster the
+// colour space wrapped, not the channels of a Go pixel type.
 //
 // It is asked for one thing only: whether there are more than three, which
 // means the image is likely CMYK and has to go into a TIFF rather than a PNG.
+// A three-band RGB raster is three, and the alpha of a Go `image.RGBA` is not
+// a fourth: "we have no alpha information here", says the caller.
+//
+// Only the first arm can be reached today. `PDColorSpace.ToRawImage` answers
+// nil in every implementation this port has but `PDDeviceGray`'s and the
+// `PDSeparation` that delegates to it, each of which answers an `image.Gray`;
+// the rest are recorded in migration/STATUS.md as deferred for want of an ICC
+// engine or of an indexed colour model. So `noColorConvert` writes a PNG or
+// writes nothing, and the TIFF arm waits on those.
 func channelsOf(img goimage.Image) int {
 	switch img.(type) {
 	case *goimage.Gray, *goimage.Gray16, *goimage.Alpha:
 		return 1
 	case *goimage.CMYK:
-		return 4
-	case *goimage.NRGBA, *goimage.RGBA, *goimage.NRGBA64, *goimage.RGBA64:
 		return 4
 	}
 	return 3
@@ -448,14 +496,6 @@ func copyEncodedStream(pdImage image.PDImage, stopFilters []string,
 	}
 	_, err = io.Copy(output, reader)
 	return err
-}
-
-// colorSpaceNameOf answers a colour space's name for a message.
-func colorSpaceNameOf(colorSpace color.PDColorSpace) string {
-	if colorSpace == nil {
-		return "unknown"
-	}
-	return colorSpace.Name()
 }
 
 // asBitonal copies an image to one bit per pixel.

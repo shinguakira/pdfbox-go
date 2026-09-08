@@ -3489,14 +3489,14 @@ are all written, which is the whole of what the method achieves.
 classes of `tools/imageio` compile against nothing but `log4j-api`, and the
 files they write carry exactly those tags.
 
-## 81. `TestImageIOUtils` asserts a BMP resolution that `ImageIOUtil` does not write
+## 81. The BMP resolution `TestImageIOUtils` asserts is written only by a test-scope dependency
 
-**Where** `tools/src/test/java/org/apache/pdfbox/tools/imageio/TestImageIOUtils.java`,
-`checkBmpResolution`, against
-`tools/src/main/java/org/apache/pdfbox/tools/imageio/ImageIOUtil.java`,
-`writeImage`.
+**Where** `tools/src/main/java/org/apache/pdfbox/tools/imageio/ImageIOUtil.java`,
+`writeImage`, against `tools/pom.xml` and
+`tools/src/test/java/org/apache/pdfbox/tools/imageio/TestImageIOUtils.java`,
+`checkBmpResolution`.
 
-The test writes a BMP and then reads the two pixels-per-metre fields out of the
+The test writes a BMP and reads the two pixels-per-metre fields out of the
 header by hand, because "BMP reader doesn't work":
 
 ```java
@@ -3505,8 +3505,8 @@ int actualResolution = (int) Math.round(pixelsPerMeter / 100.0 * 2.54);
 assertEquals(expectedResolution, actualResolution, "X resolution doesn't match ...");
 ```
 
-`ImageIOUtil` writes the resolution for a format that is neither TIFF nor JPEG
-only through this guard:
+`ImageIOUtil` writes that resolution for a format that is neither TIFF nor
+JPEG only through this guard:
 
 ```java
 if (!metadata.isReadOnly() && metadata.isStandardMetadataFormatSupported())
@@ -3515,33 +3515,54 @@ if (!metadata.isReadOnly() && metadata.isStandardMetadataFormatSupported())
 }
 ```
 
-The JDK's `com.sun.imageio.plugins.bmp.BMPImageWriter` answers **read-only**
-default image metadata, so `setDPI` never runs for a BMP and the header's
-`biXPelsPerMeter` and `biYPelsPerMeter` stay zero. The test then computes
-`round(0 / 100.0 * 2.54)` = 0 and asserts that it is 36.
+and it chooses the writer with a loop whose whole purpose is to find one for
+which that guard passes -- "Loop until we get the best driver, i.e. one that
+supports setting dpi in the standard metadata format; however we'd also accept
+a driver that can't, if a better one can't be found".
 
-Measured on JDK 17.0.19: `ImageIOUtil.writeImage(image, "bmp", out, 36)` on an
-8x6 `TYPE_INT_RGB` gives 198 bytes whose bytes 38 to 45 are all zero, and
-`getDefaultImageMetadata` for that writer answers `readOnly=true`,
-`stdSupported=true`.
+**Measured on JDK 17.0.19 with nothing but `log4j-api` on the class path**:
+`com.sun.imageio.plugins.bmp.BMPImageWriter` is the only BMP writer, its
+`getDefaultImageMetadata` answers `readOnly=true`, `setDPI` is skipped, and
+`ImageIOUtil.writeImage(image, "bmp", out, 36)` on an 8x6 `TYPE_INT_RGB` gives
+198 bytes whose `biXPelsPerMeter` and `biYPelsPerMeter` -- bytes 38 to 45 --
+are all zero. The test's `round(0 / 100.0 * 2.54)` is 0, and it asserts 36.
 
-**What correct would be** either writing the fields into the BMP header
-directly, the way the test reads them, or dropping the BMP from
-`checkResolution` and saying why. The same guard is right for every other
-format: the PNG and GIF writers answer writable metadata and do get their
-resolution.
+The assertion nonetheless holds when Maven runs it, and the reason is in
+`tools/pom.xml`:
 
-**Why it matters** The assertion is the only thing standing behind "the BMP
-carries its resolution", and it cannot hold. Anything downstream that trusts a
-BMP PDFToImage wrote to say what size it prints at is trusting a zero.
+```xml
+<dependency>
+    <groupId>com.github.jai-imageio</groupId>
+    <artifactId>jai-imageio-core</artifactId>
+    <version>${jai.version}</version>
+    <scope>test</scope>
+</dependency>
+```
+
+JAI Image I/O Tools registers a BMP writer of its own whose metadata is
+writable, the loop prefers it, and `setDPI` runs. **The scope is `test`.**
+
+**What correct would be** either promoting the dependency out of test scope,
+or writing the two header fields without going through a plugin's metadata, or
+saying in `ImageIOUtil`'s javadoc that a BMP carries its resolution only with
+JAI on the class path -- the javadoc says exactly that about TIFF two
+paragraphs earlier and says nothing about BMP.
+
+**Why it matters** The test passes and the shipped code does not do what it
+tests. `pdfbox-tools` at runtime has neither JAI jar -- they are not compile or
+runtime dependencies -- so every BMP `PDFToImage` writes for a user says its
+resolution is zero, and the one assertion standing behind "the BMP carries its
+resolution" was made in an environment the user does not have.
 
 **Where the Go carries it** Nowhere. `go/tools/imageio/bmp.go` writes the
-pixels per metre into the header, which is what the Java's test asserts and
-what the Java's `setDPI` branch is trying to bring about; the branch that stops
-it is a property of a JDK plugin -- `isReadOnly` -- and there is no such thing
-in Go, where the writer is this package's own and its header is always
-writable. So the port agrees with the Java's test and differs from the Java's
-output, and `TestWriteImageFormats` asserts the resolution for BMP because the
-Java test does.
+pixels per metre into the header always, which is what the Java's test asserts
+and what its writer loop is reaching for. There is no plugin registry in Go and
+so no writer whose metadata is read-only; the port is the JAI-present
+behaviour, and `TestWriteImageFormats` asserts the resolution for BMP because
+the Java test does.
 
-**Confidence** certain, measured.
+**Confidence** the JDK half is certain and measured. The JAI half is inferred
+from `tools/pom.xml` and from what the writer loop is for: the two
+`com.github.jai-imageio` jars are not in the local Maven repository and there
+is no network to fetch them, so the run with them present could not be made
+here.

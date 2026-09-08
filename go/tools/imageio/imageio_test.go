@@ -191,3 +191,29 @@ func TestBitonalTiffStaysOneBit(t *testing.T) {
 			"CCITT T.6 here; see migration/STATUS.md", got)
 	}
 }
+
+// TestWriteImageToFileLeavesAnEmptyFileForAFormatItCannotWrite is the order
+// Java's filename overload does two things in.
+//
+// `writeImage(image, filename, dpi, quality)` opens the file --
+// `new BufferedOutputStream(new FileOutputStream(filename))` -- and only then
+// takes the format off the name and goes looking for a writer. A format
+// nothing can write therefore leaves an empty file behind and answers false,
+// and the port does the same rather than tidying up after the Java.
+func TestWriteImageToFileLeavesAnEmptyFileForAFormatItCannotWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "page-1.webp")
+	written, err := imageio.WriteImageToFile(sampleImage(), path, dpi)
+	if err != nil {
+		t.Fatalf("an unknown format is answered false, not an error: %v", err)
+	}
+	if written {
+		t.Error("an unknown format was accepted")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("the file was not created: %v", err)
+	}
+	if info.Size() != 0 {
+		t.Errorf("the file is %d bytes, want none written into it", info.Size())
+	}
+}

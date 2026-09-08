@@ -90,16 +90,19 @@ func WriteImageToFile(img image.Image, filename string, dpi int) (bool, error) {
 // Port of writeImage(BufferedImage, String, int, float).
 func WriteImageToFileOfQuality(img image.Image, filename string, dpi int,
 	compressionQuality float32) (bool, error) {
-	formatName := filename[strings.LastIndex(filename, ".")+1:]
-
-	// Java writes into the file only once it has a writer, and this does too:
-	// a format nothing can write leaves no empty file behind.
-	var buffer bytes.Buffer
-	written, err := WriteImageOfQuality(img, formatName, &buffer, dpi, compressionQuality)
-	if err != nil || !written {
-		return written, err
+	// Java opens the file before it goes looking for a writer -- the
+	// try-with-resources is `new BufferedOutputStream(new
+	// FileOutputStream(filename))` and the format name is taken inside it -- so
+	// a format nothing can write still leaves an empty file behind. This does
+	// the same.
+	file, err := os.Create(filename)
+	if err != nil {
+		return false, err
 	}
-	return true, os.WriteFile(filename, buffer.Bytes(), 0o644)
+	defer file.Close()
+
+	formatName := filename[strings.LastIndex(filename, ".")+1:]
+	return WriteImageOfQuality(img, formatName, file, dpi, compressionQuality)
 }
 
 // qualityFor is the quality Java's filename overload picks, which is the one

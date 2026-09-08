@@ -22,6 +22,11 @@ import (
 // without loss of anything a PDF image carries: a BMP has no alpha in this
 // form, and neither does what `javax.imageio`'s writer produces for the
 // TYPE_INT_RGB images PDFToImage renders.
+//
+// The resolution is always written, which is what the Java's own test asserts
+// and what its writer loop is reaching for -- and is not what the Java does on
+// a plain JDK, whose BMP writer answers read-only metadata so that
+// `ImageIOUtil` skips `setDPI` and the fields stay zero. See JAVA-BUGS.md 81.
 func writeBMP(img image.Image, output io.Writer, dpi int, quality float32) error {
 	bounds := img.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
