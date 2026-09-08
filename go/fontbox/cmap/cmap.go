@@ -321,9 +321,9 @@ func (c *CMap) useCmap(cmap *CMap) {
 	}
 	for k, v := range cmap.charToUnicodeOneByte {
 		// Java writes k % 0xFF here, not k & 0xFF, so the one code 255 comes
-		// back out as 0. See migration/JAVA-BUGS.md entry 16; ported as it
-		// stands.
-		c.unicodeToByteCodes[v] = []byte{byte(k % 0xFF)}
+		// back out as 0. The two branches beside it mask. See
+		// migration/JAVA-BUGS.md 16.
+		c.unicodeToByteCodes[v] = []byte{byte(k & 0xFF)}
 	}
 	for k, v := range cmap.charToUnicodeTwoBytes {
 		c.unicodeToByteCodes[v] = []byte{

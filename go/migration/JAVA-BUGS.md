@@ -756,6 +756,12 @@ which is why it has gone unnoticed.
 **Where the Go carries it** `go/fontbox/cmap/cmap.go`, `useCmap`, with the
 `% 0xFF` written out and a comment pointing here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 16. `useCmap` masks with
+`& 0xFF`, which is what the two branches beside it do. The two agree for every
+byte but 255, so a parent CMap that maps the code 0xFF used to lose it and the
+reverse map answered the code 0 for that character. Tested by
+`TestUseCmapKeepsTheCodeFF` in `go/fontbox/cmap/javabugfixes_test.go`.
+
 **Confidence** high. The two branches beside it mask with `& 0xFF`, and `%` on
 a value that is already a byte cannot be deliberate.
 
