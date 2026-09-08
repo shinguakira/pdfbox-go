@@ -369,3 +369,21 @@ func NewAffineTransformOf(other *AffineTransform) *AffineTransform {
 		m11: other.m11, m02: other.m02, m12: other.m12,
 	}
 }
+
+// QuadrantRotate concatenates this transform with a transform that rotates
+// coordinates by the given number of quadrants, which is 90 degrees each.
+//
+// Port of quadrantRotate(int), which is the exact-arithmetic rotation
+// `rotate(theta)` dispatches to for a multiple of a right angle.
+func (at *AffineTransform) QuadrantRotate(numquadrants int) {
+	switch numquadrants & 3 {
+	case 0:
+		// nothing to do
+	case 1:
+		at.rotate90()
+	case 2:
+		at.rotate180()
+	case 3:
+		at.rotate270()
+	}
+}
