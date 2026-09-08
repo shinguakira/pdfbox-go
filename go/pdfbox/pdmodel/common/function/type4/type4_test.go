@@ -321,14 +321,17 @@ func TestNe(t *testing.T) {
 		popBool(true).popBool(false).isEmpty()
 }
 
-// TestNot carries JAVA-BUGS: the integer arm of `not` is the arithmetic
-// negation in PDFBox, where PostScript defines it as the bitwise complement.
-// The values below are the Java test's, so 52 not is -52 and not -53.
+// TestNot is JAVA-BUGS 29, fixed. The integer arm of `not` is the bitwise
+// complement, which is what PostScript defines it as: PDF 32000-1:2008 table
+// 42. PDFBox writes the arithmetic negation, and this test used to carry its
+// answers -- **the Java's values are 52 not = -52 and -37 not = 37**, where the
+// complement gives -53 and 36. Those two are the only expectations in this
+// repository that are not the Java's.
 func TestNot(t *testing.T) {
 	newType4Tester(t, "true not false not").
 		popBool(true).popBool(false).isEmpty()
 	newType4Tester(t, "52 not -37 not").
-		popInt(37).popInt(-52).isEmpty()
+		popInt(36).popInt(-53).isEmpty()
 }
 
 func TestOr(t *testing.T) {

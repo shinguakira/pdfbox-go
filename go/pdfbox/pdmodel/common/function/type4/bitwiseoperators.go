@@ -80,9 +80,10 @@ func (notOperator) Execute(context *ExecutionContext) {
 		context.Push(!v)
 	case int32:
 		// Java writes -int1 here, which is the arithmetic negation and not the
-		// bitwise complement PostScript's `not` is defined as. It is what
-		// PDFBox does, so it is what the port does. See migration/JAVA-BUGS.md.
-		context.Push(-v)
+		// bitwise complement PostScript's `not` is defined as: PDF
+		// 32000-1:2008 table 42, and the PostScript Language Reference before
+		// it. See migration/JAVA-BUGS.md 29.
+		context.Push(^v)
 	default:
 		// Java throws ClassCastException, which is unchecked.
 		panic("Operand must be bool or int")

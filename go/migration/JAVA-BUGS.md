@@ -1342,6 +1342,13 @@ It is not caught by the Java's own tests because they assert the behaviour:
 `notOperator`, which writes `-v` with a comment; `TestNot` in
 `type4_test.go` keeps the Java's expected values.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 29. The integer arm of `not`
+is `^v`, the bitwise complement PostScript defines it as. Tested by
+`TestNotOfAnIntegerIsTheComplement` in
+`go/pdfbox/pdmodel/common/function/type4/javabugfixes_test.go`; `TestNot` in
+`type4_test.go` carried the Java's answers -- 52 not = -52, -37 not = 37 -- and
+now carries the complement's, with the Java's kept in its comment.
+
 **Confidence** high. The specification and the code disagree in one character.
 
 ## 30. `ASCIIHexFilter` adds -1 for a digit that is not hexadecimal
