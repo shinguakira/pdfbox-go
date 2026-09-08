@@ -35,6 +35,7 @@ func Subcommands() []Subcommand {
 		{"encrypt", func() Command { return NewEncrypt() }},
 		{"decode", func() Command { return NewWriteDecodedDoc() }},
 		{"fromimage", func() Command { return NewImageToPDF() }},
+		{"export:images", func() Command { return NewExtractImages() }},
 		{"export:xmp", func() Command { return NewExtractXMP() }},
 		{"export:text", func() Command { return NewExtractText() }},
 		{"export:fdf", func() Command { return NewExportFDF() }},

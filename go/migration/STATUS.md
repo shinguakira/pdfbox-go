@@ -25,7 +25,7 @@ Last updated: 2026-09-06
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `tools` | 26 | **17 of 26**, finished by `track/tools` as far as it could go. The nine left are claimed now: 5 by `track/imageio`, 2 by `track/multipdf`, 2 by `track/raster`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
+| 7 | `tools` | 26 | **22 of 26**, finished by `track/tools` as far as it could go and then by `track/imageio`, which took five: the four `tools/imageio` classes and `ExtractImages`. The four left are 2 for `track/multipdf` and 2 for `track/raster`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
@@ -65,7 +65,7 @@ group is a gap.
 | `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | **done** — `track/font-embedding`. Four, not five: `ToUnicodeWriter` was already ported and this survey missed it |
 | `pdmodel` resource cache factory | 3 | **done** — `track/test-backfill`, which was already in those files |
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
-| `tools`, `tools/imageio` | 26 | **18 done** — `track/tools`. Eight left: see its section |
+| `tools`, `tools/imageio` | 26 | **22 done** — `track/tools`, then `track/imageio`. Four left: see its section |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
 | `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **`track/multipdf`.** This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last four tracks were planned, and the miss is why the audit at the end of this file replaces this survey |
 
@@ -4447,7 +4447,7 @@ prints it, and `TestSubcommandNamesAreJavas` checks that every name
 `PDFBox.main` registers is either built or recorded — so the two cannot drift
 apart.
 
-**Seven wait for a raster**, which is what the task file expected:
+**Seven waited for a raster**, which is what the task file expected:
 `PDFToImage`, `PrintPDF`, `ExtractImages`, and the four `tools/imageio`
 helpers. `rendering.Backend` is the interface slice 9 defined and nothing
 implements it. **What Go draws with is a design decision outside this branch**,
@@ -4455,6 +4455,13 @@ and it is named rather than taken in passing. `ImageIOUtil` and its three
 companions are `javax.imageio` writers and its metadata trees; Go's
 `image/png`, `image/jpeg` and a TIFF library are a substitution worth choosing
 once there is a raster to write.
+
+**Five of those seven turned out not to be waiting**, and `track/imageio` took
+them: `ExtractImages` never imports `rendering`, and neither do the four
+`tools/imageio` classes — writing an image out and rendering a page are
+different jobs, and only `PDFToImage` and `PrintPDF` need both. The
+substitution was made there rather than in `track/raster`; see the `imageio`
+section at the end of this file. Two wait for a raster now.
 
 **Two wait for `multipdf`**, which the task file did not expect: `PDFMerger`
 needs `PDFMergerUtility` and `OverlayPDF` needs `Overlay`, and neither is
@@ -4517,7 +4524,7 @@ Four of the six Java test classes are ported whole:
 | `TestPDFText2HTML` | 2 | `tools/pdftext2html_test.go` |
 | `TestTextToPdf` | 4 | `tools/texttopdf_test.go` |
 | `PDFBoxHeadlessTest`, `PDFBoxNonHeadlessTest` | 4 | `tools/pdfbox_test.go`, rewritten — see below |
-| `imageio/TestImageIOUtils` | — | not ported: it is the raster |
+| `imageio/TestImageIOUtils` | — | ported by `track/imageio`, minus the rendering: `tools/imageio/imageio_test.go` and its two companions |
 
 `testOverflow` is the one worth naming: it compares two full pages of laid-out
 Lorem ipsum against Java's expected strings, and is the only thing in the suite
@@ -5334,7 +5341,7 @@ the audit recorded at the end of this file.
 | Branch | Java | Depends on | Unblocks |
 | --- | ---: | --- | --- |
 | `track/stale-deferrals` | 3 test classes, 3 methods | nothing | article beads, `sh`, public-key encryption |
-| `track/imageio` | 5 | nothing | `export:images` |
+| `track/imageio` | 5 | nothing | **done** — `export:images` |
 | `track/multipdf` | 5 + 1 test | nothing | `merge`, `overlay` |
 | `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
 
@@ -5590,3 +5597,281 @@ this file gets a third grep for the next time:
 ```sh
 rg -n 'slice [0-9]|track/[a-z-]+' --glob '*_test.go' go/ | rg -i 'needs|waits|deferred|not ported'
 ```
+
+## Track `imageio` — A0, what writes an image out
+
+`ImageIOUtil` is a shell around `javax.imageio`: it asks a registry for a writer
+by format name, takes an `ImageWriteParam` and an `IIOMetadata` tree off it,
+sets a compression type by string, and edits the metadata as a DOM. Go has none
+of that. So this is a **substitution, like `glyphlayout`** -- the calls are
+ported, the machinery under them is not, and what it produces is compared with
+what Java produces rather than translated from Java's source.
+
+Six formats reach `writeImage` from `PDFToImage` and `ExtractImages`, and the
+Java test writes all six. Where each one comes from:
+
+| Format | What writes it | Resolution |
+| --- | --- | --- |
+| PNG | `image/png` | a `pHYs` chunk written in |
+| JPEG | `image/jpeg` | the JFIF APP0 density patched |
+| GIF | `image/gif` | none, and Java writes none either -- "no META data possible for GIF" |
+| BMP | written here, ~60 lines | the header's pixels-per-metre fields |
+| WBMP | written here, ~20 lines | none, and Java writes none |
+| TIFF | written here | the XResolution and YResolution tags |
+| JPEG 2000 | **nothing** | — |
+
+### The two decisions inside that
+
+**TIFF is written uncompressed, and Java compresses it.** `TIFFUtil.
+setCompressionType` picks CCITT T.6 for a 1-bit bitonal image and LZW for
+everything else. Neither is in Go's standard library and one of them nearly is:
+`compress/lzw` implements the LZW of GIF and PDF, and **TIFF's variant
+increments the code width one code early**. Feeding a TIFF reader the output of
+`compress/lzw` produces a file that some readers accept and others reject, which
+is worse than not compressing. CCITT T.6 is a Group 4 fax encoder and is a
+piece of work in its own right.
+
+So the port writes baseline uncompressed strips: correct, readable everywhere,
+and larger. `ExtractImages` converts a bitonal image to 1-bit-per-pixel before
+writing it *so that* Java's G4 kicks in, and the port keeps the conversion --
+the file is still 1 bit per pixel, it is simply not compressed. Recorded as a
+deviation rather than closed, because closing it is two encoders and neither is
+about correctness.
+
+**JPEG 2000 cannot be written at all.** `ExtractImages` writes a `.jp2` two
+ways: copying the embedded stream out untouched, which needs no encoder and is
+ported, and converting an image to JPEG 2000 for a colour space that is not grey
+or RGB, which needs one. Go has no JPEG 2000 encoder and this port has no JPX
+decoder either -- `PDJPXColorSpace` is recorded as a deliberate non-port for
+the same reason. The conversion path reports that it cannot.
+
+### What the Java actually writes, measured
+
+The four classes of `tools/imageio` compile against nothing but `log4j-api` --
+no picocli, no PDFBox core -- so unlike the rest of `tools` they can be run
+here. They were, over the same two images the Go test builds: an 8x6
+`TYPE_INT_RGB` and an 8x6 `TYPE_BYTE_BINARY`. Everything below came out of that
+run and is asserted in `go/tools/imageio/javavalues_test.go`.
+
+| What | The Java | The port |
+| --- | --- | --- |
+| PNG `pHYs` | 1417, 2835, 11811 pixels per metre at 36, 72, 300 dpi | the same |
+| PNG chunk order | IHDR, pHYs, IDAT, IEND | the same |
+| JPEG JFIF APP0 | `ffe0 0010 "JFIF\0" 01 02 01 0024 0024 0000` | the same eighteen bytes |
+| WBMP | `00 00 08 06 aa 55 aa 55 aa 55` | the same ten bytes |
+| TIFF tags | 13 entries; `Software` = "PDFBOX", `RowsPerStrip` = the height, `BitsPerSample` one short per sample | the same 13 |
+| TIFF bitonal | `PhotometricInterpretation` 0, WhiteIsZero | the same, with the bits that way round |
+| TIFF byte order | big-endian, "MM" | little-endian, "II", which the format allows and the first two bytes say |
+| TIFF compression | 4 (CCITT T.6) bitonal, 5 (LZW) otherwise | 1, none — the deviation above |
+| BMP resolution | **zero** on a plain JDK — see JAVA-BUGS.md 81 | the pixels per metre |
+
+Two of these are worth saying out loud, because they were not guesses that
+happened to be right.
+
+**The JFIF version is 1.02, not 1.01.** `JPEGUtil.updateMetadata` sets
+`majorVersion` 1 and `minorVersion` 2 on the `app0JFIF` node. The port wrote
+1.01 until the bytes were read.
+
+**A bitonal TIFF is WhiteIsZero**, which `TIFFUtil.updateMetadata` sets tag 262
+to for a one-bit image and nothing else, "because of bug in Windows XP
+preview". That decides what the bits mean, so the port had to invert them to
+match: a clear bit is white. The Java's file round-trips through `ImageIO.read`
+to the image it was given, and so does this one.
+
+**The BMP is the one row where the measurement is of the wrong environment,
+and the port follows the Java's test rather than the run.** The Java's `setDPI`
+is guarded by `!metadata.isReadOnly()`; the JDK's BMP writer answers read-only
+metadata, so with nothing but `log4j-api` on the class path the fields stay
+zero. `ImageIOUtil` picks its writer with a loop that prefers one whose
+metadata *is* writable, and `tools/pom.xml` puts `jai-imageio-core` -- which
+registers such a BMP writer -- on the class path **in test scope**, which is
+why the Java's own `checkBmpResolution` asserts 36 and gets it. The JAI jars
+are not in the local Maven repository and there is no network, so that run
+could not be made here. The port has no plugin registry and no read-only
+metadata, so it writes the fields always: the JAI-present behaviour, and what
+the test asserts. Recorded as JAVA-BUGS.md 81.
+
+The same dependency explains two other rows. The JDK has had a TIFF writer
+since 9, so the CCITT T.6 and LZW figures above were measured without JAI; JPEG
+2000 comes only from `jai-imageio-jpeg2000`, also test scope, which is why
+`ImageIOUtil`'s javadoc says a TIFF "is only supported if the jai_imageio
+library ... is in the class path" and why writing a `.jp2` is something
+`pdfbox-tools` cannot do for a user either.
+
+### What is not ported from `ImageIOUtil`
+
+**The iCCP chunk.** Java attaches an ICC profile to a PNG when the image's
+colour space is an `ICC_ColorSpace` that is neither sRGB nor the built-in grey
+-- `hasICCProfile`, and `getAsDeflatedBytes` beside it. A Go `image.Image`
+carries no colour space at all: `PDImage.Image()` answers `image.RGBA` or
+`image.Gray`, the profile having been applied on the way. There is nothing to
+attach, and there will be nothing to attach until an image type that carries a
+profile exists. Deferred on absence, not on difficulty.
+
+**The `compressionType` parameter.** The six-argument `writeImage` takes a
+`javax.imageio` compression name -- "LZW", "JPEG", "None", or null for
+uncompressed -- and hands it to `ImageWriteParam.setCompressionType`. Only the
+TIFF writer has more than one, and this port's TIFF writer has one. The
+five-argument overloads, which are what `ExtractImages` and `PDFToImage` call,
+are ported in full.
+
+**`MetaUtil.debugLogMetadata`.** It serialises a metadata tree to XML when
+debug logging is on. There is no metadata tree.
+
+### What `ExtractImages` needed that was already there
+
+Nothing but the operators. `contentstream.NewPDFGraphicsStreamEngine` registers
+none -- every operator package imports `contentstream`, so it cannot import
+them back and the concrete engine registers them instead -- and the first
+version of the port called `SetOverrides` and stopped, so `Do` was never
+dispatched and the command wrote nothing while exiting 0. `addAllOperators` in
+`go/tools/extractimages.go` is the same list `go/pdfbox/rendering/operators.go`
+has. The test that caught it is `TestExtractImagesCopiesADeviceRGBJPEG`, over
+`input/merge/jpegrgb.pdf`.
+
+### `-noColorConvert` reaches only one colour space, and that is not this branch's
+
+`ExtractImages` with `-noColorConvert` asks for `pdImage.getRawImage()` and
+writes that: a PNG, or a TIFF where the raster has more than three bands,
+"that's likely CMYK". `getRawImage` is `getColorSpace().toRawImage(raster)`,
+and **six of the port's eight `ToRawImage` implementations answer nil**:
+
+| Colour space | Java | The port |
+| --- | --- | --- |
+| `PDDeviceGray` | a `TYPE_BYTE_GRAY` image | an `image.Gray` |
+| `PDSeparation` | a CS_GRAY colour model over the same samples | delegates to `PDDeviceGray` |
+| `PDDeviceRGB`, `PDDeviceCMYK` | null | nil, the same |
+| `PDICCBased` | wraps the raster in a colour model carrying the profile | nil: there is no profile to carry |
+| `PDIndexed` | an `IndexColorModel` over an sRGB profile | nil: Go has no indexed colour model |
+| `PDCIEBasedColorSpace` | null | nil, the same |
+| `PDDeviceN` | null | nil, the same |
+
+So `-noColorConvert` writes a PNG for a grey or separation image and otherwise
+falls through to the ordinary path, which is what Java does for the four it
+answers null for and is not what Java does for `PDICCBased` or `PDIndexed`.
+Those two are deferred for want of an ICC engine and of an indexed colour
+model, both recorded against slice 6; the deferral is named here because this
+is the branch that gave it a caller. `channelsOf` in `go/tools/extractimages.go`
+says the same at the site: only its first arm can be reached today, so the TIFF
+half of the branch waits on those two.
+
+## Track `imageio` — D7, the adversarial review
+
+Read every ported file against its Java. Seven things the green tests did not
+say, all fixed on the branch, each with a test that fails without the fix.
+
+**`showGlyph` was missing.** Java's `ImageGraphicsEngine` overrides it to
+process the colour a glyph is painted in -- and does not call super, so no
+glyph is drawn: the method is there for the colour. A page whose text is
+filled with a tiling pattern therefore gives up the images inside that pattern.
+The port had no override, so `PDFStreamEngine`'s own ran and the pattern was
+never walked. No checked-in PDF paints text that way, so
+`TestExtractImagesFindsAnImageInsidePatternedText` builds one.
+
+**No operators were registered.** `contentstream.NewPDFGraphicsStreamEngine`
+registers none -- the operator packages import `contentstream`, so it cannot
+import them back -- and the first version of the engine called `SetOverrides`
+and stopped. `Do` was never dispatched: the command wrote nothing and exited 0,
+which is the worst shape a defect can take. Caught by the first test written
+against a real document.
+
+**The JPEG filter list was one name short.** Java's is `DCTDecode` and its
+abbreviation `DCT`; the port had only the first, so a stream filtered `/DCT`
+would have been decoded rather than copied.
+
+**The `jp2` conversion arm returned an error.** Java asks `ImageIOUtil` for a
+"jpeg2000" writer, finds none without the JAI jars, logs two lines and answers
+false -- leaving the file it has already created empty and carrying on. The
+port failed the whole command instead. It now makes the same call and gets the
+same answer.
+
+**The `tiff` arm compared colour spaces by name.** Java is
+`pdImage.getColorSpace().equals(PDDeviceGray.INSTANCE)`, which `PDDeviceGray`
+does not override, so it is identity. The port now compares against the
+`color.DeviceGray` singleton.
+
+**`WriteImageToFile` wrote nothing for a format it could not write.** Java
+opens the file first and takes the format off the name inside the
+try-with-resources, so an unwritable format leaves an empty file behind. The
+port buffered, which is tidier and is not the Java.
+
+**`channelsOf` answered 4 for an `image.RGBA`.** Java counts the bands of the
+raster the colour space wrapped, and an RGB raster is three; the alpha of a Go
+pixel type is not a fourth, because "we have no alpha information here".
+
+### What was checked and found sound
+
+- Every method of `ImageIOUtil`, `TIFFUtil`, `JPEGUtil` and `MetaUtil` is
+  either ported or recorded above as a deliberate non-port.
+- The `seen` set, the counter, the suffix table, `hasMasks`, the default prefix,
+  the two exit codes -- 4 for the `IOException` catch and 1 for the permission
+  refusal, both literals in the Java rather than picocli constants -- and the
+  order in which the file is created, announced and written.
+- Every `finally` the Java has: the writer it disposes has no counterpart, and
+  the stream it closes is a `defer file.Close()` that runs on the error path.
+- Nothing the Java logs and swallows is turned into an error, and nothing it
+  throws is turned into a log.
+
+### What is still open
+
+- The TIFF is uncompressed and JPEG 2000 cannot be written, both recorded
+  above with the reason.
+- `-noColorConvert` reaches one colour space, for the reason in the section
+  above.
+- The iCCP chunk, the six-argument `writeImage`, and
+  `MetaUtil.debugLogMetadata`, all recorded above.
+- `jpegWithResolution`'s branch for a JPEG that already carries a JFIF segment
+  cannot be reached through this package, because `image/jpeg` writes none. It
+  is the port of `JPEGUtil`'s "use the `app0JFIF` node if it is there" and is
+  kept for that reason.
+
+## Track `imageio` — E, the review feedback
+
+Three items, all port defects, all fixed with a test that fails without the fix.
+
+**The PNG compression quality was the wrong way round, which is the one that
+mattered.** `compressionQuality` is not a quality for a lossless format; it is
+the other end of the same dial. `ImageWriteParam` documents 0 as "high
+compression is important", and `ImageIOUtil` passes 0 for PNG for exactly that
+reason -- "PDFBOX-4655: prevent huge PNG files on jdk11 / jdk12 / jdk13". The
+port read 0 as "fastest" and mapped it to `png.BestSpeed`, so every PNG it
+wrote was the *large* one, which is the defect PDFBOX-4655 is about.
+
+Measured twice. `com.sun.imageio.plugins.png.PNGImageWriter`, read off its
+bytecode, computes
+
+```java
+deflaterLevel = 4;
+if (param != null) switch (param.getCompressionMode()) {
+    case MODE_DISABLED: deflaterLevel = 0; break;
+    case MODE_EXPLICIT:
+        float quality = param.getCompressionQuality();
+        if (quality >= 0 && quality <= 1)
+            deflaterLevel = 9 - Math.round(9.0f * quality);
+}
+```
+
+and running it on a 600x400 gradient gives 559673 bytes at quality 0 against
+720846 at quality 1 -- the second being larger than the 720000 bytes of raw
+samples, because level 0 stores. `pngCompressionLevel` now maps Java's ten
+levels onto the four Go has.
+
+**A CMYK image lost its fourth channel.** `ExtractImages` picks a TIFF for a
+raster with more than three bands -- "That's likely CMYK. We use tiff here" --
+and the TIFF writer converted every image that was not grey through `RGBA()`,
+so the separation that `-noColorConvert` exists to keep was thrown away one
+step after being chosen. Java keeps it: measured, by building a four-component
+`ComponentColorModel` over a four-band raster the way `PDColorSpace.toRawImage`
+does, a four-band image comes out with BitsPerSample 8,8,8,8, SamplesPerPixel 4
+and PhotometricInterpretation 5, Separated. `tiffSamples` now has that arm.
+
+It cannot be reached through `ExtractImages` today, for the reason in the
+`-noColorConvert` section above -- no `ToRawImage` in this port answers a
+four-channel image yet. It was reachable through `imageio.WriteImage`, which is
+public and is what `track/raster` will call, and the two halves of the decision
+had to agree before that lands.
+
+**`isBitonal` read past the image.** It walked `img.Pix`, and `Pix` is not the
+image: a `SubImage` shares its parent's buffer and stride and its slice runs to
+the end of that buffer. One grey pixel outside the bounds would send a bitonal
+image out at eight bits per pixel instead of one. It walks the rows now.

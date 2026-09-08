@@ -3441,3 +3441,128 @@ site.
 here, because picocli is not in the local Maven repository and there is no
 network to fetch it — the same reason `track/tools` gives for its measurements.
 The aliasing is plain in the seven lines above and needs no run to see.
+
+## 80. `TIFFUtil.updateMetadata` looks for the IFD in a node it has just built
+
+**Where** `tools/src/main/java/org/apache/pdfbox/tools/imageio/TIFFUtil.java`,
+`updateMetadata`.
+
+```java
+IIOMetadataNode root = new IIOMetadataNode(metaDataFormat);
+IIOMetadataNode ifd;
+NodeList nodeListTIFFIFD = root.getElementsByTagName("TIFFIFD");
+if (nodeListTIFFIFD.getLength() == 0)
+{
+    ifd = new IIOMetadataNode("TIFFIFD");
+    root.appendChild(ifd);
+}
+else
+{
+    ifd = (IIOMetadataNode) nodeListTIFFIFD.item(0);
+}
+```
+
+`root` is a node constructed on the line above and nothing has been appended to
+it, so `getElementsByTagName` can only answer an empty list. The `else` branch
+is unreachable, and the code reads as though it were looking for an IFD the
+writer had already put there.
+
+**What correct would be** `metadata.getAsTree(metaDataFormat)`, which is what
+the sibling method `debugLogMetadata` two lines earlier calls to get a tree
+with something in it. The `if`/`else` then does what it looks like it does.
+
+**Why it matters** It does not, in output: the method ends in
+`metadata.mergeTree(metaDataFormat, root)`, and merging a tree that carries one
+fresh IFD full of new fields has the same effect as merging a tree built from
+the existing one. The bug is that the branch is dead, so a reader cannot tell
+whether the fields are being added to an IFD or replacing one, and a later
+change that depended on the answer would be wrong.
+
+**Where the Go carries it** Nowhere, and it cannot: `go/tools/imageio/tiff.go`
+writes the directory itself rather than merging into a plugin's metadata tree,
+so there is no tree to read and no branch to leave dead. The five fields
+`updateMetadata` adds -- XResolution, YResolution, ResolutionUnit,
+RowsPerStrip, Software, plus PhotometricInterpretation for a bitonal image --
+are all written, which is the whole of what the method achieves.
+
+**Confidence** certain, from the source, and the output was measured: the four
+classes of `tools/imageio` compile against nothing but `log4j-api`, and the
+files they write carry exactly those tags.
+
+## 81. The BMP resolution `TestImageIOUtils` asserts is written only by a test-scope dependency
+
+**Where** `tools/src/main/java/org/apache/pdfbox/tools/imageio/ImageIOUtil.java`,
+`writeImage`, against `tools/pom.xml` and
+`tools/src/test/java/org/apache/pdfbox/tools/imageio/TestImageIOUtils.java`,
+`checkBmpResolution`.
+
+The test writes a BMP and reads the two pixels-per-metre fields out of the
+header by hand, because "BMP reader doesn't work":
+
+```java
+int pixelsPerMeter = Integer.reverseBytes(dis.readInt());
+int actualResolution = (int) Math.round(pixelsPerMeter / 100.0 * 2.54);
+assertEquals(expectedResolution, actualResolution, "X resolution doesn't match ...");
+```
+
+`ImageIOUtil` writes that resolution for a format that is neither TIFF nor
+JPEG only through this guard:
+
+```java
+if (!metadata.isReadOnly() && metadata.isStandardMetadataFormatSupported())
+{
+    setDPI(metadata, dpi, formatName);
+}
+```
+
+and it chooses the writer with a loop whose whole purpose is to find one for
+which that guard passes -- "Loop until we get the best driver, i.e. one that
+supports setting dpi in the standard metadata format; however we'd also accept
+a driver that can't, if a better one can't be found".
+
+**Measured on JDK 17.0.19 with nothing but `log4j-api` on the class path**:
+`com.sun.imageio.plugins.bmp.BMPImageWriter` is the only BMP writer, its
+`getDefaultImageMetadata` answers `readOnly=true`, `setDPI` is skipped, and
+`ImageIOUtil.writeImage(image, "bmp", out, 36)` on an 8x6 `TYPE_INT_RGB` gives
+198 bytes whose `biXPelsPerMeter` and `biYPelsPerMeter` -- bytes 38 to 45 --
+are all zero. The test's `round(0 / 100.0 * 2.54)` is 0, and it asserts 36.
+
+The assertion nonetheless holds when Maven runs it, and the reason is in
+`tools/pom.xml`:
+
+```xml
+<dependency>
+    <groupId>com.github.jai-imageio</groupId>
+    <artifactId>jai-imageio-core</artifactId>
+    <version>${jai.version}</version>
+    <scope>test</scope>
+</dependency>
+```
+
+JAI Image I/O Tools registers a BMP writer of its own whose metadata is
+writable, the loop prefers it, and `setDPI` runs. **The scope is `test`.**
+
+**What correct would be** either promoting the dependency out of test scope,
+or writing the two header fields without going through a plugin's metadata, or
+saying in `ImageIOUtil`'s javadoc that a BMP carries its resolution only with
+JAI on the class path -- the javadoc says exactly that about TIFF two
+paragraphs earlier and says nothing about BMP.
+
+**Why it matters** The test passes and the shipped code does not do what it
+tests. `pdfbox-tools` at runtime has neither JAI jar -- they are not compile or
+runtime dependencies -- so every BMP `PDFToImage` writes for a user says its
+resolution is zero, and the one assertion standing behind "the BMP carries its
+resolution" was made in an environment the user does not have.
+
+**Where the Go carries it** Nowhere. `go/tools/imageio/bmp.go` writes the
+pixels per metre into the header always, which is what the Java's test asserts
+and what its writer loop is reaching for. There is no plugin registry in Go and
+so no writer whose metadata is read-only; the port is the JAI-present
+behaviour, and `TestWriteImageFormats` asserts the resolution for BMP because
+the Java test does.
+
+**Confidence** the JDK half is certain and measured. The JAI half is inferred
+from `tools/pom.xml` and from what the writer loop is for: the two
+`com.github.jai-imageio` jars are not in the local Maven repository and there
+is no network to fetch them, so the run with them present could not be made
+here.

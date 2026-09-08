@@ -23,7 +23,7 @@ func TestSubcommandNamesAreJavas(t *testing.T) {
 	// when the JVM is not headless.
 	built := map[string]bool{
 		"decrypt": true, "encrypt": true, "decode": true,
-		"export:xmp": true, "export:text": true,
+		"export:images": true, "export:xmp": true, "export:text": true,
 		"export:fdf": true, "export:xfdf": true,
 		"import:fdf": true, "import:xfdf": true,
 		"split": true, "fromimage": true, "fromtext": true,
@@ -31,7 +31,7 @@ func TestSubcommandNamesAreJavas(t *testing.T) {
 	}
 	// And the ones it registers that this port does not build.
 	notBuilt := map[string]bool{
-		"export:images": true, "overlay": true, "print": true,
+		"overlay": true, "print": true,
 		"render": true, "merge": true,
 	}
 
