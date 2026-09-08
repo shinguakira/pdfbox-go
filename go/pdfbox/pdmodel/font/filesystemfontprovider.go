@@ -441,10 +441,11 @@ func writeFontInfo(writer *bufio.Writer, fontInfo *fsFontInfo) error {
 	if fontInfo.panose != nil {
 		bytes := fontInfo.panose.Bytes()
 		for i := 0; i < 10; i++ {
-			// JAVA-BUGS entry 19: Java widens the signed byte before
+			// JAVA-BUGS 19: Java widens the signed byte before
 			// Integer.toHexString, so a Panose value of 0x80 or more writes
-			// eight hex digits where the reader expects two. Ported as written.
-			str := toHexString(int(int8(bytes[i])))
+			// eight hex digits where the reader takes two. The reader's own
+			// `& 0xff` says what the writer meant, and this is that.
+			str := toHexString(int(bytes[i]))
 			if len(str) == 1 {
 				writer.WriteString("0")
 			}

@@ -913,6 +913,12 @@ out-of-range Panose value, and those exist but are not common.
 `writeFontInfo`, which converts through `int8` before `toHexString` so that the
 same eight digits come out.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 19. `writeFontInfo` writes
+each Panose byte unsigned, so a value of 0x80 or more takes two hex digits
+rather than eight. The reader's own `& 0xff` is what says the writer meant two.
+Tested by `TestPanoseHexIsTwoDigits` in
+`go/pdfbox/pdmodel/font/javabug19_test.go`.
+
 **Confidence** high. The reader's own `& 0xff` says what the writer meant.
 
 ## 20. `FileSystemFontProvider.addTrueTypeFontImpl` ANDs the two halves of a CID supplement
