@@ -798,6 +798,12 @@ wrong shear, and every glyph of it is drawn skewed.
 **Where the Go carries it** `go/fontbox/cff/cffparser.go`, `concatenateMatrix`,
 with `b1*d1` written out and a comment pointing here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 17. `matrixDest[1]` reads
+`d2`, as the other five cells read the second matrix. Tested by
+`TestConcatenateMatrixUsesTheSecondMatrixThroughout` in
+`go/fontbox/cff/javabugfixes_test.go`, whose expected values are the product of
+the two matrices the comment above the function draws.
+
 **Confidence** high. The five cells around it are a textbook 3x2 matrix
 product and this one is not.
 
