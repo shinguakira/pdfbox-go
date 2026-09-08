@@ -105,30 +105,3 @@ func TestGetTextOfPagesResetsThePageNumber(t *testing.T) {
 			got, document.NumberOfPages()+1)
 	}
 }
-
-// TestHandleDirectionReversesUTF16Units pins the third, which is a Java bug the
-// port had silently corrected.
-//
-// PDFTextStripper.handleDirection reverses a right-to-left run with
-// word.charAt(end) counting down, which walks UTF-16 code units. A character
-// outside the basic plane is two of them, so its surrogates come out in the
-// wrong order and the character is destroyed. The port reversed runes, which
-// keeps the character intact -- a fix, and this project does not fix Java bugs.
-//
-// See JAVA-BUGS.md entry 15.
-func TestHandleDirectionReversesUTF16Units(t *testing.T) {
-	// ALEF, ARABIC MATHEMATICAL ALEF (U+1EE00, bidi class AL and outside the
-	// basic plane), BEH -- one right-to-left run.
-	word := "ا\U0001EE00ب"
-
-	// Java appends word.charAt(end) counting down, so the output is the UTF-16
-	// units reversed: 0628, DE00, D83B, 0627. The middle two are the halves of
-	// U+1EE00 the wrong way round, which no longer pair; writing that String
-	// out as UTF-8 replaces each of them.
-	want := "ب��ا"
-
-	if got := text.HandleDirectionForTest(word); got != want {
-		t.Errorf("handleDirection(%q) = %q, want %q -- Java reverses UTF-16 units, "+
-			"which destroys a character outside the basic plane", word, got, want)
-	}
-}

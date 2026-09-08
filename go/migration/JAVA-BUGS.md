@@ -727,6 +727,19 @@ halves that no longer pair become the replacement character, which is what
 Java's `String` becomes once it is written out. `feedback_test.go`,
 `TestHandleDirectionReversesUTF16Units`, pins it.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 15. `handleDirection`
+reverses a right-to-left run by code point rather than by UTF-16 code unit, so
+a character outside the basic plane stays whole and comes out in one piece. The
+mirroring lookup is unchanged: every mirrored character is inside the basic
+plane, and Java already read the code point for the mirroring test one line
+above the append it got wrong. Tested by
+`TestHandleDirectionReversesByCodePoint` in
+`go/pdfbox/text/javabugfixes_test.go`, whose expected value is the run reversed
+by character and not read off the Java;
+`TestHandleDirectionStillMirrors` beside it keeps the mirroring. The pin that
+held the bug, `TestHandleDirectionReversesUTF16Units` in `feedback_test.go`, is
+gone with it.
+
 **Confidence** high. The same method reads the code point for the mirroring
 test and appends the code unit, one line apart.
 
