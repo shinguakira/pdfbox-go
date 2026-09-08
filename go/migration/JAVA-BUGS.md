@@ -78,6 +78,15 @@ dictionary comparison route through. Object numbers can exceed the `int` range.
 (int) cast. An earlier draft did not narrow, so the defect was not in fact
 reproduced; caught in review.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 1. `Integer.Equals` compares
+the int64 values, so `GetInteger(0)` and `GetInteger(4294967296)` are not equal
+where the Java says they are. `Integer.IntValue` still narrows, because that is
+`intValue()` and a caller who asks for it wants Java's answer. Tested by
+`TestIntegerEqualsDoesNotTruncate` in `go/pdfbox/cos/javabugfixes_test.go`;
+`TestIntegerEqualsIsTruncating` in `integer_test.go` used to assert the defect
+and is now `TestIntegerEqualsIsNotTruncating`, with the Java's answers kept in
+its comment.
+
 **Confidence** high. The truncation is unambiguous and there is no comment
 suggesting it is deliberate.
 

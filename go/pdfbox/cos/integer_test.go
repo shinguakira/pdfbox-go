@@ -153,16 +153,22 @@ func TestIntegerIntValueTruncatesTo32Bits(t *testing.T) {
 	}
 }
 
-// TestIntegerEqualsIsTruncating pins JAVA-BUGS entry 1: because equals compares
-// intValue(), two values differing only above bit 31 compare equal. The port
-// reproduces the defect rather than correcting it, so this asserts the wrong
-// answer on purpose.
-func TestIntegerEqualsIsTruncating(t *testing.T) {
-	if !GetInteger(0).Equals(GetInteger(1 << 32)) {
-		t.Error("0 and 1<<32 compare unequal; Java's equals truncates to 32 bits and finds them equal")
+// TestIntegerEqualsIsNotTruncating is JAVA-BUGS entry 1, fixed.
+//
+// This test used to assert the defect, because the port reproduced it: Java's
+// `equals` compares `intValue()`, so `GetInteger(0).Equals(GetInteger(1 << 32))`
+// answered **true** and this said so. `track/java-bug-fixes` fixed the Go, and
+// the expected values are the only ones in this repository that are not the
+// Java's — they are what a comparison of two 64-bit numbers has to mean.
+//
+// The Java's answers, for a reader comparing the two: 0 == 1<<32, and
+// 5 == 1<<32 + 5.
+func TestIntegerEqualsIsNotTruncating(t *testing.T) {
+	if GetInteger(0).Equals(GetInteger(1 << 32)) {
+		t.Error("0 and 1<<32 compare equal; the comparison truncates to 32 bits")
 	}
-	if !GetInteger(5).Equals(GetInteger(1<<32 + 5)) {
-		t.Error("5 and 1<<32+5 compare unequal; the truncation must make them equal")
+	if GetInteger(5).Equals(GetInteger(1<<32 + 5)) {
+		t.Error("5 and 1<<32+5 compare equal; the comparison truncates to 32 bits")
 	}
 	// values that differ inside 32 bits are still distinct
 	if GetInteger(5).Equals(GetInteger(6)) {
