@@ -1848,6 +1848,15 @@ holds.
 `go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdmarkinfo.go`,
 `SetSuspect`, with the comment above it naming this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 37. `SetSuspect` writes its
+argument, like the two setters beside it. Tested by
+`TestSetSuspectWritesItsArgument` in
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug37_test.go`,
+with `TestMarkInfoSettersAreIndependent` beside it so raising one flag leaves
+the others alone. The one caller of this setter in either tree is
+`PDFMergerUtility.mergeMarkInfo`, which calls it twice; that is entry 83 and is
+fixed separately.
+
 **Confidence** high. The parameter is unused and the literal is written in its
 place; there is no reading of the method under which it is correct.
 
