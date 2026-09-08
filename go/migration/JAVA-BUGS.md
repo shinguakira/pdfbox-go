@@ -1896,6 +1896,22 @@ reaches the same throw on the reading side.
 `*cos.Array` panics on the first method call, the way the null does in Java, and
 each carries a comment naming this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 38. All three methods check
+`/P` before using it: `OwnerUserProperties` answers no properties,
+`AddUserProperty` writes the array it needs — table 328 marks `/P` required, so
+an object being filled in gets the entry it is missing — and
+`RemoveUserProperty` returns, since an object with no `/P` holds nothing to
+remove. That last one differs from the "what correct would be" above, which
+said both setters write the array: writing a required entry as a side effect of
+a removal that removes nothing is a change for a caller who asked for none, and
+the entry is written by the add that needs it. Tested by
+`TestUserAttributeObjectWithNoPropertiesIsEmpty`,
+`TestAddUserPropertyToAFreshObject` and
+`TestRemoveUserPropertyFromAFreshObject` in
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug38_test.go`,
+each on the object `NewPDUserAttributeObject` builds — the one the entry says
+throws from every method.
+
 **Confidence** high. `COSDictionary.getCOSArray` returns null by contract, and
 none of the three tests for it.
 

@@ -279,11 +279,14 @@ func NewPDUserAttributeObjectOf(dictionary *cos.Dictionary) *PDUserAttributeObje
 
 // OwnerUserProperties returns the /P user properties.
 //
-// JAVA BUG: it reads /P without checking for it, so a user attribute object
-// with no /P throws a NullPointerException instead of answering an empty list.
-// See migration/JAVA-BUGS.md entry 38. The port keeps it: the nil array panics.
+// Java reads /P without checking for it, so a user attribute object with no /P
+// throws a NullPointerException here instead of answering an empty list. See
+// migration/JAVA-BUGS.md 38.
 func (o *PDUserAttributeObject) OwnerUserProperties() []*PDUserProperty {
 	p := o.Dictionary().GetCOSArray(cos.P)
+	if p == nil {
+		return nil
+	}
 	properties := make([]*PDUserProperty, 0, p.Size())
 	for i := 0; i < p.Size(); i++ {
 		dictionary, _ := asDictionary(p.GetObject(i))
@@ -303,23 +306,33 @@ func (o *PDUserAttributeObject) SetUserProperties(userProperties []*PDUserProper
 
 // AddUserProperty appends one user property.
 //
-// JAVA BUG: like OwnerUserProperties, it reads /P without checking for it.
-// See migration/JAVA-BUGS.md entry 38.
+// Like OwnerUserProperties, Java reads /P without checking for it, so this
+// throws on the object its own constructor builds. PDF 32000-1:2008 table 328
+// marks /P required, so the array is written where it is missing. See
+// migration/JAVA-BUGS.md 38.
 func (o *PDUserAttributeObject) AddUserProperty(userProperty *PDUserProperty) {
 	p := o.Dictionary().GetCOSArray(cos.P)
+	if p == nil {
+		p = cos.NewArray()
+		o.Dictionary().SetItem(cos.P, p)
+	}
 	p.Add(userProperty.COSObject())
 	o.NotifyChanged()
 }
 
 // RemoveUserProperty removes one user property.
 //
-// JAVA BUG: like OwnerUserProperties, it reads /P without checking for it.
-// See migration/JAVA-BUGS.md entry 38.
+// Like OwnerUserProperties, Java reads /P without checking for it. An object
+// with no /P holds no properties, so there is nothing to remove. See
+// migration/JAVA-BUGS.md 38.
 func (o *PDUserAttributeObject) RemoveUserProperty(userProperty *PDUserProperty) {
 	if userProperty == nil {
 		return
 	}
 	p := o.Dictionary().GetCOSArray(cos.P)
+	if p == nil {
+		return
+	}
 	if p.Remove(userProperty.COSObject()) {
 		o.NotifyChanged()
 	}
