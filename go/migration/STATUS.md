@@ -25,7 +25,7 @@ Last updated: 2026-09-06
 | 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `tools` | 26 | **18 of 26**, finished by `track/tools` as far as it can go. The eight left are seven waiting for a raster backend and two waiting for `multipdf`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package |
+| 7 | `tools` | 26 | **17 of 26**, finished by `track/tools` as far as it could go. The nine left are claimed now: 5 by `track/imageio`, 2 by `track/multipdf`, 2 by `track/raster`. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
@@ -58,7 +58,7 @@ evidence; a name is not.
 Every one of those was already recorded here with a reason. Nothing in that
 group is a gap.
 
-### 42 were real. Twenty-five are now done, and three have no branch.
+### 42 were real. Every one of them now has a branch.
 
 | Group | Files | Branch |
 | --- | ---: | --- |
@@ -67,7 +67,7 @@ group is a gap.
 | `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
 | `tools`, `tools/imageio` | 26 | **18 done** — `track/tools`. Eight left: see its section |
 | `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
-| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **this survey missed them.** Slice 7 deferred all three to slice 8 and slice 8 never took them; no branch claims them |
+| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **`track/multipdf`.** This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last three tracks were planned |
 
 `io`, `fontbox` and `xmpbox` have no unported class at all.
 
@@ -5322,3 +5322,40 @@ unconditional, and `PDAbstractContentStream.showGlyphsWithPositioning` writes
 the brackets and the operator before it looks at the list -- so skipping it
 would be a deviation from the reference for the sake of a few bytes. Ported as
 written.
+
+## What is left, and the three branches that claim it
+
+Every slice and every earlier track is merged. Three things `PLAN.md` counts in
+scope are not in the port, and each now has a branch. The grouping and the
+critical path are in [`BRANCHING.md`](BRANCHING.md); the order was taken from
+the imports of the five commands that are missing, not from where the classes
+sit in the Java tree.
+
+| Branch | Java | Depends on | Unblocks |
+| --- | ---: | --- | --- |
+| `track/imageio` | 5 | nothing | `export:images` |
+| `track/multipdf` | 5 | nothing | `merge`, `overlay` |
+| `track/raster` | 25 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
+
+**`track/imageio` is on the critical path and `track/multipdf` is not.**
+`ExtractImages` never imports `rendering` — it walks the content stream with
+`PDFGraphicsStreamEngine` and writes what it finds, and `PDImage.Image()`
+already answers a `go image.Image`, so nothing about writing an image out waits
+for a rasteriser. `PDFToImage` imports both `rendering` and `imageio`, and that
+single command is the only edge between the two branches.
+
+**`track/raster` is the last decision this migration has.** Slice 9 ported
+everything in the renderer that computes and put only the drawing behind
+`rendering.Backend`; the 19 `graphics/shading` contexts and paints and the 4
+`rendering` classes that make pixels are unported for that reason. Choosing what
+draws is that branch's A0, and it is a substitution rather than a port —
+`java.awt.Graphics2D` has no Go equivalent. `track/pdfbox-layout` is the worked
+precedent for how a substitution is measured and its deviations pinned.
+
+### The tools count was wrong
+
+This file said `tools` was **18 of 26** and `go/tools/notbuilt.go` said "18 of
+them plus the dispatcher". Counting the classes against that file's own list:
+17 are ported, the dispatcher among them, and 9 are not. 17 and 9 is 26. Both
+are corrected, and the nine are what the three branches above divide between
+them.
