@@ -1264,6 +1264,18 @@ document is then encrypted by a handler nobody asked for.
 which checks `nameToHandler` only and says so above the assignment.
 `TestRegisterHandlerReplacesADuplicatePolicy` in `fromsource_test.go` pins it.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 26. `RegisterHandler` looks
+in `policyToHandler` as well as in `nameToHandler` and refuses a policy that is
+already spoken for, which is the check the javadoc describes and the only
+reading under which the two refusals are one sentence. The expected behaviour
+is read off that javadoc and not off the body. Tested by
+`TestRegisterHandlerRefusesADuplicatePolicy` in
+`go/pdfbox/pdmodel/encryption/javabug26_test.go`, with
+`TestRegisterHandlerStillRefusesADuplicateName` beside it so the fix adds a
+refusal rather than moving one. The pin that held the bug,
+`TestRegisterHandlerReplacesADuplicatePolicy` in `fromsource_test.go`, is gone
+with it.
+
 **Confidence** high. The javadoc and the method body contradict each other in
 five lines.
 
