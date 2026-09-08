@@ -192,11 +192,23 @@ func (m *PDFMergerUtility) appendPage(cloner *PDFCloneUtility,
 // has none, dropping it where its page did not survive the merge.
 func mergeOpenAction(srcCatalog, dstCatalog *pdmodel.PDDocumentCatalog,
 	cloner *PDFCloneUtility) error {
+	// Java reads both inside one try and catches an IOException out of either,
+	// so the *second* is never assigned when the first throws: both locals stay
+	// null and the block below does nothing. The port has to say that, because
+	// two calls that each answer an error leave both values in hand.
 	dstOpenAction, dstErr := dstCatalog.OpenAction()
-	srcOpenAction, srcErr := srcCatalog.OpenAction()
+	var srcOpenAction common.PDDestinationOrAction
+	var srcErr error
+	if dstErr == nil {
+		srcOpenAction, srcErr = srcCatalog.OpenAction()
+	}
 	if dstErr != nil || srcErr != nil {
 		// PDFBOX-4223
 		slog.Error("Invalid OpenAction ignored", "error", firstError(dstErr, srcErr))
+		if dstErr != nil {
+			dstOpenAction = nil
+		}
+		srcOpenAction = nil
 	}
 	if dstOpenAction != nil || srcOpenAction == nil {
 		return nil

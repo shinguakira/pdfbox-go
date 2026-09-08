@@ -75,18 +75,18 @@ in. Read it first.
 
 # Phase A — Write the tests
 
-- [ ] A1. Port `PDFMergerUtilityTest` — the biggest of the five, and the one
+- [x] A1. Port `PDFMergerUtilityTest` — the biggest of the five, and the one
       that carries the merged-document corpus
-- [ ] A2. Port `MergeAcroFormsTest` and `MergeAnnotationsTest`
+- [x] A2. Port `MergeAcroFormsTest` and `MergeAnnotationsTest`
   - Both are about what merging does to slice 8's structures: field names that
     collide, annotation appearance streams that move. Slice 8 is merged, so
     there is something to assert against.
-- [ ] A3. Port `OverlayTest`
-- [ ] A4. Port `TestLayerUtility`
+- [x] A3. Port `OverlayTest`
+- [x] A4. Port `TestLayerUtility`
   - It renders to compare, which needs `track/raster`. Port what it asserts
     about the object graph and record the pixel half.
 
-- [ ] A5. Port `PDFCloneUtilityTest`
+- [x] A5. Port `PDFCloneUtilityTest`
   - `PDFCloneUtility` was ported by slice 7 and its test was not: `STATUS.md`
     records all three of its cases as needing `PDPageContentStream`,
     `PDFMergerUtility` or `PDOptionalContentProperties`, and two of those three
@@ -100,22 +100,22 @@ in. Read it first.
 
 **Every function this phase touches needs a test that says it works.**
 
-- [ ] B1. `PDFMergerUtility` — the destination document, the source list, and
+- [x] B1. `PDFMergerUtility` — the destination document, the source list, and
       what it does with each of the catalog's dictionaries
-- [ ] B2. `Overlay`, whose `Position` enum the command takes as an option
-- [ ] B3. `LayerUtility`
-- [ ] B4. `PDFMerger` and `OverlayPDF`, and their rows out of
+- [x] B2. `Overlay`, whose `Position` enum the command takes as an option
+- [x] B3. `LayerUtility`
+- [x] B4. `PDFMerger` and `OverlayPDF`, and their rows out of
       `go/tools/notbuilt.go`
 
 ---
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
       this branch closes — the dispatcher's help reads that list, so a command
       that now exists must come out of it
 
@@ -127,39 +127,39 @@ in. Read it first.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 ---
@@ -187,6 +187,12 @@ the ported tests cannot answer.
 
 # Blocked
 
-- [ ] `TestLayerUtility` and any other case that compares rendered pages. Held
+- [x] `TestLayerUtility` and any other case that compares rendered pages. Held
       for `track/raster`; port the rest of the class and record the omission
       rather than skipping the file.
+
+  `TestLayerUtility` turned out to have no rendering half at all: it asserts
+  about the object graph and all of it is ported. `OverlayTest` and
+  `checkMergeIdentical` are the ones that render, and the port compares content
+  streams and form XObjects against the same model files instead. Recorded in
+  `STATUS.md`.
