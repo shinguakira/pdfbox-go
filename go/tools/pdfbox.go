@@ -42,6 +42,8 @@ func Subcommands() []Subcommand {
 		{"export:xfdf", func() Command { return NewExportXFDF() }},
 		{"import:fdf", func() Command { return NewImportFDF() }},
 		{"import:xfdf", func() Command { return NewImportXFDF() }},
+		{"overlay", func() Command { return NewOverlayPDF() }},
+		{"merge", func() Command { return NewPDFMerger() }},
 		{"split", func() Command { return NewPDFSplit() }},
 		{"fromtext", func() Command { return NewTextToPDF() }},
 		{"version", func() Command { return NewVersion() }},
