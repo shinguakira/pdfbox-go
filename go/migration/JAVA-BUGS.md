@@ -2213,6 +2213,14 @@ gets null and has no way to tell "no rotation" from "rotation present".
 reads `GetString` and so answers the empty string — the port's null — for
 anything `SetRotation` wrote. Its comment points here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 44. `Rotation` reads
+`/Rotate` as the integer it is and writes it out, which is the reading the
+entry names and exactly what the sibling `Justification` does with `/Q`. The
+signature stays a string, as the Java's is. Tested by
+`TestFreeTextRotationRoundTrip` in `go/pdfbox/pdmodel/fdf/javabug44_test.go`,
+with `TestFreeTextRotationOfNothing` for the annotation that has no `/Rotate`,
+which now reads as the same zero the sibling defaults to.
+
 **Confidence** high. The two methods sit five lines apart and the constructor
 right above them parses the attribute as an int.
 
