@@ -1139,6 +1139,12 @@ it was trying to avoid.
 `HasSecurityHandler`, which returns `e.securityHandler == nil` with a comment
 saying so.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 24. `HasSecurityHandler`
+answers `securityHandler != nil`. Nothing in either tree calls it, so nothing
+was compensating for the inversion — the audit for callers found none, which is
+also why nobody has noticed. Tested by `TestHasSecurityHandlerAnswersItsName`
+in `go/pdfbox/pdmodel/encryption/javabugfixes_test.go`.
+
 **Confidence** high. The method body and the method name cannot both be right.
 
 ## 25. `PDEncryption.getRecipientsLength` dereferences a missing /Recipients
