@@ -1313,6 +1313,17 @@ other byte outside the alphabet gets.
 which narrows to `int8` and tests for -1 exactly as the Java does, with a
 comment saying why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 27. `readSignificant` reports
+the end of the stream from the read error alone, so 0xFF is handed on as the
+data byte it is and reaches the alphabet check, which rejects it with `Invalid
+data in Ascii85 stream` — the answer every other byte outside the alphabet
+already gets, and the one the expected value is read off. The other narrowing
+in the method is kept: `z = (byte)(ascii[k] - OFFSET)` wraps in the Java too,
+and the check beside it, `z < 0 || z > 93`, is written for the wrapped value.
+Tested by `TestASCII85RejectsAnFFByte` in `go/pdfbox/filter/javabug27_test.go`,
+with `TestASCII85StillEndsAtTheEndOfItsSource` beside it so a source that runs
+out mid-group still ends quietly.
+
 **Confidence** high. The narrowing is visible in the expression.
 
 ## 28. `LZWFilter.findPatternCode` returns a negative code for a high byte

@@ -56,10 +56,11 @@ const (
 // and the padding rules live.
 //
 // The bytes it reads are held as int8, not byte, because every comparison the
-// Java makes is on a signed byte and one of them shows: `int zz = (byte)
-// in.read(); if (zz == -1)` narrows before it tests for the end of the stream,
-// so a data byte 0xFF ends the stream instead of being rejected. See
-// migration/JAVA-BUGS.md.
+// Java makes is on a signed byte and the wrapping is observable: `z = (byte)
+// (ascii[k] - OFFSET)` wraps for a byte of 0x80 or more, and the check on the
+// next line is `z < 0 || z > 93`. The one narrowing that is not kept is the
+// one before the end-of-stream test, which is JAVA-BUGS 27; see
+// readSignificant.
 type ascii85Reader struct {
 	in    *bufio.Reader
 	index int
@@ -80,19 +81,19 @@ var errInvalidASCII85 = errors.New("Invalid data in Ascii85 stream")
 
 // readSignificant reads the next byte that is not a line break or a space.
 //
-// It reports ok false where Java's `int zz = (byte) in.read(); if (zz == -1)`
-// takes the end of the stream, which is either a real end or a 0xFF byte.
+// It reports ok false at the end of the stream. Java writes `int zz = (byte)
+// in.read(); if (zz == -1)`, which narrows before it tests, so a data byte
+// 0xFF ends the stream there as well; here the end of the stream is the read
+// error, and 0xFF is handed on as the data it is, to be rejected by the
+// alphabet check the way every other byte outside the alphabet is. See
+// migration/JAVA-BUGS.md 27.
 func (a *ascii85Reader) readSignificant() (z int8, ok bool) {
 	for {
 		c, err := a.in.ReadByte()
 		if err != nil {
 			return 0, false
 		}
-		zz := int8(c)
-		if zz == -1 {
-			return 0, false
-		}
-		z = zz
+		z = int8(c)
 		if z != ascii85Newline && z != ascii85Return && z != ascii85Space {
 			return z, true
 		}
