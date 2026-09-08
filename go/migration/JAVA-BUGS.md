@@ -664,6 +664,12 @@ entry.
 `Panose`. The type assertion is written without the comma-ok form, so it panics
 where Java throws.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 14. `Panose` answers nil for
+a /Style with no /Panose, which is what it answers for a descriptor with no
+/Style at all and for a /Panose shorter than twelve bytes. Tested by
+`TestPanoseOfAStyleWithoutOne` in
+`go/pdfbox/pdmodel/font/javabugfixes_test.go`.
+
 **Confidence** high. The null check on the line above shows the author knew the
 dictionary could be absent; the entry inside it is read without one.
 
