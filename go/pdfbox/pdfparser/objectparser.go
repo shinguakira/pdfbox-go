@@ -247,6 +247,15 @@ func (p *ObjectParser) ParseCOSName() (*cos.Name, error) {
 
 		if ch1 == eof || ch2 == eof {
 			slog.Error("pdfparser: premature EOF in parseCOSName")
+			// Java breaks here without writing anything, so `/A#2` at the end
+			// of input parses as `A` and the two bytes on disk are gone. The
+			// branch below keeps a malformed escape's `#` as a literal, which
+			// is what a `#` not followed by two hex digits is; this one does
+			// the same. See migration/JAVA-BUGS.md 8.
+			buf.WriteByte('#')
+			if ch1 != eof {
+				buf.WriteByte(byte(ch1))
+			}
 			c = eof
 			break
 		}

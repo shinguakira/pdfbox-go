@@ -331,6 +331,14 @@ what is on disk, rather than an error or a faithful literal.
 **Where the Go carries it** `go/pdfbox/pdfparser/objectparser.go`,
 `ParseCOSName`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 8. `ParseCOSName` writes the
+`#`, and the digit it had if there was one, before it breaks: `/A#2` at the end
+of input parses as `A#2` where the Java answers `A`. That is what the branch
+below it already does for a malformed escape, and what a `#` not followed by two
+hex digits is. Tested by `TestParseCOSNameKeepsAPrematureHash` in
+`go/pdfbox/pdfparser/javabugfixes_test.go`; the `/A#2` case of
+`TestParseCOSName` asserted the Java's answer and now asserts this one.
+
 **Confidence** medium. It only triggers on truncated input, where any answer is
 somewhat arbitrary, but the inconsistency with the adjacent branch looks
 unintended.
