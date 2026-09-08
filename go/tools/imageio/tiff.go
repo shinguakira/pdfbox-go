@@ -70,6 +70,7 @@ const (
 	photometricWhiteIsZero = 0
 	photometricBlackIsZero = 1
 	photometricRGB         = 2
+	photometricSeparated   = 5
 )
 
 // tiffSoftware is `createAsciiField(305, "Software", "PDFBOX")`.
@@ -208,6 +209,24 @@ func tiffSamples(img image.Image) (bits, samples, photometric int, pixels []byte
 		return 8, 1, photometricBlackIsZero, pixels
 	}
 
+	if cmyk, isCMYK := img.(*image.CMYK); isCMYK {
+		// Four channels, kept as four. This is the raster `ExtractImages`
+		// chooses a TIFF for -- "More than 3 channels: That's likely CMYK. We
+		// use tiff here" -- and converting it to RGB here would throw away the
+		// separation the option `-noColorConvert` was given to keep. Java's
+		// writer keeps it: measured, a four band image comes out with
+		// BitsPerSample 8,8,8,8, SamplesPerPixel 4 and
+		// PhotometricInterpretation 5.
+		pixels = make([]byte, width*height*4)
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				from := cmyk.PixOffset(bounds.Min.X+x, bounds.Min.Y+y)
+				copy(pixels[(y*width+x)*4:], cmyk.Pix[from:from+4])
+			}
+		}
+		return 8, 4, photometricSeparated, pixels
+	}
+
 	pixels = make([]byte, width*height*3)
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
@@ -221,10 +240,21 @@ func tiffSamples(img image.Image) (bits, samples, photometric int, pixels []byte
 
 // isBitonal reports whether a grey image uses only black and white, which is
 // what makes it worth writing at one bit per pixel.
+//
+// It walks the rows rather than `Pix`, because `Pix` is not the image: a
+// `SubImage` shares its parent's buffer and stride and its slice runs to the
+// end of that buffer, so reading it straight through sees pixels outside the
+// bounds -- and one grey pixel out there would send a bitonal image out at
+// eight bits.
 func isBitonal(img *image.Gray) bool {
-	for _, value := range img.Pix {
-		if value != 0 && value != 0xFF {
-			return false
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		row := img.Pix[img.PixOffset(bounds.Min.X, y):][:width]
+		for _, value := range row {
+			if value != 0 && value != 0xFF {
+				return false
+			}
 		}
 	}
 	return true

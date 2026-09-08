@@ -5824,3 +5824,54 @@ pixel type is not a fourth, because "we have no alpha information here".
   cannot be reached through this package, because `image/jpeg` writes none. It
   is the port of `JPEGUtil`'s "use the `app0JFIF` node if it is there" and is
   kept for that reason.
+
+## Track `imageio` — E, the review feedback
+
+Three items, all port defects, all fixed with a test that fails without the fix.
+
+**The PNG compression quality was the wrong way round, which is the one that
+mattered.** `compressionQuality` is not a quality for a lossless format; it is
+the other end of the same dial. `ImageWriteParam` documents 0 as "high
+compression is important", and `ImageIOUtil` passes 0 for PNG for exactly that
+reason -- "PDFBOX-4655: prevent huge PNG files on jdk11 / jdk12 / jdk13". The
+port read 0 as "fastest" and mapped it to `png.BestSpeed`, so every PNG it
+wrote was the *large* one, which is the defect PDFBOX-4655 is about.
+
+Measured twice. `com.sun.imageio.plugins.png.PNGImageWriter`, read off its
+bytecode, computes
+
+```java
+deflaterLevel = 4;
+if (param != null) switch (param.getCompressionMode()) {
+    case MODE_DISABLED: deflaterLevel = 0; break;
+    case MODE_EXPLICIT:
+        float quality = param.getCompressionQuality();
+        if (quality >= 0 && quality <= 1)
+            deflaterLevel = 9 - Math.round(9.0f * quality);
+}
+```
+
+and running it on a 600x400 gradient gives 559673 bytes at quality 0 against
+720846 at quality 1 -- the second being larger than the 720000 bytes of raw
+samples, because level 0 stores. `pngCompressionLevel` now maps Java's ten
+levels onto the four Go has.
+
+**A CMYK image lost its fourth channel.** `ExtractImages` picks a TIFF for a
+raster with more than three bands -- "That's likely CMYK. We use tiff here" --
+and the TIFF writer converted every image that was not grey through `RGBA()`,
+so the separation that `-noColorConvert` exists to keep was thrown away one
+step after being chosen. Java keeps it: measured, by building a four-component
+`ComponentColorModel` over a four-band raster the way `PDColorSpace.toRawImage`
+does, a four-band image comes out with BitsPerSample 8,8,8,8, SamplesPerPixel 4
+and PhotometricInterpretation 5, Separated. `tiffSamples` now has that arm.
+
+It cannot be reached through `ExtractImages` today, for the reason in the
+`-noColorConvert` section above -- no `ToRawImage` in this port answers a
+four-channel image yet. It was reachable through `imageio.WriteImage`, which is
+public and is what `track/raster` will call, and the two halves of the decision
+had to agree before that lands.
+
+**`isBitonal` read past the image.** It walked `img.Pix`, and `Pix` is not the
+image: a `SubImage` shares its parent's buffer and stride and its slice runs to
+the end of that buffer. One grey pixel outside the bounds would send a bitonal
+image out at eight bits per pixel instead of one. It walks the rows now.

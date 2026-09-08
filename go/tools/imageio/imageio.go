@@ -23,6 +23,7 @@ import (
 	"image/png"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"strings"
 )
@@ -114,6 +115,49 @@ func qualityFor(filename string) float32 {
 	return 1
 }
 
+// pngCompressionLevel is the deflate level Java takes a compression quality to
+// mean.
+//
+// A `compressionQuality` is not a quality for a lossless format; it is the
+// other end of the same dial. `ImageWriteParam.setCompressionQuality` says 0 is
+// "high compression is important" and 1 is "high image quality is important",
+// and `com.sun.imageio.plugins.png.PNGImageWriter` turns it into a Deflater
+// level with, read off the bytecode:
+//
+//	deflaterLevel = 4;                              // the default
+//	if (param != null) switch (param.getCompressionMode()) {
+//	    case MODE_DISABLED: deflaterLevel = 0; break;
+//	    case MODE_EXPLICIT:
+//	        float quality = param.getCompressionQuality();
+//	        if (quality >= 0 && quality <= 1)
+//	            deflaterLevel = 9 - Math.round(9.0f * quality);
+//	}
+//
+// So quality 0 is level 9 and compresses hardest -- which is what
+// `ImageIOUtil` passes for PNG, and why: "PDFBOX-4655: prevent huge PNG files
+// on jdk11 / jdk12 / jdk13". Quality 1 is level 0, which stores.
+//
+// `ImageIOUtil` always sets MODE_EXPLICIT for a format whose param can write
+// compressed, and PNG's can, so only that arm is reachable from here. Go's
+// `png.Encoder` takes four levels rather than ten and each of Java's is mapped
+// to the nearest: 4 has no name in Go and DefaultCompression, which is 6, is
+// what is left.
+func pngCompressionLevel(quality float32) png.CompressionLevel {
+	if quality < 0 || quality > 1 {
+		return png.DefaultCompression
+	}
+	switch level := 9 - int(math.Round(float64(9*quality))); {
+	case level >= 9:
+		return png.BestCompression
+	case level <= 0:
+		return png.NoCompression
+	case level == 1:
+		return png.BestSpeed
+	default:
+		return png.DefaultCompression
+	}
+}
+
 // imageWriter writes one format.
 type imageWriter func(img image.Image, output io.Writer, dpi int, quality float32) error
 
@@ -141,12 +185,7 @@ func writerFor(formatName string) imageWriter {
 
 // writePNG writes a PNG with its resolution in a pHYs chunk.
 func writePNG(img image.Image, output io.Writer, dpi int, quality float32) error {
-	encoder := png.Encoder{CompressionLevel: png.DefaultCompression}
-	if quality == 0 {
-		// PDFBOX-4655: Java passes 0 to keep the file from taking a long time
-		// and coming out large. Go's nearest is the fastest level.
-		encoder.CompressionLevel = png.BestSpeed
-	}
+	encoder := png.Encoder{CompressionLevel: pngCompressionLevel(quality)}
 	var buffer bytes.Buffer
 	if err := encoder.Encode(&buffer, img); err != nil {
 		return fmt.Errorf("imageio: writing a PNG: %w", err)

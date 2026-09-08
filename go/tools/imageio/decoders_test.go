@@ -79,6 +79,11 @@ func decodeUncompressedTIFF(t *testing.T, content []byte) (image.Image, error) {
 			case 1:
 				grey := content[pixel]
 				img.Set(x, y, color.RGBA{R: grey, G: grey, B: grey, A: 255})
+			case 4:
+				img.Set(x, y, color.CMYK{
+					C: content[pixel], M: content[pixel+1],
+					Y: content[pixel+2], K: content[pixel+3],
+				})
 			default:
 				img.Set(x, y, color.RGBA{
 					R: content[pixel], G: content[pixel+1], B: content[pixel+2], A: 255,
