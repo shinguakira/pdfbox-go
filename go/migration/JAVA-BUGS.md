@@ -2467,6 +2467,17 @@ have.
 `go/pdfbox/rendering/pagedrawer.go`, `DrawTilingPattern` returns the error
 before the restores, with a comment saying why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 49. The six restores are a
+`defer` taken immediately after the six saves, which is Go's `finally` and the
+shape the three siblings already have. Tested by
+`TestDrawTilingPatternRestoresAfterAFailure` in
+`go/pdfbox/rendering/javabug49_test.go`: it draws an empty page, puts the
+page's backend back where `DrawPage`'s own cleanup left nil — which is where
+`TilingPaint` reaches the drawer — and then draws a tiling pattern whose stream
+declares a filter no decoder answers to. Without the fix the drawer comes back
+holding the tile's backend, the tile's line path, `flipTG` true and the tile's
+clip winding rule.
+
 **Confidence** high for the shape — the restores are demonstrably outside any
 `finally`, and the siblings show the intended pattern. Whether it is reachable
 in practice depends on `TilingPaint` swallowing the exception, which is
