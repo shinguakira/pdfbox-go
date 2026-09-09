@@ -146,3 +146,21 @@ func TestAPaintWithNoStreamIsNotCached(t *testing.T) {
 		t.Error("a pattern with no stream was given a key")
 	}
 }
+
+// TestADifferentDeviceScaleKeysDifferently is Java's `xform` field: it decides
+// how many pixels the tile is rasterized into, so two of them are two tiles.
+func TestADifferentDeviceScaleKeysDifferently(t *testing.T) {
+	paint := aTilingPaint(t)
+	identity := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
+
+	first, ok := tilingKeyOf(paint, identity)
+	if !ok {
+		t.Fatal("the paint has no key")
+	}
+	atTwice := paint
+	atTwice.Transform = geom.NewAffineTransform(2, 0, 0, 2, 0, 0)
+	second, _ := tilingKeyOf(atTwice, identity)
+	if first == second {
+		t.Error("the same pattern at two device scales keys the same")
+	}
+}

@@ -3091,7 +3091,7 @@ Java's three rendering tests and one printing test do not port as they stand.
   produce different images.
 - **`TestRendering`** renders twenty files and asserts that nothing threw.
   There is a rasteriser now, but the twenty files are not in this repository:
-  the Java build downloads them into `target/pdfs`. `track/raster` renders three
+  the Java build downloads them into `target/pdfs`. `track/raster` renders four
   pages it writes itself instead, and compares them with PDFBox rather than
   only asking that nothing threw.
 - **`TestQuality`** reads back four pixels of four files from `target/pdfs`,
@@ -5912,8 +5912,8 @@ and PhotometricInterpretation 5, Separated. `tiffSamples` now has that arm.
 It cannot be reached through `ExtractImages` today, for the reason in the
 `-noColorConvert` section above -- no `ToRawImage` in this port answers a
 four-channel image yet. It was reachable through `imageio.WriteImage`, which is
-public and is what `track/raster` will call, and the two halves of the decision
-had to agree before that lands.
+public and is what `track/raster` calls now, from `pdfbox render`, and the two
+halves of the decision had to agree before that landed.
 
 **`isBitonal` read past the image.** It walked `img.Pix`, and `Pix` is not the
 image: a `SubImage` shares its parent's buffer and stride and its slice runs to

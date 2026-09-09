@@ -35,8 +35,14 @@ type tilingKey struct {
 	// patternMatrix is `drawer.getInitialMatrix()` concatenated with the
 	// pattern's own, which PageDrawer works out before the paint is built.
 	patternMatrix [6]float32
-	// transform is the device scale transform, Java's `xform`.
+	// transform is the transform the paint is drawn under, which the anchor
+	// rectangle is mapped back through. Java has no such field, because its
+	// TexturePaint is handed one afresh on every createContext; the port bakes
+	// it into the source, so two fills under two transforms are two entries.
 	transform [6]float64
+	// deviceScale is Java's `xform`, the DPI transform, which decides how many
+	// pixels the tile is rasterized into.
+	deviceScale [6]float64
 
 	// pattern is the pattern's stream, which is what `patternDict` is.
 	pattern *cos.Stream
@@ -76,6 +82,9 @@ func tilingKeyOf(paint rendering.TilingPaint, transform *geom.AffineTransform) (
 		return tilingKey{}, false
 	}
 	transform.GetMatrix(key.transform[:])
+	if paint.Transform != nil {
+		paint.Transform.GetMatrix(key.deviceScale[:])
+	}
 	return key, true
 }
 
