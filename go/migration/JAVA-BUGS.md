@@ -3945,6 +3945,18 @@ one.
 `'%c'` position and the whole rune for the code point, the same way. Said at the
 site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 77. `missingGlyph` formats
+the whole character for the `'%c'` position, which is the entry's answer --
+Java's `new String(Character.toChars(codepoint))` -- and is what the code point
+beside it already named. The other detail of the Java is still carried: the
+name is the full font name from the name table, not the PostScript name.
+Tested by `TestMissingGlyphNamesTheWholeCharacter` in
+`go/pdfbox/glyphlayout/javabug77_test.go`, which asks a Bengali font to draw
+U+1F600 and asserts the message character for character; without the fix it
+carries the replacement character the unpaired surrogate becomes.
+`TestMissingGlyphIsRefused` beside it keeps the basic-plane message that was
+measured against the Java.
+
 **Confidence** certain, from the source. The Java's behaviour was not measured
 for a supplementary character: `canDisplayUpTo` has to answer the index of one,
 which needs a font missing a supplementary character that the test resources do
