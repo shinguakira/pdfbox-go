@@ -4039,6 +4039,17 @@ says so: the command succeeds and the file is written.
 branch, which builds the recipient outside the loop the same way. Said at the
 site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 79. The recipient is built
+inside the loop, which is the one line moved that the entry names, so each
+`-certFile` gets a recipient of its own. Tested by
+`TestEncryptToTwoCertificatesReachesBoth` in `go/tools/javabug79_test.go`,
+which encrypts for the two certificates the encryption fixtures already carry
+and opens the result with each of their keystores in turn. This also measures
+the entry, which said it could not be: the aliasing needs no `tools` module to
+run, only the port. Without the fix `test1.pfx` is refused with "The
+certificate matches none of 2 recipient entries", and the two entries the
+message prints are the same recipient twice.
+
 **Confidence** certain, from the source. Not measured: `tools` cannot be run
 here, because picocli is not in the local Maven repository and there is no
 network to fetch it — the same reason `track/tools` gives for its measurements.

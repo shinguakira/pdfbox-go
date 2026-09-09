@@ -149,20 +149,18 @@ func (e *Encrypt) encrypt(ap *encryption.AccessPermission) error {
 
 	if len(e.certFileList) != 0 {
 		ppp := encryption.NewPublicKeyProtectionPolicy()
-		// One recipient for every certificate, which is Java's -- and it is
-		// Java's bug: the object is built once, outside the loop, and the loop
-		// overwrites its certificate and adds the same object again. With two
-		// -certFile options the policy holds two references to one recipient
-		// carrying the second certificate, and the first is lost. Ported as
-		// written; see migration/JAVA-BUGS.md.
-		recip := &encryption.PublicKeyRecipient{}
-		recip.SetPermission(ap)
-
+		// One recipient for every certificate. Java builds the recipient once,
+		// outside the loop, and the loop overwrites its certificate and adds
+		// the same object again -- so with two -certFile options the policy
+		// holds two references to one recipient carrying the second
+		// certificate, and the first is lost. See migration/JAVA-BUGS.md 79.
 		for _, certFile := range e.certFileList {
 			certificate, err := readX509Certificate(certFile)
 			if err != nil {
 				return err
 			}
+			recip := &encryption.PublicKeyRecipient{}
+			recip.SetPermission(ap)
 			recip.SetX509(certificate)
 			ppp.AddRecipient(recip)
 		}
