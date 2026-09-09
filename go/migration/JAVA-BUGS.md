@@ -2812,6 +2812,14 @@ StringIndexOutOfBoundsException, which is unchecked and so escapes the
 which indexes the same byte and panics the same way, with a comment naming this
 entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 56. `parseEndPacket` checks
+the length before it reads the sixth character, and an instruction too short to
+hold one is refused with the parser's own error — the same one a sixth
+character that is neither `r` nor `w` gets, since both are the same malformed
+input. Tested by `TestShortEndPacketIsRefused` in
+`go/xmpbox/xml/javabug56_test.go`, over both `<?xpacket end=?>` and `<?xpacket
+end="?>`, with `TestWellFormedEndPacketIsStillRead` beside it.
+
 **Confidence** high. Read from the method; `"end="` is four characters and
 `charAt(5)` needs six.
 
