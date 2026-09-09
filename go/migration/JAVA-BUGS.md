@@ -3122,6 +3122,18 @@ differently depending on which accessor the caller reached for.
 says so, and `go/pdfbox/filter/flate.go`'s `NewFlateDecoderReader` says it
 applies no predictor.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 63. The fast path is taken
+only where the stream declares no predictor, which is the one more term the
+entry names; `declaresPredictor` reads `/DecodeParms` and treats anything that
+is not a dictionary without a predictor as a reason to take the general path.
+Tested by `TestStreamParsingHonoursThePredictor` in
+`go/pdfbox/pdmodel/javabug63_test.go`, which builds the content stream the
+corpus does not have — `/Filter /FlateDecode /DecodeParms <</Predictor 12
+/Columns 4>>` — and checks the two accessors agree; without the fix the stream
+parsing one answers the PNG row filter-type byte and then the operators.
+`TestStreamParsingStillTakesTheFastPath` beside it keeps the plain flate
+stream on the fast path.
+
 **Confidence** high for the shape, which is plain in the two methods and in
 `FlateFilterDecoderStream`. Not run: no PDF in the test corpus has a predictored
 content stream, which is also why no PDFBox test covers it.
