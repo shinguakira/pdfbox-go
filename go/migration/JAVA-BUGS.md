@@ -4415,3 +4415,67 @@ outline nor the thumbnails". Tested by
 the same reason entry 83's test is.
 
 **Confidence** certain, from the source, both halves quoted above.
+
+---
+
+## 85. `TilingPaint.ceiling` is a floor, and its javadoc says otherwise
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/rendering/TilingPaint.java`,
+the private static `ceiling`.
+
+```java
+/**
+ * Returns the closest integer which is larger than the given number.
+ * Uses BigDecimal to avoid floating point error which would cause gaps in the tiling.
+ */
+private static int ceiling(double num)
+{
+    BigDecimal decimal = BigDecimal.valueOf(num);
+    decimal = decimal.setScale(5, RoundingMode.CEILING); // 5 decimal places of accuracy
+    return decimal.intValue();
+}
+```
+
+`setScale(5, CEILING)` rounds up at the **fifth decimal place**, not to a whole
+number, and `intValue()` then truncates toward zero. So every value below the
+next whole number stays where it was:
+
+```
+ceiling(3.0)         = 3
+ceiling(3.2)         = 3
+ceiling(3.5)         = 3
+ceiling(3.9)         = 3
+ceiling(2.999999999) = 3
+ceiling(0.5)         = 0
+```
+
+measured, not reasoned about. What the method computes is a **floor with a
+tolerance of 1e-5** -- which is a reasonable thing to want, and is what the
+second sentence of the javadoc describes -- but it is not what the first
+sentence says, and it is not what the name says.
+
+**What correct would be** `setScale(0, RoundingMode.CEILING)`, if the name and
+the first line of the javadoc are the intent. If the tolerance is the intent,
+the name and that line are wrong.
+
+**Why it matters** `getImage` uses it for the tile raster's size:
+
+```java
+int rasterWidth = Math.max(1, ceiling(width));
+int rasterHeight = Math.max(1, ceiling(height));
+```
+
+A tile that measures 3.9 device pixels across is rasterized 3 pixels wide and
+then stretched over 3.9 by the TexturePaint, so a pattern loses up to most of a
+pixel of resolution in each direction. It does not leave gaps -- TexturePaint
+maps the image onto the anchor rectangle whatever size it is, which is why this
+has never been visible as the "gaps in the tiling" the comment is guarding
+against.
+
+**Where the Go carries it** `go/pdfbox/rendering/raster/tiling.go`,
+`tilingCeiling`, which computes `int(math.Ceil(num*1e5) / 1e5)` -- the same two
+steps -- with the comment saying it is not a ceiling and why it is written that
+way.
+
+**Confidence** certain. The behaviour above is a JDK 17 run of the method's
+own body, not a reading of it.
