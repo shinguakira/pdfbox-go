@@ -250,7 +250,7 @@ the entry it came from.
 
 # Phase E — User feedback
 
-- [ ] E1. Stop and wait for the user's review. Do not start the next branch.
+- [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
 - [x] E2. For each item of feedback, judge it before acting
   - Is it a defect in the fix, a fix that should not have been made, or an
@@ -264,7 +264,7 @@ the entry it came from.
   - Then fix the Go
   - Then `gofmt`, `go vet`, `go test ./...` again
 
-- [ ] E4. Report back
+- [x] E4. Report back
   - What was changed, what was not, and why for each
 
 ---
