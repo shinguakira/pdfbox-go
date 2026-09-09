@@ -6330,6 +6330,10 @@ Four libraries were fetched and read, not recalled:
   `OPERATOR_HSL_LUMINOSITY` are PDF's sixteen blend modes under their SVG
   names, and `PushGroup` is the transparency group. It is barred here for the
   reason it has always been barred — it is C, and this port is pure Go.
+  [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) records what the other
+  ecosystems do about the same problem, which is the same thing: PdfPig, the
+  precedent `PLAN.md` cites for shipping without a renderer, has one now and it
+  binds Skia.
 - **`fogleman/gg` has only round and bevel joins.** PDF's default is miter,
   which rules it out on the first stroke of most documents.
 - **`tdewolff/canvas` was checked and rejected on weight, not capability.** It

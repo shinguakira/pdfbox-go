@@ -38,8 +38,9 @@ Three things this is not:
 | [`STATUS.md`](STATUS.md) | Per-package progress, ported tests, and the deviations from Java recorded so far |
 | [`conventions/tdd.md`](conventions/tdd.md) | **Test-driven porting — the Java test is ported before the Go implementation exists.** The rule the port runs on |
 | [`conventions/java-to-go.md`](conventions/java-to-go.md) | How Java constructs are translated. Read this before porting anything |
-| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded, never fixed — the port reproduces every one |
+| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then fixed 61 of the 84 in the Go, and every entry says which it is |
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
+| [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
 | [`scripts/inventory.ps1`](scripts/inventory.ps1) | Regenerates `inventory.tsv` from the Java tree |
