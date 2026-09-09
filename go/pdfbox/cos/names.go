@@ -8,6 +8,10 @@ package cos
 // Java constant, since the string is what the value is. A few are renamed to
 // avoid colliding with a type or value already in this package; those carry a
 // comment saying so.
+//
+// A name whose comment cites migration/JAVA-BUGS.md is one the Java spells
+// wrongly and this port does not. The generator holds those; do not correct
+// one here, it would be regenerated away.
 var (
 	A                    = GetPDFName("A")
 	A85                  = GetPDFName("A85")
@@ -59,9 +63,8 @@ var (
 	BBox                 = GetPDFName("BBox")
 	BC                   = GetPDFName("BC")
 	BE                   = GetPDFName("BE")
-	// Bead is Java's COSName.BEAD, which is getPDFName("BEAD"); PDF 32000-1:2008
-	// table 30 spells the thread bead type /Bead, and PDF names are
-	// case-sensitive. See migration/JAVA-BUGS.md 35.
+	// JAVA-BUGS 35: Java writes "BEAD"; PDF 32000-1:2008 table 30 spells the
+	// thread bead type /Bead, and PDF names are case-sensitive.
 	Bead                      = GetPDFName("Bead")
 	Before                    = GetPDFName("Before")
 	BG                        = GetPDFName("BG")

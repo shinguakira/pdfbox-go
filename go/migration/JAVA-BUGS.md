@@ -1815,6 +1815,13 @@ spells it, and the identifier is spelled `cos.Bead` to match -- the upper-case
 `TestNewThreadBeadIsTypeBead` in
 `go/pdfbox/pdmodel/interactive/pagenavigation/javabug35_test.go`.
 
+`names.go` is generated, so the correction lives in the generator: the
+E-phase review caught the first cut editing only the output, which the next
+`gen-cos-names.ps1` run would have reverted, leaving `pdthread.go` referring to
+a `cos.Bead` that no longer existed. `migration/scripts/gen-cos-names.ps1` now
+carries a `$nameOverrides` table -- the one place a generated name may diverge
+from `COSName.java` -- and emits the reason above the entry.
+
 **Confidence** high for the code; the specification reading is from Table 30 of
 PDF 32000-1:2008. No test resource in the repository carries a bead dictionary,
 so there is nothing to measure it against.
