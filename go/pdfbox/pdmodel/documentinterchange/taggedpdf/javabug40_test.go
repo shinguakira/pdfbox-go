@@ -7,6 +7,7 @@ package taggedpdf_test
 import (
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/taggedpdf"
 )
 
@@ -47,5 +48,35 @@ func TestHeadersInAStringOfTheirOwn(t *testing.T) {
 	o.SetHeaders([]string{"h1"})
 	if got := o.String(); got == "" {
 		t.Error("the attribute object printed as nothing")
+	}
+}
+
+// TestHeadersLeaveOutAnEntryThatIsNotAString is the malformed array.
+//
+// The fix reads strings where Java read names; an entry that is neither is
+// left out. Kept in as the empty string it would be a header identifier no
+// cell carries, and indistinguishable from an entry that really is empty, so
+// the list is shorter than the array instead.
+func TestHeadersLeaveOutAnEntryThatIsNotAString(t *testing.T) {
+	o := taggedpdf.NewPDTableAttributeObject()
+	o.SetHeaders([]string{"h1", "h2"})
+
+	// put a number between the two, which no writer produces and a damaged
+	// file can hold
+	headers := o.Dictionary().GetCOSArray(cos.GetPDFName("Headers"))
+	if headers == nil {
+		t.Fatal("/Headers is not an array")
+	}
+	headers.AddAt(1, cos.GetInteger(3))
+
+	got := o.Headers()
+	want := []string{"h1", "h2"}
+	if len(got) != len(want) {
+		t.Fatalf("Headers() = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("header %d is %q, want %q", i, got[i], want[i])
+		}
 	}
 }

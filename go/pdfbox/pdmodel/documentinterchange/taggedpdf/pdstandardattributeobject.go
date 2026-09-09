@@ -65,19 +65,21 @@ func (a *PDStandardAttributeObject) SetString(name string, value string) {
 // round trip throws ClassCastException. /Headers, the one attribute that uses
 // these, is an array of byte strings in PDF 32000-1:2008 table 337, so the
 // setter is the half that is right and the entries are read as strings. An
-// entry of any other type contributes nothing rather than throwing, which is
-// what the rest of this class does with a value it cannot read. See
-// migration/JAVA-BUGS.md 40.
+// entry of any other type is left out rather than thrown on, which is what the
+// rest of this class does with a value it cannot read -- left in as the empty
+// string it would be a header identifier no cell carries, and no caller could
+// tell it from an entry that really is empty. So the list can be shorter than
+// the array. See migration/JAVA-BUGS.md 40.
 func (a *PDStandardAttributeObject) GetArrayOfString(name string) []string {
 	v := a.Dictionary().GetDictionaryObject(cos.GetPDFName(name))
 	array, isArray := v.(*cos.Array)
 	if !isArray {
 		return nil
 	}
-	strings := make([]string, array.Size())
+	strings := make([]string, 0, array.Size())
 	for i := 0; i < array.Size(); i++ {
 		if value, isString := array.GetObject(i).(*cos.StringObj); isString {
-			strings[i] = value.Value()
+			strings = append(strings, value.Value())
 		}
 	}
 	return strings

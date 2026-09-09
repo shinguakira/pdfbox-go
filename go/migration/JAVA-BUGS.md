@@ -2050,6 +2050,12 @@ cannot read. Tested by `TestHeadersRoundTrip` in
 classes the entry names, with `TestHeadersInAStringOfTheirOwn` for the
 `toString` that calls the getter.
 
+The E-phase review found the first cut of this half-done: the comment said an
+entry of another type contributes nothing and the code left an empty string at
+its index, in a list whose length still counted it. Such an entry is left out
+now, so the list can be shorter than the array;
+`TestHeadersLeaveOutAnEntryThatIsNotAString` covers it.
+
 **Confidence** high. The two methods are next to each other and disagree on the
 element type; only one of them can match the specification, and it is not the
 getter.
