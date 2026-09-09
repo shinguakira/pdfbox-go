@@ -228,7 +228,8 @@ in scope are not in the port:
   `PDFTextStripper`, `sh` in a written content stream, public-key encryption,
   and three test classes, one of which was never recorded at all.
 
-They are grouped into four branches. The order came from what the five missing
+They are grouped into four branches, and a fifth follows them that is not a port
+at all — see "After the port" below. The order came from what the five missing
 commands import; the **contents** came from an audit, because the 891-class
 survey this plan leaned on missed `multipdf` outright.
 [`BRANCHING.md`](BRANCHING.md) carries the grouping and the critical path,
@@ -240,6 +241,44 @@ missing on the day it was written.** Nothing in this plan went back to check
 when the thing it named was ported, and four deferrals now name a dependency
 that is in the tree. Re-checking them is a task in its own right, and it is
 `track/stale-deferrals`.
+
+## After the port: the Java's bugs
+
+Everything above is a port, and a port reproduces what it ports. Where the Java
+is wrong, the Go is wrong the same way on purpose: the reference is the Java,
+a silently corrected bug makes the two behave differently, and "the Java does
+this too" is the answer that made every strange behaviour cheap to investigate
+for the length of this migration. Each one is recorded in
+[`JAVA-BUGS.md`](JAVA-BUGS.md), with where the Go carries it.
+
+**That rule expires when the port does.** There are 84 entries and about seventy
+of them are live in the Go — an `equals` that truncates to 32 bits, a text
+extractor that reverses surrogate pairs, a merge that drops the source's
+article threads and doubles the destination's. Nothing downstream benefits from
+those once there is nothing left to port.
+
+So there is a fifth branch, and it is the only one in this plan that is not a
+port: **`track/java-bug-fixes`**. It goes through `JAVA-BUGS.md` entry by entry
+and fixes in the Go the ones worth fixing.
+
+Three things about it are fixed and not negotiable:
+
+- **It changes no Java.** That rule does not expire. The Java stays the
+  reference, and a fixed Go is judged against it.
+- **It deletes no entry.** A fixed bug is still a bug in the Java, and the
+  entry is still the only record that anyone noticed. A fix *adds* a line —
+  **Fixed in the Go** — saying what the Go does instead and where. The
+  **Where the Go carries it** line is left alone, because it is the record of
+  what the port did while it was a port.
+- **It goes last.** Every branch before it adds entries to the file it works
+  from, and while porting continues, letting the Go differ on purpose makes
+  "is this a port defect?" expensive to answer.
+
+Its first task is a triage of all 84 entries — fix, keep, not-carried,
+test-only — written into `STATUS.md` before any code moves. Fix is the default;
+the four reasons an entry may be kept are in
+[`tasks/track-java-bug-fixes.md`](tasks/track-java-bug-fixes.md), and "it looked
+risky" is not one of them.
 
 ---
 

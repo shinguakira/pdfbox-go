@@ -28,13 +28,14 @@ func NewPDFourColours() *PDFourColours {
 
 // NewPDFourColoursOfArray builds them over the given array, padding it out.
 //
-// JAVA BUG: the padding starts one entry early, so an array shorter than four
-// comes out five long. See migration/JAVA-BUGS.md entry 41. The port keeps it.
+// Java pads from size() - 1, one index early, so an array shorter than four
+// comes out five long -- and the array it pads is the caller's, so the extra
+// entry reaches the file. See migration/JAVA-BUGS.md 41.
 func NewPDFourColoursOfArray(array *cos.Array) *PDFourColours {
 	c := &PDFourColours{array: array}
 	// ensure that array has 4 items
 	if c.array.Size() < 4 {
-		for i := c.array.Size() - 1; i < 4; i++ {
+		for i := c.array.Size(); i < 4; i++ {
 			c.array.Add(cos.NullObject)
 		}
 	}

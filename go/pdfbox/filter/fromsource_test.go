@@ -243,11 +243,12 @@ func TestASCIIHexTolerance(t *testing.T) {
 		{"486>", []byte{0x48, 0x60}},
 		// and so does an odd digit at the end of the stream
 		{"486", []byte{0x48, 0x60}},
-		// A digit that is not one is logged and its table entry, -1, is added
-		// anyway: "4Z" is 4*16 + (-1) = 63, not 64. An invalid FIRST digit is
-		// worse -- -1*16 -- and "Z4" comes out as 0xF4. That is what Java does.
-		{"4Z65", []byte{63, 0x65}},
-		{"Z465", []byte{0xF4, 0x65}},
+		// A digit that is not one is logged and read as zero, so it changes its
+		// own nibble and nothing else. Java adds the table entry, -1, and
+		// answers 63 for "4Z" and 0xF4 for "Z4"; see JAVA-BUGS.md 30 and
+		// TestASCIIHexTreatsABadDigitAsZero.
+		{"4Z65", []byte{0x40, 0x65}},
+		{"Z465", []byte{0x04, 0x65}},
 		{"", nil},
 		{">", nil},
 	}
@@ -488,15 +489,12 @@ func TestCCITTDamageTolerance(t *testing.T) {
 	}
 }
 
-// TestASCII85DamageTolerance is ASCII85's own answer, which is not the others'
-// and is worth writing out: a truncated stream hands back everything that
-// decoded and then repeats its last complete group of four bytes.
+// TestASCII85DamageTolerance is ASCII85's own answer: a truncated stream hands
+// back everything that decoded, in whole groups of four bytes.
 //
-// That repeat is JAVA-BUGS 32. ASCII85InputStream.read() sets index to 0 before
-// it reads a group and returns -1 from inside the loop where the stream ends
-// mid-group, leaving n at the previous group's 4; the array read then finds
-// index < n and copies that group out a second time. The port does the same,
-// so this test asserts the repeat rather than a clean prefix.
+// Java hands back those bytes and then repeats the last group, which is
+// JAVA-BUGS 32 and fixed here; see TestASCII85TruncatedStreamDoesNotRepeatIts-
+// LastGroup in javabug32_test.go.
 func TestASCII85DamageTolerance(t *testing.T) {
 	original := bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 30)
 
@@ -517,14 +515,9 @@ func TestASCII85DamageTolerance(t *testing.T) {
 	if len(got)%4 != 0 {
 		t.Fatalf("the output is %d bytes, which is not whole groups", len(got))
 	}
-	// everything but the last group is the original
-	body := got[:len(got)-4]
-	if !bytes.HasPrefix(original, body) {
-		t.Fatal("the decoded body is not a prefix of the original")
-	}
-	// and the last group repeats the one before it
-	if !bytes.Equal(got[len(got)-4:], body[len(body)-4:]) {
-		t.Errorf("the last group is %q, want a repeat of %q",
-			got[len(got)-4:], body[len(body)-4:])
+	// all of it is the original
+	if !bytes.HasPrefix(original, got) {
+		t.Errorf("the decoded %d bytes are not a prefix of the original; "+
+			"the tail is %q", len(got), got[len(got)-4:])
 	}
 }

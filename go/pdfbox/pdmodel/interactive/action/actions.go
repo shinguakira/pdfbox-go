@@ -905,12 +905,12 @@ func (p *PDWindowsLaunchParams) Operation() string {
 	return p.Params.GetString(cos.O, OperationOpen)
 }
 
-// SetOperation sets the operation.
+// SetOperation sets the /O entry.
 //
-// JAVA BUG 36: it writes /D, which is the directory, and Operation reads /O. So
-// setting the operation overwrites the directory and does not change what
-// Operation returns. Ported as written; see migration/JAVA-BUGS.md.
-func (p *PDWindowsLaunchParams) SetOperation(op string) { p.Params.SetString(cos.D, op) }
+// Java writes /D, which is the directory, where Operation reads /O, so setting
+// the operation overwrote the directory and left the operation unset. See
+// migration/JAVA-BUGS.md 36.
+func (p *PDWindowsLaunchParams) SetOperation(op string) { p.Params.SetString(cos.O, op) }
 
 // ExecuteParam returns the /P entry.
 func (p *PDWindowsLaunchParams) ExecuteParam() string { return p.Params.GetString(cos.P, "") }

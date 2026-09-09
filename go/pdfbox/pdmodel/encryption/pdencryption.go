@@ -67,9 +67,10 @@ func (e *PDEncryption) SetSecurityHandler(securityHandler SecurityHandler) {
 
 // HasSecurityHandler reports whether the document has a security handler.
 //
-// JAVA-BUGS entry 24: Java returns `securityHandler == null`, so the method
-// answers the opposite of its name. Ported as written.
-func (e *PDEncryption) HasSecurityHandler() bool { return e.securityHandler == nil }
+// JAVA-BUGS 24: Java returns `securityHandler == null`, so the method answers
+// the opposite of its name. Nothing in either tree calls it, which is why
+// nobody has noticed.
+func (e *PDEncryption) HasSecurityHandler() bool { return e.securityHandler != nil }
 
 // COSObject returns the dictionary.
 func (e *PDEncryption) COSObject() *cos.Dictionary { return e.dictionary }
@@ -216,11 +217,13 @@ func (e *PDEncryption) SetRecipients(recipients [][]byte) {
 // RecipientsLength returns the number of recipients contained in the Recipients
 // field of the dictionary.
 func (e *PDEncryption) RecipientsLength() int {
-	// JAVA-BUGS entry 25: Java casts the item to a COSArray without checking
-	// and calls size on it, so a document with no /Recipients -- every
+	// JAVA-BUGS 25: Java casts the item to a COSArray without checking and
+	// calls size on it, so a document with no /Recipients -- every
 	// password-encrypted one -- gets a NullPointerException rather than zero.
-	// Ported as written; the assertion below panics where Java throws.
-	array := e.dictionary.GetItem(cos.Recipients).(*cos.Array)
+	array, isArray := e.dictionary.GetItem(cos.Recipients).(*cos.Array)
+	if !isArray {
+		return 0
+	}
 	return array.Size()
 }
 

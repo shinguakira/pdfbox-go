@@ -100,8 +100,13 @@ func (i *Integer) Accept(v Visitor) error { return v.VisitInteger(i) }
 // equal — 1<<32 equals 0 here. Comparing the full int64 would be correct, but
 // the Java is the reference and object identity in a PDF can already depend on
 // this.
+// Java compares `intValue()`, which is `(int) value`, so it drops everything
+// above bit 31 and answers true for 0 and 4294967296. The port compares the
+// int64 values, which is what `equals` on a 64-bit number has to mean; see
+// migration/JAVA-BUGS.md 1. `IntValue` still narrows, because that is
+// `intValue()` and a caller who asks for it wants Java's answer.
 func (i *Integer) Equals(other *Integer) bool {
-	return other != nil && other.IntValue() == i.IntValue()
+	return other != nil && other.value == i.value
 }
 
 // String returns the Java toString form.

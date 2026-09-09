@@ -123,13 +123,16 @@ func (p *PDPage) ContentsForRandomAccess() (pdfio.RandomAccessRead, error) {
 // FlateDecode, the content is decoded as it is read rather than into a buffer.
 // Any other shape takes the general path.
 //
-// Java applies no predictor on this path, so a stream that declares one is
-// decoded wrongly here and correctly by the general path. Ported as written;
-// see migration/JAVA-BUGS.md entry 63.
+// Java tests the filter and nothing else, and this path applies no predictor,
+// so a stream that declares one was decoded wrongly here and correctly by the
+// general path -- the same page parsing differently depending on which
+// accessor the caller reached for. A declared predictor takes the general
+// path. See migration/JAVA-BUGS.md 63.
 func (p *PDPage) ContentsForStreamParsing() (pdfio.RandomAccessRead, error) {
 	// return a stream based reader if there is just one stream
 	contentStream := p.getCOSStream(cos.Contents)
-	if contentStream != nil && isFlateDecode(contentStream.Filters()) {
+	if contentStream != nil && isFlateDecode(contentStream.Filters()) &&
+		!declaresPredictor(contentStream) {
 		// for now only streams using a flate filter are supported
 		source, err := p.streamParsingReader(contentStream)
 		if err != nil {
@@ -139,6 +142,24 @@ func (p *PDPage) ContentsForStreamParsing() (pdfio.RandomAccessRead, error) {
 		return source, nil
 	}
 	return p.ContentsForRandomAccess()
+}
+
+// declaresPredictor reports whether a stream's /DecodeParms ask for a
+// predictor, which the stream parsing reader cannot apply.
+//
+// Anything but a dictionary counts as declaring one: an array of parameters
+// belongs to a chain of filters, which is not the shape the fast path reads
+// anyway, and a reader that cannot tell must take the general path.
+func declaresPredictor(stream *cos.Stream) bool {
+	parms := stream.GetDictionaryObject(cos.DecodeParms)
+	if parms == nil {
+		return false
+	}
+	dictionary, isDictionary := parms.(*cos.Dictionary)
+	if !isDictionary {
+		return true
+	}
+	return dictionary.GetIntDefault(cos.Predictor, 1) > 1
 }
 
 // isFlateDecode reports whether the filters of a stream are exactly the name

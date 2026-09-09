@@ -576,36 +576,6 @@ func itoa(i int) string {
 	return string(digits)
 }
 
-// TestRegisterHandlerReplacesADuplicatePolicy pins JAVA-BUGS 26. Java's
-// registerHandler javadoc says an exception is thrown "if another handler was
-// previously registered for the same filter name or for the same policy name",
-// and the method only looks in nameToHandler, so a second registration under a
-// new name takes the policy over without a word. The port carries it.
-//
-// The registration mutates the factory, so this builds its own rather than
-// reaching for the singleton the tests above use.
-func TestRegisterHandlerReplacesADuplicatePolicy(t *testing.T) {
-	factory := newSecurityHandlerFactory()
-	standardPolicy := NewStandardProtectionPolicy("o", "u", NewAccessPermission())
-
-	err := factory.RegisterHandler("Other.Filter",
-		func() SecurityHandler { return NewPublicKeySecurityHandler() },
-		standardPolicy.policyKey(),
-		func(ProtectionPolicy) SecurityHandler { return NewPublicKeySecurityHandler() })
-	if err != nil {
-		t.Fatalf("a duplicate policy under a new filter name should be accepted: %v", err)
-	}
-	forPolicy := factory.NewSecurityHandlerForPolicy(standardPolicy)
-	if _, ok := forPolicy.(*PublicKeySecurityHandler); !ok {
-		t.Errorf("the standard policy maps to %T, want the registration that replaced it",
-			forPolicy)
-	}
-	// the filter name it was registered under first still finds the first handler
-	if got := factory.NewSecurityHandlerForFilter(StandardSecurityHandlerFilter); got == nil {
-		t.Error("the standard filter name lost its handler")
-	}
-}
-
 // TestCMSContentParameters pins the two shapes a CMS content encryption
 // algorithm carries its initialisation vector in, which are not the same shape.
 //

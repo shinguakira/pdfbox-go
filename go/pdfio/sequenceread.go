@@ -136,12 +136,13 @@ func (s *SequenceRead) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	// This loop reproduces a defect in the Java, recorded as entry 3 in
-	// migration/JAVA-BUGS.md. readOrMinusOne stands in for Java's read(), which
-	// returns -1 at the end of a source, and that -1 is added to the running
-	// total — so a read that ends this way reports fewer bytes than it produced
-	// and, on the next pass, writes back over bytes it already delivered. The
-	// loop condition bounds it: bytesRead can never fall below -1.
+	// Java adds the -1 that read() answers at the end of a source into its
+	// running total, so a read that ends that way reports fewer bytes than it
+	// produced and, on the next pass, writes back over bytes it already
+	// delivered. It is reachable: a RandomAccessReadView can declare a length
+	// its source cannot supply, and then the sequence asks for bytes no source
+	// has. The port stops on a non-positive inner read instead, which is what
+	// the entry's "what correct would be" says; see migration/JAVA-BUGS.md 3.
 	r, err := s.currentReader()
 	if err != nil {
 		return 0, err
@@ -160,12 +161,17 @@ func (s *SequenceRead) Read(p []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		if n <= 0 {
+			// Nothing more to be had, whatever the declared lengths say. Java
+			// adds this to the total; see the comment above.
+			break
+		}
 		bytesRead += n
 	}
 
-	// Java's `currentPosition += bytesRead` runs unconditionally, so a read
-	// that ends on a -1 moves the cursor backwards as well as under-reporting.
-	// Part of the same defect; see JAVA-BUGS entry 3.
+	// Java's `currentPosition += bytesRead` runs unconditionally, so a read that
+	// ended on a -1 moved the cursor backwards as well as under-reporting. It
+	// cannot end that way here.
 	s.position += int64(bytesRead)
 	if bytesRead < 0 {
 		return 0, io.EOF

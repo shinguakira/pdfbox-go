@@ -69,9 +69,10 @@ func SeekTo(r io.Seeker, position int64) error {
 //
 // Java is `(int) Math.min(length() - getPosition(), Integer.MAX_VALUE)`, which
 // bounds the value above and does nothing at all below: a source whose position
-// has been put past its length answers a negative count, and the int cast
-// narrows rather than clamps. A RandomAccessReadView reaches that shape through
-// an ordinary seek. Ported as written; see migration/JAVA-BUGS.md entry 68.
+// has been put past its length answered a negative count, and a
+// RandomAccessReadView reaches that shape through an ordinary seek. The lower
+// bound is the one RandomAccessInputStream.available already has. See
+// migration/JAVA-BUGS.md 68.
 func Available(r RandomAccessRead) (int, error) {
 	if own, overrides := r.(availabler); overrides {
 		return own.Available()
@@ -87,6 +88,9 @@ func Available(r RandomAccessRead) (int, error) {
 	remaining := length - position
 	if remaining > math.MaxInt32 {
 		remaining = math.MaxInt32
+	}
+	if remaining < 0 {
+		remaining = 0
 	}
 	return int(int32(remaining)), nil
 }

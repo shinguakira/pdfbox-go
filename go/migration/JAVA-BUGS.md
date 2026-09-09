@@ -2,14 +2,38 @@
 
 Defects and surprising behaviour noticed in the Java source during the port.
 
-**Nothing here is fixed, in the Java or in the Go.** The port reproduces every
-one of these, because the Java is the reference and a silently corrected bug
-makes the Go behave differently from the thing it exists to reproduce. See
+**Nothing here is ever fixed in the Java.** The Java is the reference and this
+repository does not edit it.
+
+**Nothing here was fixed in the Go while the port was being written**, either.
+Every branch that ported code reproduced these deliberately, because a silently
+corrected bug makes the Go behave differently from the thing it exists to
+reproduce, and because "the Java does the same thing" is the answer that made
+every odd behaviour cheap to investigate. See
 [`conventions/java-to-go.md`](conventions/java-to-go.md).
 
+**One branch changes that, once the port is finished:
+[`track/java-bug-fixes`](tasks/track-java-bug-fixes.md).** It goes through this
+file entry by entry and fixes in the Go the ones worth fixing. It changes no
+Java. It deletes no entry.
+
+So an entry here is in one of three states, and says which:
+
+| State | The line that says so |
+| --- | --- |
+| carried in the Go, on purpose | **Where the Go carries it** — every entry has this |
+| fixed in the Go, deliberately differing from the Java | **Fixed in the Go** |
+| carried on purpose after the fix branch judged it | **Kept in the Go** |
+
+**An entry is never removed, and its "Where the Go carries it" line is never
+rewritten.** That line is the record of what the port did while it was a port;
+past-tensing it would lose the fact that the reproduction was deliberate. A fix
+adds a line, it does not edit one.
+
 This file exists so the knowledge is not lost. A reader who later finds the Go
-behaving oddly can look here and see that the Java does the same thing, on
-purpose, and that it was noticed rather than missed.
+behaving oddly can look here and see whether the Java does the same thing, on
+purpose, and that it was noticed rather than missed — and, where the two now
+differ, why.
 
 **Do not report any of this upstream.** `AGENTS.md` forbids agents from filing
 findings to a public tracker, and this repository has no relationship with
@@ -25,6 +49,10 @@ as if they were the same.
 Add the entry when you port the code, not later. The point at which you are
 reading the Java closely enough to notice is the only point at which it is cheap
 to write down.
+
+**Keep the numbering stable.** Do not renumber, compact or reorder. A later
+reader's only handle on any of this is "JAVA-BUGS.md 47", and the task files,
+the commit messages and the comments in the Go all use it.
 
 ---
 
@@ -49,6 +77,15 @@ dictionary comparison route through. Object numbers can exceed the `int` range.
 `Integer.IntValue`, which narrows through int32 so that Go reproduces Java's
 (int) cast. An earlier draft did not narrow, so the defect was not in fact
 reproduced; caught in review.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 1. `Integer.Equals` compares
+the int64 values, so `GetInteger(0)` and `GetInteger(4294967296)` are not equal
+where the Java says they are. `Integer.IntValue` still narrows, because that is
+`intValue()` and a caller who asks for it wants Java's answer. Tested by
+`TestIntegerEqualsDoesNotTruncate` in `go/pdfbox/cos/javabugfixes_test.go`;
+`TestIntegerEqualsIsTruncating` in `integer_test.go` used to assert the defect
+and is now `TestIntegerEqualsIsNotTruncating`, with the Java's answers kept in
+its comment.
 
 **Confidence** high. The truncation is unambiguous and there is no comment
 suggesting it is deliberate.
@@ -79,6 +116,16 @@ non-positive value.
 the same byte twice. The loop condition bounds the damage to one byte per read.
 
 **Where the Go carries it** `go/pdfio/readbuffer.go`, `ReadBuffer.Read`.
+
+**Kept in the Go** `track/java-bug-fixes`: unobservable. A0 marked this **fix**;
+it is right about the arithmetic and wrong about the reach. `readFromChunk`
+answers -1 in exactly two cases -- the cursor is past the end, or the chunk is
+spent -- and the loop that would add it checks `remaining() > 0` and moves to
+the next chunk before every call, so neither can happen there. A `ReadBuffer`
+owns its own bytes, so nothing can tell it there are more than it has; entry 3
+is the same arithmetic and **is** reachable, because a view can. See its
+**Fixed in the Go**, and `TestSequenceReadCannotAccumulateMinusOne` in
+`go/pdfio/javabugfixes_test.go` for the case that stays correct here.
 
 **Confidence** high.
 
@@ -129,6 +176,16 @@ the port had been keeping the position where Java loses a byte from it.
 No test pins the spin. A test that hangs when it succeeds is worse than no test;
 this entry is the record.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 3. `SequenceRead.Read` stops
+on a non-positive inner read rather than adding it to the total. Without it the
+port lost the data outright: a sequence over a `ReadView(source, 0, 100)` whose
+source holds ten bytes answered **0 bytes and EOF**, because the -1 was added
+until the count went negative. That case is the one this entry's Confidence
+line names, and it is why entry 2 is kept and this one is not -- a view can
+declare a length its source cannot supply, and a `ReadBuffer` has no such
+second party. Tested by `TestSequenceReadOverALyingView` in
+`go/pdfio/javabugfixes_test.go`.
+
 **Confidence** reproduced. A `SequenceRandomAccessRead` over a single
 `RandomAccessReadView(source, 0, 100)` whose source holds 10 bytes hung on the
 first `read(b, 0, 20)`, and the thread dump named the loop:
@@ -162,6 +219,14 @@ helper, so none of them verifies output length.
 The ported tests inherit exactly the same gap, deliberately — strengthening it
 would mean the two suites no longer test the same thing.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 4, in the test.
+`assertBytesEqual` in `go/pdfbox/cos/base_test.go` compares the lengths as
+well, which is what `assertEquals(byteArr1.length, byteArr2.length)` was meant
+to be. The defect is in a Java test, so the Go test is the whole of what
+changes and the two suites now differ there on purpose. Every ported `cos`
+test that uses the helper still passes, which says the outputs were the right
+length all along and only the check was missing.
+
 **Confidence** high. This is a typo, not a design.
 
 ---
@@ -180,6 +245,14 @@ holder of it, process-wide.
 writes to it today, which is why it has never bitten.
 
 **Where the Go carries it** `go/pdfbox/cos/name.go`, `Name.Bytes`.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 5. `Name.Bytes` answers a
+copy. Names are interned, so the array Java hands out is shared by every holder
+of that name and a caller who writes through it renames all of them. Nothing in
+either tree does, which is why the entry's confidence separates the hazard from
+the defect — and why removing it costs nothing: `Bytes` has no caller inside
+the port. Tested by `TestNameBytesIsACopy` in
+`go/pdfbox/cos/javabugfixes_test.go`.
 
 **Confidence** high that it is a hazard; lower that it is a *bug*, since nothing
 currently exploits it. Filed because the Go inherits it and callers should know.
@@ -203,6 +276,13 @@ the table, and it has already been missed once.
 
 **Where the Go carries it** `go/pdfbox/cos/document.go`, `AddXRefTable`, which
 keeps a nil key in a separate field so `XRefTable` still returns it.
+
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement. A0 marked
+it a keep and it stays one. The entry's own Confidence line says keeping the
+entry may be deliberate — a parser that drops what it cannot key may lose an
+object that could still be recovered, and one that keeps it may key on null.
+There is no correct to fix *to*, only a choice between two behaviours, and
+that choice belongs to whoever is reading damaged files.
 
 **Confidence** medium. Keeping it may be deliberate — a damaged file's entry is
 arguably data — but the shape of PDFBOX-6132 suggests otherwise.
@@ -274,6 +354,14 @@ what is on disk, rather than an error or a faithful literal.
 **Where the Go carries it** `go/pdfbox/pdfparser/objectparser.go`,
 `ParseCOSName`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 8. `ParseCOSName` writes the
+`#`, and the digit it had if there was one, before it breaks: `/A#2` at the end
+of input parses as `A#2` where the Java answers `A`. That is what the branch
+below it already does for a malformed escape, and what a `#` not followed by two
+hex digits is. Tested by `TestParseCOSNameKeepsAPrematureHash` in
+`go/pdfbox/pdfparser/javabugfixes_test.go`; the `/A#2` case of
+`TestParseCOSName` asserted the Java's answer and now asserts this one.
+
 **Confidence** medium. It only triggers on truncated input, where any answer is
 somewhat arbitrary, but the inconsistency with the adjacent branch looks
 unintended.
@@ -318,6 +406,15 @@ added to stop runaway recursion; here it fires on a document that has none.
 **Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
 `parseBeginInlineImage` — the decrement is inside the same `if`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 9. The decrement moved out of
+the branch that handles a complete inline image, so it runs however the image
+ended. The counter guards against a `BI` nested inside a `BI` (PDFBOX-6038) and
+a malformed one has ended either way; Java leaves it at 1 and refuses every
+later `BI` in the stream. Tested by
+`TestMalformedInlineImageDoesNotBlockTheNextOne` in
+`go/pdfbox/pdfparser/javabug9_test.go`, over a `BI` whose dictionary ends in a
+string rather than an `ID`.
+
 **Confidence** high that the code does this; it is plain from the placement of
 the decrement. Medium that it is unintended rather than a deliberate "give up on
 this stream" stance, since the `else` branch only warns and carries on.
@@ -353,6 +450,20 @@ instead of reporting that the image never terminated.
 
 **Where the Go carries it** `go/pdfbox/pdfparser/streamtokenparser.go`,
 `parseInlineImageData`.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 10. `parseInlineImageData`
+writes the two bytes it is holding when the input runs out, so an inline image
+with no closing `EI` comes out the length it is on disk rather than two bytes
+shorter.
+
+The first attempt was **wider than the entry** and the ported Java tests caught
+it: an image that ends `...EI` with nothing behind it reaches the same branch --
+`atEndOfInlineImage` wants a whitespace after the `EI` and there is none -- and
+there the two bytes in hand are the terminator, not data. Java drops them in
+both cases and is right in one, so the port drops them only when they are `E`
+and `I`. `TestInlineImages` pins the three cases that end that way and passes
+unchanged. Tested by `TestTruncatedInlineImageKeepsItsLastTwoBytes` in
+`go/pdfbox/pdfparser/javabug10_test.go`.
 
 **Confidence** medium. The loss is provable from the loop shape, but every
 answer on a truncated stream is somewhat arbitrary and this may be a deliberate
@@ -402,6 +513,11 @@ passes the string through as it stands.
 The port originally sliced `hex[start:end]` and indexed the slice, which
 corrected the bug. That was reverted: the offset is computed and unused here
 too, and `string_test.go` pins the throwing behaviour.
+
+**Kept in the Go** `track/java-bug-fixes`: unobservable. A0 marked it a keep
+and it stays one. `parseHex` computes an offset that counts the whitespace it
+skipped and then indexes from zero regardless, so the value is never read; no
+caller can tell the difference, and there is nothing a test could assert.
 
 **Confidence** high. The offset is plainly computed and plainly not used, and
 the comment above it states an intent the code does not carry out.
@@ -454,6 +570,13 @@ table lookup first, which an embedded subset with no `post` names will.
 `unicodeCmapImpl` returns a nil `*CmapSubtable`, `UnicodeCmapLookup` hands it
 back inside a `CmapLookup` interface, and `cmap.GetGlyphID(uni)` dereferences
 nil and panics — which is what this port does with an unchecked Java exception.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 12. `NameToGID` answers 0
+where the font has no Unicode cmap, which is what it answers for every other
+name it cannot resolve — the branch three lines above and the one three lines
+below both do. Without it the port panicked on a subsetted font, which usually
+has no cmap at all. Tested by `TestNameToGIDOfAUniNameWithoutACmap` in
+`go/fontbox/ttf/javabugfixes_test.go`.
 
 **Confidence** high. The null return is explicit three lines up in the same
 class, and no caller of the lenient form checks it.
@@ -561,6 +684,12 @@ entry.
 `Panose`. The type assertion is written without the comma-ok form, so it panics
 where Java throws.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 14. `Panose` answers nil for
+a /Style with no /Panose, which is what it answers for a descriptor with no
+/Style at all and for a /Panose shorter than twelve bytes. Tested by
+`TestPanoseOfAStyleWithoutOne` in
+`go/pdfbox/pdmodel/font/javabugfixes_test.go`.
+
 **Confidence** high. The null check on the line above shows the author knew the
 dictionary could be absent; the entry inside it is read without one.
 
@@ -618,6 +747,19 @@ halves that no longer pair become the replacement character, which is what
 Java's `String` becomes once it is written out. `feedback_test.go`,
 `TestHandleDirectionReversesUTF16Units`, pins it.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 15. `handleDirection`
+reverses a right-to-left run by code point rather than by UTF-16 code unit, so
+a character outside the basic plane stays whole and comes out in one piece. The
+mirroring lookup is unchanged: every mirrored character is inside the basic
+plane, and Java already read the code point for the mirroring test one line
+above the append it got wrong. Tested by
+`TestHandleDirectionReversesByCodePoint` in
+`go/pdfbox/text/javabugfixes_test.go`, whose expected value is the run reversed
+by character and not read off the Java;
+`TestHandleDirectionStillMirrors` beside it keeps the mirroring. The pin that
+held the bug, `TestHandleDirectionReversesUTF16Units` in `feedback_test.go`, is
+gone with it.
+
 **Confidence** high. The same method reads the code point for the mirroring
 test and appends the code unit, one line apart.
 
@@ -652,6 +794,12 @@ which is why it has gone unnoticed.
 
 **Where the Go carries it** `go/fontbox/cmap/cmap.go`, `useCmap`, with the
 `% 0xFF` written out and a comment pointing here.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 16. `useCmap` masks with
+`& 0xFF`, which is what the two branches beside it do. The two agree for every
+byte but 255, so a parent CMap that maps the code 0xFF used to lose it and the
+reverse map answered the code 0 for that character. Tested by
+`TestUseCmapKeepsTheCodeFF` in `go/fontbox/cmap/javabugfixes_test.go`.
 
 **Confidence** high. The two branches beside it mask with `& 0xFF`, and `%` on
 a value that is already a byte cannot be deliberate.
@@ -688,6 +836,12 @@ wrong shear, and every glyph of it is drawn skewed.
 
 **Where the Go carries it** `go/fontbox/cff/cffparser.go`, `concatenateMatrix`,
 with `b1*d1` written out and a comment pointing here.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 17. `matrixDest[1]` reads
+`d2`, as the other five cells read the second matrix. Tested by
+`TestConcatenateMatrixUsesTheSecondMatrixThroughout` in
+`go/fontbox/cff/javabugfixes_test.go`, whose expected values are the product of
+the two matrices the comment above the function draws.
 
 **Confidence** high. The five cells around it are a textbook 3x2 matrix
 product and this one is not.
@@ -741,6 +895,19 @@ why it has gone unnoticed.
 `StringWidth`, which walks `utf16Units` one at a time with `codePointAt`, both
 written out beside it.
 
+**Kept in the Go** `track/java-bug-fixes`: unobservable. A0 marked this
+**fix**; it is right about the walk and wrong about the reach. The second visit
+only happens if the first one succeeded, and the first one cannot: the name the
+walk measures by is `getGlyphList().codePointToName(codePoint)`, the Adobe
+Glyph List holds no code point outside the basic plane -- `glyphlist.txt`,
+`additional.txt` and `zapfdingbats.txt` are all four hex digits -- so every
+supplementary code point comes back `.notdef`, and `.notdef` is the one name
+`CFFType1Font.hasGlyph` can never answer true for, because its SID is 0 and
+`getGIDForSID(0)` is the GID 0 the test rejects. The character therefore throws
+on its first unit, before the index that was not advanced can be read. The same
+two facts hold in the Java, so this is the Java's own behaviour and not a
+divergence.
+
 **Confidence** high. The correct walk is in the same package, in the method
 this one exists to complement.
 
@@ -792,6 +959,12 @@ out-of-range Panose value, and those exist but are not common.
 `writeFontInfo`, which converts through `int8` before `toHexString` so that the
 same eight digits come out.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 19. `writeFontInfo` writes
+each Panose byte unsigned, so a value of 0x80 or more takes two hex digits
+rather than eight. The reader's own `& 0xff` is what says the writer meant two.
+Tested by `TestPanoseHexIsTwoDigits` in
+`go/pdfbox/pdmodel/font/javabug19_test.go`.
+
 **Confidence** high. The reader's own `& 0xff` says what the writer meant.
 
 ## 20. `FileSystemFontProvider.addTrueTypeFontImpl` ANDs the two halves of a CID supplement
@@ -805,8 +978,14 @@ same eight digits come out.
 int supplementVersion = bytes[140] << 8 & (bytes[141] & 0xFF);
 ```
 
-**What correct would be** `bytes[140] << 8 | (bytes[141] & 0xFF)` — the two
-bytes of a big-endian 16-bit number are ORed together, not ANDed.
+**What correct would be** `(bytes[140] & 0xFF) << 8 | (bytes[141] & 0xFF)` —
+the two bytes of a big-endian 16-bit number are ORed together, not ANDed, and
+both are unsigned. `supplementVersion` is a uint16 in the AAT "gcid" table, at
+offset 140: version, format and size take 8 bytes, then registry 2,
+registryName 64, order 2, orderName 64, which is where the surrounding code
+reads its two strings from and lands the next field at 140. Repairing only the
+`&` would leave `bytes[140] << 8` sign-extending, so the bytes FF 01 would
+answer -255 rather than 65281.
 
 **Why it matters** `bytes[140] << 8` has a zero low byte by construction, and
 `bytes[141] & 0xFF` has nothing but a low byte, so the AND is always 0. Every
@@ -818,6 +997,19 @@ but it is written into the on-disk cache and handed to anyone reading
 
 **Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
 `addTrueTypeFontImpl`, which writes the same `&` with a comment.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 20. The two bytes are ORed,
+unsigned, in `cidSupplementVersion`, which the test can reach on its own.
+Java's `&` between a value whose low eight bits are zero and one whose high
+bits are zero is zero for every input, so the supplement was always 0. Tested
+by `TestCIDSupplementIsTheTwoBytesJoined` in
+`go/pdfbox/pdmodel/font/javabug20_test.go`.
+
+The first cut of this joined the high byte signed, on the reasoning that the
+minimal repair to the Java -- `&` to `|` -- would sign-extend. The E-phase
+review was right that this is a second defect rather than the fix: the field is
+a uint16, so FF 01 is 65281 and not -255. The test now carries the three high
+bytes that tell the two apart.
 
 **Confidence** high. `&` between disjoint byte lanes cannot be what was meant.
 
@@ -855,6 +1047,12 @@ be crafted to reach it, which is why it has gone unnoticed.
 **Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
 `createFSIgnored`, which passes nil for the parent with a comment; the Go panics
 on the nil dereference where Java throws.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 21. `createFSIgnored` passes
+the provider, as the other two call sites of the constructor do. Without it
+`Font()` on an entry the provider decided to ignore dereferenced the null
+parent on its first line. Tested by `TestIgnoredFontInfoHasItsParent` in
+`go/pdfbox/pdmodel/font/javabug21_test.go`.
 
 **Confidence** high. The parameter list is unambiguous and the other two call
 sites pass `this`.
@@ -912,6 +1110,12 @@ int, as Java's cast does, so that the two would behave the same if the branch
 were ever reached — without the narrowing a Go `int` stays positive and the
 count is used to size an allocation.
 
+**Kept in the Go** `track/java-bug-fixes`: fixing it is new functionality. A0
+marked it a keep and it stays one. `KerningTable.read` switches on `1` where
+the version it read is `0x10000`, so the version 1 branch is dead; making it
+live means implementing the version 1 kerning subtables, which neither tree
+has. That is a port task with a specification behind it, not a defect fix.
+
 **Confidence** high. It is provable from the two lines above it that the case
 label cannot match.
 
@@ -968,6 +1172,12 @@ it has gone unnoticed.
 which falls through to the two-byte table for a zero-length code exactly as Java
 does, with a comment saying why the length-0 case is not special-cased.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 23. `GetMapping` answers
+nothing for a zero-length code, which is the answer the arm for a code longer
+than two bytes gives — the ternary has two arms for three cases and no bytes at
+all is the third. Tested by `TestGetMappingOfAnEmptyCode` in
+`go/fontbox/cmap/javabug23_test.go`.
+
 **Confidence** high. The two arms of the caller disagree about the same input.
 
 ## 24. `PDEncryption.hasSecurityHandler` answers the opposite of its name
@@ -998,6 +1208,12 @@ it was trying to avoid.
 **Where the Go carries it** `go/pdfbox/pdmodel/encryption/pdencryption.go`,
 `HasSecurityHandler`, which returns `e.securityHandler == nil` with a comment
 saying so.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 24. `HasSecurityHandler`
+answers `securityHandler != nil`. Nothing in either tree calls it, so nothing
+was compensating for the inversion — the audit for callers found none, which is
+also why nobody has noticed. Tested by `TestHasSecurityHandlerAnswersItsName`
+in `go/pdfbox/pdmodel/encryption/javabugfixes_test.go`.
 
 **Confidence** high. The method body and the method name cannot both be right.
 
@@ -1033,6 +1249,12 @@ gets a NullPointerException rather than zero.
 **Where the Go carries it** `go/pdfbox/pdmodel/encryption/pdencryption.go`,
 `RecipientsLength` and `RecipientStringAt`, which assert the type without the
 comma-ok and so panic where Java throws.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 25. `RecipientsLength`
+answers 0 for a dictionary with no /Recipients, which is what a count of
+nothing is and what every other accessor on the class answers for a missing
+entry. Tested by `TestRecipientsLengthOfADictionaryWithNone` in
+`go/pdfbox/pdmodel/encryption/javabug25_test.go`.
 
 **Confidence** high. `getItem` is documented to return null for an absent key.
 
@@ -1080,6 +1302,18 @@ document is then encrypted by a handler nobody asked for.
 which checks `nameToHandler` only and says so above the assignment.
 `TestRegisterHandlerReplacesADuplicatePolicy` in `fromsource_test.go` pins it.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 26. `RegisterHandler` looks
+in `policyToHandler` as well as in `nameToHandler` and refuses a policy that is
+already spoken for, which is the check the javadoc describes and the only
+reading under which the two refusals are one sentence. The expected behaviour
+is read off that javadoc and not off the body. Tested by
+`TestRegisterHandlerRefusesADuplicatePolicy` in
+`go/pdfbox/pdmodel/encryption/javabug26_test.go`, with
+`TestRegisterHandlerStillRefusesADuplicateName` beside it so the fix adds a
+refusal rather than moving one. The pin that held the bug,
+`TestRegisterHandlerReplacesADuplicatePolicy` in `fromsource_test.go`, is gone
+with it.
+
 **Confidence** high. The javadoc and the method body contradict each other in
 five lines.
 
@@ -1117,6 +1351,17 @@ other byte outside the alphabet gets.
 which narrows to `int8` and tests for -1 exactly as the Java does, with a
 comment saying why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 27. `readSignificant` reports
+the end of the stream from the read error alone, so 0xFF is handed on as the
+data byte it is and reaches the alphabet check, which rejects it with `Invalid
+data in Ascii85 stream` — the answer every other byte outside the alphabet
+already gets, and the one the expected value is read off. The other narrowing
+in the method is kept: `z = (byte)(ascii[k] - OFFSET)` wraps in the Java too,
+and the check beside it, `z < 0 || z > 93`, is written for the wrapped value.
+Tested by `TestASCII85RejectsAnFFByte` in `go/pdfbox/filter/javabug27_test.go`,
+with `TestASCII85StillEndsAtTheEndOfItsSource` beside it so a source that runs
+out mid-group still ends quietly.
+
 **Confidence** high. The narrowing is visible in the expression.
 
 ## 28. `LZWFilter.findPatternCode` returns a negative code for a high byte
@@ -1148,6 +1393,16 @@ recorded because the next caller would not know that.
 
 **Where the Go carries it** `go/pdfbox/filter/lzw.go`, `findPatternCode`, which
 writes `int(int8(pattern[0]))` to keep the sign, with a comment.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 28. `findPatternCode` reads
+the single byte unsigned, so the code it answers is the index its own comment
+names and the encoder's other single-byte code, `by & 0xff`, already uses.
+Nothing calls the branch today, so the test calls the function, which is
+unexported here and private in the Java; the expected value is the table
+`createCodeTable` builds, where entry N is the one-byte pattern N.
+`TestFindPatternCodeOfOneByteIsItsIndex` in
+`go/pdfbox/filter/javabug28_test.go` checks the answer against that table as
+well as against the value.
 
 **Confidence** high, for the arithmetic. That nothing reaches it is from
 reading the one caller.
@@ -1183,6 +1438,13 @@ It is not caught by the Java's own tests because they assert the behaviour:
 **Where the Go carries it** `go/pdfbox/pdmodel/common/function/type4/bitwiseoperators.go`,
 `notOperator`, which writes `-v` with a comment; `TestNot` in
 `type4_test.go` keeps the Java's expected values.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 29. The integer arm of `not`
+is `^v`, the bitwise complement PostScript defines it as. Tested by
+`TestNotOfAnIntegerIsTheComplement` in
+`go/pdfbox/pdmodel/common/function/type4/javabugfixes_test.go`; `TestNot` in
+`type4_test.go` carried the Java's answers -- 52 not = -52, -37 not = 37 -- and
+now carries the complement's, with the Java's kept in its comment.
 
 **Confidence** high. The specification and the code disagree in one character.
 
@@ -1224,6 +1486,17 @@ than the byte itself, and the error is silent past the log.
 **Where the Go carries it** `go/pdfbox/filter/asciihex.go`, `Decode`, which
 multiplies and adds the table entry as Java does; `TestASCIIHexTolerance` in
 `fromsource_test.go` pins both cases with the arithmetic written out.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 30. `Decode` logs a byte that
+is not a hexadecimal digit and then reads it as zero, so one bad digit changes
+its own nibble and nothing else. Of the two answers the entry names, this is
+the one the method already gives for a digit it does not have — "second value
+behaves like 0 in case of EOD", four lines above — and refusing the stream
+would make the filter stricter than the reader it is, which drops the `>` and
+the whitespace without a word. Tested by `TestASCIIHexTreatsABadDigitAsZero` in
+`go/pdfbox/filter/javabug30_test.go`; the two rows of `TestASCIIHexTolerance`
+in `fromsource_test.go` that held 63 and 0xF4 now hold 0x40 and 0x04, with the
+Java's values in the comment.
 
 **Confidence** high. The port's test was written expecting 64 and measured 63.
 
@@ -1274,6 +1547,20 @@ index correctly.
 `from8bit`, which computes the same offset and so panics where Java throws. The
 comment there names this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 31. `from8bit` writes the row
+at `(y - starty) * width * numComponents`, the destination row and the
+destination stride, which is the offset the entry names and the one the
+subsampled branch below reaches by running an index. The filter-subsampled arm
+is untouched by construction: it sets `startx` and `starty` to 0 and
+`inputWidth` to `width`, so the two expressions are the same there. Tested by
+`TestFrom8BitRegionLandsOnTheRightRows` in
+`go/pdfbox/pdmodel/graphics/image/javabug31_test.go`, which asks for a
+rectangle away from both edges of an eight by six image and compares every
+pixel with the source; without the fix it does not merely differ, it panics on
+the region's second row, which is the Java's
+`ArrayIndexOutOfBoundsException`. `TestFrom8BitWholeImageIsUnchanged` beside it
+keeps the whole-image fast path.
+
 **Confidence** high. The line beside it, for the subsampled case, does the same
 job with a running index and gets it right.
 
@@ -1323,6 +1610,17 @@ likely to look.
 `Read`, which keep the same order; `TestASCII85DamageTolerance` in
 `fromsource_test.go` asserts the repeat and says why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 32. Both paths that give up
+part way through a group set `n` to 0 beside `eof`, which is the first of the
+two answers the entry names; the second — resetting `index` only once a group
+has been read — would move a line the terminator path also depends on. A
+truncated stream now decodes to a prefix of the original and stops. Tested by
+`TestASCII85TruncatedStreamDoesNotRepeatItsLastGroup` in
+`go/pdfbox/filter/javabug32_test.go`, with
+`TestASCII85WholeStreamIsUnchanged` beside it for the end that is not
+truncation. `TestASCII85DamageTolerance` in `fromsource_test.go`, which
+asserted the repeat, now asserts the prefix.
+
 **Confidence** high. Measured: the port decoded 680 bytes from a stream whose
 first 676 are the original, and the last four repeat bytes 672 to 675.
 
@@ -1368,6 +1666,19 @@ rejects them first.
 `go/pdfbox/pdmodel/font/tounicodewriter.go`, `allowDestinationRange`, which
 checks `utf8.RuneCountInString(prev) == 1` and not `next`. The comment above it
 names this entry.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 33. `allowDestinationRange`
+counts the code points of `next` as well as of `prev`, which is the check the
+entry names and the only one under which the predicate is symmetric — a
+bfrange is one destination the reader increments, so it holds exactly where
+every destination in it is a single code point. With 0x400 mapped to `a` and
+0x401 mapped to `bc` the writer now emits two ranges of one, `<0400> <0400>
+<0061>` and `<0401> <0401> <00620063>`, and the `c` survives. Tested by
+`TestDestinationRangeChecksBothSides` and
+`TestCMapKeepsTheTailOfALongerDestination` in
+`go/pdfbox/pdmodel/font/javabug33_test.go`. The measured pin,
+`TestCMapDropsTheTailOfALongerDestination`, is gone; the Java output it held is
+quoted above and in the new test.
 
 **Confidence** certain, and **measured** since `track/font-embedding`'s D9.
 `ToUnicodeWriter` and `util/Hex`/`util/StringUtil` compile on their own with
@@ -1446,6 +1757,18 @@ which has the same guard and the same order of the two setters, and
 `TestExtractBeyondTheDocumentPanics` in `pageextractor_test.go` pins it and
 names this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 34. `Extract` also answers
+the blank document when the start page is past the last one, which is the
+clamp the entry names and the second half of the sentence the javadoc already
+makes. Reordering the two setters was the other candidate and is not it: that
+would drop `SetEndPage`'s cross-check for every caller, and the javadoc does
+not promise the panic goes away, it promises a blank document. Tested by
+`TestExtractBeyondTheDocumentIsBlank` in
+`go/pdfbox/multipdf/javabug34_test.go`, with
+`TestExtractToBeyondTheDocumentStillClamps` beside it so an end page past the
+last one still extracts the rest of the file. The pin that held the panic,
+`TestExtractBeyondTheDocumentPanics`, is gone with it.
+
 **Confidence** high. Read from the two methods and confirmed by the port
 panicking with `End page is smaller than startPage` for pages 30 to 40 of the
 28 page `cweb.pdf`, which is the document `PageExtractorTest` uses.
@@ -1481,6 +1804,23 @@ wrote, which is why it has survived: the reading path never touches it.
 `go/pdfbox/pdmodel/interactive/pagenavigation/pdthread.go`, `NewPDThreadBead`,
 writes it. The name is deliberately spelled `cos.BEAD` rather than `cos.Bead` so
 that it does not read like the correct one.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 35. A0 marked this **not
+carried**, and it was wrong: the "Where the Go carries it" line above says
+plainly that the port had `BEAD = GetPDFName("BEAD")` and wrote it, and the
+row was read as though the port already had the correct spelling. It did not.
+The constant is `Bead = GetPDFName("Bead")` now, spelled the way table 30
+spells it, and the identifier is spelled `cos.Bead` to match -- the upper-case
+`cos.BEAD` existed so it would not read like the correct one. Tested by
+`TestNewThreadBeadIsTypeBead` in
+`go/pdfbox/pdmodel/interactive/pagenavigation/javabug35_test.go`.
+
+`names.go` is generated, so the correction lives in the generator: the
+E-phase review caught the first cut editing only the output, which the next
+`gen-cos-names.ps1` run would have reverted, leaving `pdthread.go` referring to
+a `cos.Bead` that no longer existed. `migration/scripts/gen-cos-names.ps1` now
+carries a `$nameOverrides` table -- the one place a generated name may diverge
+from `COSName.java` -- and emits the reason above the entry.
 
 **Confidence** high for the code; the specification reading is from Table 30 of
 PDF 32000-1:2008. No test resource in the repository carries a bead dictionary,
@@ -1521,6 +1861,14 @@ can never say `"print"`.
 `go/pdfbox/pdmodel/interactive/action/actions.go`, `SetOperation`, with the
 comment above it naming this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 36. `SetOperation` writes
+`/O`, the key its own getter reads, so the operation is stored and the
+directory is left alone. Tested by `TestSetOperationWritesTheOperationKey` in
+`go/pdfbox/pdmodel/interactive/action/javabug36_test.go`, which sets a
+directory and then an operation and checks both, with
+`TestOperationStillDefaultsToOpen` beside it for the default the getter
+carries.
+
 **Confidence** high. It is two adjacent methods reading and writing different
 constants, and `PDWindowsLaunchParams` has no other use of either key beyond
 `getDirectory` and `setDirectory`, which is what makes the collision real rather
@@ -1554,6 +1902,15 @@ holds.
 **Where the Go carries it**
 `go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdmarkinfo.go`,
 `SetSuspect`, with the comment above it naming this entry.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 37. `SetSuspect` writes its
+argument, like the two setters beside it. Tested by
+`TestSetSuspectWritesItsArgument` in
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug37_test.go`,
+with `TestMarkInfoSettersAreIndependent` beside it so raising one flag leaves
+the others alone. The one caller of this setter in either tree is
+`PDFMergerUtility.mergeMarkInfo`, which calls it twice; that is entry 83 and is
+fixed separately.
 
 **Confidence** high. The parameter is unused and the literal is written in its
 place; there is no reading of the method under which it is correct.
@@ -1593,6 +1950,22 @@ reaches the same throw on the reading side.
 `OwnerUserProperties`, `AddUserProperty` and `RemoveUserProperty`. A nil
 `*cos.Array` panics on the first method call, the way the null does in Java, and
 each carries a comment naming this entry.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 38. All three methods check
+`/P` before using it: `OwnerUserProperties` answers no properties,
+`AddUserProperty` writes the array it needs — table 328 marks `/P` required, so
+an object being filled in gets the entry it is missing — and
+`RemoveUserProperty` returns, since an object with no `/P` holds nothing to
+remove. That last one differs from the "what correct would be" above, which
+said both setters write the array: writing a required entry as a side effect of
+a removal that removes nothing is a change for a caller who asked for none, and
+the entry is written by the add that needs it. Tested by
+`TestUserAttributeObjectWithNoPropertiesIsEmpty`,
+`TestAddUserPropertyToAFreshObject` and
+`TestRemoveUserPropertyFromAFreshObject` in
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug38_test.go`,
+each on the object `NewPDUserAttributeObject` builds — the one the entry says
+throws from every method.
 
 **Confidence** high. `COSDictionary.getCOSArray` returns null by contract, and
 none of the three tests for it.
@@ -1635,6 +2008,18 @@ neither exception.
 `InsertBeforeBase`, with the comment above it naming this entry. `Array.AddAt`
 at -1 panics on the slice bounds, which is the same failure.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 39. The array branch checks
+the index before inserting and does nothing when the reference kid is not
+there, which is the check the entry names and what the single-kid branch below
+it already does. The scope stops there: a marked-content identifier still finds
+nothing, because `Kids` hands those back as plain integers and nothing converts
+one back to the `COSInteger` in the array — making that work is a lookup the
+method does not have and would be new functionality, not this fix. It no longer
+throws for it. Tested by `TestInsertBeforeAKidThatIsNotThereDoesNothing` in
+`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug39_test.go`,
+with `TestInsertBeforeAKidThatIsThereStillInserts` beside it for the insert the
+check must not swallow.
+
 **Confidence** high. Both the -1 and the throw follow from the two library
 contracts, and the sibling branch shows the check that is missing.
 
@@ -1675,6 +2060,21 @@ the same reason: the file holds strings.
 `GetArrayOfString`, with the comment above it naming this entry. The type
 assertion panics where the cast throws.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 40. `GetArrayOfString` reads
+each entry as a string, which is what `SetArrayOfString` writes and what table
+337 gives `/Headers` as. An entry of another type contributes the empty string
+rather than throwing, which is how the rest of the class treats a value it
+cannot read. Tested by `TestHeadersRoundTrip` in
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/javabug40_test.go`, over both
+classes the entry names, with `TestHeadersInAStringOfTheirOwn` for the
+`toString` that calls the getter.
+
+The E-phase review found the first cut of this half-done: the comment said an
+entry of another type contributes nothing and the code left an empty string at
+its index, in a list whose length still counted it. Such an entry is left out
+now, so the list can be shorter than the array;
+`TestHeadersLeaveOutAnEntryThatIsNotAString` covers it.
+
 **Confidence** high. The two methods are next to each other and disagree on the
 element type; only one of them can match the specification, and it is not the
 getter.
@@ -1714,6 +2114,14 @@ PDF 32000-1:2008 Table 344 gives `/BorderColor` as one colour or exactly four.
 **Where the Go carries it**
 `go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdfourcolours.go`,
 `NewPDFourColoursOfArray`, with the comment above it naming this entry.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 41. The padding loop starts
+at `Size()`, so an array shorter than four is padded to exactly four — the
+number the comment above the loop names and the number table 344 requires of
+`/BorderColor` when it is not one colour. Tested by
+`TestFourColoursPadsToFour` in
+`go/pdfbox/pdmodel/documentinterchange/taggedpdf/javabug41_test.go`, over every
+starting length from zero to four.
 
 **Confidence** high. The loop bound is off by one against its own comment, and
 the arithmetic is not in doubt.
@@ -1811,6 +2219,16 @@ class are correct, because `setSubFilter` and `setDigestMethod` write names.
 on an entry that is not a name — Go's answer to the `ClassCastException`. Both
 carry a comment pointing here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 43. `Reasons` and
+`LegalAttestation` read text strings, which is what their setters write and
+what table 234 gives both entries as. The reading is
+`PDSeedValueCertificate.KeyUsage`'s, in a small `textStrings` helper the two
+share: an entry that is not a string is passed over rather than thrown on.
+Tested by `TestSeedValueReasonsRoundTrip` and
+`TestSeedValueLegalAttestationRoundTrip` in
+`go/pdfbox/pdmodel/interactive/digitalsignature/javabug43_test.go`, with
+`TestSeedValueReasonsOfNothing` for the empty answer the getter already gave.
+
 **Confidence** high. The cast is unconditional and the setter is right next to
 it.
 
@@ -1856,6 +2274,14 @@ gets null and has no way to tell "no rotation" from "rotation present".
 reads `GetString` and so answers the empty string — the port's null — for
 anything `SetRotation` wrote. Its comment points here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 44. `Rotation` reads
+`/Rotate` as the integer it is and writes it out, which is the reading the
+entry names and exactly what the sibling `Justification` does with `/Q`. The
+signature stays a string, as the Java's is. Tested by
+`TestFreeTextRotationRoundTrip` in `go/pdfbox/pdmodel/fdf/javabug44_test.go`,
+with `TestFreeTextRotationOfNothing` for the annotation that has no `/Rotate`,
+which now reads as the same zero the sibling defaults to.
+
 **Confidence** high. The two methods sit five lines apart and the constructor
 right above them parses the attribute as an int.
 
@@ -1897,6 +2323,15 @@ takes a `COSBase` and dereferences it itself.
 **Where the Go carries it** `go/pdfbox/pdmodel/fdf/fdfdictionary.go`, `Pages`,
 which reads `cos.Array.Get` and panics on an entry that is not a dictionary —
 the port's `ClassCastException`. Its comment points here.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 45. `Pages` reads each entry
+with `GetObject`, which dereferences, as `Fields`, `Annotations` and
+`FDFField.Kids` all do. The panic for an entry that is genuinely not a
+dictionary stays, since that is the Java's `ClassCastException` for a malformed
+file rather than for a well-formed indirect one. Tested by
+`TestPagesResolvesAnIndirectPage` in `go/pdfbox/pdmodel/fdf/javabug45_test.go`,
+with `TestPagesStillReadsADirectPage` beside it for the shape the Java could
+already read.
 
 **Confidence** high. The two accessors sit in the same file and differ only in
 that one call.
@@ -1946,6 +2381,16 @@ Nothing in the shipped library is affected.
 and says why. The stopping the Java test does not reach is covered separately by
 `TestCreateInputStreamStoppingStops` in the same package, which slice 6 wrote
 and which is not a port.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 46, in the test.
+`dctStopFilters` in `go/pdfbox/pdmodel/common/pdstream_external_test.go` builds
+the two names rather than the two `toString`s, which is what every caller of
+`createInputStream(List<String>)` in the main tree passes. The defect is in a
+Java test, so the Go test is the whole of what changes. The three cases still
+pass: they run against a stream with no filters, so the stop list they now
+carry correctly is still never consulted -- what the change buys is that the
+list says what it means. The stopping itself stays covered by
+`TestCreateInputStreamStoppingStops`.
 
 **Confidence** high. Both halves are three lines apart and `COSName.toString`
 has carried the braces since the class was written.
@@ -2046,6 +2491,13 @@ as it stands: closing it would mean moving the fixups out of the package Java
 puts them in. `migration/STATUS.md` says the same under the slice 8 fixup
 section.
 
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement. A0 marked
+it a keep and it stays one. `getAcroForm()` repairs the document it is asked to
+read, and its own javadoc says so; a getter that mutates is a design smell
+rather than a defect, and every caller in both trees is written against the
+repair having happened. `getAcroForm(null)` is already the way to read without
+it.
+
 **Confidence** high. The javadoc states the mutation itself.
 
 ---
@@ -2093,6 +2545,17 @@ have.
 `go/pdfbox/rendering/pagedrawer.go`, `DrawTilingPattern` returns the error
 before the restores, with a comment saying why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 49. The six restores are a
+`defer` taken immediately after the six saves, which is Go's `finally` and the
+shape the three siblings already have. Tested by
+`TestDrawTilingPatternRestoresAfterAFailure` in
+`go/pdfbox/rendering/javabug49_test.go`: it draws an empty page, puts the
+page's backend back where `DrawPage`'s own cleanup left nil — which is where
+`TilingPaint` reaches the drawer — and then draws a tiling pattern whose stream
+declares a filter no decoder answers to. Without the fix the drawer comes back
+holding the tile's backend, the tile's line path, `flipTG` true and the tile's
+clip winding rule.
+
 **Confidence** high for the shape — the restores are demonstrably outside any
 `finally`, and the siblings show the intended pattern. Whether it is reachable
 in practice depends on `TilingPaint` swallowing the exception, which is
@@ -2132,6 +2595,16 @@ place of the one the file carried, which outlives the render.
 **Where the Go carries it** `go/pdfbox/rendering/pagedrawer.go`,
 `ShowAnnotation` returns the error before the two restores, with a comment
 saying why.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 50. Both restores — the
+transform and the appearance — are a `defer` taken where the rotation is
+installed, so they run whether the annotation draws or fails. Tested by
+`TestShowAnnotationRestoresTheTransformAfterAFailure` in
+`go/pdfbox/rendering/javabug50_test.go`: a NoRotate text annotation on a page
+rotated a quarter turn, whose normal appearance declares a filter no decoder
+answers to. Without the fix the page's transform comes back
+`(-0 -1 -1 -0 40 80)`, the annotation's quarter turn, and every annotation
+after it would be drawn through it.
 
 **Confidence** high. The document mutation is the same `setAppearance` the
 comment in the Java calls "restore".
@@ -2184,6 +2657,17 @@ wasDefault)`, as the three sibling recursions do.
 **Where the Go carries it** `go/pdfbox/pdmodel/graphics/color/create.go`, the
 `cos.Pattern` case of `createFromArray`, calls the one-argument `Create` and
 says why above the line.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 51. The `/Pattern` arm builds
+its underlying colour space with `CreateWithResources(array.Get(1), resources,
+wasDefault)`, the three-argument form the indexed, separation and DeviceN
+recursions beside it already use, so `[/Pattern /CS1]` resolves `/CS1` through
+the resources the `PDPattern` on the same line is given. Tested by
+`TestPatternResolvesItsUnderlyingSpaceThroughTheResources` in
+`go/pdfbox/pdmodel/graphics/pattern/javabug51_test.go` — the test lives in the
+`pattern` package because `PDPattern` does — with
+`TestPatternWithAnInlineUnderlyingSpaceIsUnchanged` beside it for the shape
+that already worked.
 
 **Confidence** high for the shape — the one-argument call is right there beside
 the `resources` it ignores. Medium for how often it bites: an underlying colour
@@ -2278,6 +2762,15 @@ array, every later array, and every later simple property.
 **Where the Go carries it** `go/xmpbox/schema/xmpschema.go`, `Merge` and
 `mergeComplexProperty`, which return the same way at the same place.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 53. `mergeComplexProperty`
+skips a value the array already holds and carries on, and no longer answers a
+boolean for `Merge` to stop on, so all three loops run to the end. The
+duplicate is still added only once, which is what the early return was standing
+in for. Tested by `TestMergeCarriesOnPastASharedValue` in
+`go/xmpbox/schema/javabug53_test.go`, whose two schemas share the first value
+of a bag and differ afterwards, with `TestMergeDoesNotDuplicateASharedValue`
+beside it.
+
 **Confidence** high. Read from the two methods; the `return` is the whole of
 `merge`'s remaining work.
 
@@ -2317,6 +2810,13 @@ read it back.
 `createTextType`, and the getter asks for `*xmptype.ProperNameType`, which a
 `*xmptype.TextType` is not.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 54. `SetArtist` builds the
+property from the field's declared type through `InstanciateSimple`, which is
+Java's `instanciateSimple` and what every other setter of a derived text field
+uses, so the `ProperNameType` the getter asks for is the one that is stored.
+Tested by `TestTiffArtistRoundTrip` in `go/xmpbox/schema/javabug54_test.go`,
+which checks both the property accessor and the string one.
+
 **Confidence** high. Read from the two methods and from `getPropertyAs`, which
 is `type.isInstance(property) ? type.cast(property) : null`.
 
@@ -2351,6 +2851,15 @@ in strict mode fails with "Invalid array type, expecting Seq and found Bag".
 **Where the Go carries it** `go/xmpbox/schema/schemas3.go`, `AddVersions`, which
 calls `AddQualifiedBagValue` and says so in its comment.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 55. `AddVersions` writes a
+sequence, which is the cardinality the field is declared with and what the
+neighbouring `AddHistory` writes for its own `Seq`. The other half of the entry
+is left alone: the value stays text rather than the declared `VersionType`,
+because the method has no parameter for a structured type and giving it one is
+a port task, not a fix. `Versions` reads the array by name and does not check
+its cardinality, so it is unaffected. Tested by `TestVersionsIsASequence` in
+`go/xmpbox/schema/javabug55_test.go`.
+
 **Confidence** high. Read from the annotation and the method, and from the
 neighbouring `addHistory` that does it the other way.
 
@@ -2380,6 +2889,14 @@ StringIndexOutOfBoundsException, which is unchecked and so escapes the
 **Where the Go carries it** `go/xmpbox/xml/domxmpparser.go`, `parseEndPacket`,
 which indexes the same byte and panics the same way, with a comment naming this
 entry.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 56. `parseEndPacket` checks
+the length before it reads the sixth character, and an instruction too short to
+hold one is refused with the parser's own error — the same one a sixth
+character that is neither `r` nor `w` gets, since both are the same malformed
+input. Tested by `TestShortEndPacketIsRefused` in
+`go/xmpbox/xml/javabug56_test.go`, over both `<?xpacket end=?>` and `<?xpacket
+end="?>`, with `TestWellFormedEndPacketIsStillRead` beside it.
 
 **Confidence** high. Read from the method; `"end="` is four characters and
 `charAt(5)` needs six.
@@ -2448,6 +2965,18 @@ not have it, with nothing to say the argument was dropped.
 **Where the Go carries it** `go/xmpbox/xmpmetadata_schemas.go`,
 `CreateAndAddPDFAExtensionSchemaWithNS`, which takes the map, ignores it and
 says so.
+
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement. A0 marked
+this **fix**; the entry's own two answers are the reason it is not one. One is
+to delete a public method, which is an API decision and not a defect fix. The
+other needs the map read, and nothing in either tree says which way it runs:
+`Map<String, String> namespaces` appears exactly once in xmpbox, in this
+signature, with no caller, no test and no sibling to take the convention from —
+so whether the keys are prefixes and the values URIs, or the reverse, is a
+guess, and so is what "declaring the namespaces on the schema" writes. Guessing
+would turn a call that today answers a working schema into one that can fail,
+on invented rules. The method keeps Java's behaviour and its comment says the
+argument is ignored.
 
 **Confidence** high. The method body is four lines and the parameter appears in
 none of them.
@@ -2563,6 +3092,15 @@ entirely, with nothing to say where the null came from.
 a `[]time.Time` cannot hold Java's null, so the zero time stands in it. Said
 where it is and in [`STATUS.md`](STATUS.md).
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 61. An element holding no
+date is left out of the list, which is the first of the two answers the entry
+names — the second, documenting that the list may hold nulls, is not open to a
+`[]time.Time`, and the javadoc promises a list of dates. Tested by
+`TestSequenceDateValueListSkipsAnEmptyDate` in
+`go/xmpbox/schema/javabug61_test.go`, whose empty element is a `DateType` built
+from a blank string, which is how `DateConverter.toCalendar` produces the null
+(PDFBOX-6029). The divergence note in [`STATUS.md`](STATUS.md) is updated.
+
 **Confidence** high. Reproduced against JDK 17: a sequence holding a date and an
 empty date prints `[java.util.GregorianCalendar[...], null]`.
 
@@ -2605,6 +3143,14 @@ exceeded." Repeated clears leak a page each time, so a long-lived
 to `count` and says so.
 `TestClearLeaksTheLastPage` in `go/pdfio/scratchfilebuffer_test.go` pins it and
 names this entry.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 62. `markPagesAsFree` walks
+to `off + count`, so it frees the pages it was given and `Clear` leaks none.
+Tested by `TestClearFreesEveryPage` in `go/pdfio/javabug62_test.go`: three
+pages of main memory, three pages written, cleared, and filled again. Without
+the fix the third write fails with the same "Maximum allowed scratch file
+memory exceeded." the running Java gives. `TestClearLeaksTheLastPage`, which
+pinned the leak, is gone with it.
 
 **Confidence** high. Reproduced by compiling the `io` module against JDK 17 and
 running it: a `ScratchFile` of three pages of main memory, three pages written,
@@ -2654,6 +3200,18 @@ differently depending on which accessor the caller reached for.
 says so, and `go/pdfbox/filter/flate.go`'s `NewFlateDecoderReader` says it
 applies no predictor.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 63. The fast path is taken
+only where the stream declares no predictor, which is the one more term the
+entry names; `declaresPredictor` reads `/DecodeParms` and treats anything that
+is not a dictionary without a predictor as a reason to take the general path.
+Tested by `TestStreamParsingHonoursThePredictor` in
+`go/pdfbox/pdmodel/javabug63_test.go`, which builds the content stream the
+corpus does not have — `/Filter /FlateDecode /DecodeParms <</Predictor 12
+/Columns 4>>` — and checks the two accessors agree; without the fix the stream
+parsing one answers the PNG row filter-type byte and then the operators.
+`TestStreamParsingStillTakesTheFastPath` beside it keeps the plain flate
+stream on the fast path.
+
 **Confidence** high for the shape, which is plain in the two methods and in
 `FlateFilterDecoderStream`. Not run: no PDF in the test corpus has a predictored
 content stream, which is also why no PDFBox test covers it.
@@ -2702,6 +3260,21 @@ notices, which is presumably why the javadoc has stood.
 claims are false rather than repeating them.
 `TestMemoryUsageSettingSetupMethods` in `go/pdfio/memoryusagesetting_test.go`
 holds the four settings apart.
+
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement, and half
+of it is already done. A0 marked this **fix**. The defect is in a javadoc, not
+in arithmetic: the private constructor does exactly what it means to, and the
+two claims about it are what is untrue. Of the entry's two corrects, the first
+— documentation that says what these setups do rather than naming a setup they
+are not equal to — is what `SetupMixed`'s comment in
+`go/pdfio/memoryusagesetting.go` already says. The second, delegating so the
+claims become true, changes what four public getters answer for two public
+setups, on the strength of a sentence, and the entry itself records that
+nothing in PDFBox notices the difference today. What this branch adds is the
+check: `TestMixedIsNotMainMemoryOnly` and `TestMixedOfZeroIsNotTempFileOnly` in
+`go/pdfio/javabug64_test.go` hold the four settings apart with the values
+measured off the running Java, so the record above is testable rather than
+asserted.
 
 **Confidence** high. Read out of the running Java, `io` compiled against JDK 17:
 
@@ -2805,6 +3378,23 @@ sites. Go's mutexes are not reentrant where Java's monitors are, but that
 changes nothing here: the two locks are distinct, so this is the same
 cross-goroutine hold-and-wait and not a new self-deadlock.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 66. `Close` takes `ioLock`,
+sets `isClosed`, takes the buffer list and releases `ioLock` before closing the
+buffers, which is the shape the entry names; it re-takes `ioLock` for the file
+itself. Nothing is lost by letting go: `isClosed` is already published, so
+`enlarge` refuses under `ioLock`, and the list has already been taken.
+
+This one does have a test after all, and the entry's reason for saying it could
+not was wrong in one direction: a test that hangs is worse than none, but a
+test that *bounds* the round and reports the hang is not.
+`TestCloseWhileWritingDoesNotDeadlock` in `go/pdfio/javabug66_test.go` runs
+eight writers, each on a buffer of its own, against one `Close`, over a
+temporary file — which is what puts real work inside `ioLock` and widens the
+window the cycle needs. Without the fix it reproduces the deadlock the JVM
+named, in round 26 of 150; with it the same 150 rounds finish in half a second.
+The writers recover from the buffer's own not-thread-safe race, which Java
+documents on the class and which is not a lock.
+
 **Confidence** reproduced. A probe that ran a writer and a `close()` against the
 same `ScratchFile` deadlocked in round 215 of 400, and the JVM's own detector
 named it:
@@ -2870,6 +3460,17 @@ merely looks odd.
 exists so the package function `Rewind` dispatches to it the way Java's virtual
 call does. Pinned by `TestReadViewRewindPastItsOwnStart`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 67. `Rewind` refuses a
+rewind that would land before the view's start, with the same
+`ErrInvalidPosition` `Seek` answers — which is also where the interface's own
+default rewind ends up, since that is `seek(position - bytes)`. The override
+keeps its shape otherwise: it still rewinds the source rather than seeking.
+Tested by `TestReadViewRefusesToRewindPastItsOwnStart` in
+`go/pdfio/javabug67_test.go`, which checks the error, that the position is
+where it was, and that the next byte is still the view's own;
+`TestReadViewStillRewindsInsideItself` beside it keeps the legal rewind. The
+pin, `TestReadViewRewindPastItsOwnStart`, is gone with it.
+
 **Confidence** reproduced. Read out of the running Java, JDK 17: a view of
 `data[4..7]` over the bytes `0..9`, seeked to 2 and read once, so its position
 is 3:
@@ -2924,6 +3525,15 @@ NegativeArraySizeException.
 through int32 so the cast is reproduced too. Pinned by
 `TestAvailableGoesNegativePastTheEnd`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 68. `Available` clamps the
+count at zero, which is the `Math.max(0, ...)`
+`RandomAccessInputStream.available` in the same package already has — the two
+implementations of the one idea now agree. The upper bound and the narrowing
+are unchanged. Tested by `TestAvailableIsNeverNegative` in
+`go/pdfio/javabug68_test.go`, over the four-byte view seeked to 20 that the
+running Java answers -16 for, with `TestAvailableStillCountsWhatIsLeft` beside
+it. The pin, `TestAvailableGoesNegativePastTheEnd`, is gone with it.
+
 **Confidence** reproduced. Read out of the running Java, JDK 17, a four-byte
 view seeked to 20:
 
@@ -2973,6 +3583,17 @@ claims a length its chunks cannot supply and a full read fails outright.
 **Where the Go carries it** `go/pdfio/readbuffer.go`, `ReadBuffer.Seek`, and
 `go/pdfio/readwritebuffer.go`, `ReadWriteBuffer.Write`. Pinned by
 `TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 69. `Seek`'s jump-to-the-end
+branch leaves the chunk pointer at the chunk size where the last chunk is
+exactly full, which is the first of the two answers the entry names: the read
+path already steps past a chunk pointer that has reached the chunk size, and
+the write path expands into a fresh chunk there. Tested by
+`TestWriteAtAnExactChunkBoundaryAppends` in `go/pdfio/javabug69_test.go` --
+eight bytes into an eight-byte chunk, seek to 8, write one more, and read all
+nine back -- with `TestSeekPastTheEndOfAPartChunkIsUnchanged` beside it for the
+last chunk that is not full. The pin,
+`TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`, is gone with it.
 
 **Confidence** reproduced. Read out of the running Java, JDK 17, an 8-byte chunk
 written full, seeked to 8, and written one more byte:
@@ -3117,6 +3738,24 @@ by whichever lock happened to be held.
 ConcurrentModificationException; it is a data race on the slice, which the race
 detector would name. Ported as written and said at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 72. `Close` takes the buffer
+list under `buffersLock`, the lock its other two users take, clears it there
+and walks the copy outside — the entry's second answer, and the only one
+compatible with entry 66's fix, since closing a buffer reaches `removeBuffer`,
+which takes that same lock. Tested by `TestCreateBufferDuringCloseIsNotARace`
+in `go/pdfio/javabug72_test.go`, which races `CreateBuffer` against `Close` for
+200 rounds; the race is what there is to see, so the test is conclusive under
+`go test -race`, where without the fix the detector names `Close` reading
+`buffers` against `CreateBuffer` appending to it. Entry 66's probe is built out
+under `-race` (`//go:build !race`), because it writes to a buffer while
+another goroutine closes it — a race on purpose, on a class Java documents as
+not thread safe.
+
+Running that detector also found a port defect, fixed in the same commit and
+not a Java bug: `ScratchFile.isClosed` is `volatile boolean` in the Java and
+was a plain `bool` here, read by `checkClosed` without a lock. It is an
+`atomic.Bool` now, which is what the `volatile` asks for.
+
 **Confidence** high, from the source: the three methods are twenty lines apart
 and two of them synchronize on the field that the third does not. Not
 reproduced — it needs the two threads to interleave inside the window, and a
@@ -3207,6 +3846,17 @@ guarding against exactly this.
 indexes `base25` with a negative remainder, which panics as Java's unchecked
 exception does. Said at the point of difference.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 74. `subsetTag` widens the
+hash to 64 bits before negating it, which is `Math.abs((long) hashCode())` —
+the entry's own answer, and the `long` was already there in the Java with only
+the cast in the wrong place. Every hash but `MinInt32` encodes to the same tag
+as before, which matters because the tag becomes part of the font's name in
+the file. Tested by `TestSubsetTagOfTheOneHashAbsCannotFix` in
+`go/pdfbox/pdmodel/font/javabug74_test.go`, whose expected value is derived —
+the base-25 encoding of 2147483648 — rather than read off the Java, since the
+Java raises there; `TestSubsetTagOfAnOrdinaryMapIsUnchanged` beside it keeps
+Java's `AAAAAL+`. `TestSubsetTagMatchesJava`, which held both, is gone.
+
 **Confidence** certain, and **measured**. A map whose hash is exactly
 `Integer.MIN_VALUE` needs one entry with `key ^ value == 0x80000000`, so
 `{0: Integer.MIN_VALUE}` does it, and the running Java answers
@@ -3260,6 +3910,15 @@ of the three possible outcomes.
 **Where the Go carries it** `go/tools/fdfcommands.go`, `noFormExit`, which is
 the one thing `exportForm` does not share between the two callers. Said there.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 75. `exportForm` answers 1
+for a document with no form whichever command asked, which is what
+`ExportFDF` already did and what the message on the line above says it is. The
+`noFormExit` helper, which existed only to keep the two apart, is gone. Tested
+by `TestExportXFDFRefusesADocumentWithNoForm` in
+`go/tools/fdfcommands_test.go` — the pin that asserted the 0 on purpose, now
+asserting the 1, beside `TestExportFDFRefusesADocumentWithNoForm`, which is
+the same case on the side that was already right.
+
 **Confidence** certain, from the source: it is a missing statement, not a
 subtlety. Not measured, because the `tools` module cannot be run in this
 environment — picocli is not in the local Maven repository and there is no
@@ -3310,6 +3969,15 @@ saves the document unchanged and answers 0, `importxfdf` crashes.
 `ImportXFDF.ImportFDFInto`, which dereferences the nil the same way and panics —
 which is what this port renders an unchecked exception as. Said at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 76. `ImportXFDF.ImportFDFInto`
+returns for a document with no form, which is the null check its twin has and
+the only difference between the two that was not deliberate — it still does not
+set `/NeedAppearances`, which is the difference that is. Tested by
+`TestImportXFDFOnADocumentWithNoFormSavesItUnchanged` in
+`go/tools/fdfcommands_test.go`, which is the pin renamed and turned around:
+the command now exits 0 and writes the document unchanged, as
+`TestImportFDFOnADocumentWithNoFormSavesItUnchanged` beside it does.
+
 **Confidence** certain, from the source. Not measured, for the reason entry 75
 gives.
 
@@ -3354,6 +4022,18 @@ one.
 `missingGlyph`, which takes the first UTF-16 unit of the character for the
 `'%c'` position and the whole rune for the code point, the same way. Said at the
 site.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 77. `missingGlyph` formats
+the whole character for the `'%c'` position, which is the entry's answer --
+Java's `new String(Character.toChars(codepoint))` -- and is what the code point
+beside it already named. The other detail of the Java is still carried: the
+name is the full font name from the name table, not the PostScript name.
+Tested by `TestMissingGlyphNamesTheWholeCharacter` in
+`go/pdfbox/glyphlayout/javabug77_test.go`, which asks a Bengali font to draw
+U+1F600 and asserts the message character for character; without the fix it
+carries the replacement character the unpaired surrogate becomes.
+`TestMissingGlyphIsRefused` beside it keeps the basic-plane message that was
+measured against the Java.
 
 **Confidence** certain, from the source. The Java's behaviour was not measured
 for a supplementary character: `canDisplayUpTo` has to answer the index of one,
@@ -3436,6 +4116,17 @@ says so: the command succeeds and the file is written.
 **Where the Go carries it** `go/tools/encrypt.go`, in the `certFileList`
 branch, which builds the recipient outside the loop the same way. Said at the
 site.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 79. The recipient is built
+inside the loop, which is the one line moved that the entry names, so each
+`-certFile` gets a recipient of its own. Tested by
+`TestEncryptToTwoCertificatesReachesBoth` in `go/tools/javabug79_test.go`,
+which encrypts for the two certificates the encryption fixtures already carry
+and opens the result with each of their keystores in turn. This also measures
+the entry, which said it could not be: the aliasing needs no `tools` module to
+run, only the port. Without the fix `test1.pfx` is refused with "The
+certificate matches none of 2 recipient entries", and the two entries the
+message prints are the same recipient twice.
 
 **Confidence** certain, from the source. Not measured: `tools` cannot be run
 here, because picocli is not in the local Maven repository and there is no
@@ -3604,6 +4295,16 @@ and `addAll` appends it, so a document merged with N others ends up with
 **Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility.go`,
 `mergeThreads`, which reads the destination twice and says so at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 82. `mergeThreads` clones
+the *source* catalog's `/Threads`, which is the one word the entry names, and
+takes the source catalog as an argument to do it. Tested by
+`TestMergeTakesTheSourcesThreads` in
+`go/pdfbox/multipdf/javabug82_test.go`, which merges a document of two threads
+into one of one and reads the titles back; without the fix the answer is
+`[dest one dest one]`, the destination's thread doubled and the source's gone.
+`TestMergeIntoADocumentWithNoThreadsTakesTheSources` covers the other arm of
+the same block, which answered nothing at all.
+
 **Confidence** certain, from the source: the two `getCOSArray` calls are on the
 same expression, five words apart.
 
@@ -3637,6 +4338,18 @@ technology.
 **Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility_structure.go`,
 `mergeMarkInfo`, which calls `SetSuspect` twice with the same arguments in the
 same order. Said at the site.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 83. The second line writes
+`SetUserProperties`, which is the setter its own question names and the one
+`PDMarkInfo` has for it, so `/UserProperties` is merged and `/Suspect` keeps
+the answer the line above it computed. Entry 37 is its other half: until that
+was fixed `SetSuspect` ignored its argument, so neither flag could be raised
+at all. Tested by `TestMergeMarkInfoKeepsBothFlags` in
+`go/pdfbox/multipdf/javabug83_test.go`, over the four combinations of the two
+source flags and the two destination ones. The test is in-package: reaching
+`mergeMarkInfo` through `AppendDocument` needs both documents to carry a
+structure tree with a non-empty parent tree, which is the condition the whole
+structure block sits under and not what is being tested.
 
 **Confidence** certain, from the source.
 
@@ -3687,5 +4400,18 @@ showing, or in full screen, is merged into a document that asks for nothing.
 `mergePageMode`, which is a function with the comment and no condition,
 because the port's `PageMode()` answers `PageModeUseNone` for the same reason
 and a condition there would read as though it did something.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 84. `mergePageMode` asks
+whether the destination's dictionary holds `/PageMode`, which is the question
+the entry names and the only one the accessor cannot answer. The source is
+asked the same way, so a source with no page mode writes none rather than a
+`UseNone` that says nothing — Java's dead branch would have written that, and
+it is the difference between "no preference" and "open with neither the
+outline nor the thumbnails". Tested by
+`TestMergePageModeTakesTheSourcesWhereThereIsNone` in
+`go/pdfbox/multipdf/javabug84_test.go`, with
+`TestMergePageModeKeepsTheDestinationsOwn` and
+`TestMergePageModeWritesNothingForASourceWithNone` beside it. In-package, for
+the same reason entry 83's test is.
 
 **Confidence** certain, from the source, both halves quoted above.

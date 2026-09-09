@@ -65,8 +65,8 @@ func (m *PDMarkInfo) IsSuspect() bool {
 
 // SetSuspect sets whether the tagging is suspect.
 //
-// JAVA BUG: it ignores its argument and always writes false, so /Suspects can
-// never be set through it. Ported as written; see migration/JAVA-BUGS.md entry 37.
+// Java ignores its argument and always writes false, so /Suspects could never
+// be raised through it. See migration/JAVA-BUGS.md 37.
 func (m *PDMarkInfo) SetSuspect(suspect bool) {
-	m.dictionary.SetBoolean(keySuspects, false)
+	m.dictionary.SetBoolean(keySuspects, suspect)
 }

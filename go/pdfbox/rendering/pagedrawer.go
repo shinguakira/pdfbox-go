@@ -210,23 +210,23 @@ func (d *PageDrawer) DrawTilingPattern(backend Backend, tilingPattern *pattern.P
 	savedFlipTG := d.flipTG
 	d.flipTG = true
 
-	d.setRenderingHints()
-	if err := d.ProcessTilingPatternMatrix(tilingPattern, c, colorSpace, patternMatrix); err != nil {
-		// Java restores none of the saved fields on this path: the restores
-		// below are plain statements rather than a finally, so an IOException
-		// out of processTilingPattern leaves the drawer pointed at the tile's
-		// graphics with the tile's line path. Ported as written. See
-		// migration/JAVA-BUGS.md.
-		return err
-	}
+	// Java's six restores are plain statements rather than a finally, so an
+	// IOException out of processTilingPattern leaves the drawer pointed at the
+	// tile's graphics with the tile's line path -- and the drawer is a field of
+	// the renderer, so the rest of the page is then drawn onto the tile. The
+	// three siblings that swap the same fields all use a finally. See
+	// migration/JAVA-BUGS.md 49.
+	defer func() {
+		d.flipTG = savedFlipTG
+		d.backend = savedBackend
+		d.linePath = savedLinePath
+		d.lastClips, d.hasLastClips = savedLastClips, savedHasLastClips
+		d.initialClip = savedInitialClip
+		d.clipWindingRule = savedClipWindingRule
+	}()
 
-	d.flipTG = savedFlipTG
-	d.backend = savedBackend
-	d.linePath = savedLinePath
-	d.lastClips, d.hasLastClips = savedLastClips, savedHasLastClips
-	d.initialClip = savedInitialClip
-	d.clipWindingRule = savedClipWindingRule
-	return nil
+	d.setRenderingHints()
+	return d.ProcessTilingPatternMatrix(tilingPattern, c, colorSpace, patternMatrix)
 }
 
 // clampColor keeps a converted component inside 0..1.
@@ -1156,15 +1156,17 @@ func (d *PageDrawer) ShowAnnotation(a annotation.PDAnnotation) error {
 		rotated.Rotate(float64(d.CurrentPage().Rotation()) * math.Pi / 180)
 		rotated.Translate(float64(-rect.LowerLeftX()), float64(-rect.UpperRightY()))
 		d.backend.SetTransform(rotated)
-		if err := d.PDFGraphicsStreamEngine.ShowAnnotation(a); err != nil {
-			// Java restores neither the transform nor the appearance on this
-			// path: the two lines below are plain statements rather than a
-			// finally. Ported as written. See migration/JAVA-BUGS.md.
-			return err
-		}
-		d.backend.SetTransform(savedTransform)
-		a.SetAppearance(appearance) // restore
-		return nil
+		// Java's two restores are plain statements rather than a finally, so an
+		// IOException out of the annotation leaves the page's backend holding
+		// this annotation's rotation for every annotation after it -- and
+		// leaves the document holding the appearance constructed above in place
+		// of the one the file carried, which outlives the render. See
+		// migration/JAVA-BUGS.md 50.
+		defer func() {
+			d.backend.SetTransform(savedTransform)
+			a.SetAppearance(appearance) // restore
+		}()
+		return d.PDFGraphicsStreamEngine.ShowAnnotation(a)
 	}
 	return d.PDFGraphicsStreamEngine.ShowAnnotation(a)
 }

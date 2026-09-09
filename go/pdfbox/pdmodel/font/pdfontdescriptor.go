@@ -424,13 +424,20 @@ func (d *PDFontDescriptor) setPDStream(key *cos.Name, stream *common.PDStream) {
 // Panose returns the PANOSE classification of the font, or nil where the
 // descriptor gives none.
 //
-// JAVA-BUGS entry 14: a /Style dictionary with no /Panose entry makes Java
-// throw NullPointerException rather than returning null. Ported as written; the
-// Go panics where Java does.
+// JAVA-BUGS 14: a /Style dictionary with no /Panose entry makes Java
+// throw NullPointerException rather than returning null. The port answers nil,
+// which is what the method answers for every other shape it cannot read.
 func (d *PDFontDescriptor) Panose() *PDPanose {
 	style := d.dic.GetCOSDictionary(cos.Style)
 	if style != nil {
-		panose := style.GetDictionaryObject(cos.Panose).(*cos.StringObj)
+		// Java casts without checking, so a /Style with no /Panose throws.
+		// The method answers null for a descriptor with no /Style at all, one
+		// line above, and for a /Panose too short, two lines below. See
+		// migration/JAVA-BUGS.md 14.
+		panose, isString := style.GetDictionaryObject(cos.Panose).(*cos.StringObj)
+		if !isString {
+			return nil
+		}
 		bytes := panose.Bytes()
 		if len(bytes) >= PanoseLength {
 			return NewPDPanose(bytes)

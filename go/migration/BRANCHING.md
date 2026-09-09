@@ -107,21 +107,53 @@ plus the raster backend decision `PLAN.md` says to take before starting.
 | `track/imageio` | **nothing** | today — `PDImage.Image()` already answers pixels |
 | `track/multipdf` | **nothing** | today — slice 7's writer is all it needs |
 | `track/raster` | `track/imageio`, for one task of it | today; merge after `track/imageio` |
+| `track/java-bug-fixes` | **nothing**, and **last** | once every other branch is merged — see below |
 
-The last four were added once every slice had merged, from a survey that
+Four of the last five were added once every slice had merged, from a survey that
 compared all 891 in-scope Java classes and 237 Java test classes against the Go
 tree. They cover what `PLAN.md` counts in scope and no slice claimed. Each has a
 file in [`tasks/`](tasks/README.md); the order to take them in is there too, and
 the short version is **`track/test-backfill` first**, because it is the only one
 that can find defects in work already merged rather than adding more of it.
 
-`PLAN.md` was not changed to add them. It already counted the work; what was
-missing was a branch, and branches are this file's business.
+`PLAN.md` was not changed to add those four. It already counted the work; what
+was missing was a branch, and branches are this file's business.
+
+**`track/java-bug-fixes` is different, and `PLAN.md` does say so.** It is not
+work `PLAN.md` counted and forgot to assign — it is work the plan's own rules
+forbade, right up until the port was finished. A branch that suspends one of
+those rules belongs in the document that states them.
 
 `xmpbox` is worth calling out: 74 files, 12.3k lines, and `pdfbox` does not
 depend on it — metadata comes back as a raw stream that `xmpbox` parses
 separately. It is the one piece of this project with no ordering constraint at
 all, so it is the right thing to hand to a second person on day one.
+
+## `track/java-bug-fixes` — the one branch that is not a port
+
+Every branch above ports Java into Go and reproduces its defects on purpose.
+`JAVA-BUGS.md` is the record: 84 entries, about seventy of them carried in the
+Go deliberately, each with a comment at the site saying so.
+
+**`track/java-bug-fixes` fixes them in the Go.** It is the only branch that
+makes the Go behave differently from the reference, and its task file
+[`tasks/track-java-bug-fixes.md`](tasks/track-java-bug-fixes.md) is the only
+one where the standing rule "never fix a bug that is in the Java" is suspended.
+It still changes no Java, and it deletes no entry from `JAVA-BUGS.md`: a fixed
+bug is still a bug in the Java, and the entry gains a **Fixed in the Go** line
+rather than going away.
+
+**It goes last, and the reason is not caution.** Every branch before it adds
+entries to the file it works from, so taking it early means doing it twice. And
+while porting is still happening, "the Go does X, is that a defect?" is answered
+by reading the Java — an answer that stops working the moment the Go is allowed
+to differ on purpose. Finishing the port first keeps that answer cheap for as
+long as it is needed.
+
+Its first task is a triage of all 84 entries into fix, keep, not-carried and
+test-only, written down in `STATUS.md` before any code moves. Fix is the
+default; the four reasons an entry may be kept are enumerated in the task file
+and "it looked risky" is not one of them.
 
 ## CAUTION — finish the slice
 

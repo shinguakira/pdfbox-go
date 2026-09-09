@@ -279,10 +279,10 @@ func (p *fileSystemFontProvider) createFSIgnored(file string, format FontFormat,
 			hash = computed
 		}
 	}
-	// JAVA-BUGS entry 21: Java passes null for the parent here, so Font() on an
-	// ignored entry dereferences it. Ported as written; the Go panics where
-	// Java throws NullPointerException.
-	return newFSFontInfo(file, format, postScriptName, nil, 0, 0, 0, 0, 0, nil, nil, hash,
+	// JAVA-BUGS 21: Java passes null for the parent here, where the other two
+	// call sites pass `this`, so Font() on an ignored entry dereferences it —
+	// `parent.cache` is the first thing that method reads.
+	return newFSFontInfo(file, format, postScriptName, nil, 0, 0, 0, 0, 0, nil, p, hash,
 		lastModified(file))
 }
 
@@ -441,10 +441,11 @@ func writeFontInfo(writer *bufio.Writer, fontInfo *fsFontInfo) error {
 	if fontInfo.panose != nil {
 		bytes := fontInfo.panose.Bytes()
 		for i := 0; i < 10; i++ {
-			// JAVA-BUGS entry 19: Java widens the signed byte before
+			// JAVA-BUGS 19: Java widens the signed byte before
 			// Integer.toHexString, so a Panose value of 0x80 or more writes
-			// eight hex digits where the reader expects two. Ported as written.
-			str := toHexString(int(int8(bytes[i])))
+			// eight hex digits where the reader takes two. The reader's own
+			// `& 0xff` says what the writer meant, and this is that.
+			str := toHexString(int(bytes[i]))
 			if len(str) == 1 {
 				writer.WriteString("0")
 			}
@@ -801,10 +802,7 @@ func (p *fileSystemFontProvider) addTrueTypeFontImpl(fontHeaders *ttf.FontHeader
 			registryName := reg[:strings.IndexByte(reg, 0)]
 			ord := string(bytes[76 : 76+64])
 			orderName := ord[:strings.IndexByte(ord, 0)]
-			// JAVA-BUGS entry 20: Java ANDs the two halves of the supplement
-			// where it means to OR them, so the value is always zero. Ported as
-			// written.
-			supplementVersion := int(int8(bytes[140])) << 8 & (int(bytes[141]) & 0xFF)
+			supplementVersion := cidSupplementVersion(bytes[140], bytes[141])
 			ros = NewCIDSystemInfo(registryName, orderName, supplementVersion)
 		}
 		format = FontFormatTTF
@@ -917,4 +915,20 @@ func computeHash(is io.Reader) (string, error) {
 		}
 	}
 	return strconv.FormatUint(uint64(crc.Sum32()), 16), nil
+}
+
+// cidSupplementVersion joins the two bytes of a CID system info supplement.
+//
+// Java writes `bytes[140] << 8 & (bytes[141] & 0xFF)`: an AND between a value
+// whose low eight bits are zero and one whose high bits are zero, which is zero
+// for every input. The two bytes are the halves of one number.
+//
+// Both bytes are read unsigned. The field is `supplementVersion` at offset 140
+// of the AAT "gcid" table, which is a uint16 -- the offsets the caller uses say
+// so: version, format and size take 8 bytes, then registry 2, registryName 64,
+// order 2, orderName 64, which lands the next field at 140. Java's `bytes[140]
+// << 8` sign-extends, so even the minimal repair of the `&` would answer -255
+// for the bytes FF 01 rather than 65281. See migration/JAVA-BUGS.md 20.
+func cidSupplementVersion(high, low byte) int {
+	return int(high)<<8 | int(low)
 }

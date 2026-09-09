@@ -25,13 +25,14 @@ const commonFixture = "../../../../pdfbox/src/test/resources/org/apache/pdfbox/p
 
 // dctStopFilters is the stop filter list all three PDStreamTest cases build.
 //
-// Java fills it with COSName.DCT_DECODE.toString(), which is "COSName{DCTDecode}",
-// and createInputStream compares each filter's getName(), which is "DCTDecode".
-// The two never match, so the stop list is inert -- a defect in the Java test,
-// not in PDStream. The port copies the strings the Java builds rather than the
-// ones it meant to; see migration/JAVA-BUGS.md.
+// Java fills it with COSName.DCT_DECODE.toString(), which is
+// "COSName{DCTDecode}", and createInputStream compares each filter's getName(),
+// which is "DCTDecode". The two never match, so the stop list is inert -- a
+// defect in the Java test, not in PDStream, and the Go test is what a fix
+// branch can change. The names are what every caller in the main tree passes,
+// PDInlineImage and SampledImageReader alike. See migration/JAVA-BUGS.md 46.
 func dctStopFilters() []string {
-	return []string{cos.DCTDecode.String(), cos.DCT.String()}
+	return []string{cos.DCTDecode.Name(), cos.DCT.Name()}
 }
 
 // TestCreateInputStreamNullFilters is PDStreamTest.testCreateInputStreamNullFilters,

@@ -848,8 +848,14 @@ func parseEndPacket(metadata *xmpbox.XMPMetadata, pi *ProcessingInstruction) err
 			"Expected xpacket 'end' attribute (must be present and placed in first)")
 	}
 	// Java indexes the sixth character without checking the length, which
-	// raises StringIndexOutOfBoundsException for a shorter instruction. See
-	// migration/JAVA-BUGS.md.
+	// raises StringIndexOutOfBoundsException for a shorter instruction --
+	// unchecked, so it escapes the XmpParsingException a caller catches. A
+	// shorter instruction gets the same answer as a sixth character that is
+	// neither 'r' nor 'w'. See migration/JAVA-BUGS.md 56.
+	if len(xpackData) < 6 {
+		return NewXmpParsingError(XpacketBadEnd,
+			"Expected xpacket 'end' attribute with value 'r' or 'w' ")
+	}
 	end := xpackData[5]
 	// check value (5 for end='X')
 	if end != 'r' && end != 'w' {

@@ -2,7 +2,6 @@ package text
 
 import (
 	"strings"
-	"unicode/utf16"
 
 	"golang.org/x/text/unicode/bidi"
 )
@@ -33,15 +32,16 @@ func handleDirection(word string) string {
 		run := order.Run(i)
 		runText := run.String()
 		if run.Direction() == bidi.RightToLeft {
-			// JAVA-BUGS entry 15: Java walks the run backwards with charAt, a
-			// UTF-16 code unit at a time, so the two halves of a character
-			// outside the basic plane come out in the wrong order and no longer
-			// pair. Ported as written: the units are reversed here too, and the
-			// halves that no longer pair become the replacement character, which
-			// is what Java's String becomes once it is written out as UTF-8.
-			units := utf16.Encode([]rune(runText))
-			for j := len(units) - 1; j >= 0; j-- {
-				character := rune(units[j])
+			// Java walks the run backwards with charAt, a UTF-16 code unit at a
+			// time, so the two halves of a character outside the basic plane
+			// come out in the wrong order, no longer pair, and the character is
+			// destroyed. This walks it backwards by code point, which is what
+			// visual ordering means and what StringBuilder.reverse -- the same
+			// class's other reversal, in TextPosition.getVisuallyOrderedUnicode
+			// -- does. See migration/JAVA-BUGS.md 15.
+			characters := []rune(runText)
+			for j := len(characters) - 1; j >= 0; j-- {
+				character := characters[j]
 				if mirrored, ok := mirroringCharMap[character]; ok {
 					character = mirrored
 				}

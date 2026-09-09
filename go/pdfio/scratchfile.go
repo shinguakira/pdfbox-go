@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"sync/atomic"
 )
 
 // The three sizes ScratchFile declares.
@@ -37,13 +38,13 @@ var ErrScratchFileClosed = errors.New("pdfio: scratch file already closed")
 //
 // Port of ScratchFile, which implements RandomAccessStreamCache.
 //
-// Safe for concurrent use, with the one hazard Java has: the two locks are
-// taken in both orders -- getNewPage holds pagesLock and reaches ioLock through
-// enlarge, while Close holds ioLock and reaches pagesLock through a buffer's
-// markPagesAsFree. A goroutine writing while another closes can deadlock. That
-// is Java's, ported as written; see migration/JAVA-BUGS.md entry 66. The
-// buffer list is the second hazard, entry 72: Close reads it under ioLock
-// while CreateBuffer holds buffersLock.
+// Safe for concurrent use. Java takes its two locks in both orders --
+// getNewPage holds the page lock and reaches ioLock through enlarge, while
+// close holds ioLock and reaches the page lock through a buffer's
+// markPagesAsFree -- so a thread writing while another closes can deadlock;
+// Close here releases ioLock before it closes the buffers. See
+// migration/JAVA-BUGS.md 66. The buffer list is the second hazard, entry 72:
+// Close reads it under ioLock while CreateBuffer holds buffersLock.
 type ScratchFile struct {
 	// ioLock guards the temporary file and the in-memory page array, which is
 	// Java's ioLock.
@@ -73,7 +74,9 @@ type ScratchFile struct {
 	buffersLock sync.Mutex
 	buffers     []*ScratchFileBuffer
 
-	isClosed bool
+	// isClosed is Java's `volatile boolean isClosed`: checkClosed reads it
+	// without taking a lock, so it needs the visibility the volatile gives.
+	isClosed atomic.Bool
 }
 
 var _ StreamCache = (*ScratchFile)(nil)
@@ -385,7 +388,7 @@ func (s *ScratchFile) writePage(pageIdx int, page []byte) error {
 
 // checkClosed reports whether this page handler has already been closed.
 func (s *ScratchFile) checkClosed() error {
-	if s.isClosed {
+	if s.isClosed.Load() {
 		return ErrScratchFileClosed
 	}
 	return nil
@@ -424,9 +427,10 @@ func (s *ScratchFile) markPagesAsFree(pageIndexes []int, off, count int) {
 	defer s.pagesLock.Unlock()
 
 	// Java walks from off to count rather than to off+count, so a release that
-	// starts past the first index frees fewer pages than it was given. Ported
-	// as written; see migration/JAVA-BUGS.md entry 62.
-	for aIdx := off; aIdx < count; aIdx++ {
+	// starts past the first index frees fewer pages than it was given -- and
+	// Clear passes an offset of 1, so every clear leaked the buffer's last
+	// page. See migration/JAVA-BUGS.md 62.
+	for aIdx := off; aIdx < off+count; aIdx++ {
 		pageIdx := pageIndexes[aIdx]
 		if pageIdx >= 0 && pageIdx < s.pageCount && !s.freePages[pageIdx] {
 			s.freePages[pageIdx] = true
@@ -451,23 +455,37 @@ func (s *ScratchFile) Close() error {
 	var ioexc error
 
 	s.ioLock.Lock()
-	if s.isClosed {
+	if s.isClosed.Load() {
 		s.ioLock.Unlock()
 		return nil
 	}
-	s.isClosed = true
-	// The buffer list is read and cleared here under ioLock, while CreateBuffer
-	// and removeBuffer mutate it under buffersLock -- so a buffer created
-	// against a close in flight can be missed and left reporting itself open
-	// over a scratch file that is gone. That is Java: those two synchronize on
-	// the list and close does not. Ported as written; see
-	// migration/JAVA-BUGS.md entry 72.
-	for _, buffer := range s.buffers {
+	s.isClosed.Store(true)
+	// Java reads and clears the buffer list here under ioLock, where
+	// CreateBuffer and removeBuffer take the lock the list has -- an ArrayList
+	// appended to while it is iterated, and here a data race on the slice. The
+	// list is taken under its own lock, and walked outside it, which is the
+	// entry's second answer and the only one compatible with entry 66: closing
+	// a buffer reaches removeBuffer, which takes that same lock. See
+	// migration/JAVA-BUGS.md 72.
+	s.ioLock.Unlock()
+
+	s.buffersLock.Lock()
+	buffers := s.buffers
+	s.buffers = nil
+	s.buffersLock.Unlock()
+	// Java closes the buffers here, still holding ioLock, and each one reaches
+	// markPagesAsFree, which takes the page lock -- while getNewPage holds the
+	// page lock and reaches ioLock through enlarge. The two orders deadlock. A
+	// close does not need ioLock to close the buffers: isClosed is already set,
+	// so enlarge refuses, and the list has already been taken. See
+	// migration/JAVA-BUGS.md 66.
+	for _, buffer := range buffers {
 		if buffer != nil && !buffer.IsClosed() {
 			buffer.closeBuffer(false)
 		}
 	}
-	s.buffers = nil
+
+	s.ioLock.Lock()
 	if s.file != nil {
 		if err := s.file.Close(); err != nil {
 			ioexc = err

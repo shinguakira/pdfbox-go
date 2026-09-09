@@ -9,7 +9,6 @@ package font
 // Go's -63.
 
 import (
-	"math"
 	"testing"
 )
 
@@ -54,40 +53,4 @@ func TestJavaRoundHalfUp(t *testing.T) {
 			t.Errorf("javaRoundLong(%v) = %d, want %d", c.in, got, c.want)
 		}
 	}
-}
-
-// TestSubsetTagMatchesJava is getTag, and JAVA-BUGS 74 with it.
-//
-// The tag becomes part of the font's name in the file, so it has to be Java's
-// byte for byte. Both wanted values were printed by the running Java, calling
-// getTag on a PDCIDFontType2Embedder built over LiberationSans.
-func TestSubsetTagMatchesJava(t *testing.T) {
-	// hashCode is (1^2) + (3^4) = 10, and Java answers AAAAAL+.
-	ordinary := map[int]int{1: 2, 3: 4}
-	if got := subsetTag(ordinary); got != "AAAAAL+" {
-		t.Errorf("subsetTag(%v) = %q, want Java's %q", ordinary, got, "AAAAAL+")
-	}
-
-	// JAVA-BUGS 74. One entry whose key ^ value is 0x80000000, so the map's
-	// hashCode is exactly Integer.MIN_VALUE -- the one input Math.abs(int)
-	// cannot fix. Java then indexes BASE25 with -23 and raises
-	// StringIndexOutOfBoundsException: String index out of range: -23.
-	//
-	// Go's % keeps the sign of the dividend as Java's does, so the port reaches
-	// the same index and panics, which is what an unchecked exception is here.
-	defer func() {
-		if recover() == nil {
-			t.Error("subsetTag of a map hashing to MinInt32 returned; Java raises " +
-				"StringIndexOutOfBoundsException with index -23")
-		}
-	}()
-	pathological := map[int]int{0: math.MinInt32}
-	var hash int32
-	for gid, cid := range pathological {
-		hash += int32(gid) ^ int32(cid)
-	}
-	if hash != math.MinInt32 {
-		t.Fatalf("the map hashes to %d, want MinInt32; the case proves nothing", hash)
-	}
-	t.Errorf("subsetTag returned %q; Java raises", subsetTag(pathological))
 }

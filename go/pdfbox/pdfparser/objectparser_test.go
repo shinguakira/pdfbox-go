@@ -54,9 +54,12 @@ func TestParseCOSName(t *testing.T) {
 		{"/A#20B", "A B"},
 		// '#' is only an escape when two valid hex digits follow it
 		{"/A#ZZ", "A#ZZ"},
-		// A '#' with only one digit before the end of input takes Java's
-		// premature-EOF branch, which logs and drops what it had read.
-		{"/A#2", "A"},
+		// A '#' with only one digit before the end of input takes the
+		// premature-EOF branch, which logs and — since
+		// `track/java-bug-fixes`, JAVA-BUGS 8 — keeps what it had read. Java
+		// answers "A" here, dropping both bytes; the branch two lines above
+		// keeps a malformed escape's '#' and this one now does too.
+		{"/A#2", "A#2"},
 		// with a following byte there is no premature EOF, so the '#' is kept
 		{"/A#2Z ", "A#2Z"},
 		{"/Name/Next", "Name"},

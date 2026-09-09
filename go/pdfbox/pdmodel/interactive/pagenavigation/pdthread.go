@@ -110,9 +110,9 @@ func NewPDThreadBeadOf(b *cos.Dictionary) *PDThreadBead {
 // NewPDThreadBead creates a new bead whose next and previous are itself.
 func NewPDThreadBead() *PDThreadBead {
 	b := &PDThreadBead{bead: cos.NewDictionary()}
-	// JAVA BUG 35: COSName.BEAD is "BEAD" and the specification says /Bead.
-	// Ported as written; see migration/JAVA-BUGS.md.
-	b.bead.SetItem(cos.Type, cos.BEAD)
+	// Java's COSName.BEAD is "BEAD"; the specification says /Bead. See
+	// migration/JAVA-BUGS.md 35.
+	b.bead.SetItem(cos.Type, cos.Bead)
 	b.setNextBead(b)
 	b.setPreviousBead(b)
 	return b

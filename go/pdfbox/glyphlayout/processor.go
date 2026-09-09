@@ -411,24 +411,20 @@ func (p *Processor) scriptTagsFor(program *ttf.TrueTypeFont, bidiLevel int) []st
 
 // missingGlyph is the failure checkMissingGlyphs throws.
 //
-// Port of it, message and all. Two details of the Java are carried rather than
-// improved on:
+// Port of it, message and all. One detail of the Java is carried rather than
+// improved on: the name is `awtFont.getName()`, which for a font read from a
+// stream is the full font name in its name table -- "Lohit Bengali", not the
+// PostScript name "Lohit-Bengali" that fontbox answers.
 //
-//   - The name is `awtFont.getName()`, which for a font read from a stream is
-//     the full font name in its name table -- "Lohit Bengali", not the
-//     PostScript name "Lohit-Bengali" that fontbox answers.
-//   - `'%c'` is fed a `char`, which is one UTF-16 code unit, while the code
-//     point beside it is the whole character. For anything outside the basic
-//     plane Java prints half a surrogate pair there, and so does this. See
-//     migration/JAVA-BUGS.md.
+// One is not. Java feeds `'%c'` a `char`, which is one UTF-16 code unit, while
+// the code point beside it is the whole character, so for anything outside the
+// basic plane the message carries half a surrogate pair -- ill-formed, and
+// printed as a replacement character or as nothing. The character named is the
+// whole one. See migration/JAVA-BUGS.md 77.
 func missingGlyph(program *ttf.TrueTypeFont, r rune) error {
-	unit := r
-	if r > 0xFFFF {
-		unit = 0xD800 + (r-0x10000)>>10
-	}
 	return fmt.Errorf(
 		"Missing glyph in font '%s' for the character '%c', codePoint: %d (U+%04x).",
-		fontName(program), unit, r, r)
+		fontName(program), r, r, r)
 }
 
 // fontName answers the font's name for a message, or a placeholder.

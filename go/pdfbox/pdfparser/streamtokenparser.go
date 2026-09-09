@@ -309,11 +309,15 @@ func (p *StreamTokenParser) parseBeginInlineImage() (any, error) {
 			slog.Warn("empty inline image", "offset", p.offsetOrEOF())
 		}
 		beginImageOP.SetImageData(imageData.ImageData())
-		p.inlineImageDepth--
 	} else {
 		slog.Warn("unexpected token", "token", nextToken, "offset", p.offsetOrEOF(),
 			"expected", operator.BeginInlineImageData)
 	}
+	// Java decrements inside the branch above, so a malformed inline image
+	// leaves the depth at 1 and every later BI in the same stream is refused as
+	// nested. The counter guards against a BI *inside* a BI (PDFBOX-6038), and
+	// this one has ended either way. See migration/JAVA-BUGS.md 9.
+	p.inlineImageDepth--
 	return beginImageOP, nil
 }
 
@@ -380,6 +384,24 @@ func (p *StreamTokenParser) parseInlineImageData() (any, error) {
 			return nil, err
 		}
 		if atEOF {
+			// The two bytes in hand are written on the *next* turn, so Java
+			// drops them when the input runs out: a truncated inline image
+			// comes out two bytes shorter than it is on disk, silently. See
+			// migration/JAVA-BUGS.md 10.
+			//
+			// Unless they are the EI. An image that ends `...EI` with nothing
+			// behind it reaches here too -- `atEndOfInlineImage` wants a
+			// whitespace after the EI and there is none -- and there the two
+			// bytes are the terminator, not data. Java drops them by accident
+			// in both cases and is right in one.
+			if lastByte != 'E' || currentByte != 'I' {
+				if lastByte != eof {
+					imageData.WriteByte(byte(lastByte))
+				}
+				if currentByte != eof {
+					imageData.WriteByte(byte(currentByte))
+				}
+			}
 			break
 		}
 		imageData.WriteByte(byte(lastByte))

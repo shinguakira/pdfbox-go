@@ -30,13 +30,17 @@ func assertBaseContract(t *testing.T, b Base) {
 
 // assertBytesEqual ports the testByteArrays helper.
 //
-// This looks wrong and is ported as written. The Java helper asserts
-// byteArr1.length against itself, so it never checks that the lengths match —
-// it only compares the first len(want) bytes. Strengthening it here would mean
-// the Go suite and the Java suite no longer verify the same thing, so the gap
-// is carried over with the rest.
+// The Java helper asserts byteArr1.length against itself, so it never checks
+// that the lengths match and a result that is right as far as it goes but too
+// long passes. The lengths are compared here: this is a defect in a Java test,
+// and the Go test is what a fix branch can change. See
+// migration/JAVA-BUGS.md 4.
 func assertBytesEqual(t *testing.T, want, got []byte) {
 	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %d bytes, want %d (got %q, want %q)",
+			len(got), len(want), got, want)
+	}
 	for i := range want {
 		if i >= len(got) {
 			// Java would throw ArrayIndexOutOfBoundsException here; failing is

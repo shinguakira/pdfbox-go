@@ -221,17 +221,19 @@ func (d *FDFDictionary) SetStatus(status string) { d.fdf.SetString(cos.Status, s
 // changes the document too.
 //
 // Java reads each entry with COSArray.get rather than getObject, so an entry
-// written as an indirect reference raises ClassCastException; the port carries
-// that, and panics. See migration/JAVA-BUGS.md.
+// written as an indirect reference raises ClassCastException. Read with
+// GetObject, which is what Fields, Annotations and FDFField.Kids all use. See
+// migration/JAVA-BUGS.md 45.
 func (d *FDFDictionary) Pages() *common.COSArrayList[*FDFPage] {
 	var retval *common.COSArrayList[*FDFPage]
 	pageArray := d.fdf.GetCOSArray(cos.Pages)
 	if pageArray != nil {
 		pages := make([]*FDFPage, 0, pageArray.Size())
 		for i := 0; i < pageArray.Size(); i++ {
-			dictionary, isDictionary := pageArray.Get(i).(*cos.Dictionary)
+			dictionary, isDictionary := pageArray.GetObject(i).(*cos.Dictionary)
 			if !isDictionary {
-				panic(fmt.Sprintf("fdf: %T cannot be cast to COSDictionary", pageArray.Get(i)))
+				panic(fmt.Sprintf("fdf: %T cannot be cast to COSDictionary",
+					pageArray.GetObject(i)))
 			}
 			pages = append(pages, NewFDFPageOf(dictionary))
 		}

@@ -103,10 +103,9 @@ func newTiffSchemaAs(metadata xmptype.MetadataLike, prefix string) (Schema, erro
 
 // ArtistProperty returns the artist property, or nil.
 //
-// The field is declared as a ProperName and this getter asks for one, but
-// SetArtist stores a TextType, which is not a ProperNameType; so the value set
-// through SetArtist is never visible here. Ported as written; see
-// migration/JAVA-BUGS.md.
+// The field is declared as a ProperName and this getter asks for one; Java's
+// SetArtist stored a TextType, which is not a ProperNameType, so the value it
+// set was never visible here. See migration/JAVA-BUGS.md 54.
 func (s *TiffSchema) ArtistProperty() *xmptype.ProperNameType {
 	return PropertyAs[*xmptype.ProperNameType](&s.XMPSchema, TiffArtist)
 }
@@ -121,8 +120,17 @@ func (s *TiffSchema) Artist() string {
 }
 
 // SetArtist sets the name of the artist.
+//
+// Java builds a plain TextType here, which its own getter cannot see. Built
+// from the field's declared type, ProperName, which is what InstanciateSimple
+// reads the declaration for. See migration/JAVA-BUGS.md 54.
 func (s *TiffSchema) SetArtist(text string) error {
-	return SetTextValue(&s.XMPSchema, TiffArtist, text)
+	property, err := s.InstanciateSimple(TiffArtist, text)
+	if err != nil {
+		return err
+	}
+	s.AddProperty(property)
+	return nil
 }
 
 // ImageDescriptionProperty returns the image description alternative, or nil.

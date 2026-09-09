@@ -353,7 +353,7 @@ func (m *PDFMergerUtility) AppendDocument(destinationDoc, source *pdmodel.PDDocu
 	if err := m.mergeAcroForm(cloner, destCatalog, srcCatalog); err != nil {
 		return err
 	}
-	if err := mergeThreads(cloner, destCatalog); err != nil {
+	if err := mergeThreads(cloner, destCatalog, srcCatalog); err != nil {
 		return err
 	}
 	if err := mergeNames(cloner, destCatalog, srcCatalog); err != nil {
@@ -383,11 +383,15 @@ func (m *PDFMergerUtility) AppendDocument(destinationDoc, source *pdmodel.PDDocu
 
 // mergeThreads is Java's /Threads block.
 //
-// It reads the *destination* catalog for the array it clones -- see
-// migration/JAVA-BUGS.md -- so the source's threads are never merged and the
-// destination's are cloned into themselves.
-func mergeThreads(cloner *PDFCloneUtility, destCatalog *pdmodel.PDDocumentCatalog) error {
+// Java reads the *destination* catalog for the array it clones as well as for
+// the one it merges into, so the source's threads were never merged and the
+// destination's were cloned into themselves -- doubling every merge. The
+// clone is of the source, like every other block here. See
+// migration/JAVA-BUGS.md 82.
+func mergeThreads(cloner *PDFCloneUtility, destCatalog,
+	srcCatalog *pdmodel.PDDocumentCatalog) error {
 	destDictionary := destCatalog.COSObject().(*cos.Dictionary)
+	srcDictionary := srcCatalog.COSObject().(*cos.Dictionary)
 	destThreads := destDictionary.GetCOSArray(cos.Threads)
 
 	// A nil *cos.Array in a cos.Base is not a nil cos.Base, so the guard
@@ -395,7 +399,7 @@ func mergeThreads(cloner *PDFCloneUtility, destCatalog *pdmodel.PDDocumentCatalo
 	// does not fire on one. Java reaches it because a Java null is a null
 	// whatever its static type; the port has to not make the call.
 	var srcThreads *cos.Array
-	if toClone := destDictionary.GetCOSArray(cos.Threads); toClone != nil {
+	if toClone := srcDictionary.GetCOSArray(cos.Threads); toClone != nil {
 		cloned, err := cloner.CloneForNewDocument(toClone)
 		if err != nil {
 			return err
@@ -503,16 +507,24 @@ func mergeOutline(cloner *PDFCloneUtility, destCatalog, srcCatalog *pdmodel.PDDo
 	return nil
 }
 
-// mergePageMode is Java's /PageMode block, which cannot do anything: see
-// migration/JAVA-BUGS.md.
+// mergePageMode is Java's /PageMode block: the destination takes the source's
+// page mode where it has none of its own.
+//
+// Java asks whether the destination's page mode is null, and `getPageMode`
+// answers USE_NONE for a document with no /PageMode and never null, so its
+// branch is dead and a merge into an empty destination -- which is what
+// `pdfbox merge` starts with -- loses the source's page mode. The question is
+// whether the entry is there. The source is asked the same way, so a source
+// with no /PageMode writes none rather than a UseNone that says nothing. See
+// migration/JAVA-BUGS.md 84.
 func mergePageMode(destCatalog, srcCatalog *pdmodel.PDDocumentCatalog) {
-	// Java asks whether the destination's page mode is null and sets the
-	// source's where it is. `getPageMode` answers USE_NONE for a document with
-	// no /PageMode and never null, so the branch is dead in the Java and is
-	// dead here; the port keeps the shape and the comment rather than a
-	// condition that reads as though it did something.
-	_ = destCatalog
-	_ = srcCatalog
+	if destCatalog.COSObject().(*cos.Dictionary).ContainsKey(cos.PageMode) {
+		return
+	}
+	if !srcCatalog.COSObject().(*cos.Dictionary).ContainsKey(cos.PageMode) {
+		return
+	}
+	destCatalog.SetPageMode(srcCatalog.PageMode())
 }
 
 // mergePageLabels is Java's /PageLabels block.

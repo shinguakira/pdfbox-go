@@ -204,14 +204,16 @@ func (LZW) Encode(w io.Writer, rawData io.Reader, parameters *cos.Dictionary) er
 
 // findPatternCode returns the code of a pattern already in the table, or -1.
 //
-// Port of LZWFilter.findPatternCode. Its first branch returns the byte itself
-// for a pattern of one, which is a signed byte in Java and so negative from
-// 0x80 up; nothing reaches it, because encode only asks about patterns of two
-// or more. See migration/JAVA-BUGS.md.
+// Port of LZWFilter.findPatternCode. Java's first branch returns the byte
+// itself for a pattern of one, and a Java byte is signed, so it comes back
+// negative from 0x80 up where the comment says the index matches the value;
+// nothing reaches it, because encode only asks about patterns of two or more.
+// Read unsigned here, which is the mask the encoder's other single-byte code
+// writes. See migration/JAVA-BUGS.md 28.
 func findPatternCode(codeTable [][]byte, pattern []byte) int {
 	// for the first 256 entries, index matches value
 	if len(pattern) == 1 {
-		return int(int8(pattern[0]))
+		return int(pattern[0])
 	}
 
 	// no need to test the first 256 + 2 entries against longer patterns

@@ -86,14 +86,18 @@ func (v *ReadView) Seek(offset int64, whence int) (int64, error) {
 // Rewind seeks backwards within the view.
 //
 // Port of the overridden rewind(int), which rewinds the underlying source
-// rather than seeking the view -- and which, unlike Seek, checks nothing. A
-// rewind of more bytes than the view has read lands the source before the
-// view's own start and leaves Position negative, so the view goes on to read
-// bytes it does not cover. Ported as written; see migration/JAVA-BUGS.md
-// entry 67.
+// rather than seeking the view. Java checks nothing here, so a rewind of more
+// bytes than the view has read landed the source before the view's own start
+// and left Position negative, and the view went on to read bytes it does not
+// cover. The check is Seek's, which is also what the interface's own default
+// rewind reaches, since that is seek(position - bytes). See
+// migration/JAVA-BUGS.md 67.
 func (v *ReadView) Rewind(bytes int64) error {
 	if err := v.checkClosed(); err != nil {
 		return err
+	}
+	if v.position-bytes < 0 {
+		return ErrInvalidPosition
 	}
 	if err := v.restorePosition(); err != nil {
 		return err

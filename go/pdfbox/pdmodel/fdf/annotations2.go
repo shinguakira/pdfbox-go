@@ -118,12 +118,15 @@ func (a *FDFAnnotationFreeText) Justification() string {
 // SetRotation sets the /Rotate of the annotation.
 func (a *FDFAnnotationFreeText) SetRotation(rotation int) { a.annot.SetInt(cos.Rotate, rotation) }
 
-// Rotation returns the /Rotate of the annotation, or the empty string where it
-// has none.
+// Rotation returns the /Rotate of the annotation, written out as a number.
 //
-// Java reads the entry with getString, which answers null for the integer
-// setRotation wrote; see migration/JAVA-BUGS.md.
-func (a *FDFAnnotationFreeText) Rotation() string { return a.annot.GetString(cos.Rotate, "") }
+// Java reads the entry with getString, which answers only for a COSString and
+// so answered null for the integer setRotation wrote. Read as the integer it
+// is and written out, which is what the sibling Justification does. See
+// migration/JAVA-BUGS.md 44.
+func (a *FDFAnnotationFreeText) Rotation() string {
+	return strconv.Itoa(a.annot.GetIntDefault(cos.Rotate, 0))
+}
 
 // SetDefaultAppearance sets the /DA of the annotation.
 func (a *FDFAnnotationFreeText) SetDefaultAppearance(appearance string) {

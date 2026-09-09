@@ -3386,9 +3386,10 @@ imports nothing from `org.apache.xmpbox.xml`.
   `DocumentBuilderFactory` to fail to configure.
 - **A sequence holding an empty date can still have an element removed**, where
   Java raises NullPointerException on the empty one. JAVA-BUGS 60.
-- **A list of sequence dates holds the zero time** where Java holds a null,
-  because a `[]time.Time` cannot hold one; the length is the same either way.
-  JAVA-BUGS 61.
+- **A list of sequence dates leaves out an element that holds no date**, where
+  Java puts a null in the `List<Calendar>` its javadoc promises. Until
+  `track/java-bug-fixes` the port held the zero time there, since a
+  `[]time.Time` cannot hold a null; the entry is now fixed. JAVA-BUGS 61.
 
 ### Which Java tests are ported
 
@@ -5354,10 +5355,11 @@ the audit recorded at the end of this file.
 
 | Branch | Java | Depends on | Unblocks |
 | --- | ---: | --- | --- |
-| `track/stale-deferrals` | 3 test classes, 3 methods | nothing | article beads, `sh`, public-key encryption |
+| `track/stale-deferrals` | 3 test classes, 3 methods | nothing | **done** — article beads, `sh`, public-key encryption |
 | `track/imageio` | 5 | nothing | **done** — `export:images` |
-| `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay` |
+| `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay`, and `Splitter`'s other half |
 | `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
+| `track/java-bug-fixes` | **none — it is not a port** | nothing, and goes last | the 84 entries of `JAVA-BUGS.md` |
 
 **`track/imageio` is on the critical path and `track/multipdf` is not.**
 `ExtractImages` never imports `rendering` — it walks the content stream with
@@ -5959,3 +5961,340 @@ in the annotation package, where it lives.
 - `PDFMergerUtility` writes the destination's own /Threads back into itself and
   never merges the source's, never writes /UserProperties, and never merges the
   /PageMode. All three are the Java's; JAVA-BUGS.md 82, 83 and 84.
+
+## `track/java-bug-fixes` — the branch that is not a port
+
+`JAVA-BUGS.md` has 84 entries. Every one of them is a defect in Apache PDFBox
+that this port noticed while reading the Java closely enough to translate it,
+and roughly **seventy of them are live in the Go on purpose**: the port
+reproduces them, each with a comment at the site saying so and pointing at the
+entry.
+
+That was the right rule for a port and it expires with the port. The last
+branch of this migration goes through the file entry by entry and fixes the
+ones worth fixing — **in the Go**. It changes no Java, and it deletes no entry:
+a fixed bug is still a bug in the Java, and the entry gains a **Fixed in the
+Go** line rather than going away.
+
+Its first task is a triage of all 84 into four columns, written here before any
+code moves:
+
+| Column | What it means |
+| --- | --- |
+| **fix** | the Go carries it, correct is a fact rather than a judgement, and a caller can tell the difference. **The default.** |
+| **keep** | one of four named reasons, per entry: a reader depends on it, "correct" is a judgement, fixing it is new functionality, or it is unobservable |
+| **not carried** | the entry already says the Go does not reproduce it. Verify the claim still holds |
+| **test only** | the defect is in a Java *test*; the Go test is what changes. Entries 4, 46 and 78 |
+
+The counts and the per-entry reasons go in this section when A0 runs. It is the
+document the branch is judged on; the code is downstream of it.
+
+**Why it goes after `track/raster` rather than alongside it.** Two reasons, and
+neither is caution. Every branch before it adds entries to the file it works
+from, so taking it early means doing it twice — `track/raster` is 27 Java
+classes of shading and blending arithmetic and will find its own. And for as
+long as porting continues, "the Go does X, is that a port defect?" is answered
+by opening the Java; that answer stops working the day the Go is allowed to
+differ on purpose. Finishing the port first keeps it cheap while it is still
+needed.
+
+### A0 — the triage
+
+Every entry of `JAVA-BUGS.md`, in one of four columns. **Fix is the default**;
+a **keep** names one of the four reasons the task file allows.
+
+| # | Column | Why |
+| ---: | --- | --- |
+| 1 | fix | `equals` truncating to 32 bits is reachable from every `indexOf` |
+| 2 | **keep** | unobservable: a `ReadBuffer` owns its bytes, so the -1 cannot reach the count. A0 said fix |
+| 3 | fix | the same accumulation, and reachable: a view can declare a length its source cannot supply |
+| 4 | test only | the Java test forgets to compare the lengths |
+| 5 | fix | an interned name hands out the array a caller can write through |
+| 6 | **keep** | judgement: keeping a null key may be deliberate, and the entry says so |
+| 7 | not carried | |
+| 8 | fix | the sibling branch keeps the `#`; this one drops it |
+| 9 | fix | a depth counter that never comes back down |
+| 10 | fix | two bytes lost from a truncated inline image |
+| 11 | **keep** | unobservable: the offset is computed and never read |
+| 12 | fix | a null cmap dereferenced where the method answers 0 three lines up |
+| 13 | not carried | |
+| 14 | fix | a missing `/Panose` dereferenced |
+| 15 | fix | text outside the basic plane comes out reversed |
+| 16 | fix | `% 0xFF` where the two branches beside it use `& 0xFF` |
+| 17 | fix | one cell of a matrix multiply reads the wrong operand |
+| 18 | **keep** | unobservable: every supplementary code point is named `.notdef`, which never has a glyph, so the second visit is unreachable. A0 said fix |
+| 19 | fix | a sign-extended byte written as eight hex digits |
+| 20 | fix | `&` between two disjoint byte lanes |
+| 21 | fix | an entry built with a null parent |
+| 22 | **keep** | new functionality: reaching the branch means implementing version 1 kerning |
+| 23 | fix | a zero-length code read as the two-byte code 0 |
+| 24 | fix | a predicate that answers the opposite of its name |
+| 25 | fix | a missing `/Recipients` dereferenced |
+| 26 | fix | a duplicate policy registration that the javadoc says is refused |
+| 27 | fix | a 0xFF data byte read as the end of the stream |
+| 28 | fix | a negative code returned for a high byte |
+| 29 | fix | arithmetic negation where the specification says complement |
+| 30 | fix | -1 added to the output for a digit that is not hexadecimal |
+| 31 | fix | a region written to the wrong rows |
+| 32 | fix | a truncated stream repeating its last complete group |
+| 33 | fix | one of two strings checked |
+| 34 | fix | the method's own javadoc promises the blank document it throws instead of |
+| 35 | fix | the port wrote `/BEAD` too; A0 said not carried and misread the entry |
+| 36 | fix | the setter writes the key the getter does not read |
+| 37 | fix | a setter that ignores its argument |
+| 38 | fix | `/P` read without checking it is there |
+| 39 | fix | an insert at -1 |
+| 40 | fix | the writer and the reader disagree about the type |
+| 41 | fix | a four-entry array padded to five |
+| 42 | not carried | |
+| 43 | fix | the getter reads names where the setter writes strings, and the specification says strings |
+| 44 | fix | the same shape: the getter reads a string where the setter wrote an integer |
+| 45 | fix | `get` where every sibling accessor uses `getObject` |
+| 46 | test only | the Java test builds its filter names from `toString()` |
+| 47 | not carried | |
+| 48 | **keep** | judgement: the javadoc documents the mutation, so the getter that repairs is the design |
+| 49 | fix | nothing restored when the pattern stream fails |
+| 50 | fix | the page left rotated when an annotation fails |
+| 51 | fix | the resources dropped from a pattern's underlying colour space |
+| 52 | not carried | |
+| 53 | fix | a merge that stops at the first value both sides have |
+| 54 | fix | a setter that stores a type its own getter cannot see |
+| 55 | fix | the wrong kind of array written |
+| 56 | fix | an index past the end of a short instruction |
+| 57 | not carried | |
+| 58 | **keep** | judgement: the entry's two corrects are "delete the method" and "read a map whose direction nothing states". A0 said fix |
+| 59 | not carried | |
+| 60 | not carried | |
+| 61 | fix | nulls put into a list the caller walks |
+| 62 | fix | a loop that walks to `count` rather than `off + count` |
+| 63 | fix | the predictor skipped on the fast path |
+| 64 | **keep** | judgement: the defect is a javadoc, the port's comment already states the truth, and delegating would change four public getters. A0 said fix |
+| 65 | not carried | |
+| 66 | fix | two locks taken in both orders |
+| 67 | fix | a rewind that reads outside the view |
+| 68 | fix | a byte count that can be negative |
+| 69 | fix | a write at an exact chunk boundary landing on the wrong byte |
+| 70 | not carried | |
+| 71 | not carried | |
+| 72 | fix | a list walked without the lock it has |
+| 73 | not carried | |
+| 74 | fix | an alphabet indexed with a negative remainder |
+| 75 | fix | a failure reported and exit 0 |
+| 76 | fix | a null dereference where the twin command checks |
+| 77 | fix | half a surrogate pair printed |
+| 78 | not carried | nothing to carry: the fixture is the Java's |
+| 79 | fix | one recipient object added N times |
+| 80 | not carried | |
+| 81 | not carried | |
+| 82 | fix | the destination's threads merged into themselves |
+| 83 | fix | `/Suspect` written twice and `/UserProperties` never |
+| 84 | fix | a branch that cannot run, so the page mode is never merged |
+
+**59 fix, 8 keep, 15 not carried, 2 test only.** The not-carried count was
+written as 15 in every earlier revision of this line and the list under it
+always had sixteen members, so the fix count was one too many with it; the
+table is what was counted here, and entry 35 then moved from not carried to
+fix, which brings both back to what the sentence said. A0 first said 63 and 4.
+Entry 2
+moved to keep once it was checked — the task file calls that a normal outcome
+and says hiding it is not. Entry 3 is the same arithmetic and stayed a fix,
+because a `ReadView` can declare a length its source cannot supply and then the
+-1 is reached: without the fix the port answered **0 bytes and EOF** for a
+sequence over a ten-byte source.
+
+Entry 18 moved the same way, and for the same kind of reason: the walk really
+does read a supplementary character twice, but the second read is unreachable.
+The name it measures by comes from `codePointToName`, no glyph list in the tree
+holds a code point outside the basic plane, so the character is named `.notdef`
+— and `.notdef` is the one name `hasGlyph` can never answer true for. The first
+read throws before the index that was not advanced is used again.
+
+Entry 58 moved too, on the other allowed reason: `createAndAddPDFAExtension-
+SchemaWithNS` really does ignore its argument, and the entry's own two answers
+are "delete the method" — an API decision — and "read the map", whose direction
+nothing in either tree states. It has no caller, no test and no sibling to take
+a convention from, so any behaviour put in it would be invented, and would turn
+a call that answers a working schema today into one that can fail.
+
+Entry 64 moved as well, and it is the one where half the fix was already in
+place: the defect is a javadoc claim, the arithmetic under it is deliberate,
+and `SetupMixed`'s own comment already says the two claims are false rather
+than repeating them. Making them true would change what four public getters
+answer for two public setups. The branch added the check instead —
+`javabug64_test.go` holds the four settings apart with the values measured off
+the running Java.
+
+The four A0 kept, with their reasons in full:
+
+- **6** — *judgement*. The entry itself says "keeping it may be deliberate: a
+  damaged file's entry is". A parser that drops what it cannot key may lose a
+  recoverable object; a parser that keeps it may key on null. There is no
+  correct to fix *to*.
+- **11** — *unobservable*. `parseHex` computes a whitespace offset and indexes
+  from zero. The offset is never read, so no caller can tell the difference.
+- **22** — *new functionality*. `KerningTable.read` switches on `1` where the
+  version is `0x10000`, so the version 1 branch is dead. Making it live means
+  implementing version 1 kerning subtables, which is a port task and not a fix.
+- **48** — *judgement*. `getAcroForm()` repairs the document it is asked to
+  read, and its own javadoc says so. A getter that mutates is a design smell,
+  not a defect, and every caller in both trees is written against the repair
+  happening.
+
+**The fifteen not carried were checked, one by one, against the code.**
+Fourteen hold: 7 (`pdfio/bufferedfile.go` drops an evicted page rather than
+reusing it), 13 (`glyphlist.go`'s `loadList` reads to the end, there being no
+`ready()` to emulate), 42 (`standardstructuretypes.go` names the types and
+leaves the self-referential entry out, with the reason above it), 47
+(`signing.go`'s `Close` keeps the first error and closes both), 52, 57, 59, 60
+(the four xmpbox divergences, each with its comment and, for 59, its pinning
+test), 65 and 73 (`mappedfile.go` checks closed before making a view, and stats
+before it opens), 70 and 71 (`sequenceread.go` refuses an all-empty list and
+closes every source), 78 (`reference_test.go`'s `movingFields` drops the
+trailing space glyph and says why) and 80 and 81 (`tools/imageio` writes the
+fields itself, so there is no dead branch and no read-only metadata).
+
+The fifteenth did not. **Entry 35** was marked not carried on the strength of a
+row that read "the port already had `/Bead`"; the entry's own "Where the Go
+carries it" says the port had `BEAD = GetPDFName("BEAD")` and wrote it. It is a
+fix, and is fixed. That is the third time A0's own record was wrong — entries 2
+and 3 were the first — and the task file calls finding it a normal outcome.
+
+## Track `java-bug-fixes` — D7, the adversarial review
+
+Sixty-one entries of `JAVA-BUGS.md` were fixed in the Go: 59 in the library and
+the two whose defect is in a Java test. Eight are kept, fifteen were never
+carried, and every one of those twenty-three now says so in the entry itself.
+The whole suite is green — 59 packages, `gofmt -l .` and `go vet ./...` clean.
+
+### What the review found
+
+**A0 was wrong three times, and each correction is recorded where it was made.**
+Entry 2 moved to **keep** during phase A of the earlier session; entries 18 and
+64 moved to **keep** here, and entry 35 moved the other way, from *not carried*
+to *fix*. The last is the one that mattered most: the row read "the port
+already had `/Bead`", and the entry's own "Where the Go carries it" says
+plainly that the port had `BEAD = GetPDFName("BEAD")` and wrote it. It was
+found by doing what D-phase asks — checking the not-carried claims against the
+code rather than against the table.
+
+**The counts in this file were one out, and had been from the start.** The
+not-carried list always had sixteen members and the sentence above it said
+fifteen, so the fix count carried the difference. The table is what was
+counted; entry 35's move then brought both back to the numbers the sentence
+had.
+
+**Entry 66 said it could not be tested, and that was half true.** "A test that
+hangs when it succeeds is worse than no test" is right; a test that *bounds*
+the round and reports the hang is not the same thing.
+`TestCloseWhileWritingDoesNotDeadlock` reproduces the deadlock the JVM named,
+in round 26 of 150, and passes in half a second with the fix.
+
+**Entry 79 said it could not be measured, and that was wrong.** The aliasing
+needs no `tools` module to run, only the port and two certificates the
+encryption fixtures already carry. Without the fix the first recipient's
+keystore is refused with "The certificate matches none of 2 recipient entries",
+and the two entries the message prints are the same recipient twice.
+
+**The race detector found a port defect that is not a Java bug.**
+`ScratchFile.isClosed` is `volatile boolean` in the Java and was a plain `bool`
+here, read by `checkClosed` without a lock. It is an `atomic.Bool` now, fixed
+in entry 72's commit and named in the entry.
+
+### What was checked and found sound
+
+- **D1.** Every one of the 49 non-test files the branch changed carries a
+  comment naming its entry number: 68 added comment lines, none without a
+  number. Every comment says what the Java does before it says what the Go
+  does. Two sites that are *kept* rather than fixed — entry 18 in
+  `pdtype1cfont.go` and entry 58 in `xmpmetadata_schemas.go` — were rewritten
+  to say they are kept and why, so that a later reader does not "fix" them.
+- **D2.** Every fix that changes what the port *writes* says so in its entry:
+  35 (`/Type /Bead`), 36 (`/O`), 37 and 83 (`/Suspects`, `/UserProperties`), 41
+  (four colours, not five), 33 (two bfranges rather than one), 54
+  (`ProperName`), 55 (`Seq`), 79 (one recipient per certificate), 82 and 84
+  (the merged catalog). No caller was found compensating for a bug it now
+  double-corrects; the one pair that interacts, 37 and 83, is fixed on both
+  sides and tested together. `markPagesAsFree`'s other caller passes an offset
+  of 0, where the old and new bounds agree, so entry 62 reaches only `Clear`.
+- **D3.** Seven ported tests changed their expected value, and each says which
+  value is the Java's and where the new one comes from — the specification, the
+  arithmetic, or the sibling method that already did it right. The type 4
+  comment that claimed two expectations were the only non-Java ones in the
+  repository was corrected: it was true when written and this branch moved
+  several more.
+- **D4.** Every fix was re-run with its own fix reverted, in five batches, and
+  every test failed — including entry 4's, whose helper was checked by making
+  a writer emit one byte too many and watching the length assertion catch it.
+  Entry 20's test does not compile without its fix, which is the strongest form
+  of the same evidence. **The one exception is entry 46**, and it is inherent:
+  the three `PDStreamTest` cases run against a stream with no filters, so the
+  stop list they now build correctly is still never consulted. The entry says
+  so, and `TestCreateInputStreamStoppingStops` covers the stopping itself.
+- **D5.** All eight keeps name one of the four allowed reasons, in the entry
+  and in the table. None was fixed by accident: the files holding entries 11,
+  22, 48 and 64 are not among the ones this branch changed, and the two that
+  are — 18 and 58 — changed only in their comments.
+- **D6.** All 84 headings are present and none was deleted. Every "fix" row has
+  a **Fixed in the Go** paragraph and every keep has a **Kept in the Go** one,
+  cross-checked mechanically both ways. No "Where the Go carries it" line was
+  rewritten.
+
+### What is still open
+
+Nothing in this branch. Two things a later branch may want:
+
+- **Entry 39** is fixed only as far as its own "what correct would be" goes: a
+  marked-content identifier passed to `InsertBefore` no longer throws, but it
+  still finds nothing, because `Kids` hands those back as plain integers and
+  nothing converts one back to the `COSInteger` in the array. That lookup is
+  new functionality.
+- **Entry 55** is fixed in its cardinality and not in its element type:
+  `AddVersions` writes a `Seq`, as the field is declared, but of text rather
+  than of the declared `VersionType`. The method has no parameter for a
+  structured type, and giving it one is a port task.
+
+### Track `java-bug-fixes` — E, the review feedback
+
+Four items. Three were defects in the fixes and are fixed; one asked for a fix
+to be reverted and is declined, with a change made so the same reading is not
+invited again.
+
+- **Entry 40 was half-done.** The comment said an entry that is not a string
+  contributes nothing and the code left an empty string at its index, in a list
+  whose length still counted it — a header identifier no cell carries, and one
+  no caller could tell from a header that really is empty. Such an entry is
+  left out now. `TestHeadersLeaveOutAnEntryThatIsNotAString`.
+- **Entry 20 joined its high byte signed.** The first cut reasoned that the
+  minimal repair to the Java — `&` to `|` — sign-extends, and reproduced that.
+  It is a second defect rather than the fix: `supplementVersion` is a uint16 at
+  offset 140 of the AAT `gcid` table, which the offsets the caller reads its
+  two strings from bear out. FF 01 is 65281, not -255. The test carries the
+  three high bytes that tell the two readings apart.
+- **Entry 35 was edited into a generated file.** `names.go` is written by
+  `migration/scripts/gen-cos-names.ps1`, so the next run would have reverted
+  `/Bead` and left `pdthread.go` naming a `cos.Bead` that no longer existed.
+  The correction moved into the generator, as the one table where a generated
+  name may diverge from `COSName.java`.
+
+  Running the generator to check also found **two latent defects in it**, both
+  of which drop a name the committed file has: the line-based match missed
+  `OUTPUT_CONDITION_IDENTIFIER`, whose declaration wraps across two lines, and
+  the constant pattern `[A-Z0-9_]+` cannot match `COSName.Off`, which is
+  declared beside `OFF` and is exactly why the override table is ordinal-cased.
+  It reads the file whole, matches mixed case, throws if it finds fewer than
+  the 588 names it expects, and breaks ties between identifiers differing only
+  in case so the output does not depend on parse order. It now reproduces the
+  committed file byte for byte, plus the override.
+
+- **Declined: restore `matrixDest[1] = b1*d1` in `cffparser.go`** (JAVA-BUGS
+  17), on the grounds that `AGENTS.md` forbids fixing Java bugs. That rule is
+  the one this branch was directed to invert, and the reviewer had no way to
+  know: `AGENTS.md` stated it with no exception. It now names the branch and
+  says a divergence carrying a JAVA-BUGS comment is not a defect to restore.
+  The fix itself stands — five of the six cells of that matrix multiply read
+  the second matrix and the sixth read `b1 * d1`, against the product the
+  comment above the function draws.
+
+`AGENTS.md`'s "Status: early. Only the `pdfio` package ... is implemented" is
+badly stale and was left alone: it is outside this branch and what the status
+*is* belongs to this file.

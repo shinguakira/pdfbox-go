@@ -819,10 +819,10 @@ func concatenateMatrix(matrixDest, matrixConcat []any) {
 	y2 := numberDouble(matrixConcat[5])
 
 	matrixDest[0] = a1*a2 + b1*c2
-	// Java writes b1 * d1 here, where the other five rows use the second
-	// matrix throughout. See migration/JAVA-BUGS.md entry 17; ported as it
-	// stands.
-	matrixDest[1] = a1*b2 + b1*d1
+	// Java writes b1 * d1 here, where the other five rows use the second matrix
+	// throughout, so a font whose FontMatrix is concatenated with another comes
+	// out sheared. See migration/JAVA-BUGS.md 17.
+	matrixDest[1] = a1*b2 + b1*d2
 	matrixDest[2] = c1*a2 + d1*c2
 	matrixDest[3] = c1*b2 + d1*d2
 	matrixDest[4] = x1*a2 + y1*c2 + x2
