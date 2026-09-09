@@ -289,6 +289,17 @@ func compareWithReference(t *testing.T, reference string,
 func layOutAndRead(t *testing.T,
 	page func(*testing.T, *pdmodel.PDDocument, *pdmodel.PDPageContentStream)) []string {
 	t.Helper()
+	reloaded := layOutAndReload(t, page)
+	defer reloaded.Close()
+	return textOperatorsOf(t, reloaded)
+}
+
+// layOutAndReload writes the page, saves it and loads it back, which is what
+// the Java tests do before they compare -- the file on disk is what is being
+// checked, not the object graph that made it. The caller closes the document.
+func layOutAndReload(t *testing.T,
+	page func(*testing.T, *pdmodel.PDDocument, *pdmodel.PDPageContentStream)) *pdmodel.PDDocument {
+	t.Helper()
 	document := pdmodel.NewPDDocument()
 	defer document.Close()
 	pdPage := pdmodel.NewPDPage()
@@ -312,8 +323,7 @@ func layOutAndRead(t *testing.T,
 	if err != nil {
 		t.Fatalf("LoadPDFBytes: %v", err)
 	}
-	defer reloaded.Close()
-	return textOperatorsOf(t, reloaded)
+	return reloaded
 }
 
 // positionTolerance is how far two positions may differ and still be the same

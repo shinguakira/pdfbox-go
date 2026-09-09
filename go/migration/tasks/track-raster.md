@@ -101,7 +101,7 @@ comparisons possible for the first time.
   - Record the decision in `STATUS.md` before A1, the way `track/pdfbox-layout`
     recorded its A0.
 
-- [ ] A1. Port the pixel comparisons the earlier branches deferred
+- [x] A1. Port the pixel comparisons the earlier branches deferred
   - They are the tests this branch exists to make possible. `STATUS.md` records
     them per slice: `ContentStreamWriterTest`, `TestFontEmbedding`,
     `PDAcroFormFlattenTest`, `TestLayerUtility`, `TestImageIOUtils` and every

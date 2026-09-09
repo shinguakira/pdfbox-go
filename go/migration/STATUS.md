@@ -6381,3 +6381,36 @@ The task file asks whether the choice changes this. It does not:
 exactly, the clip is built from it, and that stays true. `rasterx` takes a path
 of its own and the clip reaches it as a mask, so the flattening happens once,
 in the same place, with the same tolerance. It is recorded there and unchanged.
+
+### Track `raster` — A1, the pixel comparisons
+
+Three of them are now written, and fail with `raster.ErrNotDrawn` until phase B
+fills the backend in. That is the intended phase-A state: a backend written
+first and compared afterwards is a backend written to whatever it happens to
+produce.
+
+| Comparison | Where | State |
+| --- | --- | --- |
+| `checkRenderIdent`, ligatures and kerning | `glyphlayout/renderident_test.go` | **written**, red until B |
+| `checkRenderIdent`, bidi | same | **written**, red until B |
+| `checkRenderIdent`, supplementary plane | same | **written**, red until B |
+| `ContentStreamWriterTest` | — | **still blocked, and not by the raster** |
+| `PDAcroFormFlattenTest` | — | **still blocked, and not by the raster** |
+| `TestFontEmbedding`, the 6 unported cases | — | **still blocked, and not by the raster** |
+
+**What `checkRenderIdent` actually asserts, and why it is possible now.** It
+renders the PDF the test just wrote and the reference PDF checked into
+`pdfbox-layout-awt/src/test/resources/pdf/`, and compares them pixel for pixel.
+Both sides go through the *same* renderer, so it never asks this port's pixels
+to match Java's — it asks the port to draw the file it wrote and the file Java
+wrote the same way. That is a test of the layout and of the writer together,
+and it needs a backend but not a faithful-to-Java one.
+
+**What stays blocked, and why it is not this branch's to unblock.**
+`ContentStreamWriterTest` reads `target/pdfs/PDFBOX-4750.pdf`,
+`PDAcroFormFlattenTest` reads a list of PDFs it downloads, and the six
+`TestFontEmbedding` cases read fonts from `target/fonts`. Those directories are
+filled by the Maven build downloading from the issue tracker, both are empty
+here, and **the port fetches nothing in a test** — the rule every slice has
+given for the same omission. The raster was the second reason those three were
+deferred; it was never the only one.
