@@ -1156,15 +1156,17 @@ func (d *PageDrawer) ShowAnnotation(a annotation.PDAnnotation) error {
 		rotated.Rotate(float64(d.CurrentPage().Rotation()) * math.Pi / 180)
 		rotated.Translate(float64(-rect.LowerLeftX()), float64(-rect.UpperRightY()))
 		d.backend.SetTransform(rotated)
-		if err := d.PDFGraphicsStreamEngine.ShowAnnotation(a); err != nil {
-			// Java restores neither the transform nor the appearance on this
-			// path: the two lines below are plain statements rather than a
-			// finally. Ported as written. See migration/JAVA-BUGS.md.
-			return err
-		}
-		d.backend.SetTransform(savedTransform)
-		a.SetAppearance(appearance) // restore
-		return nil
+		// Java's two restores are plain statements rather than a finally, so an
+		// IOException out of the annotation leaves the page's backend holding
+		// this annotation's rotation for every annotation after it -- and
+		// leaves the document holding the appearance constructed above in place
+		// of the one the file carried, which outlives the render. See
+		// migration/JAVA-BUGS.md 50.
+		defer func() {
+			d.backend.SetTransform(savedTransform)
+			a.SetAppearance(appearance) // restore
+		}()
+		return d.PDFGraphicsStreamEngine.ShowAnnotation(a)
 	}
 	return d.PDFGraphicsStreamEngine.ShowAnnotation(a)
 }

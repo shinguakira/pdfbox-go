@@ -2518,6 +2518,16 @@ place of the one the file carried, which outlives the render.
 `ShowAnnotation` returns the error before the two restores, with a comment
 saying why.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 50. Both restores — the
+transform and the appearance — are a `defer` taken where the rotation is
+installed, so they run whether the annotation draws or fails. Tested by
+`TestShowAnnotationRestoresTheTransformAfterAFailure` in
+`go/pdfbox/rendering/javabug50_test.go`: a NoRotate text annotation on a page
+rotated a quarter turn, whose normal appearance declares a filter no decoder
+answers to. Without the fix the page's transform comes back
+`(-0 -1 -1 -0 40 80)`, the annotation's quarter turn, and every annotation
+after it would be drawn through it.
+
 **Confidence** high. The document mutation is the same `setAppearance` the
 comment in the Java calls "restore".
 
