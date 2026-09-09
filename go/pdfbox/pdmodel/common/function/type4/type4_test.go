@@ -325,8 +325,9 @@ func TestNe(t *testing.T) {
 // complement, which is what PostScript defines it as: PDF 32000-1:2008 table
 // 42. PDFBox writes the arithmetic negation, and this test used to carry its
 // answers -- **the Java's values are 52 not = -52 and -37 not = 37**, where the
-// complement gives -53 and 36. Those two are the only expectations in this
-// repository that are not the Java's.
+// complement gives -53 and 36. These two were the first expectations in this
+// repository that are not the Java's; `track/java-bug-fixes` moved several
+// more, and each says so where it stands.
 func TestNot(t *testing.T) {
 	newType4Tester(t, "true not false not").
 		popBool(true).popBool(false).isEmpty()

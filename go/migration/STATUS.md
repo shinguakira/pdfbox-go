@@ -6158,3 +6158,97 @@ row that read "the port already had `/Bead`"; the entry's own "Where the Go
 carries it" says the port had `BEAD = GetPDFName("BEAD")` and wrote it. It is a
 fix, and is fixed. That is the third time A0's own record was wrong — entries 2
 and 3 were the first — and the task file calls finding it a normal outcome.
+
+## Track `java-bug-fixes` — D7, the adversarial review
+
+Sixty-one entries of `JAVA-BUGS.md` were fixed in the Go: 59 in the library and
+the two whose defect is in a Java test. Eight are kept, fifteen were never
+carried, and every one of those twenty-three now says so in the entry itself.
+The whole suite is green — 59 packages, `gofmt -l .` and `go vet ./...` clean.
+
+### What the review found
+
+**A0 was wrong three times, and each correction is recorded where it was made.**
+Entry 2 moved to **keep** during phase A of the earlier session; entries 18 and
+64 moved to **keep** here, and entry 35 moved the other way, from *not carried*
+to *fix*. The last is the one that mattered most: the row read "the port
+already had `/Bead`", and the entry's own "Where the Go carries it" says
+plainly that the port had `BEAD = GetPDFName("BEAD")` and wrote it. It was
+found by doing what D-phase asks — checking the not-carried claims against the
+code rather than against the table.
+
+**The counts in this file were one out, and had been from the start.** The
+not-carried list always had sixteen members and the sentence above it said
+fifteen, so the fix count carried the difference. The table is what was
+counted; entry 35's move then brought both back to the numbers the sentence
+had.
+
+**Entry 66 said it could not be tested, and that was half true.** "A test that
+hangs when it succeeds is worse than no test" is right; a test that *bounds*
+the round and reports the hang is not the same thing.
+`TestCloseWhileWritingDoesNotDeadlock` reproduces the deadlock the JVM named,
+in round 26 of 150, and passes in half a second with the fix.
+
+**Entry 79 said it could not be measured, and that was wrong.** The aliasing
+needs no `tools` module to run, only the port and two certificates the
+encryption fixtures already carry. Without the fix the first recipient's
+keystore is refused with "The certificate matches none of 2 recipient entries",
+and the two entries the message prints are the same recipient twice.
+
+**The race detector found a port defect that is not a Java bug.**
+`ScratchFile.isClosed` is `volatile boolean` in the Java and was a plain `bool`
+here, read by `checkClosed` without a lock. It is an `atomic.Bool` now, fixed
+in entry 72's commit and named in the entry.
+
+### What was checked and found sound
+
+- **D1.** Every one of the 49 non-test files the branch changed carries a
+  comment naming its entry number: 68 added comment lines, none without a
+  number. Every comment says what the Java does before it says what the Go
+  does. Two sites that are *kept* rather than fixed — entry 18 in
+  `pdtype1cfont.go` and entry 58 in `xmpmetadata_schemas.go` — were rewritten
+  to say they are kept and why, so that a later reader does not "fix" them.
+- **D2.** Every fix that changes what the port *writes* says so in its entry:
+  35 (`/Type /Bead`), 36 (`/O`), 37 and 83 (`/Suspects`, `/UserProperties`), 41
+  (four colours, not five), 33 (two bfranges rather than one), 54
+  (`ProperName`), 55 (`Seq`), 79 (one recipient per certificate), 82 and 84
+  (the merged catalog). No caller was found compensating for a bug it now
+  double-corrects; the one pair that interacts, 37 and 83, is fixed on both
+  sides and tested together. `markPagesAsFree`'s other caller passes an offset
+  of 0, where the old and new bounds agree, so entry 62 reaches only `Clear`.
+- **D3.** Seven ported tests changed their expected value, and each says which
+  value is the Java's and where the new one comes from — the specification, the
+  arithmetic, or the sibling method that already did it right. The type 4
+  comment that claimed two expectations were the only non-Java ones in the
+  repository was corrected: it was true when written and this branch moved
+  several more.
+- **D4.** Every fix was re-run with its own fix reverted, in five batches, and
+  every test failed — including entry 4's, whose helper was checked by making
+  a writer emit one byte too many and watching the length assertion catch it.
+  Entry 20's test does not compile without its fix, which is the strongest form
+  of the same evidence. **The one exception is entry 46**, and it is inherent:
+  the three `PDStreamTest` cases run against a stream with no filters, so the
+  stop list they now build correctly is still never consulted. The entry says
+  so, and `TestCreateInputStreamStoppingStops` covers the stopping itself.
+- **D5.** All eight keeps name one of the four allowed reasons, in the entry
+  and in the table. None was fixed by accident: the files holding entries 11,
+  22, 48 and 64 are not among the ones this branch changed, and the two that
+  are — 18 and 58 — changed only in their comments.
+- **D6.** All 84 headings are present and none was deleted. Every "fix" row has
+  a **Fixed in the Go** paragraph and every keep has a **Kept in the Go** one,
+  cross-checked mechanically both ways. No "Where the Go carries it" line was
+  rewritten.
+
+### What is still open
+
+Nothing in this branch. Two things a later branch may want:
+
+- **Entry 39** is fixed only as far as its own "what correct would be" goes: a
+  marked-content identifier passed to `InsertBefore` no longer throws, but it
+  still finds nothing, because `Kids` hands those back as plain integers and
+  nothing converts one back to the `COSInteger` in the array. That lookup is
+  new functionality.
+- **Entry 55** is fixed in its cardinality and not in its element type:
+  `AddVersions` writes a `Seq`, as the field is declared, but of text rather
+  than of the declared `VersionType`. The method has no parameter for a
+  structured type, and giving it one is a port task.
