@@ -6139,3 +6139,22 @@ The four A0 kept, with their reasons in full:
   read, and its own javadoc says so. A getter that mutates is a design smell,
   not a defect, and every caller in both trees is written against the repair
   happening.
+
+**The fifteen not carried were checked, one by one, against the code.**
+Fourteen hold: 7 (`pdfio/bufferedfile.go` drops an evicted page rather than
+reusing it), 13 (`glyphlist.go`'s `loadList` reads to the end, there being no
+`ready()` to emulate), 42 (`standardstructuretypes.go` names the types and
+leaves the self-referential entry out, with the reason above it), 47
+(`signing.go`'s `Close` keeps the first error and closes both), 52, 57, 59, 60
+(the four xmpbox divergences, each with its comment and, for 59, its pinning
+test), 65 and 73 (`mappedfile.go` checks closed before making a view, and stats
+before it opens), 70 and 71 (`sequenceread.go` refuses an all-empty list and
+closes every source), 78 (`reference_test.go`'s `movingFields` drops the
+trailing space glyph and says why) and 80 and 81 (`tools/imageio` writes the
+fields itself, so there is no dead branch and no read-only metadata).
+
+The fifteenth did not. **Entry 35** was marked not carried on the strength of a
+row that read "the port already had `/Bead`"; the entry's own "Where the Go
+carries it" says the port had `BEAD = GetPDFName("BEAD")` and wrote it. It is a
+fix, and is fixed. That is the third time A0's own record was wrong — entries 2
+and 3 were the first — and the task file calls finding it a normal outcome.
