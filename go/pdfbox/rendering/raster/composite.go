@@ -48,6 +48,24 @@ func (i *Image) sourceOf(paint rendering.Paint) (paintSource, float64, error) {
 			A: 0xFF,
 		}}, float64(p.Alpha), nil
 
+	case rendering.SoftMaskedPaint:
+		if p.Paint == nil {
+			// applySoftMaskToPaint(nil, mask), which only
+			// showTransparencyGroupOnGraphics makes: there is nothing to paint
+			// with, and the mask is for PopGroup to apply to the group it is
+			// about to composite.
+			return nil, 0, ErrNotDrawn
+		}
+		under, alpha, err := i.sourceOf(p.Paint)
+		if err != nil {
+			return nil, 0, err
+		}
+		masked, err := i.newSoftMaskSource(p, under)
+		if err != nil {
+			return nil, 0, err
+		}
+		return masked, alpha, nil
+
 	case rendering.TilingPaint:
 		// A tiling pattern carries no alpha of its own either; the tile does,
 		// per pixel, and colorAt answers it.

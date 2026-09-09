@@ -555,7 +555,7 @@ func (d *PageDrawer) applySoftMaskToPaint(parentPaint Paint,
 	if subType != cos.Alpha && subType != cos.Luminosity {
 		return nil, fmt.Errorf("rendering: invalid soft mask subtype: %v", subType)
 	}
-	return SoftMaskedPaint{Paint: parentPaint, Mask: softMask}, nil
+	return SoftMaskedPaint{Paint: parentPaint, Mask: softMask, Drawer: d}, nil
 }
 
 // strokingPaint returns the paint a stroke is made with.

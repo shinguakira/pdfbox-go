@@ -107,6 +107,9 @@ func (TilingPaint) isPaint() {}
 type SoftMaskedPaint struct {
 	Paint Paint
 	Mask  *state.PDSoftMask
+
+	// Drawer renders the mask. Only DrawSoftMask is called on it.
+	Drawer *PageDrawer
 }
 
 func (SoftMaskedPaint) isPaint() {}

@@ -150,3 +150,42 @@ func readPNG(t *testing.T, path string) goimage.Image {
 	}
 	return image
 }
+
+// TestSoftMasksRenderAsPDFBoxRendersThem is the deepest thing a Backend is
+// asked for: the mask is a transparency group, so building one means running a
+// second content stream through the drawer, into a surface of its own, at its
+// own scale, and reading either its luminosity or its alpha back as an alpha
+// channel.
+//
+// Two of the four cases are **exact**: the Alpha mask, which reads the group's
+// alpha, and the Luminosity mask with a /BC backdrop, whose group covers only
+// half its box so that the backdrop decides the rest. Between them they say
+// that the group's box, its size, its origin, the backdrop fill and both
+// channel readings are right.
+//
+// The other two are Luminosity masks and differ only in how bright a grey is:
+//
+//	over a grey group     2720 pixels, up to 6. The group's colours make the
+//	                      round trip through DeviceGray and back, and come out
+//	                      a step or two along.
+//	over an RGB group     3360 pixels, up to 38. This is the one real gap.
+//	                      isGray is false, so Java draws an ARGB image onto a
+//	                      TYPE_BYTE_GRAY one, and that conversion is the JDK's
+//	                      colour management -- an ICC transform through
+//	                      CS_GRAY, whose grey diagonal is measurably
+//	                      `1.055*x^(1/2.4)-0.055` and not the weighted sum its
+//	                      name suggests. There is no ICC engine here and there
+//	                      is not going to be one, so luma is the standard sRGB
+//	                      luminance instead, and this is what that costs.
+func TestSoftMasksRenderAsPDFBoxRendersThem(t *testing.T) {
+	const (
+		differingPixels = 6080
+		beyondEdges     = 0
+	)
+	differing, beyond := comparePage(t, "masks")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}

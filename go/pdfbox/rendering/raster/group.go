@@ -27,6 +27,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/blend"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 )
 
 // groupFrame is one open transparency group.
@@ -126,6 +127,17 @@ func (i *Image) PopGroup() error {
 		removeBackdrop(group, frame.alphaOnly, frame.backdrop)
 	}
 
+	// A soft mask on the state the group was drawn under is applied to the
+	// group as a whole. showTransparencyGroupOnGraphics wraps the group's own
+	// image in a TexturePaint, puts the mask around that with
+	// applySoftMaskToPaint, and fills the group's box with it; the port is
+	// handed the same SoftMaskedPaint, with no paint inside it because the
+	// group is the paint, and applies it here.
+	mask, err := i.groupSoftMask()
+	if err != nil {
+		return err
+	}
+
 	bounds := i.dst.Bounds()
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
@@ -137,6 +149,9 @@ func (i *Image) PopGroup() error {
 			if frame.clip != nil {
 				alpha *= float64(frame.clip.AlphaAt(x, y).A) / 255
 			}
+			if mask != nil {
+				alpha *= float64(mask.alphaAt(x, y))
+			}
 			if alpha == 0 {
 				continue
 			}
@@ -144,6 +159,30 @@ func (i *Image) PopGroup() error {
 		}
 	}
 	return nil
+}
+
+// groupSoftMask is the mask PopGroup composites the group through, and nil
+// where the paint in force is anything else.
+//
+// ShowTransparencyGroupOnBackend sets applySoftMaskToPaint(nil, softMask) on
+// the backend before it calls PopGroup, and that is the only way a paint with
+// no paint inside it is ever installed.
+func (i *Image) groupSoftMask() (*softMaskSource, error) {
+	paint, isMasked := i.paint.(rendering.SoftMaskedPaint)
+	if !isMasked || paint.Paint != nil {
+		return nil, nil
+	}
+	source, err := i.newSoftMaskSource(paint, nil)
+	if err != nil {
+		return nil, err
+	}
+	mask, isMask := source.(*softMaskSource)
+	if !isMask {
+		// The mask was empty and newSoftMaskSource answered what was under it,
+		// which here is nothing.
+		return nil, nil
+	}
+	return mask, nil
 }
 
 // removeBackdrop is GroupGraphics.removeBackdrop: the group was drawn onto a
