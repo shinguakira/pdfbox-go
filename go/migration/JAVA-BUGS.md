@@ -3183,6 +3183,21 @@ claims are false rather than repeating them.
 `TestMemoryUsageSettingSetupMethods` in `go/pdfio/memoryusagesetting_test.go`
 holds the four settings apart.
 
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement, and half
+of it is already done. A0 marked this **fix**. The defect is in a javadoc, not
+in arithmetic: the private constructor does exactly what it means to, and the
+two claims about it are what is untrue. Of the entry's two corrects, the first
+— documentation that says what these setups do rather than naming a setup they
+are not equal to — is what `SetupMixed`'s comment in
+`go/pdfio/memoryusagesetting.go` already says. The second, delegating so the
+claims become true, changes what four public getters answer for two public
+setups, on the strength of a sentence, and the entry itself records that
+nothing in PDFBox notices the difference today. What this branch adds is the
+check: `TestMixedIsNotMainMemoryOnly` and `TestMixedOfZeroIsNotTempFileOnly` in
+`go/pdfio/javabug64_test.go` hold the four settings apart with the values
+measured off the running Java, so the record above is testable rather than
+asserted.
+
 **Confidence** high. Read out of the running Java, `io` compiled against JDK 17:
 
 ```
