@@ -395,7 +395,11 @@ func (f *PDType1CFont) StringWidth(text string) (float32, error) {
 	var width float32
 	// Java walks the String by index and reads codePointAt at every one, so a
 	// character outside the basic plane is measured twice: once whole and once
-	// as its trailing surrogate. See migration/JAVA-BUGS.md entry 18.
+	// as its trailing surrogate. The second visit cannot be reached -- no glyph
+	// list in the tree holds a code point outside the basic plane, so such a
+	// character is named .notdef, and .notdef is the one name HasGlyph never
+	// answers true for, so the first visit fails first. Kept for that reason.
+	// See migration/JAVA-BUGS.md 18.
 	units := utf16Units(text)
 	for i := 0; i < len(units); i++ {
 		codePoint := codePointAt(units, i)

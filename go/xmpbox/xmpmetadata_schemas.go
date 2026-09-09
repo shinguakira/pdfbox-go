@@ -91,8 +91,10 @@ func (m *XMPMetadata) CreateAndAddPDFAExtensionSchemaWithDefaultNS() (
 // given list of namespaces.
 //
 // Java takes the map and never reads it: the schema it builds is the default
-// one, and the declared XmpSchemaException is never thrown. Ported as written;
-// see migration/JAVA-BUGS.md.
+// one, and the declared XmpSchemaException is never thrown. Kept, because the
+// two ways to make it read the map -- deleting the method, or inventing which
+// way the map runs -- are both decisions rather than fixes; nothing in either
+// tree calls it or says. See migration/JAVA-BUGS.md 58.
 func (m *XMPMetadata) CreateAndAddPDFAExtensionSchemaWithNS(
 	namespaces map[string]string) (*schema.PDFAExtensionSchema, error) {
 	s, err := schema.NewPDFAExtensionSchema(m)
