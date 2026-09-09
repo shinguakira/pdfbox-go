@@ -277,6 +277,13 @@ the table, and it has already been missed once.
 **Where the Go carries it** `go/pdfbox/cos/document.go`, `AddXRefTable`, which
 keeps a nil key in a separate field so `XRefTable` still returns it.
 
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement. A0 marked
+it a keep and it stays one. The entry's own Confidence line says keeping the
+entry may be deliberate — a parser that drops what it cannot key may lose an
+object that could still be recovered, and one that keeps it may key on null.
+There is no correct to fix *to*, only a choice between two behaviours, and
+that choice belongs to whoever is reading damaged files.
+
 **Confidence** medium. Keeping it may be deliberate — a damaged file's entry is
 arguably data — but the shape of PDFBOX-6132 suggests otherwise.
 
@@ -506,6 +513,11 @@ passes the string through as it stands.
 The port originally sliced `hex[start:end]` and indexed the slice, which
 corrected the bug. That was reverted: the offset is computed and unused here
 too, and `string_test.go` pins the throwing behaviour.
+
+**Kept in the Go** `track/java-bug-fixes`: unobservable. A0 marked it a keep
+and it stays one. `parseHex` computes an offset that counts the whitespace it
+skipped and then indexes from zero regardless, so the value is never read; no
+caller can tell the difference, and there is nothing a test could assert.
 
 **Confidence** high. The offset is plainly computed and plainly not used, and
 the comment above it states an intent the code does not carry out.
@@ -1085,6 +1097,12 @@ with a comment saying so. The port also narrows the count to a signed 32-bit
 int, as Java's cast does, so that the two would behave the same if the branch
 were ever reached — without the narrowing a Go `int` stays positive and the
 count is used to size an allocation.
+
+**Kept in the Go** `track/java-bug-fixes`: fixing it is new functionality. A0
+marked it a keep and it stays one. `KerningTable.read` switches on `1` where
+the version it read is `0x10000`, so the version 1 branch is dead; making it
+live means implementing the version 1 kerning subtables, which neither tree
+has. That is a port task with a specification behind it, not a defect fix.
 
 **Confidence** high. It is provable from the two lines above it that the case
 label cannot match.
@@ -2437,6 +2455,13 @@ Java has one. That is a divergence of the port, not of the Java, and it is left
 as it stands: closing it would mean moving the fixups out of the package Java
 puts them in. `migration/STATUS.md` says the same under the slice 8 fixup
 section.
+
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement. A0 marked
+it a keep and it stays one. `getAcroForm()` repairs the document it is asked to
+read, and its own javadoc says so; a getter that mutates is a design smell
+rather than a defect, and every caller in both trees is written against the
+repair having happened. `getAcroForm(null)` is already the way to read without
+it.
 
 **Confidence** high. The javadoc states the mutation itself.
 
