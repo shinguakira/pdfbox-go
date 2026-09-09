@@ -2732,6 +2732,13 @@ read it back.
 `createTextType`, and the getter asks for `*xmptype.ProperNameType`, which a
 `*xmptype.TextType` is not.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 54. `SetArtist` builds the
+property from the field's declared type through `InstanciateSimple`, which is
+Java's `instanciateSimple` and what every other setter of a derived text field
+uses, so the `ProperNameType` the getter asks for is the one that is stored.
+Tested by `TestTiffArtistRoundTrip` in `go/xmpbox/schema/javabug54_test.go`,
+which checks both the property accessor and the string one.
+
 **Confidence** high. Read from the two methods and from `getPropertyAs`, which
 is `type.isInstance(property) ? type.cast(property) : null`.
 
