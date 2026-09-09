@@ -186,9 +186,14 @@ func adjustMask(gray *goimage.Alpha, layer *rendering.SoftMaskLayer) *goimage.Al
 	point := make([]float64, 2)
 	for y := 0; y < layer.AdjustHeight; y++ {
 		for x := 0; x < layer.AdjustWidth; x++ {
-			point[0], point[1] = float64(x), float64(y)
+			// The destination pixel's centre, mapped back, which is what a
+			// nearest-neighbour drawImage samples at.
+			point[0], point[1] = float64(x)+0.5, float64(y)+0.5
 			inverse.TransformDoubles(point, 0, point, 0, 1)
-			source := goimage.Point{X: int(point[0]), Y: int(point[1])}
+			source := goimage.Point{
+				X: int(math.Floor(point[0])),
+				Y: int(math.Floor(point[1])),
+			}
 			if !source.In(gray.Bounds()) {
 				continue
 			}

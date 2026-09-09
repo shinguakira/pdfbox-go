@@ -191,3 +191,31 @@ func TestSoftMasksRenderAsPDFBoxRendersThem(t *testing.T) {
 			differing, beyond, differingPixels, beyondEdges)
 	}
 }
+
+// TestSoftMasksOnARotatedPageRenderAsPDFBoxRendersThem is the same four masks
+// on a page with `/Rotate 90`, which is the one thing that makes
+// PageDrawer.adjustImage do anything.
+//
+// adjustImage puts the mask back through the device transform with its own
+// scaling taken out. For a page whose transform is a plain scale that is the
+// identity and Java short-circuits, so every other fixture in this package
+// takes the short circuit and the redraw was never run. A quarter turn makes
+// it a rotation, and the redraw happens.
+//
+// **The counts are the unrotated page's, exactly.** The mask lands in the same
+// place relative to what it masks however the page is turned, so what is left
+// is the same colour conversion and nothing else. Writing this fixture found a
+// defect: the redraw sampled at the destination pixel's corner rather than its
+// centre, which moved every hard mask edge by up to a pixel.
+func TestSoftMasksOnARotatedPageRenderAsPDFBoxRendersThem(t *testing.T) {
+	const (
+		differingPixels = 6080
+		beyondEdges     = 0
+	)
+	differing, beyond := comparePage(t, "masksrot")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}

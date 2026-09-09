@@ -27,10 +27,20 @@ import (
 )
 
 func main() {
+	write("testdata/masks.pdf", 0)
+	// The same page turned a quarter turn. A rotated page is the one thing
+	// that makes PageDrawer.adjustImage do anything: it rescales the mask by
+	// the device transform with its own scaling taken out, and for a page whose
+	// transform is a plain scale that is the identity and Java short-circuits.
+	write("testdata/masksrot.pdf", 90)
+}
+
+func write(path string, rotation int) {
 	document := pdmodel.NewPDDocument()
 	defer document.Close()
 
 	page := pdmodel.NewPDPageOfSize(common.NewPDRectangleOfSize(200, 120))
+	page.SetRotation(rotation)
 	document.AddPage(page)
 
 	resources := pdmodel.NewPDResources()
@@ -73,7 +83,7 @@ q /GsRGB gs 0.2 0.2 0.2 rg 105 10 90 40 re f Q
 	check(output.Close())
 	page.Dictionary().SetItem(cos.Contents, stream)
 
-	out, err := os.Create("testdata/masks.pdf")
+	out, err := os.Create(path)
 	check(err)
 	check(document.Save(out))
 	check(out.Close())
