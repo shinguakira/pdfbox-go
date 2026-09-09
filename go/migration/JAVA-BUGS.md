@@ -2580,6 +2580,17 @@ wasDefault)`, as the three sibling recursions do.
 `cos.Pattern` case of `createFromArray`, calls the one-argument `Create` and
 says why above the line.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 51. The `/Pattern` arm builds
+its underlying colour space with `CreateWithResources(array.Get(1), resources,
+wasDefault)`, the three-argument form the indexed, separation and DeviceN
+recursions beside it already use, so `[/Pattern /CS1]` resolves `/CS1` through
+the resources the `PDPattern` on the same line is given. Tested by
+`TestPatternResolvesItsUnderlyingSpaceThroughTheResources` in
+`go/pdfbox/pdmodel/graphics/pattern/javabug51_test.go` — the test lives in the
+`pattern` package because `PDPattern` does — with
+`TestPatternWithAnInlineUnderlyingSpaceIsUnchanged` beside it for the shape
+that already worked.
+
 **Confidence** high for the shape — the one-argument call is right there beside
 the `resources` it ignores. Medium for how often it bites: an underlying colour
 space written as a bare name rather than inline is legal but unusual, and no

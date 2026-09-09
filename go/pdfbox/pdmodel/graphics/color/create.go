@@ -172,8 +172,10 @@ func createFromArray(array *cos.Array, resources ResourcesLike,
 		//
 		// It also builds it with the one-argument create, which passes no
 		// resources on, so an underlying colour space given as a resource name
-		// cannot be resolved. Ported as written; see migration/JAVA-BUGS.md.
-		underlying, err := Create(array.Get(1))
+		// could not be resolved. The resources go with it here, as they do in
+		// the indexed, separation and DeviceN recursions above. See
+		// migration/JAVA-BUGS.md 51.
+		underlying, err := CreateWithResources(array.Get(1), resources, wasDefault)
 		if err != nil {
 			return nil, err
 		}
