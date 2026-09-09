@@ -6298,3 +6298,86 @@ invited again.
 `AGENTS.md`'s "Status: early. Only the `pdfio` package ... is implemented" is
 badly stale and was left alone: it is outside this branch and what the status
 *is* belongs to this file.
+
+## Track `raster` — A0, what draws
+
+`PLAN.md`'s slice 9 named three ways to draw and slice 9 itself took a fourth,
+which was to draw nothing and put the interface in first. The three were: a
+Cairo or Skia binding, `golang.org/x/image/vector` plus hand-written
+compositing, or a rasteriser written here. **The answer is a fourth thing the
+task file did not name: `github.com/srwiley/rasterx`.**
+
+### The task file's own premise was stale
+
+It said of `x/image`: "It is not in `go.mod` and there is no network; settle how
+it gets there before choosing it." The network works — `go list -m -versions`
+answers from `proxy.golang.org` — so every pure-Go option is reachable and the
+question is which, not whether.
+
+### What was measured
+
+Four libraries were fetched and read, not recalled:
+
+| | fill | stroke: width, cap, join, dash | arbitrary clip | PDF's 16 blend modes | groups, soft masks | direct deps |
+| --- | :-: | :-: | :-: | :-: | :-: | ---: |
+| Cairo (`ungerik/go-cairo`) | yes | yes | yes | **yes** | **yes** | cgo + libcairo |
+| `srwiley/rasterx` | yes | **yes**, incl. miter limit | rectangle only | no | no | **1** |
+| `fogleman/gg` | yes | **no miter join** | yes, via mask | no | no | 2 |
+| `x/image/vector` | yes | no | no | no | no | 0 |
+
+- **Cairo covers all of it**, because Cairo implements the PDF and SVG
+  compositing model by design: `OPERATOR_MULTIPLY` through
+  `OPERATOR_HSL_LUMINOSITY` are PDF's sixteen blend modes under their SVG
+  names, and `PushGroup` is the transparency group. It is barred here for the
+  reason it has always been barred — it is C, and this port is pure Go.
+- **`fogleman/gg` has only round and bevel joins.** PDF's default is miter,
+  which rules it out on the first stroke of most documents.
+- **`tdewolff/canvas` was checked and rejected on weight, not capability.** It
+  is actively maintained, has all four joins and a real `Path.Stroke`, and
+  requires **24 modules** — Fyne, Gio, OpenGL and GLFW (which is cgo), LaTeX,
+  WebP, AVIF, OpenStreetMap. `rasterx` requires one: `golang.org/x/image`.
+- **No pure-Go library has PDF's blend modes, transparency groups or soft
+  masks.** They are not a thing general 2D libraries do. That part is written
+  here whatever is chosen, and the model half of it — `blend.BlendMode` — is
+  already ported, so what is left is the loop that applies it per pixel.
+
+### What `rasterx` is
+
+Not famous by stars, and load-bearing anyway: **Fyne's `go.mod` requires it**,
+at the same pseudo-version taken here, so every SVG icon in every Fyne
+application is rasterised through `oksvg` → `rasterx`. Against that: it has no
+tagged release and its last commit is 2022-07-30. A rasteriser is a good place
+for that to be true — the algorithms do not move — but upstream will not fix
+anything.
+
+The exposure is one file. `rendering.Backend` is the interface slice 9 defined
+for exactly this, and swapping `rasterx` for Cairo or for hand-written scanline
+code later touches its implementation and nothing else.
+
+### What this costs
+
+`rasterx` answers the whole stroke model a PDF graphics state can ask for: `w`,
+`J`, `j`, `M` and `d`. What is written here is the compositor — the sixteen
+blend modes over the already-ported `blend.BlendMode`, the clip as an alpha
+mask, and the transparency-group and soft-mask buffers. About 600 lines, none
+of it new design.
+
+### The trap, pinned
+
+`Stroker.SetStroke` takes a gap function *and* a join mode, and the gap wins:
+it defaults from the join mode **only when the gap is nil**. Passing
+`rasterx.FlatGap` explicitly renders a round join as a bevel, silently.
+`go/pdfbox/rendering/raster/rasterx_test.go` is the A0 evidence and pins this:
+it drives all three joins, all three caps and a dash pattern, and every
+expected value in it was read off an ink map of what `rasterx` actually
+produced rather than reasoned about — two of them were wrong the first time,
+because pixel coverage is area coverage and a pixel counts as inked when any
+part of it is.
+
+### What `awt/geom.Area` still approximates
+
+The task file asks whether the choice changes this. It does not:
+`awt/geom/area.go` flattens curves to polylines where the JDK intersects them
+exactly, the clip is built from it, and that stays true. `rasterx` takes a path
+of its own and the clip reaches it as a mask, so the flattening happens once,
+in the same place, with the same tolerance. It is recorded there and unchanged.

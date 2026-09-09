@@ -87,7 +87,7 @@ comparisons possible for the first time.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what draws.** `PLAN.md`'s slice 9 section names three ways
+- [x] A0. **Decide what draws.** `PLAN.md`'s slice 9 section names three ways
       and slice 9 took a fourth. The three are still the three:
   - `golang.org/x/image/vector` plus hand-written compositing — small
     dependency, most work. **It is not in `go.mod` and there is no network**;
