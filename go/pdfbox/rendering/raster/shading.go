@@ -67,6 +67,12 @@ func newShadingContext(sh shading.Shading, matrix *util.Matrix,
 		return newFunctionContext(model, matrix, xform)
 	case shading.ShadingType2:
 		return newAxialContext(model, matrix, xform, deviceBounds)
+	case shading.ShadingType4, shading.ShadingType5, shading.ShadingType6, shading.ShadingType7:
+		mesh, isMesh := sh.(meshShading)
+		if !isMesh {
+			return nil, fmt.Errorf("raster: %T is a mesh shading with no pixel table", sh)
+		}
+		return newMeshContext(mesh, matrix, xform, deviceBounds)
 	case shading.ShadingType3:
 		return newRadialContext(model, matrix, xform, deviceBounds)
 	}

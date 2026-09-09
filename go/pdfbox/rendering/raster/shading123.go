@@ -23,6 +23,7 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common/function"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/shading"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
@@ -37,6 +38,7 @@ type shadingModel interface {
 	Background() *cos.Array
 	EvalFunction(inputValue float32) ([]float32, error)
 	EvalFunctionOfInput(input []float32) ([]float32, error)
+	Function() (function.PDFunction, error)
 }
 
 // baseContext is ShadingContext: the colour space every context converts
