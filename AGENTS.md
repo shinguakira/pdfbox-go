@@ -144,6 +144,16 @@ upstream."
   code to fix is a bug introduced *by the port itself* — something Java cannot
   do, such as a Go-specific initialisation-order or nil-handling mistake.
 
+  **The one exception, and it is closed.** The user directed one branch,
+  `track/java-bug-fixes`, to correct the Java-driven defects the port had
+  faithfully carried. Sixty-one entries of
+  [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md) are now deliberately
+  *not* what the Java does; each says so in a **Fixed in the Go** paragraph,
+  and the code says so at the site. **A divergence carrying such a comment is
+  not a defect to restore** — reverting one puts the bug back. The rule above
+  still governs everything else: no new branch fixes a Java bug without the
+  user asking for it, and a newly found one is still recorded and carried.
+
 - **Record every Java bug you find in
   [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md).** Not fixing one is
   not the same as forgetting it. Add the entry while you are porting that code —
