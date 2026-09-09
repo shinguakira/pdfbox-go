@@ -252,13 +252,13 @@ the entry it came from.
 
 - [ ] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting
   - Is it a defect in the fix, a fix that should not have been made, or an
     entry that should have been fixed and was not?
   - A fix the user rejects goes back to the **keep** column with the reason,
     and the entry says so.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what correct is
   - Then fix the Go

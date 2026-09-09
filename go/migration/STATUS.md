@@ -6252,3 +6252,49 @@ Nothing in this branch. Two things a later branch may want:
   `AddVersions` writes a `Seq`, as the field is declared, but of text rather
   than of the declared `VersionType`. The method has no parameter for a
   structured type, and giving it one is a port task.
+
+### Track `java-bug-fixes` — E, the review feedback
+
+Four items. Three were defects in the fixes and are fixed; one asked for a fix
+to be reverted and is declined, with a change made so the same reading is not
+invited again.
+
+- **Entry 40 was half-done.** The comment said an entry that is not a string
+  contributes nothing and the code left an empty string at its index, in a list
+  whose length still counted it — a header identifier no cell carries, and one
+  no caller could tell from a header that really is empty. Such an entry is
+  left out now. `TestHeadersLeaveOutAnEntryThatIsNotAString`.
+- **Entry 20 joined its high byte signed.** The first cut reasoned that the
+  minimal repair to the Java — `&` to `|` — sign-extends, and reproduced that.
+  It is a second defect rather than the fix: `supplementVersion` is a uint16 at
+  offset 140 of the AAT `gcid` table, which the offsets the caller reads its
+  two strings from bear out. FF 01 is 65281, not -255. The test carries the
+  three high bytes that tell the two readings apart.
+- **Entry 35 was edited into a generated file.** `names.go` is written by
+  `migration/scripts/gen-cos-names.ps1`, so the next run would have reverted
+  `/Bead` and left `pdthread.go` naming a `cos.Bead` that no longer existed.
+  The correction moved into the generator, as the one table where a generated
+  name may diverge from `COSName.java`.
+
+  Running the generator to check also found **two latent defects in it**, both
+  of which drop a name the committed file has: the line-based match missed
+  `OUTPUT_CONDITION_IDENTIFIER`, whose declaration wraps across two lines, and
+  the constant pattern `[A-Z0-9_]+` cannot match `COSName.Off`, which is
+  declared beside `OFF` and is exactly why the override table is ordinal-cased.
+  It reads the file whole, matches mixed case, throws if it finds fewer than
+  the 588 names it expects, and breaks ties between identifiers differing only
+  in case so the output does not depend on parse order. It now reproduces the
+  committed file byte for byte, plus the override.
+
+- **Declined: restore `matrixDest[1] = b1*d1` in `cffparser.go`** (JAVA-BUGS
+  17), on the grounds that `AGENTS.md` forbids fixing Java bugs. That rule is
+  the one this branch was directed to invert, and the reviewer had no way to
+  know: `AGENTS.md` stated it with no exception. It now names the branch and
+  says a divergence carrying a JAVA-BUGS comment is not a defect to restore.
+  The fix itself stands — five of the six cells of that matrix multiply read
+  the second matrix and the sixth read `b1 * d1`, against the product the
+  comment above the function draws.
+
+`AGENTS.md`'s "Status: early. Only the `pdfio` package ... is implemented" is
+badly stale and was left alone: it is outside this branch and what the status
+*is* belongs to this file.
