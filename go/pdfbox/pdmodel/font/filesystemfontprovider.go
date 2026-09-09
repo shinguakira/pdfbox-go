@@ -921,8 +921,14 @@ func computeHash(is io.Reader) (string, error) {
 //
 // Java writes `bytes[140] << 8 & (bytes[141] & 0xFF)`: an AND between a value
 // whose low eight bits are zero and one whose high bits are zero, which is zero
-// for every input. The two bytes are the halves of one number. See
-// migration/JAVA-BUGS.md 20.
+// for every input. The two bytes are the halves of one number.
+//
+// Both bytes are read unsigned. The field is `supplementVersion` at offset 140
+// of the AAT "gcid" table, which is a uint16 -- the offsets the caller uses say
+// so: version, format and size take 8 bytes, then registry 2, registryName 64,
+// order 2, orderName 64, which lands the next field at 140. Java's `bytes[140]
+// << 8` sign-extends, so even the minimal repair of the `&` would answer -255
+// for the bytes FF 01 rather than 65281. See migration/JAVA-BUGS.md 20.
 func cidSupplementVersion(high, low byte) int {
-	return int(int8(high))<<8 | int(low)
+	return int(high)<<8 | int(low)
 }

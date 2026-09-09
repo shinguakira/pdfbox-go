@@ -978,8 +978,14 @@ Tested by `TestPanoseHexIsTwoDigits` in
 int supplementVersion = bytes[140] << 8 & (bytes[141] & 0xFF);
 ```
 
-**What correct would be** `bytes[140] << 8 | (bytes[141] & 0xFF)` — the two
-bytes of a big-endian 16-bit number are ORed together, not ANDed.
+**What correct would be** `(bytes[140] & 0xFF) << 8 | (bytes[141] & 0xFF)` —
+the two bytes of a big-endian 16-bit number are ORed together, not ANDed, and
+both are unsigned. `supplementVersion` is a uint16 in the AAT "gcid" table, at
+offset 140: version, format and size take 8 bytes, then registry 2,
+registryName 64, order 2, orderName 64, which is where the surrounding code
+reads its two strings from and lands the next field at 140. Repairing only the
+`&` would leave `bytes[140] << 8` sign-extending, so the bytes FF 01 would
+answer -255 rather than 65281.
 
 **Why it matters** `bytes[140] << 8` has a zero low byte by construction, and
 `bytes[141] & 0xFF` has nothing but a low byte, so the AND is always 0. Every
@@ -993,11 +999,17 @@ but it is written into the on-disk cache and handed to anyone reading
 `addTrueTypeFontImpl`, which writes the same `&` with a comment.
 
 **Fixed in the Go** `track/java-bug-fixes`, entry 20. The two bytes are ORed,
-in `cidSupplementVersion`, which the test can reach on its own. Java's `&`
-between a value whose low eight bits are zero and one whose high bits are zero
-is zero for every input, so the supplement was always 0. Tested by
-`TestCIDSupplementIsTheTwoBytesJoined` in
+unsigned, in `cidSupplementVersion`, which the test can reach on its own.
+Java's `&` between a value whose low eight bits are zero and one whose high
+bits are zero is zero for every input, so the supplement was always 0. Tested
+by `TestCIDSupplementIsTheTwoBytesJoined` in
 `go/pdfbox/pdmodel/font/javabug20_test.go`.
+
+The first cut of this joined the high byte signed, on the reasoning that the
+minimal repair to the Java -- `&` to `|` -- would sign-extend. The E-phase
+review was right that this is a second defect rather than the fix: the field is
+a uint16, so FF 01 is 65281 and not -255. The test now carries the three high
+bytes that tell the two apart.
 
 **Confidence** high. `&` between disjoint byte lanes cannot be what was meant.
 
