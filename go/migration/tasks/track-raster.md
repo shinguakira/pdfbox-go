@@ -111,7 +111,7 @@ comparisons possible for the first time.
   - Do this **before** B, not after. A backend written first and compared
     afterwards is a backend written to whatever it happens to produce.
 
-- [ ] A2. Port the shading tests
+- [x] A2. Port the shading tests
   - `PDShadingTest` and the type-specific cases assert colours at points, which
     is what a `ShadingContext` answers. They can be asserted without a full
     page render.

@@ -6418,3 +6418,34 @@ filled by the Maven build downloading from the issue tracker, both are empty
 here, and **the port fetches nothing in a test** — the rule every slice has
 given for the same omission. The raster was the second reason those three were
 deferred; it was never the only one.
+
+### Track `raster` — A2, and the second stale premise
+
+The task file says "Port the shading tests — `PDShadingTest` and the
+type-specific cases assert colours at points". **There is no such test.**
+`grep -rli shading` over `pdfbox/src/test` finds two files and neither tests a
+shading: one lists operator names, the other checks that `shadingFill` refuses
+a shading built from an empty dictionary. Slice 9's A3 had already found this
+and wrote `graphics/shading/shading_test.go` from the Java source and the
+specification.
+
+So A2 is the same kind of work rather than a port: the colour a
+`ShadingContext` answers at a point, asserted with no rasteriser and no page.
+`go/pdfbox/rendering/raster/shading_test.go` holds the first two, for the axial
+type, and both fail with `ErrNotDrawn` until B3.
+
+**The expected values are derived and the derivation is in the test**, because
+a value read off the port would only say the port agrees with itself. Two
+details of `AxialShadingContext` that the derivation turns on, and that a
+reimplementation would get wrong:
+
+- **The colour is quantised through a table whose size depends on the device
+  bounds.** `factor = ceil(the diagonal of the device bounds)`, the table holds
+  `factor + 1` colours evaluated at `domain[0] + d1d0 * i / factor`, and the
+  raster loop reads `colorTable[(int)(inputValue * factor)]`. The same shading
+  over a different sized surface therefore quantises differently. The test uses
+  a 300 by 400 surface, whose diagonal is exactly 500, so the quarters fall on
+  table entries and the arithmetic stays checkable.
+- **`convertToRGB` truncates.** `(int) (rgbValues[0] * 255)` gives 127 for 0.5
+  and reaches 255 only at exactly 1.0. It is not rounding, and the difference
+  shows on every mid-tone.
