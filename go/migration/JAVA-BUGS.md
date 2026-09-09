@@ -1793,6 +1793,16 @@ wrote, which is why it has survived: the reading path never touches it.
 writes it. The name is deliberately spelled `cos.BEAD` rather than `cos.Bead` so
 that it does not read like the correct one.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 35. A0 marked this **not
+carried**, and it was wrong: the "Where the Go carries it" line above says
+plainly that the port had `BEAD = GetPDFName("BEAD")` and wrote it, and the
+row was read as though the port already had the correct spelling. It did not.
+The constant is `Bead = GetPDFName("Bead")` now, spelled the way table 30
+spells it, and the identifier is spelled `cos.Bead` to match -- the upper-case
+`cos.BEAD` existed so it would not read like the correct one. Tested by
+`TestNewThreadBeadIsTypeBead` in
+`go/pdfbox/pdmodel/interactive/pagenavigation/javabug35_test.go`.
+
 **Confidence** high for the code; the specification reading is from Table 30 of
 PDF 32000-1:2008. No test resource in the repository carries a bead dictionary,
 so there is nothing to measure it against.

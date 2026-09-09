@@ -6039,7 +6039,7 @@ a **keep** names one of the four reasons the task file allows.
 | 32 | fix | a truncated stream repeating its last complete group |
 | 33 | fix | one of two strings checked |
 | 34 | fix | the method's own javadoc promises the blank document it throws instead of |
-| 35 | not carried | the port already had `/Bead` |
+| 35 | fix | the port wrote `/BEAD` too; A0 said not carried and misread the entry |
 | 36 | fix | the setter writes the key the getter does not read |
 | 37 | fix | a setter that ignores its argument |
 | 38 | fix | `/P` read without checking it is there |
@@ -6090,10 +6090,12 @@ a **keep** names one of the four reasons the task file allows.
 | 83 | fix | `/Suspect` written twice and `/UserProperties` never |
 | 84 | fix | a branch that cannot run, so the page mode is never merged |
 
-**58 fix, 8 keep, 16 not carried, 2 test only.** The not-carried count was
+**59 fix, 8 keep, 15 not carried, 2 test only.** The not-carried count was
 written as 15 in every earlier revision of this line and the list under it
 always had sixteen members, so the fix count was one too many with it; the
-table is what was counted here. A0 first said 63 and 4. Entry 2
+table is what was counted here, and entry 35 then moved from not carried to
+fix, which brings both back to what the sentence said. A0 first said 63 and 4.
+Entry 2
 moved to keep once it was checked — the task file calls that a normal outcome
 and says hiding it is not. Entry 3 is the same arithmetic and stayed a fix,
 because a `ReadView` can declare a length its source cannot supply and then the
