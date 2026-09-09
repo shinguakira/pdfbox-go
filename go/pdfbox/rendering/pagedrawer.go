@@ -275,16 +275,26 @@ func (d *PageDrawer) Paint(c *color.PDColor) (Paint, error) {
 	}
 	switch p := found.(type) {
 	case *pattern.PDTilingPattern:
+		// pattern space -> user space, which is the first thing Java's
+		// TilingPaint constructor works out.
+		patternMatrix := util.Concatenate(d.InitialMatrix(), p.Matrix())
 		if p.PaintType() == pattern.PaintColored {
 			// colored tiling pattern
-			return TilingPaint{Pattern: p, Transform: d.xform}, nil
+			return TilingPaint{
+				Pattern:       p,
+				Transform:     d.xform,
+				Drawer:        d,
+				PatternMatrix: patternMatrix,
+			}, nil
 		}
 		// uncolored tiling pattern
 		return TilingPaint{
-			Pattern:    p,
-			ColorSpace: patternSpace.UnderlyingColorSpace(),
-			Color:      c,
-			Transform:  d.xform,
+			Pattern:       p,
+			ColorSpace:    patternSpace.UnderlyingColorSpace(),
+			Color:         c,
+			Transform:     d.xform,
+			Drawer:        d,
+			PatternMatrix: patternMatrix,
 		}, nil
 
 	case *pattern.PDShadingPattern:

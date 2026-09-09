@@ -77,11 +77,23 @@ func (ShadingPaint) isPaint() {}
 // Port of what TilingPaintFactory.create names: the pattern, the transform in
 // force, and -- for an uncoloured pattern -- the colour and colour space it is
 // painted in, both nil for a coloured one.
+//
+// Drawer and PatternMatrix are the other two arguments Java's TilingPaint
+// constructor takes: it is handed the PageDrawer so that it can run the
+// pattern's content stream for one tile, and it works out
+// `Matrix.concatenate(drawer.getInitialMatrix(), pattern.getMatrix())` on the
+// way in. Both are here because a Backend needs them for the same two reasons,
+// and neither is anything it could compute for itself.
 type TilingPaint struct {
 	Pattern    *pattern.PDTilingPattern
 	ColorSpace color.PDColorSpace
 	Color      *color.PDColor
 	Transform  *geom.AffineTransform
+
+	// Drawer runs the tile. Only DrawTilingPattern is called on it.
+	Drawer *PageDrawer
+	// PatternMatrix is pattern space to user space.
+	PatternMatrix *util.Matrix
 }
 
 func (TilingPaint) isPaint() {}

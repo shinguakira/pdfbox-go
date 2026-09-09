@@ -223,3 +223,7 @@ func (i *Image) compose(mask *goimage.Alpha) error {
 // errNoGroup is a PopGroup with no PushGroup, which is a programming error in
 // the caller rather than anything a document can cause.
 var errNoGroup = errors.New("raster: PopGroup without PushGroup")
+
+// ErrNoPatternBBox is a tiling pattern with no /BBox, which Java's
+// TilingPaint.getAnchorRect throws an IOException for.
+var ErrNoPatternBBox = errors.New("raster: pattern /BBox is missing")

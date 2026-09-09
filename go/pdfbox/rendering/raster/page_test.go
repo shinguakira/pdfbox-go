@@ -1,18 +1,18 @@
 package raster_test
 
-// A page, rendered by PDFBox and by the port, compared.
+// Pages, rendered by PDFBox and by the port, compared.
 //
 // Everything else in this package looks at one call. This looks at the whole
 // of both renderers: the same PDF goes into PDFBox's PDFRenderer -- its
 // parser, its PageDrawer, Graphics2D underneath -- and into this port's, and
 // the two images are put side by side.
 //
-// `testdata/graphics.pdf` is written by `testdata/genpdf.go` and checked in,
-// so both sides read the same bytes. `testdata/graphics-java.png` is what
-// PDFBox made of it, written by `testdata/RenderDrv.java`. Regenerate both
-// together; the drivers say how.
+// The PDFs are written by `testdata/genpdf.go` and `testdata/genpatterns.go`
+// and checked in, so both sides read the same bytes; the PNGs beside them are
+// what PDFBox made of those bytes, written by `testdata/RenderDrv.java`.
+// Regenerate a PDF and its PNG together; the drivers say how.
 //
-// The page has no text on it, deliberately. The glyph tests already compare
+// Neither page has text on it, deliberately. The glyph tests already compare
 // text against the AWT references, and a font here would make this a test of
 // the shaper rather than of the backend.
 
@@ -27,55 +27,28 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering/raster"
 )
 
-// TestAPageRendersAsPDFBoxRendersIt is the comparison the branch exists to
-// make possible.
+// comparePage renders a PDF and counts the pixels that are not PDFBox's.
 //
-// Every flat fill on the page is exact -- the two rectangles, the even-odd
-// one, the half-alpha overlap, the multiplied one -- and so is every interior.
-// What differs is three things, all of them measured on their own in
-// java2d_test.go and none of them a wrong shape:
-//
-//	strokes    1145 pixels, up to 191. PDFBox leaves KEY_STROKE_CONTROL at
-//	           the JDK default, which moves stroke geometry onto pixel
-//	           centres before stroking, and this backend renders the geometry
-//	           as given, so every stroke edge sits half a pixel over.
-//	shading     2220 pixels, up to 2. The colour table is indexed by a
-//	           truncated product, and the last place of that product is not
-//	           the same in float32 as it was in Java's float; the band drifts
-//	           one step either way and never further.
-//	diagonals     68 pixels, up to 6. The rotated square's edges, where the
-//	           two rasterisers put different fractions on an edge pixel.
-//
-// The counts are pinned exactly and in both directions: ink that moves fails
-// this, and ink that stops moving fails it too, so the record has to be
-// updated with the code.
-func TestAPageRendersAsPDFBoxRendersIt(t *testing.T) {
-	// differing is how many of the 40000 pixels are not PDFBox's, and beyond
-	// is how many of those are more than a quarter of one channel away, which
-	// is the stroke shift and nothing else.
-	const (
-		differingPixels = 3382
-		beyondEdges     = 1002
-	)
+// differing is all of them; beyond is the ones more than a quarter of one
+// channel out, which on these pages is the stroke shift and nothing else.
+func comparePage(t *testing.T, name string) (differing, beyond int) {
+	t.Helper()
+	reference := readPNG(t, "testdata/"+name+"-java.png")
 
-	reference := readPNG(t, "testdata/graphics-java.png")
-
-	document, err := pdfbox.LoadPDF("testdata/graphics.pdf")
+	document, err := pdfbox.LoadPDF("testdata/" + name + ".pdf")
 	if err != nil {
-		t.Fatalf("loading the page: %v", err)
+		t.Fatalf("loading %s: %v", name, err)
 	}
 	defer document.Close()
 
 	rendered, err := raster.RenderPage(document, 0, 1, rendering.RGB)
 	if err != nil {
-		t.Fatalf("rendering the page: %v", err)
+		t.Fatalf("rendering %s: %v", name, err)
 	}
-
 	if got, want := rendered.Bounds(), reference.Bounds(); got != want {
 		t.Fatalf("the port rendered %v and PDFBox rendered %v", got, want)
 	}
 
-	differing, beyond := 0, 0
 	for y := reference.Bounds().Min.Y; y < reference.Bounds().Max.Y; y++ {
 		for x := reference.Bounds().Min.X; x < reference.Bounds().Max.X; x++ {
 			worst := 0
@@ -99,7 +72,64 @@ func TestAPageRendersAsPDFBoxRendersIt(t *testing.T) {
 			}
 		}
 	}
+	return differing, beyond
+}
 
+// TestAPageRendersAsPDFBoxRendersIt is the comparison the branch exists to
+// make possible.
+//
+// Every flat fill on the page is exact -- the two rectangles, the even-odd
+// one, the half-alpha overlap, the multiplied one -- and so is every interior.
+// What differs is three things, all of them measured on their own in
+// java2d_test.go and none of them a wrong shape:
+//
+//	strokes    1145 pixels, up to 191. PDFBox leaves KEY_STROKE_CONTROL at
+//	           the JDK default, which moves stroke geometry onto pixel
+//	           centres before stroking, and this backend renders the geometry
+//	           as given, so every stroke edge sits half a pixel over.
+//	shading    2220 pixels, up to 2. The colour table is indexed by a
+//	           truncated product, and the last place of that product is not
+//	           the same in float32 as it was in Java's float; the band drifts
+//	           one step either way and never further.
+//	diagonals    68 pixels, up to 6. The rotated square's edges, where the
+//	           two rasterisers put different fractions on an edge pixel.
+//
+// The counts are pinned exactly and in both directions: ink that moves fails
+// this, and ink that stops moving fails it too, so the record has to be
+// updated with the code.
+func TestAPageRendersAsPDFBoxRendersIt(t *testing.T) {
+	const (
+		differingPixels = 3382
+		beyondEdges     = 1002
+	)
+	differing, beyond := comparePage(t, "graphics")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}
+
+// TestTilingPatternsRenderAsPDFBoxRendersThem is the paint a Backend cannot
+// answer on its own, because the tile is a content stream and drawing it means
+// going back through the PageDrawer.
+//
+// The page has four cases: a coloured pattern filled, an uncoloured one
+// filled, a coloured one stroked with, and an uncoloured one filled through a
+// clip. **The coloured fill is exact** -- 3036 pixels, none of them different
+// -- and it is the one whose tile is nothing but axis-aligned rectangles, so
+// it is the case that says the anchor rectangle, the tile raster, the repeat
+// and the pattern matrix are all right.
+//
+// The other three draw the uncoloured tile, which is two diagonal strokes, and
+// they carry the same stroke shift and the same edge coverage as everything
+// else that is not axis-aligned.
+func TestTilingPatternsRenderAsPDFBoxRendersThem(t *testing.T) {
+	const (
+		differingPixels = 2107
+		beyondEdges     = 873
+	)
+	differing, beyond := comparePage(t, "patterns")
 	if differing != differingPixels || beyond != beyondEdges {
 		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
 			"than a quarter of a channel; it was %d and %d",
