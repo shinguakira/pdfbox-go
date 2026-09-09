@@ -3447,6 +3447,15 @@ NegativeArraySizeException.
 through int32 so the cast is reproduced too. Pinned by
 `TestAvailableGoesNegativePastTheEnd`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 68. `Available` clamps the
+count at zero, which is the `Math.max(0, ...)`
+`RandomAccessInputStream.available` in the same package already has — the two
+implementations of the one idea now agree. The upper bound and the narrowing
+are unchanged. Tested by `TestAvailableIsNeverNegative` in
+`go/pdfio/javabug68_test.go`, over the four-byte view seeked to 20 that the
+running Java answers -16 for, with `TestAvailableStillCountsWhatIsLeft` beside
+it. The pin, `TestAvailableGoesNegativePastTheEnd`, is gone with it.
+
 **Confidence** reproduced. Read out of the running Java, JDK 17, a four-byte
 view seeked to 20:
 

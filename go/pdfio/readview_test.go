@@ -212,38 +212,3 @@ func TestReadViewCloseDropsTheSource(t *testing.T) {
 		}
 	}
 }
-
-// TestAvailableGoesNegativePastTheEnd pins the missing lower bound in the
-// default available().
-//
-// Java is `(int) Math.min(length() - getPosition(), Integer.MAX_VALUE)`. The
-// min bounds it above and nothing bounds it below, and RandomAccessReadView
-// records a seek past its end verbatim, so the subtraction goes negative.
-//
-// Read out of the running Java, JDK 17, a four-byte view seeked to 20:
-//
-//	ReadView seek(20) ok, position=20 length=4 available=-16 isEOF=true
-//
-// The one caller in the whole tree, DataInputRandomAccessRead.hasRemaining,
-// asks `available() > 0`, which is false either way — which is presumably why
-// nothing has noticed. See migration/JAVA-BUGS.md entry 68.
-func TestAvailableGoesNegativePastTheEnd(t *testing.T) {
-	data := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	source, err := NewReadBufferFromReader(bytes.NewReader(data))
-	noError(t, "NewReadBufferFromReader", err)
-	view := NewReadView(source, 2, 4)
-
-	noError(t, "Seek(20)", SeekTo(view, 20))
-
-	available, err := Available(view)
-	noError(t, "Available", err)
-	if available != -16 {
-		t.Errorf("Available() = %d, want -16", available)
-	}
-
-	eof, err := view.IsEOF()
-	noError(t, "IsEOF", err)
-	if !eof {
-		t.Error("IsEOF() = false past the end of the view, want true")
-	}
-}
