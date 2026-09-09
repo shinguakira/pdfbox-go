@@ -49,17 +49,16 @@ func TestExportFDFRefusesADocumentWithNoForm(t *testing.T) {
 	}
 }
 
-// TestExportXFDFReportsNoFormAndExitsZero is JAVA-BUGS 75: the same condition,
-// the same message, and exit 0.
-//
-// The port carries the defect, so this case asserts the wrong answer on
-// purpose. If it ever fails because the port started answering 1, the entry and
-// the port have to move together.
-func TestExportXFDFReportsNoFormAndExitsZero(t *testing.T) {
+// TestExportXFDFRefusesADocumentWithNoForm is JAVA-BUGS 75: the same
+// condition and the same message as its twin above, and Java exits 0 for it,
+// so a script that checks the exit code is told the export succeeded while no
+// file was written. The two commands differ only in the format the caller
+// asked for, so they answer the same thing here.
+func TestExportXFDFRefusesADocumentWithNoForm(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out.xfdf")
 	code, _, stderr := runCommand(tools.NewExportXFDF(), "-i", testFile2, "-o", out)
-	if code != 0 {
-		t.Errorf("exited %d, want Java's 0 -- see JAVA-BUGS 75", code)
+	if code != 1 {
+		t.Errorf("exited %d, want 1 -- the same as exportfdf", code)
 	}
 	if want := "Error: This PDF does not contain a form."; !strings.Contains(stderr, want) {
 		t.Errorf("stderr is %q, want %q", stderr, want)

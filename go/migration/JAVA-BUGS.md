@@ -3832,6 +3832,15 @@ of the three possible outcomes.
 **Where the Go carries it** `go/tools/fdfcommands.go`, `noFormExit`, which is
 the one thing `exportForm` does not share between the two callers. Said there.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 75. `exportForm` answers 1
+for a document with no form whichever command asked, which is what
+`ExportFDF` already did and what the message on the line above says it is. The
+`noFormExit` helper, which existed only to keep the two apart, is gone. Tested
+by `TestExportXFDFRefusesADocumentWithNoForm` in
+`go/tools/fdfcommands_test.go` — the pin that asserted the 0 on purpose, now
+asserting the 1, beside `TestExportFDFRefusesADocumentWithNoForm`, which is
+the same case on the side that was already right.
+
 **Confidence** certain, from the source: it is a missing statement, not a
 subtlety. Not measured, because the `tools` module cannot be run in this
 environment — picocli is not in the local Maven repository and there is no

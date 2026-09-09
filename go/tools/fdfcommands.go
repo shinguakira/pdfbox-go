@@ -92,19 +92,12 @@ func (e *ExportXFDF) validate(set *flag.FlagSet) error {
 }
 
 // Call exports the form data as XFDF.
-//
-// One difference from ExportFDF, which Java has and the port keeps: where the
-// document has no form, this one prints the error and falls through to
-// `return 0`, while ExportFDF answers 1. See migration/JAVA-BUGS.md.
 func (e *ExportXFDF) Call() int {
 	return exportForm(&e.streams, e.infile, &e.outfile, ".xfdf", "XFDF",
 		func(document *fdf.FDFDocument, out *os.File) error { return document.SaveXFDF(out) })
 }
 
 // exportForm is the body ExportFDF and ExportXFDF share.
-//
-// The one thing they do not share is what a missing form answers, so the caller
-// says which it is through noFormExit.
 func exportForm(s *streams, infile string, outfile *string, extension, what string,
 	save func(*fdf.FDFDocument, *os.File) error) int {
 	document, err := pdfbox.LoadPDF(infile)
@@ -117,7 +110,11 @@ func exportForm(s *streams, infile string, outfile *string, extension, what stri
 	acroForm := form.AcroFormOfCatalog(document.DocumentCatalog())
 	if acroForm == nil {
 		s.printlnErr("Error: This PDF does not contain a form.")
-		return noFormExit(what)
+		// ExportXFDF falls out of this branch in the Java and reaches the
+		// `return 0` at the end of the method, so it reports the error and
+		// exits successfully without writing a file; ExportFDF, which is the
+		// same class twice over, answers 1. See migration/JAVA-BUGS.md 75.
+		return 1
 	}
 
 	if *outfile == "" {
@@ -145,15 +142,6 @@ func exportForm(s *streams, infile string, outfile *string, extension, what stri
 		s.printlnErr("Error exporting " + what + " data: " + err.Error())
 		return 4
 	}
-	return ExitOK
-}
-
-// noFormExit is what each of the two answers for a document with no form.
-func noFormExit(what string) int {
-	if what == "FDF" {
-		return 1
-	}
-	// ExportXFDF prints the same message and answers 0; JAVA-BUGS records it.
 	return ExitOK
 }
 
