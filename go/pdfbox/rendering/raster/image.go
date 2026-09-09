@@ -51,6 +51,10 @@ type Image struct {
 	antiAliasing  bool
 	interpolation rendering.Interpolation
 
+	// strokeNormalization is KEY_STROKE_CONTROL, and it is on because the JDK's
+	// default is and PDFBox never sets the hint. See normalize.go.
+	strokeNormalization bool
+
 	// groups is the stack of open transparency groups, and secondary the
 	// alpha-only surface the innermost one is drawn onto in parallel.
 	groups    []groupFrame
@@ -71,11 +75,12 @@ var white = goimagecolor.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 func NewImage(width, height int, imageType rendering.ImageType) *Image {
 	dst := goimage.NewRGBA(goimage.Rect(0, 0, width, height))
 	i := &Image{
-		dst:           dst,
-		transform:     geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
-		paint:         rendering.ColorPaint{Alpha: 1},
-		alphaConstant: 1,
-		antiAliasing:  true,
+		dst:                 dst,
+		transform:           geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
+		paint:               rendering.ColorPaint{Alpha: 1},
+		alphaConstant:       1,
+		antiAliasing:        true,
+		strokeNormalization: true,
 	}
 	if imageType != rendering.ARGB {
 		fillOpaqueWhite(dst)
@@ -160,6 +165,16 @@ func (i *Image) SetComposite(blendMode *blend.BlendMode, alphaConstant float64) 
 // SetAntiAliasing turns anti-aliasing on or off.
 func (i *Image) SetAntiAliasing(on bool) { i.antiAliasing = on }
 
+// SetStrokeNormalization turns stroke normalization on or off, which is
+// RenderingHints.KEY_STROKE_CONTROL: on is VALUE_STROKE_NORMALIZE and off is
+// VALUE_STROKE_PURE.
+//
+// It is **not** on Backend, because PageDrawer never sets it -- the hint is
+// Graphics2D's and PDFBox leaves it alone, so it belongs to whoever makes the
+// surface. It is on by default, because the JDK's default is, and that is what
+// a page rendered by PDFBox goes through.
+func (i *Image) SetStrokeNormalization(on bool) { i.strokeNormalization = on }
+
 // SetInterpolation chooses how a scaled image is sampled.
 func (i *Image) SetInterpolation(interpolation rendering.Interpolation) {
 	i.interpolation = interpolation
@@ -185,7 +200,7 @@ func (i *Image) Draw(shape geom.Shape) error {
 	}
 	bounds := i.dst.Bounds()
 	return i.compose(strokeCoverage(shape, i.transform, i.stroke,
-		bounds.Dx(), bounds.Dy(), i.antiAliasing))
+		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization))
 }
 
 // compose puts the current paint onto the destination through a coverage mask

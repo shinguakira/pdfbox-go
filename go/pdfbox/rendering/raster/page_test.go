@@ -79,14 +79,15 @@ func comparePage(t *testing.T, name string) (differing, beyond int) {
 // make possible.
 //
 // Every flat fill on the page is exact -- the two rectangles, the even-odd
-// one, the half-alpha overlap, the multiplied one -- and so is every interior.
-// What differs is three things, all of them measured on their own in
-// java2d_test.go and none of them a wrong shape:
+// one, the half-alpha overlap, the multiplied one -- and so is every interior,
+// and **no pixel anywhere is more than a quarter of a channel out**. What
+// differs is three things, all of them measured on their own in java2d_test.go
+// and none of them a wrong shape:
 //
-//	strokes    1145 pixels, up to 191. PDFBox leaves KEY_STROKE_CONTROL at
-//	           the JDK default, which moves stroke geometry onto pixel
-//	           centres before stroking, and this backend renders the geometry
-//	           as given, so every stroke edge sits half a pixel over.
+//	strokes    1028 pixels, and 68 of them by more than one. The strokes are
+//	           in the right place -- normalize.go puts them there, the way
+//	           PDFBox's own hints do -- and what is left is the coverage a
+//	           partly covered edge pixel is given.
 //	shading    2220 pixels, up to 2. The colour table is indexed by a
 //	           truncated product, and the last place of that product is not
 //	           the same in float32 as it was in Java's float; the band drifts
@@ -99,8 +100,8 @@ func comparePage(t *testing.T, name string) (differing, beyond int) {
 // updated with the code.
 func TestAPageRendersAsPDFBoxRendersIt(t *testing.T) {
 	const (
-		differingPixels = 3382
-		beyondEdges     = 1002
+		differingPixels = 3265
+		beyondEdges     = 0
 	)
 	differing, beyond := comparePage(t, "graphics")
 	if differing != differingPixels || beyond != beyondEdges {
@@ -121,13 +122,14 @@ func TestAPageRendersAsPDFBoxRendersIt(t *testing.T) {
 // it is the case that says the anchor rectangle, the tile raster, the repeat
 // and the pattern matrix are all right.
 //
-// The other three draw the uncoloured tile, which is two diagonal strokes, and
-// they carry the same stroke shift and the same edge coverage as everything
-// else that is not axis-aligned.
+// The other three draw the uncoloured tile, which is two diagonal strokes, so
+// they carry the same edge coverage as everything else that is not
+// axis-aligned -- 525 pixels of 19200, none of them more than a quarter of a
+// channel out.
 func TestTilingPatternsRenderAsPDFBoxRendersThem(t *testing.T) {
 	const (
-		differingPixels = 2107
-		beyondEdges     = 873
+		differingPixels = 525
+		beyondEdges     = 0
 	)
 	differing, beyond := comparePage(t, "patterns")
 	if differing != differingPixels || beyond != beyondEdges {

@@ -147,25 +147,31 @@ func joinMode(lineJoin int) rasterx.JoinMode {
 
 // strokeCoverage strokes a shape and answers the coverage of the outline.
 func strokeCoverage(shape geom.Shape, at *geom.AffineTransform, stroke *rendering.Stroke,
-	width, height int, antiAliasing bool) *image.Alpha {
+	width, height int, antiAliasing, normalize bool) *image.Alpha {
 	recorder := newOutlineRecorder()
 	dasher := newDasherFor(recorder, width, height, stroke)
-	addShapeToAdder(dasher, shape, at)
+	addShapeToAdder(dasher, shape, at, newNormalizer(normalize, antiAliasing))
 	dasher.Draw()
 	return recorder.rasterize(width, height, antiAliasing)
 }
 
-// addShapeToAdder walks a shape through a transform into a rasterx path.
+// addShapeToAdder walks a shape through a transform into a rasterx path,
+// normalizing each segment on the way.
 //
 // Unlike the fill, an open subpath stays open: the cap goes on its ends, and
 // closing it would put a join there instead.
-func addShapeToAdder(adder rasterx.Adder, shape geom.Shape, at *geom.AffineTransform) {
+func addShapeToAdder(adder rasterx.Adder, shape geom.Shape, at *geom.AffineTransform,
+	normalize *normalizer) {
 	iterator := shape.PathIterator(at)
 	coords := make([]float64, 6)
 	started := false
 
 	for ; !iterator.IsDone(); iterator.Next() {
-		switch iterator.CurrentSegment(coords) {
+		kind := iterator.CurrentSegment(coords)
+		// The path is already in device space, which is where Marlin
+		// normalizes: it wraps the iterator the device transform came out of.
+		normalize.segment(kind, coords)
+		switch kind {
 		case geom.SegMoveTo:
 			if started {
 				adder.Stop(false)

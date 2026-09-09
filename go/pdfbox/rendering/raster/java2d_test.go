@@ -46,7 +46,13 @@ type java2dCase struct {
 	antiAliasing  bool
 	differing     int
 	worst         int
-	draw          func(i *Image)
+
+	// normDiffering and normWorst are the same, under
+	// VALUE_STROKE_NORMALIZE, which is what PDFBox renders under.
+	normDiffering int
+	normWorst     int
+
+	draw func(i *Image)
 }
 
 var java2dCases = []java2dCase{
@@ -65,7 +71,7 @@ var java2dCases = []java2dCase{
 	// exactly half covered. Java2D writes 0x80 there and this backend 0x7f:
 	// the whole difference is one unit on 36 edge pixels.
 	{name: "fillHalfAA", width: 20, height: 20, antiAliasing: true,
-		differing: 36, worst: 1, draw: func(i *Image) {
+		differing: 36, worst: 1, normDiffering: 36, normWorst: 1, draw: func(i *Image) {
 			must(i.Fill(geom.NewRectangle2D(5.5, 5.5, 9, 9)))
 		}},
 	{name: "strokeLine", width: 20, height: 20, draw: func(i *Image) {
@@ -78,33 +84,36 @@ var java2dCases = []java2dCase{
 	{name: "windEvenOdd", width: 20, height: 20, draw: func(i *Image) {
 		must(i.Fill(squareInASquare(geom.WindEvenOdd)))
 	}},
-	{name: "joinMiter", width: 32, height: 32, antiAliasing: true, draw: func(i *Image) {
-		i.SetStroke(&rendering.Stroke{LineWidth: 8, LineJoin: 0, MiterLimit: 10})
-		must(i.Draw(rightAngle()))
-	}},
+	{name: "joinMiter", width: 32, height: 32, antiAliasing: true,
+		normDiffering: 91, normWorst: 64, draw: func(i *Image) {
+			i.SetStroke(&rendering.Stroke{LineWidth: 8, LineJoin: 0, MiterLimit: 10})
+			must(i.Draw(rightAngle()))
+		}},
 	{name: "joinRound", width: 32, height: 32, antiAliasing: true,
-		differing: 7, worst: 11, draw: func(i *Image) {
+		differing: 7, worst: 11, normDiffering: 90, normWorst: 64, draw: func(i *Image) {
 			i.SetStroke(&rendering.Stroke{LineWidth: 8, LineJoin: 1, MiterLimit: 10})
 			must(i.Draw(rightAngle()))
 		}},
 	{name: "joinBevel", width: 32, height: 32, antiAliasing: true,
-		differing: 4, worst: 1, draw: func(i *Image) {
+		differing: 4, worst: 1, normDiffering: 88, normWorst: 64, draw: func(i *Image) {
 			i.SetStroke(&rendering.Stroke{LineWidth: 8, LineJoin: 2, MiterLimit: 10})
 			must(i.Draw(rightAngle()))
 		}},
-	{name: "capButt", width: 24, height: 24, antiAliasing: true, draw: func(i *Image) {
-		i.SetStroke(&rendering.Stroke{LineWidth: 8, LineCap: 0, MiterLimit: 10})
-		must(i.Draw(lineShape(8, 12, 16, 12)))
-	}},
+	{name: "capButt", width: 24, height: 24, antiAliasing: true,
+		normDiffering: 28, normWorst: 1, draw: func(i *Image) {
+			i.SetStroke(&rendering.Stroke{LineWidth: 8, LineCap: 0, MiterLimit: 10})
+			must(i.Draw(lineShape(8, 12, 16, 12)))
+		}},
 	{name: "capRound", width: 24, height: 24, antiAliasing: true,
-		differing: 28, worst: 15, draw: func(i *Image) {
+		differing: 28, worst: 15, normDiffering: 47, normWorst: 17, draw: func(i *Image) {
 			i.SetStroke(&rendering.Stroke{LineWidth: 8, LineCap: 1, MiterLimit: 10})
 			must(i.Draw(lineShape(8, 12, 16, 12)))
 		}},
-	{name: "capSquare", width: 24, height: 24, antiAliasing: true, draw: func(i *Image) {
-		i.SetStroke(&rendering.Stroke{LineWidth: 8, LineCap: 2, MiterLimit: 10})
-		must(i.Draw(lineShape(8, 12, 16, 12)))
-	}},
+	{name: "capSquare", width: 24, height: 24, antiAliasing: true,
+		normDiffering: 44, normWorst: 1, draw: func(i *Image) {
+			i.SetStroke(&rendering.Stroke{LineWidth: 8, LineCap: 2, MiterLimit: 10})
+			must(i.Draw(lineShape(8, 12, 16, 12)))
+		}},
 	{name: "dashed", width: 24, height: 12, draw: func(i *Image) {
 		i.SetStroke(&rendering.Stroke{LineWidth: 4, MiterLimit: 10,
 			DashArray: []float32{4, 4}})
@@ -119,7 +128,7 @@ var java2dCases = []java2dCase{
 	// to a bevel in the same place. What differs is the coverage along four
 	// long diagonal edges.
 	{name: "miterLimited", width: 40, height: 24, antiAliasing: true,
-		differing: 129, worst: 7, draw: func(i *Image) {
+		differing: 129, worst: 7, normDiffering: 118, normWorst: 61, draw: func(i *Image) {
 			i.SetStroke(&rendering.Stroke{LineWidth: 6, LineJoin: 0, MiterLimit: 2})
 			path := geom.NewPathDouble()
 			path.MoveTo(2, 20)
@@ -128,7 +137,7 @@ var java2dCases = []java2dCase{
 			must(i.Draw(path))
 		}},
 	{name: "strokeCurve", width: 32, height: 32, antiAliasing: true,
-		differing: 102, worst: 25, draw: func(i *Image) {
+		differing: 102, worst: 25, normDiffering: 109, normWorst: 25, draw: func(i *Image) {
 			i.SetStroke(&rendering.Stroke{LineWidth: 5, LineJoin: 1, MiterLimit: 10})
 			path := geom.NewPathDouble()
 			path.MoveTo(4, 26)
@@ -179,11 +188,13 @@ func rightAngle() geom.Shape {
 	return path
 }
 
-// render draws the case onto a backend the size the driver used.
-func (c java2dCase) render() *Image {
+// render draws the case onto a backend the size the driver used, under the
+// given KEY_STROKE_CONTROL.
+func (c java2dCase) render(normalize bool) *Image {
 	i := NewImage(c.width, c.height, rendering.RGB)
 	i.SetPaint(black)
 	i.SetAntiAliasing(c.antiAliasing)
+	i.SetStrokeNormalization(normalize)
 	c.draw(i)
 	return i
 }
@@ -282,7 +293,7 @@ func TestAgainstJava2D(t *testing.T) {
 	grids := java2dGrids(t)
 	for _, c := range java2dCases {
 		t.Run(c.name, func(t *testing.T) {
-			differing, worst := differenceFrom(t, gridFor(t, grids, c.name), c.render())
+			differing, worst := differenceFrom(t, gridFor(t, grids, c.name), c.render(false))
 			if differing != c.differing || worst != c.worst {
 				t.Errorf("%d pixels differ from Java2D by up to %d, and it was %d by up to %d",
 					differing, worst, c.differing, c.worst)
@@ -291,37 +302,30 @@ func TestAgainstJava2D(t *testing.T) {
 	}
 }
 
-// TestTheStrokeNormalizationCost measures what PDFBox's own hints would cost.
+// TestAgainstJava2DNormalized is the same seventeen under the other value of
+// KEY_STROKE_CONTROL, which is the one PDFBox actually renders under.
 //
-// PDFRenderer.createDefaultRenderingHints sets three hints and not
-// KEY_STROKE_CONTROL, so PDFBox renders under the JDK default, which is
-// VALUE_STROKE_NORMALIZE: before stroking, Marlin moves each segment endpoint
-// to the nearest pixel centre, so that a thin line lands on whole pixels
-// instead of straddling two. It is a matter of looks and the javadoc says so
-// -- "different normalization algorithms may be more successful than others
-// for given input paths" -- which is to say it is not specified, and a port
-// that reproduced it would be reproducing one JDK's.
+// `createDefaultRenderingHints` sets three hints and not this one, so a page
+// goes through the Graphics2D default, and the default normalizes: before
+// stroking, Marlin moves each segment endpoint to the nearest pixel centre --
+// or pixel quarter, with anti-aliasing off -- so that a thin line lands on
+// whole pixels instead of straddling two. `normalize.go` is that, ported, and
+// `SetStrokeNormalization` is the hint.
 //
-// This backend does not do it, so a stroke on an integer coordinate lands half
-// a pixel from where PDFBox puts it. The numbers below are that, measured: no
-// fill moves, and every stroke does.
-func TestTheStrokeNormalizationCost(t *testing.T) {
-	// differing is how many pixels of each case this backend puts elsewhere
-	// than a normalizing Java2D would.
-	normalization := map[string]int{
-		"fillRect": 0, "fillTranslated": 0, "fillClipped": 0, "fillHalfAA": 36,
-		"windNonZero": 0, "windEvenOdd": 0,
-		"strokeLine": 0, "dashed": 0, "dashedPhase": 0,
-		"joinMiter": 96, "joinRound": 101, "joinBevel": 96,
-		"capButt": 32, "capRound": 57, "capSquare": 48,
-		"miterLimited": 175, "strokeCurve": 150,
-	}
+// Holding the port to both grids is what says the port is right rather than
+// merely close: the same seventeen shapes, drawn twice, against a Java2D told
+// to do each thing.
+func TestAgainstJava2DNormalized(t *testing.T) {
 	grids := java2dGrids(t)
 	for _, c := range java2dCases {
-		differing, _ := differenceFrom(t, gridFor(t, grids, c.name+"Norm"), c.render())
-		if want := normalization[c.name]; differing != want {
-			t.Errorf("%s: %d pixels away from a normalizing Java2D, and it was %d",
-				c.name, differing, want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			differing, worst := differenceFrom(t,
+				gridFor(t, grids, c.name+"Norm"), c.render(true))
+			if differing != c.normDiffering || worst != c.normWorst {
+				t.Errorf("%d pixels differ from a normalizing Java2D by up to %d, "+
+					"and it was %d by up to %d",
+					differing, worst, c.normDiffering, c.normWorst)
+			}
+		})
 	}
 }
