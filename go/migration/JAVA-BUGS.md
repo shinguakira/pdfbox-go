@@ -3382,6 +3382,17 @@ merely looks odd.
 exists so the package function `Rewind` dispatches to it the way Java's virtual
 call does. Pinned by `TestReadViewRewindPastItsOwnStart`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 67. `Rewind` refuses a
+rewind that would land before the view's start, with the same
+`ErrInvalidPosition` `Seek` answers — which is also where the interface's own
+default rewind ends up, since that is `seek(position - bytes)`. The override
+keeps its shape otherwise: it still rewinds the source rather than seeking.
+Tested by `TestReadViewRefusesToRewindPastItsOwnStart` in
+`go/pdfio/javabug67_test.go`, which checks the error, that the position is
+where it was, and that the next byte is still the view's own;
+`TestReadViewStillRewindsInsideItself` beside it keeps the legal rewind. The
+pin, `TestReadViewRewindPastItsOwnStart`, is gone with it.
+
 **Confidence** reproduced. Read out of the running Java, JDK 17: a view of
 `data[4..7]` over the bytes `0..9`, seeked to 2 and read once, so its position
 is 3:
