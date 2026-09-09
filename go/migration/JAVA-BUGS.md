@@ -2888,6 +2888,18 @@ not have it, with nothing to say the argument was dropped.
 `CreateAndAddPDFAExtensionSchemaWithNS`, which takes the map, ignores it and
 says so.
 
+**Kept in the Go** `track/java-bug-fixes`: "correct" is a judgement. A0 marked
+this **fix**; the entry's own two answers are the reason it is not one. One is
+to delete a public method, which is an API decision and not a defect fix. The
+other needs the map read, and nothing in either tree says which way it runs:
+`Map<String, String> namespaces` appears exactly once in xmpbox, in this
+signature, with no caller, no test and no sibling to take the convention from —
+so whether the keys are prefixes and the values URIs, or the reverse, is a
+guess, and so is what "declaring the namespaces on the schema" writes. Guessing
+would turn a call that today answers a working schema into one that can fail,
+on invented rules. The method keeps Java's behaviour and its comment says the
+argument is ignored.
+
 **Confidence** high. The method body is four lines and the parameter appears in
 none of them.
 

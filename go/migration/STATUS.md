@@ -6061,7 +6061,7 @@ a **keep** names one of the four reasons the task file allows.
 | 55 | fix | the wrong kind of array written |
 | 56 | fix | an index past the end of a short instruction |
 | 57 | not carried | |
-| 58 | fix | a method that ignores its argument |
+| 58 | **keep** | judgement: the entry's two corrects are "delete the method" and "read a map whose direction nothing states". A0 said fix |
 | 59 | not carried | |
 | 60 | not carried | |
 | 61 | fix | nulls put into a list the caller walks |
@@ -6089,7 +6089,7 @@ a **keep** names one of the four reasons the task file allows.
 | 83 | fix | `/Suspect` written twice and `/UserProperties` never |
 | 84 | fix | a branch that cannot run, so the page mode is never merged |
 
-**61 fix, 6 keep, 15 not carried, 2 test only.** A0 first said 63 and 4. Entry 2
+**60 fix, 7 keep, 15 not carried, 2 test only.** A0 first said 63 and 4. Entry 2
 moved to keep once it was checked — the task file calls that a normal outcome
 and says hiding it is not. Entry 3 is the same arithmetic and stayed a fix,
 because a `ReadView` can declare a length its source cannot supply and then the
@@ -6102,6 +6102,13 @@ The name it measures by comes from `codePointToName`, no glyph list in the tree
 holds a code point outside the basic plane, so the character is named `.notdef`
 — and `.notdef` is the one name `hasGlyph` can never answer true for. The first
 read throws before the index that was not advanced is used again.
+
+Entry 58 moved too, on the other allowed reason: `createAndAddPDFAExtension-
+SchemaWithNS` really does ignore its argument, and the entry's own two answers
+are "delete the method" — an API decision — and "read the map", whose direction
+nothing in either tree states. It has no caller, no test and no sibling to take
+a convention from, so any behaviour put in it would be invented, and would turn
+a call that answers a working schema today into one that can fail.
 
 The four A0 kept, with their reasons in full:
 
