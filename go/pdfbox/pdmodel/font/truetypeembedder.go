@@ -336,15 +336,16 @@ func subsetTag(gidToCid map[int]int) string {
 	// values.
 	//
 	// Java writes Math.abs(int), which answers Integer.MIN_VALUE unchanged for
-	// that one input -- and the loop below then indexes BASE25 with a negative
-	// remainder. Ported as written; see migration/JAVA-BUGS.md entry 74.
-	abs := hash
-	if abs > 0 {
-		// nothing to do
-	} else if abs != math.MinInt32 {
-		abs = -abs
+	// that one input -- and the loop below then indexed BASE25 with a negative
+	// remainder. Widen before negating, which is Math.abs((long) hashCode())
+	// and has no such input; the long is already there in the Java, only the
+	// cast is in the wrong place. Every hash but that one answers the same tag
+	// either way, which matters because the tag becomes part of the font's
+	// name in the file. See migration/JAVA-BUGS.md 74.
+	num := int64(hash)
+	if num < 0 {
+		num = -num
 	}
-	num := int64(abs)
 
 	// base25 encode
 	var sb []byte

@@ -3768,6 +3768,17 @@ guarding against exactly this.
 indexes `base25` with a negative remainder, which panics as Java's unchecked
 exception does. Said at the point of difference.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 74. `subsetTag` widens the
+hash to 64 bits before negating it, which is `Math.abs((long) hashCode())` —
+the entry's own answer, and the `long` was already there in the Java with only
+the cast in the wrong place. Every hash but `MinInt32` encodes to the same tag
+as before, which matters because the tag becomes part of the font's name in
+the file. Tested by `TestSubsetTagOfTheOneHashAbsCannotFix` in
+`go/pdfbox/pdmodel/font/javabug74_test.go`, whose expected value is derived —
+the base-25 encoding of 2147483648 — rather than read off the Java, since the
+Java raises there; `TestSubsetTagOfAnOrdinaryMapIsUnchanged` beside it keeps
+Java's `AAAAAL+`. `TestSubsetTagMatchesJava`, which held both, is gone.
+
 **Confidence** certain, and **measured**. A map whose hash is exactly
 `Integer.MIN_VALUE` needs one entry with `key ^ value == 0x80000000`, so
 `{0: Integer.MIN_VALUE}` does it, and the running Java answers
