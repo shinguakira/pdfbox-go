@@ -3891,6 +3891,15 @@ saves the document unchanged and answers 0, `importxfdf` crashes.
 `ImportXFDF.ImportFDFInto`, which dereferences the nil the same way and panics —
 which is what this port renders an unchecked exception as. Said at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 76. `ImportXFDF.ImportFDFInto`
+returns for a document with no form, which is the null check its twin has and
+the only difference between the two that was not deliberate — it still does not
+set `/NeedAppearances`, which is the difference that is. Tested by
+`TestImportXFDFOnADocumentWithNoFormSavesItUnchanged` in
+`go/tools/fdfcommands_test.go`, which is the pin renamed and turned around:
+the command now exits 0 and writes the document unchanged, as
+`TestImportFDFOnADocumentWithNoFormSavesItUnchanged` beside it does.
+
 **Confidence** certain, from the source. Not measured, for the reason entry 75
 gives.
 

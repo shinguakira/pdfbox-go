@@ -89,13 +89,13 @@ func TestImportFDFOnADocumentWithNoFormSavesItUnchanged(t *testing.T) {
 	document.Close()
 }
 
-// TestImportXFDFOnADocumentWithNoFormPanics is JAVA-BUGS 76: the twin has no
-// null check, so the same input dies rather than reporting anything.
-//
-// Java raises NullPointerException, which its catch(IOException) does not take;
-// the port panics, and Execute answers ExitCode.SOFTWARE for it as picocli's
-// execution exception handler does.
-func TestImportXFDFOnADocumentWithNoFormPanics(t *testing.T) {
+// TestImportXFDFOnADocumentWithNoFormSavesItUnchanged is JAVA-BUGS 76: Java's
+// twin has the null check and this one does not, so the same input raises
+// NullPointerException past the catch(IOException) around it and the command
+// dies with a stack trace instead of the message every other failure gets.
+// Importing into a document with no form is an ordinary mistake, and the two
+// commands answer it the same way.
+func TestImportXFDFOnADocumentWithNoFormSavesItUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	data := filepath.Join(dir, "empty.xfdf")
 	if err := os.WriteFile(data, []byte(
@@ -103,15 +103,18 @@ func TestImportXFDFOnADocumentWithNoFormPanics(t *testing.T) {
 			`<xfdf xmlns="http://ns.adobe.com/xfdf/"><fields/></xfdf>`), 0o666); err != nil {
 		t.Fatal(err)
 	}
+	out := filepath.Join(dir, "out.pdf")
 
-	code, stdout, _ := runCommand(tools.NewImportXFDF(),
-		"-i", testFile2, "--data", data, "-o", filepath.Join(dir, "out.pdf"))
-	if code != 1 {
-		t.Errorf("exited %d, want 1 -- see JAVA-BUGS 76", code)
+	code, _, stderr := runCommand(tools.NewImportXFDF(),
+		"-i", testFile2, "--data", data, "-o", out)
+	if code != 0 {
+		t.Fatalf("exited %d (%s), want 0 -- the same as importfdf", code, stderr)
 	}
-	if stdout != "" {
-		t.Errorf("the failure went to stdout as %q", stdout)
+	document, err := pdfbox.LoadPDF(out)
+	if err != nil {
+		t.Fatalf("the output is not a PDF: %v", err)
 	}
+	document.Close()
 }
 
 // writeEmptyFDF writes the smallest FDF document that loads.

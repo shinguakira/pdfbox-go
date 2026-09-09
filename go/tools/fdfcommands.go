@@ -251,15 +251,18 @@ func (i *ImportXFDF) validate(set *flag.FlagSet) error {
 // ImportFDFInto imports the FDF document into the PDF document.
 //
 // Port of ImportXFDF's own importFDF(PDDocument, FDFDocument), which differs
-// from ImportFDF's twice: it does not set /NeedAppearances, and it does not
-// check for a null form before calling setCacheFields on it, so a document with
-// no form raises NullPointerException. See migration/JAVA-BUGS.md.
+// from ImportFDF's in not setting /NeedAppearances.
+//
+// It differs in one more thing in the Java, which is not kept: it dereferences
+// the form with no null check, so a document with no form raises
+// NullPointerException past the catch(IOException) around it, where its twin
+// returns and the document is saved unchanged. See migration/JAVA-BUGS.md 76.
 func (i *ImportXFDF) ImportFDFInto(pdfDocument *pdmodel.PDDocument,
 	fdfDocument *fdf.FDFDocument) error {
 	acroForm := form.AcroFormOfCatalog(pdfDocument.DocumentCatalog())
-	// Java dereferences acroForm here with no null check; the port reaches the
-	// same nil dereference and panics, which is what an unchecked exception is
-	// in this port.
+	if acroForm == nil {
+		return nil
+	}
 	acroForm.SetCacheFields(true)
 	return form.ImportFDFDocument(acroForm, fdfDocument)
 }
