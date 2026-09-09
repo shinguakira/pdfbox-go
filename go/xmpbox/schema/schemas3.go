@@ -840,10 +840,13 @@ func (s *XMPMediaManagementSchema) VersionID() string {
 // AddVersions adds a version.
 //
 // The field is declared as a Seq of Version, and Java adds to it with
-// addQualifiedBagValue, which makes a Bag of Text. Ported as written; see
-// migration/JAVA-BUGS.md.
+// addQualifiedBagValue, which makes a Bag of Text; the array is a sequence
+// here, as the neighbouring AddHistory writes for its own Seq field. The value
+// is still text rather than the declared VersionType: that is a structured
+// type this method has no parameter for, and giving it one is a port task
+// rather than a fix. See migration/JAVA-BUGS.md 55.
 func (s *XMPMediaManagementSchema) AddVersions(value string) error {
-	return s.AddQualifiedBagValue(MMVersions, value)
+	return s.AddUnqualifiedSequenceValue(MMVersions, value)
 }
 
 // VersionsProperty returns the versions array, or nil.

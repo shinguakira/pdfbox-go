@@ -2773,6 +2773,15 @@ in strict mode fails with "Invalid array type, expecting Seq and found Bag".
 **Where the Go carries it** `go/xmpbox/schema/schemas3.go`, `AddVersions`, which
 calls `AddQualifiedBagValue` and says so in its comment.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 55. `AddVersions` writes a
+sequence, which is the cardinality the field is declared with and what the
+neighbouring `AddHistory` writes for its own `Seq`. The other half of the entry
+is left alone: the value stays text rather than the declared `VersionType`,
+because the method has no parameter for a structured type and giving it one is
+a port task, not a fix. `Versions` reads the array by name and does not check
+its cardinality, so it is unaffected. Tested by `TestVersionsIsASequence` in
+`go/xmpbox/schema/javabug55_test.go`.
+
 **Confidence** high. Read from the annotation and the method, and from the
 neighbouring `addHistory` that does it the other way.
 
