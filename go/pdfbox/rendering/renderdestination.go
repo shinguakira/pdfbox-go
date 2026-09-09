@@ -4,9 +4,16 @@
 //
 // Java draws through java.awt.Graphics2D. Go has nothing equivalent, and slice
 // 9's B0 decision is to port everything that computes and to put the last
-// drawing step behind Backend, which no implementation in this port satisfies.
-// So PageDrawer decides what to draw and says so, and PDFRenderer's renderImage
-// answers ErrNoBackend rather than a blank page. See migration/STATUS.md.
+// drawing step behind Backend. So PageDrawer decides what to draw and says so,
+// and PDFRenderer's renderImage answers ErrNoBackend where no Backend is
+// installed, rather than a blank page.
+//
+// **rendering/raster is one.** `track/raster` wrote it, over
+// github.com/srwiley/rasterx and github.com/golang/freetype/raster, and
+// `raster.RenderPage` puts the two halves back together for a caller that only
+// wants an image. It is a substitution rather than a transliteration, and what
+// it draws differently from Graphics2D is measured and pinned; see
+// migration/STATUS.md.
 package rendering
 
 import "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/optionalcontent"

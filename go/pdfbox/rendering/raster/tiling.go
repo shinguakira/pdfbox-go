@@ -87,12 +87,12 @@ func anchorRect(paint rendering.TilingPaint) (*geom.Rectangle2D, error) {
 		return nil, ErrNoPatternBBox
 	}
 	xStep := paint.Pattern.XStep()
-	if xStep == 0 {
+	if isPositiveZero(xStep) {
 		// "/XStep is 0, using pattern /BBox width"
 		xStep = bbox.Width()
 	}
 	yStep := paint.Pattern.YStep()
-	if yStep == 0 {
+	if isPositiveZero(yStep) {
 		yStep = bbox.Height()
 	}
 
@@ -109,6 +109,18 @@ func anchorRect(paint rendering.TilingPaint) (*geom.Rectangle2D, error) {
 
 	return geom.NewRectangle2D(float64(bbox.LowerLeftX()*xScale),
 		float64(bbox.LowerLeftY()*yScale), float64(width), float64(height)), nil
+}
+
+// isPositiveZero is `Float.compare(v, 0) == 0`, which is not `v == 0`.
+//
+// Float.compare orders -0.0 below +0.0 and NaN above everything, so it answers
+// zero for +0.0 alone. `v == 0` in Go is true for -0.0 as well, and a pattern
+// whose /XStep is written `-0` would then take the bbox width here and keep the
+// negative zero in Java -- which getImage reads again, as `getXStep() < 0`,
+// where -0.0 is not less than zero either. The difference is one document in a
+// million and one line to be faithful about.
+func isPositiveZero(v float32) bool {
+	return v == 0 && !math.Signbit(float64(v))
 }
 
 // signum is Math.signum, which answers zero for zero.

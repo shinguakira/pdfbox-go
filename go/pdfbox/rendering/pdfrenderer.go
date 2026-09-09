@@ -11,6 +11,10 @@ package rendering
 // installed they answer ErrNoBackend. renderPageToGraphics, which in Java takes
 // the drawing surface as an argument, is RenderPageToBackend here and is the
 // one that always works.
+//
+// rendering/raster.RenderPage is renderImage for a caller that wants the image
+// rather than the split: it asks SurfaceSizeOfPage what to make, makes it,
+// renders through it, and answers the pixels.
 
 import (
 	"fmt"

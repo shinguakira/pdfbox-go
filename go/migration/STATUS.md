@@ -6616,3 +6616,123 @@ its stream. Java needs no override — a `COSStream` *is* a `COSDictionary` and
 carries its dictionary rather than being one, so `PDResources.AddPattern` wrote
 a pattern with no content in it. Adding a pattern to resources has been broken
 since it was written; nothing had done it until the squiggly appearance did.
+
+---
+
+## Track `raster` — D7, the adversarial review
+
+Nine sweeps. What each asked, what it found, and what was done.
+
+### D1 — every ported file against its Java, side by side
+
+`TilingPaint`, `SoftMask`, `applySoftMaskToPaint`, the `isSoftMask` arm of the
+`TransparencyGroup` constructor, `adjustImage`, `getOrigin`,
+`BlendCompositeContext.compose`, `GroupGraphics.removeBackdrop`,
+`PDFToImage.call`, `PDPatternContentStream` and
+`PDSquigglyAppearanceHandler.generateNormalAppearance`.
+
+**One divergence found.** `getAnchorRect` tests its steps with
+`Float.compare(xStep, 0) == 0`, and the port had `xStep == 0`. Those are not
+the same question: `Float.compare` orders `-0.0` below `+0.0`, so it answers
+zero for `+0.0` alone, and `== 0` in Go is true for both. A pattern whose
+`/XStep` is written `-0` would have taken the bbox width here and kept the
+negative zero in Java. `isPositiveZero` is now the test, and
+`TestIsPositiveZeroIsFloatCompare` pins all five cases including NaN.
+
+**Two asymmetries that look like bugs and are Java's, kept.** `getImage` takes
+`Math.abs` of the pattern matrix's scaling factors and `createContext` does
+not; `getAnchorRect` scales the bbox origin by the *signed* factors while
+clamping the size by the absolute ones. Both are carried as written.
+
+**Every narrowing cast is written out.** `(int) origin.getX()` truncates toward
+zero and so does Go's `int(float64)`; `Math.round` on a non-negative float is
+`math.Round`; `ceiling` is neither, and has an entry of its own.
+
+### D2 — silently dropped behaviour
+
+**Every `finally` is on the error path.** `DrawSoftMask` restores the drawer's
+seven fields before it looks at the error, the way `DrawTilingPattern` already
+did, because Java's `finally` runs before the exception leaves.
+
+**What Java logs and swallows, the port swallows.** The soft mask's transfer
+function throwing is "ignore exception, treat as outside" and answers the
+backdrop; a backdrop colour that will not convert to RGB "keeps default", which
+is zero; a singular pattern transform paints nothing, which is what
+`TexturePaint` does with one.
+
+**One thing Java does not guard and neither does this.** A tiling pattern whose
+content stream fills with itself recurses in both. `DrawObject` has the level
+counter and stops at 50; `processTilingPattern` has nothing, and Java's cache
+does not help because the entry is put in after the constructor returns. Left
+as Java has it.
+
+### D3 — the tests are Java-derived, not Go-derived
+
+This is the sweep that changed the branch. **The B1 assertions were
+Go-derived**, in the sense that mattered: there was no Java to copy from, so
+they said what the operations mean rather than what anything produces. Four
+Java drivers were written and every number now comes from running one. The
+section above lists them. Five hand-derived tests were deleted outright rather
+than kept beside the measured ones.
+
+**What was dropped from the Java tests, and why**, is in the A1 record and the
+slice 9 one: `TestPDFToImage` is disabled in Java itself, and
+`PDAcroFormFlattenTest` and six `TestFontEmbedding` cases read files the Maven
+build downloads. `ContentStreamWriterTest` was on that list and is not any
+more.
+
+### D4 — every function phase B touched has a test
+
+Named one by one. Five had none, and all five now do:
+
+| Function | Was | Now |
+| --- | --- | --- |
+| `tilingCeiling` | reached by every pattern, asserted by none | `TestTilingCeilingIsAFloor`, the eight JDK-measured values |
+| `signum` | only on the `MAXEDGE` path, which nothing took | `TestSignumIsJavas`, negative zero included |
+| `isPositiveZero` | new in D1 | `TestIsPositiveZeroIsFloatCompare` |
+| the soft mask's `/TR` | no fixture carried one | `TestASoftMaskAppliesTheTransferFunction` |
+| `NewOffscreen`, `DrawSurface` | the printing test saw the calls, not the pixels | `TestDrawSurfacePutsAnOffscreenDown`, `TestDrawSurfaceHonoursTheClip` |
+
+`adjustMask`'s non-identity arm is still only reached by a rotated page, and
+there is no rotated fixture. It is the one function in the branch whose body is
+argued rather than measured, and it is said here rather than left implicit.
+
+### D5 — every deferral is real and recorded
+
+Three left in the packages this branch touched, and each is a type that is
+absent rather than work that was hard: `TilingPaintFactory` (Go has no weak
+reference), `PrintPDF` (Go has no printing system), and `ErrNoBackend` itself,
+which is not a deferral but the state of a renderer with no backend installed.
+All three are above.
+
+### D6 — the Java bugs
+
+One found: `JAVA-BUGS.md` 85, `TilingPaint.ceiling`. It has where, the code,
+what correct would be, why it matters, where the Go carries it and how
+confident. **It was not fixed on the way past** — `tilingCeiling` reproduces it
+and the test asserts the wrong answers.
+
+### D8 — this is a substitution, and every deviation is pinned
+
+The four are listed above with their measured sizes. Each is pinned in both
+directions, so a deviation that disappears fails as loudly as one that appears:
+`TestAgainstJava2D` pins seventeen differing-pixel counts,
+`TestTheStrokeNormalizationCost` pins what the JDK's stroke hint would cost per
+case, `TestAlphaCompositeRoundsSourceOverDifferently` pins the five rows where
+Java disagrees with Java, and the three page tests pin whole-page counts.
+
+### D9 — the deferrals are closed, or have a new reason
+
+Six were held for a raster backend. Five run now — `checkRenderIdent`,
+`PDFPrintable`'s rasterizing, `PDPatternContentStream`, the squiggly
+appearance, `PDFToImage` — and `ContentStreamWriterTest`, which was held for
+something else, runs too. `PrintPDF` has a new reason, and it is not the raster.
+
+### What is still open
+
+**Stroke normalization.** The port renders stroke geometry as given and PDFBox
+does not, because the JDK's default hint moves it. It is the largest difference
+on a rendered page and the only one that could be closed by writing code rather
+than by binding an ICC engine. Whether to is a decision, not an oversight: it
+means porting `MarlinRenderingEngine.NormalizingPathIterator`, an unspecified
+aesthetic pass, into a renderer that otherwise draws what the PDF says.
