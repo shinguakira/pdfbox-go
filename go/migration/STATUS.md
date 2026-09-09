@@ -6090,7 +6090,10 @@ a **keep** names one of the four reasons the task file allows.
 | 83 | fix | `/Suspect` written twice and `/UserProperties` never |
 | 84 | fix | a branch that cannot run, so the page mode is never merged |
 
-**59 fix, 8 keep, 15 not carried, 2 test only.** A0 first said 63 and 4. Entry 2
+**58 fix, 8 keep, 16 not carried, 2 test only.** The not-carried count was
+written as 15 in every earlier revision of this line and the list under it
+always had sixteen members, so the fix count was one too many with it; the
+table is what was counted here. A0 first said 63 and 4. Entry 2
 moved to keep once it was checked — the task file calls that a normal outcome
 and says hiding it is not. Entry 3 is the same arithmetic and stayed a fix,
 because a `ReadView` can declare a length its source cannot supply and then the

@@ -219,6 +219,14 @@ helper, so none of them verifies output length.
 The ported tests inherit exactly the same gap, deliberately — strengthening it
 would mean the two suites no longer test the same thing.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 4, in the test.
+`assertBytesEqual` in `go/pdfbox/cos/base_test.go` compares the lengths as
+well, which is what `assertEquals(byteArr1.length, byteArr2.length)` was meant
+to be. The defect is in a Java test, so the Go test is the whole of what
+changes and the two suites now differ there on purpose. Every ported `cos`
+test that uses the helper still passes, which says the outputs were the right
+length all along and only the check was missing.
+
 **Confidence** high. This is a typo, not a design.
 
 ---
@@ -2320,6 +2328,16 @@ Nothing in the shipped library is affected.
 and says why. The stopping the Java test does not reach is covered separately by
 `TestCreateInputStreamStoppingStops` in the same package, which slice 6 wrote
 and which is not a port.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 46, in the test.
+`dctStopFilters` in `go/pdfbox/pdmodel/common/pdstream_external_test.go` builds
+the two names rather than the two `toString`s, which is what every caller of
+`createInputStream(List<String>)` in the main tree passes. The defect is in a
+Java test, so the Go test is the whole of what changes. The three cases still
+pass: they run against a stream with no filters, so the stop list they now
+carry correctly is still never consulted -- what the change buys is that the
+list says what it means. The stopping itself stays covered by
+`TestCreateInputStreamStoppingStops`.
 
 **Confidence** high. Both halves are three lines apart and `COSName.toString`
 has carried the braces since the class was written.
