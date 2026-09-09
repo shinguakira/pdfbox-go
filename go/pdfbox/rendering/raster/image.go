@@ -37,8 +37,15 @@ var ErrNotDrawn = errors.New("raster: not implemented yet")
 type Image struct {
 	dst *goimage.RGBA
 
-	transform     *geom.AffineTransform
-	clip          *geom.Area
+	transform *geom.AffineTransform
+
+	clip *geom.Area
+	// clipTransform is the transform the clip was installed under, and
+	// clipMask the coverage it rasterises to, built once and dropped when the
+	// clip changes.
+	clipTransform *geom.AffineTransform
+	clipMask      *goimage.Alpha
+
 	paint         rendering.Paint
 	stroke        *rendering.Stroke
 	blendMode     *blend.BlendMode
@@ -106,7 +113,31 @@ func (i *Image) SetTransform(at *geom.AffineTransform) { i.transform = at }
 func (i *Image) Clip() *geom.Area { return i.clip }
 
 // SetClip installs the clipping area.
-func (i *Image) SetClip(clip *geom.Area) { i.clip = clip }
+//
+// The transform in force is kept with it. java.awt.Graphics2D.setClip stores
+// the clip in device space, transformed by the transform of the moment, so a
+// later transform does not move it; the port keeps the shape and the transform
+// that goes with it and rasterises when it is first needed.
+func (i *Image) SetClip(clip *geom.Area) {
+	i.clip = clip
+	i.clipTransform = i.transform
+	if i.transform != nil {
+		i.clipTransform = i.transform.Clone()
+	}
+	i.clipMask = nil
+}
+
+// clipCoverage is the clip as an alpha mask, rasterised once.
+func (i *Image) clipCoverage() *goimage.Alpha {
+	if i.clip == nil {
+		return nil
+	}
+	if i.clipMask == nil {
+		bounds := i.dst.Bounds()
+		i.clipMask = coverageOf(i.clip, i.clipTransform, bounds.Dx(), bounds.Dy(), true)
+	}
+	return i.clipMask
+}
 
 // SetPaint installs the paint the next fill or draw uses.
 func (i *Image) SetPaint(paint rendering.Paint) { i.paint = paint }
@@ -129,10 +160,63 @@ func (i *Image) SetInterpolation(interpolation rendering.Interpolation) {
 }
 
 // Fill fills the given shape with the current paint.
-func (i *Image) Fill(shape geom.Shape) error { return ErrNotDrawn }
+func (i *Image) Fill(shape geom.Shape) error {
+	bounds := i.dst.Bounds()
+	return i.compose(coverageOf(shape, i.transform, bounds.Dx(), bounds.Dy(), i.antiAliasing))
+}
 
-// Draw strokes the outline of the given shape.
-func (i *Image) Draw(shape geom.Shape) error { return ErrNotDrawn }
+// Draw strokes the outline of the given shape with the current paint and
+// stroke.
+func (i *Image) Draw(shape geom.Shape) error {
+	if i.stroke == nil {
+		// Java would have a BasicStroke here whatever happened; PageDrawer
+		// always sets one before it draws.
+		return nil
+	}
+	if i.stroke.Invisible {
+		// an all-zero dash array, which Adobe draws as nothing: PDFBOX-5168
+		return nil
+	}
+	bounds := i.dst.Bounds()
+	return i.compose(strokeCoverage(shape, i.transform, i.stroke,
+		bounds.Dx(), bounds.Dy(), i.antiAliasing))
+}
+
+// compose puts the current paint onto the destination through a coverage mask
+// and the clip.
+func (i *Image) compose(mask *goimage.Alpha) error {
+	source, paintAlpha, err := i.sourceOf(i.paint)
+	if err != nil {
+		return err
+	}
+	clip := i.clipCoverage()
+	constant := paintAlpha * i.alphaConstant
+	if constant <= 0 {
+		return nil
+	}
+
+	bounds := i.dst.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			coverage := float64(mask.AlphaAt(x, y).A) / 255
+			if coverage == 0 {
+				continue
+			}
+			if clip != nil {
+				coverage *= float64(clip.AlphaAt(x, y).A) / 255
+				if coverage == 0 {
+					continue
+				}
+			}
+			c, painted := source.colorAt(x, y)
+			if !painted {
+				continue
+			}
+			i.blendPixel(x, y, c, coverage*constant*float64(c.A)/255)
+		}
+	}
+	return nil
+}
 
 // DrawImage draws the given image through the given transform.
 func (i *Image) DrawImage(pdImage pdimage.PDImage, at *geom.AffineTransform,
