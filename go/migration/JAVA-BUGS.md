@@ -3506,6 +3506,17 @@ claims a length its chunks cannot supply and a full read fails outright.
 `go/pdfio/readwritebuffer.go`, `ReadWriteBuffer.Write`. Pinned by
 `TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 69. `Seek`'s jump-to-the-end
+branch leaves the chunk pointer at the chunk size where the last chunk is
+exactly full, which is the first of the two answers the entry names: the read
+path already steps past a chunk pointer that has reached the chunk size, and
+the write path expands into a fresh chunk there. Tested by
+`TestWriteAtAnExactChunkBoundaryAppends` in `go/pdfio/javabug69_test.go` --
+eight bytes into an eight-byte chunk, seek to 8, write one more, and read all
+nine back -- with `TestSeekPastTheEndOfAPartChunkIsUnchanged` beside it for the
+last chunk that is not full. The pin,
+`TestWriteAtAnExactChunkBoundaryOverwritesTheFirstByte`, is gone with it.
+
 **Confidence** reproduced. Read out of the running Java, JDK 17, an 8-byte chunk
 written full, seeked to 8, and written one more byte:
 

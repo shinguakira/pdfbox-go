@@ -174,6 +174,15 @@ func (b *ReadBuffer) Seek(offset int64, whence int) (int64, error) {
 		b.pointer = b.size
 		b.chunkIndex = b.maxChunkIndex
 		b.chunkPointer = int(b.size % int64(b.chunkSize))
+		if b.size > 0 && b.chunkPointer == 0 {
+			// Java writes `size % chunkSize` alone, which is 0 for a buffer
+			// holding an exact multiple of the chunk size -- the start of the
+			// last chunk rather than the end of it. A last chunk that is
+			// exactly full is full; the read path already steps past a chunk
+			// pointer at the chunk size, and the write path expands there. See
+			// migration/JAVA-BUGS.md 69.
+			b.chunkPointer = b.chunkSize
+		}
 	}
 	return b.pointer, nil
 }
