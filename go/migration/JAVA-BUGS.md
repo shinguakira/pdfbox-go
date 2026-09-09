@@ -4261,6 +4261,18 @@ technology.
 `mergeMarkInfo`, which calls `SetSuspect` twice with the same arguments in the
 same order. Said at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 83. The second line writes
+`SetUserProperties`, which is the setter its own question names and the one
+`PDMarkInfo` has for it, so `/UserProperties` is merged and `/Suspect` keeps
+the answer the line above it computed. Entry 37 is its other half: until that
+was fixed `SetSuspect` ignored its argument, so neither flag could be raised
+at all. Tested by `TestMergeMarkInfoKeepsBothFlags` in
+`go/pdfbox/multipdf/javabug83_test.go`, over the four combinations of the two
+source flags and the two destination ones. The test is in-package: reaching
+`mergeMarkInfo` through `AppendDocument` needs both documents to carry a
+structure tree with a non-empty parent tree, which is the condition the whole
+structure block sits under and not what is being tested.
+
 **Confidence** certain, from the source.
 
 ## 84. `PDFMergerUtility` never merges the page mode, because the branch that would cannot run

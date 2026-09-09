@@ -301,9 +301,10 @@ func mergeLanguage(destCatalog, srcCatalog *pdmodel.PDDocumentCatalog) {
 
 // mergeMarkInfo marks the destination and ORs the two flags.
 //
-// The second of those two lines calls the wrong setter in the Java, so
-// /UserProperties is never written and /Suspect is written twice; see
-// migration/JAVA-BUGS.md.
+// Java's second line reads usesUserProperties and writes setSuspect, so
+// /UserProperties is never written and /Suspect is decided by the wrong
+// question -- the second call overwriting the first. See
+// migration/JAVA-BUGS.md 83.
 func mergeMarkInfo(destCatalog, srcCatalog *pdmodel.PDDocumentCatalog) {
 	destMark := destCatalog.MarkInfo()
 	srcMark := srcCatalog.MarkInfo()
@@ -315,7 +316,7 @@ func mergeMarkInfo(destCatalog, srcCatalog *pdmodel.PDDocumentCatalog) {
 	}
 	destMark.SetMarked(true)
 	destMark.SetSuspect(srcMark.IsSuspect() || destMark.IsSuspect())
-	destMark.SetSuspect(srcMark.UsesUserProperties() || destMark.UsesUserProperties())
+	destMark.SetUserProperties(srcMark.UsesUserProperties() || destMark.UsesUserProperties())
 	destCatalog.SetMarkInfo(destMark)
 }
 
