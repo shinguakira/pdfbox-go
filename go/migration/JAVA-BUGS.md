@@ -2684,6 +2684,15 @@ array, every later array, and every later simple property.
 **Where the Go carries it** `go/xmpbox/schema/xmpschema.go`, `Merge` and
 `mergeComplexProperty`, which return the same way at the same place.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 53. `mergeComplexProperty`
+skips a value the array already holds and carries on, and no longer answers a
+boolean for `Merge` to stop on, so all three loops run to the end. The
+duplicate is still added only once, which is what the early return was standing
+in for. Tested by `TestMergeCarriesOnPastASharedValue` in
+`go/xmpbox/schema/javabug53_test.go`, whose two schemas share the first value
+of a bag and differ afterwards, with `TestMergeDoesNotDuplicateASharedValue`
+beside it.
+
 **Confidence** high. Read from the two methods; the `return` is the whole of
 `merge`'s remaining work.
 

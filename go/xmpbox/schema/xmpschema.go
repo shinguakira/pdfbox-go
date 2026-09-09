@@ -808,41 +808,44 @@ func (s *XMPSchema) Merge(xmpSchema *XMPSchema) error {
 		for _, tmpEmbeddedProperty := range s.AllProperties() {
 			existing, isArray := tmpEmbeddedProperty.(*xmptype.ArrayProperty)
 			if isArray && tmpEmbeddedProperty.PropertyName() == analyzedPropQualifiedName {
-				if mergeComplexProperty(newArray.Container().AllProperties(), existing) {
-					return nil
-				}
+				mergeComplexProperty(newArray.Container().AllProperties(), existing)
 			}
 		}
 	}
 	return nil
 }
 
-// mergeComplexProperty appends the new values to the array, stopping at the
-// first that is already there.
+// mergeComplexProperty appends to the array every new value it does not
+// already hold.
 //
-// Java returns true from the first duplicate, which makes merge return
-// outright and drop every property it had not reached yet. Ported as written;
-// see migration/JAVA-BUGS.md.
+// Java returns true from the first duplicate and merge takes that as a reason
+// to stop, dropping the rest of the array, every later array and every later
+// property. A value that is already there is skipped here and the merge goes
+// on. See migration/JAVA-BUGS.md 53.
 //
 // Java casts each element to TextType without checking, so an array holding
 // anything else raises ClassCastException; the port skips such an element. See
 // migration/STATUS.md.
 func mergeComplexProperty(newValues []xmptype.AbstractField,
-	arrayProperty *xmptype.ArrayProperty) bool {
+	arrayProperty *xmptype.ArrayProperty) {
 	for _, newValue := range newValues {
 		tmpNewValue, isText := newValue.(*xmptype.TextType)
 		if !isText {
 			continue
 		}
+		held := false
 		for _, abstractField := range arrayProperty.Container().AllProperties() {
 			tmpOldValue, isText := abstractField.(*xmptype.TextType)
 			if isText && tmpOldValue.StringValue() == tmpNewValue.StringValue() {
-				return true
+				held = true
+				break
 			}
+		}
+		if held {
+			continue
 		}
 		arrayProperty.Container().AddProperty(tmpNewValue)
 	}
-	return false
 }
 
 // UnqualifiedArrayList returns the elements of the named array, and nil where
