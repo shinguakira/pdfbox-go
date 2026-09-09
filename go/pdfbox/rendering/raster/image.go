@@ -19,9 +19,7 @@ import (
 	goimage "image"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/blend"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 )
 
@@ -51,6 +49,11 @@ type Image struct {
 	alphaConstant float64
 	antiAliasing  bool
 	interpolation rendering.Interpolation
+
+	// groups is the stack of open transparency groups, and secondary the
+	// alpha-only surface the innermost one is drawn onto in parallel.
+	groups    []groupFrame
+	secondary *goimage.RGBA
 }
 
 var _ rendering.Backend = (*Image)(nil)
@@ -217,11 +220,6 @@ func (i *Image) compose(mask *goimage.Alpha) error {
 	return nil
 }
 
-// PushGroup begins a transparency group.
-func (i *Image) PushGroup(bbox *common.PDRectangle, isSoftMask, needsBackdrop bool,
-	backdropColor *color.PDColor) error {
-	return ErrNotDrawn
-}
-
-// PopGroup composites the group PushGroup began.
-func (i *Image) PopGroup() error { return ErrNotDrawn }
+// errNoGroup is a PopGroup with no PushGroup, which is a programming error in
+// the caller rather than anything a document can cause.
+var errNoGroup = errors.New("raster: PopGroup without PushGroup")
