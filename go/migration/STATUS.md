@@ -6757,3 +6757,104 @@ strokes on them it took the pixels more than a quarter of a channel out from
 Nothing that can be written. `PrintPDF` needs a spooler binding, and the
 sRGB-to-CS_GRAY difference needs an ICC engine; both are above, with what they
 would take.
+
+---
+
+## Track `raster` — E, the review feedback
+
+Seven comments, two reviewers. Five were defects and are fixed; one was a
+stray file; one is declined, and the reason is Java's.
+
+### The surfaces were `image.RGBA` and held straight colour
+
+Two reviewers pointed at the same line from different sides. `image.RGBA` is
+documented alpha-premultiplied and `image.NRGBA` is not, and what `blendInto`
+computes is straight -- it is `BlendCompositeContext.compose`, whose components
+go in and out of `getNormalizedComponents` and `getDataElements` as straight
+values. So the type was wrong, and two things went wrong under it:
+
+- **A caller who encoded the surface got the wrong colours.** Go's PNG encoder
+  asks the image what it holds; an `image.RGBA` says premultiplied, so it
+  unpremultiplied on the way out. Blue at half alpha went out as 253 rather
+  than 255. Only `ImageType.ARGB` reaches this, because every other type ends
+  opaque and for an opaque pixel the two are the same.
+- **`PopGroup` called `unpremultiply` on pixels that were already straight**,
+  so a group whose contents were partly transparent came back paler than it was
+  drawn. Latent for the same reason.
+
+The surfaces are `image.NRGBA` now and the call is gone.
+`TestAnARGBSurfaceExportsItsOwnColours` and
+`TestAPartlyTransparentGroupKeepsItsColour` pin both, and both fail if the
+change is reverted. `drawSampled`'s scratch buffer stays an `image.RGBA` and
+still unpremultiplies, because that one really is premultiplied -- it is what
+`x/image/draw` writes.
+
+### `DrawSurface` ignored the transform
+
+`drawImage(image, 0, 0, null)` and `clearRect(0, 0, w, h)` both go through the
+Graphics2D's transform, and `PDFPrintable.Print` puts the imageable-area
+translation, the centring and the `scale / dpiScale` rescale on the surface
+before it calls either. Copying pixel to pixel put a rasterized page in the
+paper's corner at the wrong size. It goes through `i.transform` now, sampled
+with the interpolation the hints ask for, and the white ground covers the
+transformed rectangle rather than the whole surface.
+
+### `ImageType.GRAY` and `ImageType.BINARY` were discarded
+
+`NewImage` used the type to choose a white ground and then forgot it, so
+`pdfbox render -color GRAY` produced a colour image. Java draws onto a
+BufferedImage of that type and **the image quantizes what is written into it**,
+so a later composite reads back what the surface really holds; `quantize.go`
+does the same, at the same moment, and `asImageType` hands back the kind of
+image ImageIO would write as a greyscale or one-bit PNG.
+
+What a grey is was measured, not assumed: a JDK 17 `renderImage(0, 1,
+ImageType.GRAY)` of this branch's own page gives 61 for (26,51,204), 174 for
+(230,179,0), 162 for (102,204,102), 53 for (128,0,126) and 35 for (32,0,222),
+and `0.299R + 0.587G + 0.114B` rounded gives every one. Those are the BT.601
+luma coefficients, which is what Java2D's ByteGray surface converts with --
+**not** the ICC transform that drawing an *image* onto a grey surface goes
+through, which is the one the soft mask's `luma` approximates. Two different
+conversions, and the difference is which one Java reaches.
+
+Against PDFBox: **grey is 2182 pixels of 40000 and none of them more than a
+quarter of a channel** -- the RGB page's differences, collapsed, because the
+shading's colour drift is worth less once three channels become one. **One bit
+is 937, and every one is a flipped pixel on a stroke**: a surface with two
+colours in it has no way to be a little bit out, so the single unit of edge
+coverage the two rasterisers disagree about takes the whole pixel. The fills,
+the shading and the rotated square are exact.
+
+### `DrawStencil` read the wrong channel
+
+It asked `ImageOfRegion` for the mask and took the coverage from the alpha. An
+image mask has no colour space, so what comes back is opaque wherever it comes
+back at all, and **every stencil painted its whole rectangle**. It asks for the
+stencil image now, in an opaque black, and takes the alpha that
+`getStencilImage` sets from the mask's bits and from nothing else.
+
+`testdata/stencil.pdf` is four of them, two shapes in four colours, and it took
+the count against PDFBox from 3526 pixels of 16000 to **101**. The 101 are the
+sample boundaries, where a stencil has no partial coverage to be a little bit
+wrong with.
+
+### The stray file
+
+`bash.exe.stackdump` was committed by accident -- a crashed MSYS bash leaves
+one at the repository root. It is gone, and `go/.gitignore` has it.
+
+### Declined: `PixelTable`'s inclusive loop
+
+The clamp is `deviceBounds.x + deviceBounds.width` with a `<=` loop, so one
+extra row and column are computed. That is Java's, exactly:
+
+```java
+boundary[1] = Math.min(boundary[1], deviceBounds.x + deviceBounds.width);
+for (int x = boundary[0]; x <= boundary[1]; x++)
+```
+
+and `addValueToArray` guards its own indices, so the extra work is discarded
+rather than out of bounds. The port's table is a map, so it cannot go out of
+range either, and the callers read `x < Max.X` so the extra entries are never
+seen. Narrowing the clamp would be changing the Java, which this migration does
+not do. Recorded here rather than fixed.

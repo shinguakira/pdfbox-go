@@ -24,15 +24,15 @@ import (
 // pattern answers the tile. Java reaches all three through
 // java.awt.PaintContext.
 type paintSource interface {
-	colorAt(x, y int) (goimagecolor.RGBA, bool)
+	colorAt(x, y int) (goimagecolor.NRGBA, bool)
 }
 
 // solidSource is a java.awt.Color: the same colour everywhere.
 type solidSource struct {
-	color goimagecolor.RGBA
+	color goimagecolor.NRGBA
 }
 
-func (s solidSource) colorAt(int, int) (goimagecolor.RGBA, bool) { return s.color, true }
+func (s solidSource) colorAt(int, int) (goimagecolor.NRGBA, bool) { return s.color, true }
 
 // sourceOf returns what a paint paints with.
 func (i *Image) sourceOf(paint rendering.Paint) (paintSource, float64, error) {
@@ -41,7 +41,7 @@ func (i *Image) sourceOf(paint rendering.Paint) (paintSource, float64, error) {
 		// The alpha of the paint multiplies the alpha constant of the
 		// composite, which is what Java gets from an AlphaComposite over a
 		// Color that carries one.
-		return solidSource{color: goimagecolor.RGBA{
+		return solidSource{color: goimagecolor.NRGBA{
 			R: clampToByte(p.Red),
 			G: clampToByte(p.Green),
 			B: clampToByte(p.Blue),
@@ -122,7 +122,7 @@ func clampToByte(v float32) uint8 {
 //
 // With no blend mode the first is the identity, and what is left is
 // source-over. That is why Normal and Compatible need no special case.
-func (i *Image) blendPixel(x, y int, src goimagecolor.RGBA, srcAlpha float64) {
+func (i *Image) blendPixel(x, y int, src goimagecolor.NRGBA, srcAlpha float64) {
 	if srcAlpha <= 0 {
 		return
 	}
@@ -139,7 +139,7 @@ func (i *Image) blendPixel(x, y int, src goimagecolor.RGBA, srcAlpha float64) {
 }
 
 // blendInto is the compose of one pixel onto one surface.
-func (i *Image) blendInto(dst *goimage.RGBA, x, y int, src goimagecolor.RGBA,
+func (i *Image) blendInto(dst *goimage.NRGBA, x, y int, src goimagecolor.NRGBA,
 	srcAlpha float64) {
 	offset := dst.PixOffset(x, y)
 	pix := dst.Pix[offset : offset+4 : offset+4]
@@ -179,4 +179,11 @@ func (i *Image) blendInto(dst *goimage.RGBA, x, y int, src goimagecolor.RGBA,
 		pix[k] = clampToByte(value)
 	}
 	pix[3] = uint8(resultAlpha*255 + 0.5)
+
+	// What the surface can hold. A group is drawn onto ARGB whatever the page
+	// asked for, exactly as Java makes its TransparencyGroup image, so nothing
+	// inside one is quantized until it is composited back.
+	if len(i.groups) == 0 {
+		i.quantize(pix)
+	}
 }

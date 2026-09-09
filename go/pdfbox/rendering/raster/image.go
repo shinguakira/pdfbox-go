@@ -19,6 +19,8 @@ import (
 	goimage "image"
 	goimagecolor "image/color"
 
+	xdraw "golang.org/x/image/draw"
+
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/blend"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
@@ -33,7 +35,7 @@ var ErrNotDrawn = errors.New("raster: not implemented yet")
 
 // Image is a rendering.Backend that draws onto an in-memory image.
 type Image struct {
-	dst *goimage.RGBA
+	dst *goimage.NRGBA
 
 	transform *geom.AffineTransform
 
@@ -51,6 +53,10 @@ type Image struct {
 	antiAliasing  bool
 	interpolation rendering.Interpolation
 
+	// imageType is what the surface can hold: Java's BufferedImage type, which
+	// quantizes what is written into it. See quantize.go.
+	imageType rendering.ImageType
+
 	// strokeNormalization is KEY_STROKE_CONTROL, and it is on because the JDK's
 	// default is and PDFBox never sets the hint. See normalize.go.
 	strokeNormalization bool
@@ -63,24 +69,26 @@ type Image struct {
 	// groups is the stack of open transparency groups, and secondary the
 	// alpha-only surface the innermost one is drawn onto in parallel.
 	groups    []groupFrame
-	secondary *goimage.RGBA
+	secondary *goimage.NRGBA
 }
 
 var _ rendering.Backend = (*Image)(nil)
 
 // white is the ground Graphics2D.clearRect puts down under a blit.
-var white = goimagecolor.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+var white = goimagecolor.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 
 // NewImage returns a backend drawing onto an image of the given size.
 //
 // This is the BufferedImage Java's PDFRenderer.renderImage makes for itself.
-// imageType says what Java would have asked BufferedImage for; the pixels are
-// held as RGBA whatever it says, and the type decides what is written into
-// them -- an opaque white ground for RGB and Gray, nothing for ARGB.
+// imageType says what Java would have asked BufferedImage for. The pixels are
+// held straight, in an image.NRGBA, whatever it says; the type decides what is
+// written into them -- an opaque white ground for everything but ARGB -- and
+// what the finished surface is quantized to, which is quantizeTo.
 func NewImage(width, height int, imageType rendering.ImageType) *Image {
-	dst := goimage.NewRGBA(goimage.Rect(0, 0, width, height))
+	dst := goimage.NewNRGBA(goimage.Rect(0, 0, width, height))
 	i := &Image{
 		dst:                 dst,
+		imageType:           imageType,
 		transform:           geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
 		paint:               rendering.ColorPaint{Alpha: 1},
 		alphaConstant:       1,
@@ -95,7 +103,7 @@ func NewImage(width, height int, imageType rendering.ImageType) *Image {
 
 // fillOpaqueWhite is the white ground Java's renderImage paints before it
 // draws, for every image type but ARGB.
-func fillOpaqueWhite(dst *goimage.RGBA) {
+func fillOpaqueWhite(dst *goimage.NRGBA) {
 	for i := range dst.Pix {
 		dst.Pix[i] = 0xFF
 	}
@@ -261,7 +269,8 @@ func (i *Image) NewOffscreen(width, height int) rendering.Backend {
 	return NewImage(width, height, rendering.ARGB)
 }
 
-// DrawSurface draws another backend's pixels onto this one at the origin.
+// DrawSurface draws another backend's pixels onto this one, through the
+// transform in force.
 //
 // Port of the three lines PDFPrintable ends its rasterizing arm with:
 //
@@ -269,22 +278,48 @@ func (i *Image) NewOffscreen(width, height int) rendering.Backend {
 //	printerGraphics.clearRect(0, 0, image.getWidth(), image.getHeight());
 //	printerGraphics.drawImage(image, 0, 0, null);
 //
-// The clearRect is a white ground under the blit, not over it, and the
-// drawImage is source-over onto it. The clip in force applies to both, which
-// is what Graphics2D does.
+// **All three go through the transform**, which is the thing to know about
+// this method. `PDFPrintable.Print` puts the imageable-area translation, the
+// centring and the `scale / dpiScale` rescale on the surface before it calls
+// this, so a blit that copied pixel to pixel would put the page in the paper's
+// corner at the wrong size. The image occupies `[0,w] x [0,h]` in user space,
+// one pixel to the unit, which is what `drawImage(image, 0, 0, null)` means.
+//
+// The clearRect is a white ground under the blit and not over it, and it
+// covers the same rectangle. The clip in force applies to both, which is what
+// Graphics2D does.
 func (i *Image) DrawSurface(surface rendering.Backend) error {
 	source, isImage := surface.(*Image)
 	if !isImage {
 		return ErrNotDrawn
 	}
-	bounds := source.dst.Bounds().Intersect(i.dst.Bounds())
-	clip := i.clipCoverage()
+	sourceBounds := source.dst.Bounds()
+	if sourceBounds.Empty() {
+		return nil
+	}
+	bounds := i.dst.Bounds()
 
+	// Where the image lands, which is what clearRect covers.
+	ground := coverageOf(geom.NewRectangle2D(0, 0,
+		float64(sourceBounds.Dx()), float64(sourceBounds.Dy())),
+		i.transform, bounds.Dx(), bounds.Dy(), i.antiAliasing)
+
+	// And the pixels, sampled through the same transform with the
+	// interpolation the hints ask for. Premultiplied, because that is what
+	// x/image/draw writes.
+	sampled := goimage.NewRGBA(bounds)
+	i.interpolator().Transform(sampled, aff3Of(i.transform),
+		source.dst, sourceBounds, xdraw.Src, nil)
+
+	clip := i.clipCoverage()
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			coverage := 1.0
+			coverage := float64(ground.AlphaAt(x, y).A) / 255
+			if coverage == 0 {
+				continue
+			}
 			if clip != nil {
-				coverage = float64(clip.AlphaAt(x, y).A) / 255
+				coverage *= float64(clip.AlphaAt(x, y).A) / 255
 				if coverage == 0 {
 					continue
 				}
@@ -292,11 +327,11 @@ func (i *Image) DrawSurface(surface rendering.Backend) error {
 			// the white ground clearRect puts down
 			i.blendPixel(x, y, white, coverage)
 
-			c := source.dst.RGBAAt(x, y)
+			c := sampled.RGBAAt(x, y)
 			if c.A == 0 {
 				continue
 			}
-			i.blendPixel(x, y, c, coverage*float64(c.A)/255)
+			i.blendPixel(x, y, unpremultiply(c), coverage*float64(c.A)/255)
 		}
 	}
 	return nil

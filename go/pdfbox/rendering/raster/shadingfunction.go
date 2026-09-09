@@ -48,7 +48,7 @@ func newFunctionContext(sh shadingModel, matrix *util.Matrix,
 	return c, nil
 }
 
-func (c *functionContext) colorAt(x, y int) (goimagecolor.RGBA, bool) {
+func (c *functionContext) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	px, py := transformedPoint(c.rat, x, y)
 	if float32(px) < c.domain[0] || float32(px) > c.domain[1] ||
 		float32(py) < c.domain[2] || float32(py) > c.domain[3] {
@@ -57,11 +57,11 @@ func (c *functionContext) colorAt(x, y int) (goimagecolor.RGBA, bool) {
 	values, err := c.shading.EvalFunctionOfInput([]float32{float32(px), float32(py)})
 	if err != nil {
 		// Java logs the IOException and skips the pixel.
-		return goimagecolor.RGBA{}, false
+		return goimagecolor.NRGBA{}, false
 	}
 	rgb, err := convertToRGB(c.colorSpace, values)
 	if err != nil {
-		return goimagecolor.RGBA{}, false
+		return goimagecolor.NRGBA{}, false
 	}
 	return rgb, true
 }

@@ -49,7 +49,7 @@ func maskOfGreys(under paintSource, greys []uint8, transfer function.PDFunction)
 // TestASoftMaskMultipliesByTheGrey is SoftPaintContext.getRaster with no
 // transfer function: `pixelOutput[3] = Math.round(pixelOutput[3] * (g / 255f))`.
 func TestASoftMaskMultipliesByTheGrey(t *testing.T) {
-	source := maskOfGreys(solidSource{color: goimagecolor.RGBA{R: 0x40, A: 0xFF}},
+	source := maskOfGreys(solidSource{color: goimagecolor.NRGBA{R: 0x40, A: 0xFF}},
 		[]uint8{0, 0x40, 0x80, 0xFF}, nil)
 
 	for x, want := range []uint8{0, 0x40, 0x80, 0xFF} {
@@ -70,7 +70,7 @@ func TestASoftMaskMultipliesByTheGrey(t *testing.T) {
 // TestASoftMaskAppliesTheTransferFunction is the /TR arm, which maps the grey
 // before it multiplies.
 func TestASoftMaskAppliesTheTransferFunction(t *testing.T) {
-	source := maskOfGreys(solidSource{color: goimagecolor.RGBA{A: 0xFF}},
+	source := maskOfGreys(solidSource{color: goimagecolor.NRGBA{A: 0xFF}},
 		[]uint8{0, 0x40, 0x80, 0xFF}, invertingFunction(t))
 
 	// The function is 1 - g/255, so the alpha runs the other way. 0x40/255 is
@@ -87,7 +87,7 @@ func TestASoftMaskAppliesTheTransferFunction(t *testing.T) {
 // is what PDFBOX's `bc` is for: a pixel the mask does not cover is worth the
 // backdrop colour's grey and not zero.
 func TestASoftMaskIsTheBackdropOutsideItself(t *testing.T) {
-	source := maskOfGreys(solidSource{color: goimagecolor.RGBA{A: 0xFF}},
+	source := maskOfGreys(solidSource{color: goimagecolor.NRGBA{A: 0xFF}},
 		[]uint8{0xFF}, nil)
 	source.backdrop = 0x80
 
@@ -106,7 +106,7 @@ func TestASoftMaskIsTheBackdropOutsideItself(t *testing.T) {
 // TestASoftMaskSitsAtItsOrigin is `x1 = x1 - (int) origin.getX()`: the mask is
 // read at the pixel offset by its origin, not at the device pixel.
 func TestASoftMaskSitsAtItsOrigin(t *testing.T) {
-	source := maskOfGreys(solidSource{color: goimagecolor.RGBA{A: 0xFF}},
+	source := maskOfGreys(solidSource{color: goimagecolor.NRGBA{A: 0xFF}},
 		[]uint8{0xFF, 0}, nil)
 	source.originX = 10
 
@@ -140,7 +140,7 @@ func TestDrawSurfacePutsAnOffscreenDown(t *testing.T) {
 	if got := offscreen.dst.Bounds(); got.Dx() != 8 || got.Dy() != 8 {
 		t.Errorf("the offscreen is %v, want 8x8", got)
 	}
-	if c := offscreen.dst.RGBAAt(0, 0); c.A != 0 {
+	if c := offscreen.dst.NRGBAAt(0, 0); c.A != 0 {
 		t.Errorf("the offscreen starts as %v, want transparent", c)
 	}
 
@@ -153,7 +153,7 @@ func TestDrawSurfacePutsAnOffscreenDown(t *testing.T) {
 		t.Fatalf("DrawSurface: %v", err)
 	}
 
-	wantColor(t, page, 4, 4, goimagecolor.RGBA{A: 0xFF}, "where the offscreen drew")
+	wantColor(t, page, 4, 4, goimagecolor.NRGBA{A: 0xFF}, "where the offscreen drew")
 	// clearRect puts white down under the whole blit, so the blue is gone even
 	// where the offscreen drew nothing.
 	wantColor(t, page, 0, 0, white, "where the offscreen drew nothing")
@@ -181,8 +181,8 @@ func TestDrawSurfaceHonoursTheClip(t *testing.T) {
 		t.Fatalf("DrawSurface: %v", err)
 	}
 
-	wantColor(t, page, 1, 4, goimagecolor.RGBA{A: 0xFF}, "inside the clip")
-	wantColor(t, page, 6, 4, goimagecolor.RGBA{B: 0xFF, A: 0xFF}, "outside the clip")
+	wantColor(t, page, 1, 4, goimagecolor.NRGBA{A: 0xFF}, "inside the clip")
+	wantColor(t, page, 6, 4, goimagecolor.NRGBA{B: 0xFF, A: 0xFF}, "outside the clip")
 }
 
 // areaOf is a clipping area of the given box.

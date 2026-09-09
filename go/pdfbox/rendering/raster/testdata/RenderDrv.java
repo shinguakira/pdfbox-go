@@ -30,7 +30,12 @@ public class RenderDrv
         try (PDDocument document = Loader.loadPDF(pdf))
         {
             PDFRenderer renderer = new PDFRenderer(document);
-            BufferedImage image = renderer.renderImage(0, 1, ImageType.RGB);
+            ImageType type = ImageType.RGB;
+            if (args.length > 2)
+            {
+                type = ImageType.valueOf(args[2]);
+            }
+            BufferedImage image = renderer.renderImage(0, 1, type);
             ImageIO.write(image, "png", png);
             System.out.printf("%s %dx%d%n", png, image.getWidth(), image.getHeight());
         }

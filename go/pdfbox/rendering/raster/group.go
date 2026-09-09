@@ -33,13 +33,13 @@ import (
 // groupFrame is one open transparency group.
 type groupFrame struct {
 	// saved is the surface the group is composited back onto.
-	saved *goimage.RGBA
+	saved *goimage.NRGBA
 
 	// backdrop is the copy of that surface the group was started from, and is
 	// nil for an isolated group. alphaOnly is the second surface, drawn in
 	// parallel, that says what alpha the group's own contents have.
-	backdrop  *goimage.RGBA
-	alphaOnly *goimage.RGBA
+	backdrop  *goimage.NRGBA
+	alphaOnly *goimage.NRGBA
 
 	// The state PushGroup takes away and PopGroup gives back: a group is
 	// composited with the alpha and the mode that were in force when it began,
@@ -65,12 +65,12 @@ func (i *Image) PushGroup(bbox *common.PDRectangle, isSoftMask, needsBackdrop bo
 		clip:          i.groupClip(bbox),
 	}
 
-	group := goimage.NewRGBA(bounds)
+	group := goimage.NewNRGBA(bounds)
 	if needsBackdrop {
-		frame.backdrop = goimage.NewRGBA(bounds)
+		frame.backdrop = goimage.NewNRGBA(bounds)
 		copy(frame.backdrop.Pix, i.dst.Pix)
 		copy(group.Pix, i.dst.Pix)
-		frame.alphaOnly = goimage.NewRGBA(bounds)
+		frame.alphaOnly = goimage.NewNRGBA(bounds)
 	}
 
 	i.groups = append(i.groups, frame)
@@ -141,7 +141,7 @@ func (i *Image) PopGroup() error {
 	bounds := i.dst.Bounds()
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			c := group.RGBAAt(x, y)
+			c := group.NRGBAAt(x, y)
 			if c.A == 0 {
 				continue
 			}
@@ -155,7 +155,9 @@ func (i *Image) PopGroup() error {
 			if alpha == 0 {
 				continue
 			}
-			i.blendPixel(x, y, unpremultiply(c), alpha)
+			// The group surface holds straight colours, as every surface in this
+			// package does, so there is nothing to unpremultiply.
+			i.blendPixel(x, y, c, alpha)
 		}
 	}
 	return nil
@@ -188,7 +190,7 @@ func (i *Image) groupSoftMask() (*softMaskSource, error) {
 // removeBackdrop is GroupGraphics.removeBackdrop: the group was drawn onto a
 // copy of the backdrop, alphaOnly says what alpha its own contents have, and
 // this takes the backdrop back out.
-func removeBackdrop(group, alphaOnly, backdrop *goimage.RGBA) {
+func removeBackdrop(group, alphaOnly, backdrop *goimage.NRGBA) {
 	for index := 0; index < len(group.Pix); index += 4 {
 		// alphagn is the total alpha of the group contents excluding backdrop.
 		alphagn := int(alphaOnly.Pix[index+3])

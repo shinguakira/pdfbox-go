@@ -82,9 +82,15 @@ func (i *Image) DrawImage(pdImage pdimage.PDImage, at *geom.AffineTransform,
 // -- getStencilImage(paint) -- because Graphics2D can only draw an image; the
 // port keeps the mask and the paint apart, which is what lets a shading or a
 // tiling pattern through a stencil work the same way as a colour.
+//
+// It asks for the stencil image all the same, in an opaque black: what it
+// wants from it is the **alpha**, which getStencilImage sets from the mask's
+// bits and from nothing else. ImageOfRegion would answer the wrong thing --
+// an image mask has no colour space, so what comes back is opaque wherever it
+// comes back at all, and a stencil would paint its whole rectangle.
 func (i *Image) DrawStencil(pdImage pdimage.PDImage, at *geom.AffineTransform,
 	paint rendering.Paint) error {
-	mask, err := pdImage.ImageOfRegion(nil, 1)
+	mask, err := pdImage.StencilImage(goimagecolor.NRGBA{A: 0xFF})
 	if err != nil {
 		return err
 	}
@@ -106,6 +112,9 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 	// onto the destination itself: what comes out has to go through the clip,
 	// the alpha constant and the blend mode, and x/image/draw knows about none
 	// of them.
+	// Premultiplied, because that is what x/image/draw writes and what
+	// image.RGBA means. unpremultiply below turns each sample into the
+	// straight colour the rest of this package speaks.
 	sampled := goimage.NewRGBA(i.dst.Bounds())
 	i.interpolator().Transform(sampled,
 		aff3Of(i.imageTransform(at, bounds.Dx(), bounds.Dy())),
@@ -150,11 +159,11 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 
 // unpremultiply turns an image/color.RGBA, which is premultiplied, back into
 // the straight colour the compositor works in.
-func unpremultiply(c goimagecolor.RGBA) goimagecolor.RGBA {
+func unpremultiply(c goimagecolor.RGBA) goimagecolor.NRGBA {
 	if c.A == 0 || c.A == 0xFF {
-		return c
+		return goimagecolor.NRGBA(c)
 	}
-	return goimagecolor.RGBA{
+	return goimagecolor.NRGBA{
 		R: uint8(int(c.R) * 255 / int(c.A)),
 		G: uint8(int(c.G) * 255 / int(c.A)),
 		B: uint8(int(c.B) * 255 / int(c.A)),

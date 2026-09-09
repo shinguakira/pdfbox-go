@@ -114,12 +114,12 @@ func (i *Image) newSoftMaskSource(paint rendering.SoftMaskedPaint,
 // into, which is why the layer carries isGray: a grey group is already a grey
 // image and the channel goes straight across, and only a group in some other
 // space is converted. See luma for what that conversion is worth.
-func grayOf(rendered *goimage.RGBA, layer *rendering.SoftMaskLayer) *goimage.Alpha {
+func grayOf(rendered *goimage.NRGBA, layer *rendering.SoftMaskLayer) *goimage.Alpha {
 	bounds := rendered.Bounds()
 	gray := goimage.NewAlpha(bounds)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			c := rendered.RGBAAt(x, y)
+			c := rendered.NRGBAAt(x, y)
 			if !layer.Luminosity {
 				gray.SetAlpha(x, y, goimagecolor.Alpha{A: c.A})
 				continue
@@ -204,7 +204,7 @@ func adjustMask(gray *goimage.Alpha, layer *rendering.SoftMaskLayer) *goimage.Al
 }
 
 // colorAt answers the masked colour under a device pixel.
-func (s *softMaskSource) colorAt(x, y int) (goimagecolor.RGBA, bool) {
+func (s *softMaskSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	c, painted := s.under.colorAt(x, y)
 	if !painted {
 		return c, false

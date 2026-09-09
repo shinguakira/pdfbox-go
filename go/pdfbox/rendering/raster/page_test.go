@@ -33,27 +33,35 @@ import (
 // channel out, which on these pages is the stroke shift and nothing else.
 func comparePage(t *testing.T, name string) (differing, beyond int) {
 	t.Helper()
-	reference := readPNG(t, "testdata/"+name+"-java.png")
+	return comparePageOfType(t, name, name, rendering.RGB)
+}
 
-	document, err := pdfbox.LoadPDF("testdata/" + name + ".pdf")
+// comparePageOfType is comparePage for a page rendered as something other than
+// RGB, where the reference is named for the type and the PDF is not.
+func comparePageOfType(t *testing.T, reference, page string,
+	imageType rendering.ImageType) (differing, beyond int) {
+	t.Helper()
+	referenceImage := readPNG(t, "testdata/"+reference+"-java.png")
+
+	document, err := pdfbox.LoadPDF("testdata/" + page + ".pdf")
 	if err != nil {
-		t.Fatalf("loading %s: %v", name, err)
+		t.Fatalf("loading %s: %v", page, err)
 	}
 	defer document.Close()
 
-	rendered, err := raster.RenderPage(document, 0, 1, rendering.RGB)
+	rendered, err := raster.RenderPage(document, 0, 1, imageType)
 	if err != nil {
-		t.Fatalf("rendering %s: %v", name, err)
+		t.Fatalf("rendering %s: %v", page, err)
 	}
-	if got, want := rendered.Bounds(), reference.Bounds(); got != want {
+	if got, want := rendered.Bounds(), referenceImage.Bounds(); got != want {
 		t.Fatalf("the port rendered %v and PDFBox rendered %v", got, want)
 	}
 
-	for y := reference.Bounds().Min.Y; y < reference.Bounds().Max.Y; y++ {
-		for x := reference.Bounds().Min.X; x < reference.Bounds().Max.X; x++ {
+	for y := referenceImage.Bounds().Min.Y; y < referenceImage.Bounds().Max.Y; y++ {
+		for x := referenceImage.Bounds().Min.X; x < referenceImage.Bounds().Max.X; x++ {
 			worst := 0
 			gotR, gotG, gotB, _ := rendered.At(x, y).RGBA()
-			wantR, wantG, wantB, _ := reference.At(x, y).RGBA()
+			wantR, wantG, wantB, _ := referenceImage.At(x, y).RGBA()
 			for _, channel := range [][2]uint32{{gotR, wantR}, {gotG, wantG}, {gotB, wantB}} {
 				delta := int(channel[0]>>8) - int(channel[1]>>8)
 				if delta < 0 {
@@ -213,6 +221,73 @@ func TestSoftMasksOnARotatedPageRenderAsPDFBoxRendersThem(t *testing.T) {
 		beyondEdges     = 0
 	)
 	differing, beyond := comparePage(t, "masksrot")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}
+
+// TestTheOtherImageTypesRenderAsPDFBoxRendersThem is `-color GRAY` and
+// `-color BILEVEL`, which are what `ImageType.GRAY` and `ImageType.BINARY`
+// mean.
+//
+// Java draws onto a BufferedImage of that type and the image quantizes what is
+// written into it, so a later composite reads back what the surface really
+// holds. quantize.go is that, at the same moment, and `asImageType` hands back
+// the same kind of image ImageIO would write as a greyscale or one-bit PNG.
+//
+// **Grey is the RGB page's differences, collapsed.** 2182 pixels of 40000, none
+// of them more than a quarter of a channel: the shading's colour drift is worth
+// less once three channels become one.
+//
+// **Every difference in the one-bit page is a flipped pixel, and every one of
+// them is on a stroke.** A surface with two colours in it has no way to be a
+// little bit out: the one unit of edge coverage that the two rasterisers
+// disagree about, which is worth 1 in 255 on the RGB page, is worth the whole
+// pixel here. The fills, the shading and the rotated square are exact.
+func TestTheOtherImageTypesRenderAsPDFBoxRendersThem(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		kind      rendering.ImageType
+		differing int
+		beyond    int
+	}{
+		{"gray", rendering.Gray, 2182, 0},
+		{"binary", rendering.Binary, 937, 937},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			differing, beyond := comparePageOfType(t, "graphics-"+c.name, "graphics", c.kind)
+			if differing != c.differing || beyond != c.beyond {
+				t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+					"than a quarter of a channel; it was %d and %d",
+					differing, beyond, c.differing, c.beyond)
+			}
+		})
+	}
+}
+
+// TestStencilsRenderAsPDFBoxRendersThem is `/ImageMask true`: one bit a sample,
+// no colour space, and where the bit says so the colour in force shows and
+// everywhere else nothing is painted at all.
+//
+// It is the one image the backend is handed with a paint beside it, and the
+// only thing it may take from the image is which samples are in. Taking that
+// from `ImageOfRegion` was wrong -- an image mask has no colour space, so what
+// comes back is opaque wherever it comes back at all, and every stencil
+// painted its whole rectangle. Against this page that was 3526 pixels of
+// 16000; asking for the stencil image, whose alpha is the mask's bits and
+// nothing else, makes it 101.
+//
+// The 101 are the sample boundaries. A stencil has no partial coverage, so
+// where the two renderers put a boundary differently the pixel flips whole,
+// which is why every one of them is more than a quarter of a channel.
+func TestStencilsRenderAsPDFBoxRendersThem(t *testing.T) {
+	const (
+		differingPixels = 101
+		beyondEdges     = 101
+	)
+	differing, beyond := comparePage(t, "stencil")
 	if differing != differingPixels || beyond != beyondEdges {
 		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
 			"than a quarter of a channel; it was %d and %d",

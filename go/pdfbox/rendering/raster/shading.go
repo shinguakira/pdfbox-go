@@ -30,19 +30,19 @@ import (
 // Java's `continue` in the raster loop: the pixel is left as it was, and with
 // no background there is nothing to put in it.
 type shadingContext interface {
-	colorAt(x, y int) (goimagecolor.RGBA, bool)
+	colorAt(x, y int) (goimagecolor.NRGBA, bool)
 }
 
 // convertToRGB is ShadingContext.convertToRGB: the shading's colour space
 // converts the components to RGB, and each channel is **truncated** to a byte
 // rather than rounded. `(int) (rgbValues[0] * 255)` gives 254 for 0.999 and
 // reaches 255 only at exactly 1.
-func convertToRGB(colorSpace color.PDColorSpace, values []float32) (goimagecolor.RGBA, error) {
+func convertToRGB(colorSpace color.PDColorSpace, values []float32) (goimagecolor.NRGBA, error) {
 	rgb, err := colorSpace.ToRGB(values)
 	if err != nil {
-		return goimagecolor.RGBA{}, err
+		return goimagecolor.NRGBA{}, err
 	}
-	return goimagecolor.RGBA{
+	return goimagecolor.NRGBA{
 		R: uint8(rgb[0] * 255),
 		G: uint8(rgb[1] * 255),
 		B: uint8(rgb[2] * 255),

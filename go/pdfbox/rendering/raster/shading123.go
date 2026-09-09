@@ -46,7 +46,7 @@ type shadingModel interface {
 type baseContext struct {
 	colorSpace color.PDColorSpace
 	background []float32
-	rgbBack    goimagecolor.RGBA
+	rgbBack    goimagecolor.NRGBA
 	hasBack    bool
 }
 
@@ -70,7 +70,7 @@ func newBaseContext(sh shadingModel) (baseContext, error) {
 // outside is what a context answers where the shading does not reach: the
 // background where there is one, and nothing where there is not -- which is
 // Java's `continue`, leaving the pixel as it was.
-func (b baseContext) outside() (goimagecolor.RGBA, bool) {
+func (b baseContext) outside() (goimagecolor.NRGBA, bool) {
 	return b.rgbBack, b.hasBack
 }
 
@@ -112,9 +112,9 @@ func transformedPoint(at *geom.AffineTransform, x, y int) (float64, float64) {
 // colorTableOf is calcColorTable: `factor + 1` colours evaluated across the
 // domain, or one colour where there are no steps to take.
 func colorTableOf(sh shadingModel, base baseContext, domain [2]float32,
-	factor int) ([]goimagecolor.RGBA, error) {
+	factor int) ([]goimagecolor.NRGBA, error) {
 	d1d0 := domain[1] - domain[0]
-	table := make([]goimagecolor.RGBA, factor+1)
+	table := make([]goimagecolor.NRGBA, factor+1)
 	if factor == 0 || d1d0 == 0 {
 		values, err := sh.EvalFunction(domain[0])
 		if err != nil {

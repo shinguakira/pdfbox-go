@@ -252,7 +252,7 @@ func differenceFrom(t *testing.T, grid [][]uint8, i *Image) (differing, worst in
 	}
 	for y := 0; y < bounds.Dy(); y++ {
 		for x := 0; x < bounds.Dx(); x++ {
-			delta := int(i.dst.RGBAAt(x, y).R) - int(grid[y][x])
+			delta := int(i.dst.NRGBAAt(x, y).R) - int(grid[y][x])
 			if delta == 0 {
 				continue
 			}

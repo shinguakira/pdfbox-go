@@ -24,7 +24,7 @@ type radialContext struct {
 	domain           [2]float32
 	extend           [2]bool
 	factor           int
-	colorTable       []goimagecolor.RGBA
+	colorTable       []goimagecolor.NRGBA
 }
 
 func newRadialContext(sh shadingModel, matrix *util.Matrix, xform *geom.AffineTransform,
@@ -75,7 +75,7 @@ func (c *radialContext) inputValues(x, y float64) (float32, float32) {
 	return root2, root1
 }
 
-func (c *radialContext) colorAt(x, y int) (goimagecolor.RGBA, bool) {
+func (c *radialContext) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	px, py := transformedPoint(c.rat, x, y)
 	first, second := c.inputValues(px, py)
 

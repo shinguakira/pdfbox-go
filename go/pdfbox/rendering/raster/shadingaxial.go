@@ -20,7 +20,7 @@ type axialContext struct {
 	domain     [2]float32
 	extend     [2]bool
 	factor     int
-	colorTable []goimagecolor.RGBA
+	colorTable []goimagecolor.NRGBA
 }
 
 func newAxialContext(sh shadingModel, matrix *util.Matrix, xform *geom.AffineTransform,
@@ -54,7 +54,7 @@ func newAxialContext(sh shadingModel, matrix *util.Matrix, xform *geom.AffineTra
 }
 
 // colorAt is the body of getRaster, for one pixel.
-func (c *axialContext) colorAt(x, y int) (goimagecolor.RGBA, bool) {
+func (c *axialContext) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	px, py := transformedPoint(c.rat, x, y)
 	inputValue := c.x1x0*(px-float64(c.coords[0])) + c.y1y0*(py-float64(c.coords[1]))
 

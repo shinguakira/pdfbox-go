@@ -35,7 +35,7 @@ const maxEdge = 3000
 // tilingSource is a TexturePaint: one rendered tile, repeated over an anchor
 // rectangle.
 type tilingSource struct {
-	tile   *goimage.RGBA
+	tile   *goimage.NRGBA
 	anchor *geom.Rectangle2D
 	// toAnchor maps a device pixel back into the space the anchor is in,
 	// which is the inverse of what Java's createContext hands TexturePaint.
@@ -137,7 +137,7 @@ func signum(v float32) float32 {
 // tileImage is getImage: the pattern's content stream, run once, onto a
 // surface the size of one tile.
 func (i *Image) tileImage(paint rendering.TilingPaint,
-	anchor *geom.Rectangle2D) (*goimage.RGBA, error) {
+	anchor *geom.Rectangle2D) (*goimage.NRGBA, error) {
 	width := float32(math.Abs(anchor.Width))
 	height := float32(math.Abs(anchor.Height))
 
@@ -209,25 +209,25 @@ func maxInt(a, b int) int {
 }
 
 // colorAt answers the tile's colour under a device pixel, repeating.
-func (t *tilingSource) colorAt(x, y int) (goimagecolor.RGBA, bool) {
+func (t *tilingSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	point := []float64{float64(x), float64(y)}
 	t.toAnchor.TransformDoubles(point, 0, point, 0, 1)
 
 	column, inside := t.wrap(point[0]-t.anchor.X, t.anchor.Width, t.tile.Bounds().Dx())
 	if !inside {
-		return goimagecolor.RGBA{}, false
+		return goimagecolor.NRGBA{}, false
 	}
 	row, inside := t.wrap(point[1]-t.anchor.Y, t.anchor.Height, t.tile.Bounds().Dy())
 	if !inside {
-		return goimagecolor.RGBA{}, false
+		return goimagecolor.NRGBA{}, false
 	}
 
-	c := t.tile.RGBAAt(column, row)
+	c := t.tile.NRGBAAt(column, row)
 	if c.A == 0 {
 		// Nothing of the tile is here, and a tile is drawn on nothing: the
 		// pattern's own background shows through, which for a PDF is whatever
 		// was already on the page.
-		return goimagecolor.RGBA{}, false
+		return goimagecolor.NRGBA{}, false
 	}
 	return c, true
 }

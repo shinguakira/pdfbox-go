@@ -22,12 +22,12 @@ import (
 var black = rendering.ColorPaint{Red: 0, Green: 0, Blue: 0, Alpha: 1}
 
 // at is the colour of one pixel of a backend.
-func at(i *Image, x, y int) goimagecolor.RGBA {
-	return i.dst.RGBAAt(x, y)
+func at(i *Image, x, y int) goimagecolor.NRGBA {
+	return i.dst.NRGBAAt(x, y)
 }
 
 // wantColor fails unless the pixel is the colour asked for.
-func wantColor(t *testing.T, i *Image, x, y int, want goimagecolor.RGBA, what string) {
+func wantColor(t *testing.T, i *Image, x, y int, want goimagecolor.NRGBA, what string) {
 	t.Helper()
 	if got := at(i, x, y); got != want {
 		t.Errorf("%s: (%d,%d) is %v, want %v", what, x, y, got, want)

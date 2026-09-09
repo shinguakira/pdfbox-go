@@ -6,3 +6,7 @@
 # Coverage
 coverage.out
 coverage.html
+
+# A crashed MSYS bash leaves one of these at the repository root. One was
+# committed once; it is not a build product of anything here.
+bash.exe.stackdump

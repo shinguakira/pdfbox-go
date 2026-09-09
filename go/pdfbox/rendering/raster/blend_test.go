@@ -102,7 +102,7 @@ func argb(v uint32) (a, r, g, b uint8) {
 }
 
 // composeRow puts one source over one destination the way the driver did.
-func composeRow(t *testing.T, row blendRow, mode *blend.BlendMode) goimagecolor.RGBA {
+func composeRow(t *testing.T, row blendRow, mode *blend.BlendMode) goimagecolor.NRGBA {
 	t.Helper()
 	srcAlpha, srcRed, srcGreen, srcBlue := argb(row.src)
 	dstAlpha, dstRed, dstGreen, dstBlue := argb(row.dst)
@@ -110,7 +110,7 @@ func composeRow(t *testing.T, row blendRow, mode *blend.BlendMode) goimagecolor.
 	i := NewImage(1, 1, rendering.ARGB)
 	i.SetAntiAliasing(false)
 	// The destination as the driver's BufferedImage held it.
-	i.dst.SetRGBA(0, 0, goimagecolor.RGBA{R: dstRed, G: dstGreen, B: dstBlue, A: dstAlpha})
+	i.dst.SetNRGBA(0, 0, goimagecolor.NRGBA{R: dstRed, G: dstGreen, B: dstBlue, A: dstAlpha})
 	i.SetComposite(mode, row.constant)
 	i.SetPaint(rendering.ColorPaint{
 		Red:   float32(srcRed) / 255,
@@ -121,7 +121,7 @@ func composeRow(t *testing.T, row blendRow, mode *blend.BlendMode) goimagecolor.
 	if err := i.Fill(rectangle(0, 0, 1, 1)); err != nil {
 		t.Fatalf("blend.txt:%d: Fill: %v", row.line, err)
 	}
-	return i.dst.RGBAAt(0, 0)
+	return i.dst.NRGBAAt(0, 0)
 }
 
 // TestBlendsAsPDFBoxDoes fills one pixel over one pixel, once per line of the
@@ -143,7 +143,7 @@ func TestBlendsAsPDFBoxDoes(t *testing.T) {
 		}
 		got := composeRow(t, row, mode)
 		wantAlpha, wantRed, wantGreen, wantBlue := argb(row.want)
-		want := goimagecolor.RGBA{R: wantRed, G: wantGreen, B: wantBlue, A: wantAlpha}
+		want := goimagecolor.NRGBA{R: wantRed, G: wantGreen, B: wantBlue, A: wantAlpha}
 		if got != want {
 			t.Errorf("blend.txt:%d: %s %08x over %08x at %.2f is %02x%02x%02x%02x, "+
 				"and PDFBox makes it %08x",
@@ -177,7 +177,7 @@ func TestAlphaCompositeRoundsSourceOverDifferently(t *testing.T) {
 		}
 		got := composeRow(t, row, blend.Normal)
 		wantAlpha, wantRed, wantGreen, wantBlue := argb(row.want)
-		want := goimagecolor.RGBA{R: wantRed, G: wantGreen, B: wantBlue, A: wantAlpha}
+		want := goimagecolor.NRGBA{R: wantRed, G: wantGreen, B: wantBlue, A: wantAlpha}
 		if got == want {
 			continue
 		}

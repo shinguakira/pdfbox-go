@@ -27,7 +27,7 @@ type meshShading interface {
 // meshContext looks a pixel up in the table the mesh built.
 type meshContext struct {
 	baseContext
-	table map[goimage.Point]goimagecolor.RGBA
+	table map[goimage.Point]goimagecolor.NRGBA
 }
 
 func newMeshContext(sh meshShading, matrix *util.Matrix, xform *geom.AffineTransform,
@@ -51,7 +51,7 @@ func newMeshContext(sh meshShading, matrix *util.Matrix, xform *geom.AffineTrans
 
 	c := &meshContext{
 		baseContext: base,
-		table:       make(map[goimage.Point]goimagecolor.RGBA, len(components)),
+		table:       make(map[goimage.Point]goimagecolor.NRGBA, len(components)),
 	}
 	for point, values := range components {
 		if function != nil {
@@ -68,7 +68,7 @@ func newMeshContext(sh meshShading, matrix *util.Matrix, xform *geom.AffineTrans
 	return c, nil
 }
 
-func (c *meshContext) colorAt(x, y int) (goimagecolor.RGBA, bool) {
+func (c *meshContext) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	if rgb, covered := c.table[goimage.Point{X: x, Y: y}]; covered {
 		return rgb, true
 	}
