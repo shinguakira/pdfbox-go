@@ -507,16 +507,24 @@ func mergeOutline(cloner *PDFCloneUtility, destCatalog, srcCatalog *pdmodel.PDDo
 	return nil
 }
 
-// mergePageMode is Java's /PageMode block, which cannot do anything: see
-// migration/JAVA-BUGS.md.
+// mergePageMode is Java's /PageMode block: the destination takes the source's
+// page mode where it has none of its own.
+//
+// Java asks whether the destination's page mode is null, and `getPageMode`
+// answers USE_NONE for a document with no /PageMode and never null, so its
+// branch is dead and a merge into an empty destination -- which is what
+// `pdfbox merge` starts with -- loses the source's page mode. The question is
+// whether the entry is there. The source is asked the same way, so a source
+// with no /PageMode writes none rather than a UseNone that says nothing. See
+// migration/JAVA-BUGS.md 84.
 func mergePageMode(destCatalog, srcCatalog *pdmodel.PDDocumentCatalog) {
-	// Java asks whether the destination's page mode is null and sets the
-	// source's where it is. `getPageMode` answers USE_NONE for a document with
-	// no /PageMode and never null, so the branch is dead in the Java and is
-	// dead here; the port keeps the shape and the comment rather than a
-	// condition that reads as though it did something.
-	_ = destCatalog
-	_ = srcCatalog
+	if destCatalog.COSObject().(*cos.Dictionary).ContainsKey(cos.PageMode) {
+		return
+	}
+	if !srcCatalog.COSObject().(*cos.Dictionary).ContainsKey(cos.PageMode) {
+		return
+	}
+	destCatalog.SetPageMode(srcCatalog.PageMode())
 }
 
 // mergePageLabels is Java's /PageLabels block.

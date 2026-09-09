@@ -4323,4 +4323,17 @@ showing, or in full screen, is merged into a document that asks for nothing.
 because the port's `PageMode()` answers `PageModeUseNone` for the same reason
 and a condition there would read as though it did something.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 84. `mergePageMode` asks
+whether the destination's dictionary holds `/PageMode`, which is the question
+the entry names and the only one the accessor cannot answer. The source is
+asked the same way, so a source with no page mode writes none rather than a
+`UseNone` that says nothing — Java's dead branch would have written that, and
+it is the difference between "no preference" and "open with neither the
+outline nor the thumbnails". Tested by
+`TestMergePageModeTakesTheSourcesWhereThereIsNone` in
+`go/pdfbox/multipdf/javabug84_test.go`, with
+`TestMergePageModeKeepsTheDestinationsOwn` and
+`TestMergePageModeWritesNothingForASourceWithNone` beside it. In-package, for
+the same reason entry 83's test is.
+
 **Confidence** certain, from the source, both halves quoted above.
