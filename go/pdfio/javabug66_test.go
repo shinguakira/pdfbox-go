@@ -1,5 +1,12 @@
+//go:build !race
+
 package pdfio
 
+// The probe below writes to a ScratchFileBuffer while another goroutine closes
+// it. A buffer is not thread safe -- Java says so on the class -- so that is a
+// race on purpose, and the detector would name it; the lock cycle is what is
+// being tested, and it needs no detector to show. Built out under -race.
+//
 // JAVA-BUGS 66: `ScratchFile` takes `ioLock` and the page lock in both orders
 // -- `getNewPage` holds the page lock and reaches `ioLock` through `enlarge`,
 // while `Close` holds `ioLock` and reaches the page lock through a buffer's

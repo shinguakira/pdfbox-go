@@ -3660,6 +3660,24 @@ by whichever lock happened to be held.
 ConcurrentModificationException; it is a data race on the slice, which the race
 detector would name. Ported as written and said at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 72. `Close` takes the buffer
+list under `buffersLock`, the lock its other two users take, clears it there
+and walks the copy outside — the entry's second answer, and the only one
+compatible with entry 66's fix, since closing a buffer reaches `removeBuffer`,
+which takes that same lock. Tested by `TestCreateBufferDuringCloseIsNotARace`
+in `go/pdfio/javabug72_test.go`, which races `CreateBuffer` against `Close` for
+200 rounds; the race is what there is to see, so the test is conclusive under
+`go test -race`, where without the fix the detector names `Close` reading
+`buffers` against `CreateBuffer` appending to it. Entry 66's probe is built out
+under `-race` (`//go:build !race`), because it writes to a buffer while
+another goroutine closes it — a race on purpose, on a class Java documents as
+not thread safe.
+
+Running that detector also found a port defect, fixed in the same commit and
+not a Java bug: `ScratchFile.isClosed` is `volatile boolean` in the Java and
+was a plain `bool` here, read by `checkClosed` without a lock. It is an
+`atomic.Bool` now, which is what the `volatile` asks for.
+
 **Confidence** high, from the source: the three methods are twenty lines apart
 and two of them synchronize on the field that the third does not. Not
 reproduced — it needs the two threads to interleave inside the window, and a
