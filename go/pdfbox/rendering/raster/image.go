@@ -22,7 +22,6 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/blend"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
-	pdimage "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/image"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 )
 
@@ -216,18 +215,6 @@ func (i *Image) compose(mask *goimage.Alpha) error {
 		}
 	}
 	return nil
-}
-
-// DrawImage draws the given image through the given transform.
-func (i *Image) DrawImage(pdImage pdimage.PDImage, at *geom.AffineTransform,
-	subsampling int) error {
-	return ErrNotDrawn
-}
-
-// DrawStencil draws the given stencil mask filled with the given paint.
-func (i *Image) DrawStencil(pdImage pdimage.PDImage, at *geom.AffineTransform,
-	paint rendering.Paint) error {
-	return ErrNotDrawn
 }
 
 // PushGroup begins a transparency group.
