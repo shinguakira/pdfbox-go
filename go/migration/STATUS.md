@@ -22,10 +22,10 @@ Last updated: 2026-09-06
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | **done — all 85 files**, finished by slice 9: the graphics engine, all 23 graphics operators, all 13 colour operators and the three `DrawObject`s |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D`, `Ellipse2D`, `FlatteningPathIterator`, and `Area` minus curves |
-| 6 | `rendering`, `printing`, `shading` | 60 | in progress — everything that computes. The raster half is behind `rendering.Backend`, which nothing implements: 4 of `rendering` and 19 of `shading` are `java.awt` classes and are not ported. See the slice 9 section |
+| 6 | `rendering`, `printing`, `shading` | 60 | **done** — slice 9 ported everything that computes, behind `rendering.Backend`; `track/raster` wrote the backend, in `go/pdfbox/rendering/raster`. The 19 `java.awt` shading classes stay unported by name -- their arithmetic is the ported `ShadingContext`s. See the slice 9 section and `track/raster`'s |
 | — | `pdfbox` root (`Loader`) | 1 | done — the reading entry points, FDF and XFDF included |
 | — | `w3c/dom`, `awt` (the JDK, not PDFBox) | — | in progress — a reading DOM for XFDF, and `Color` |
-| 7 | `tools` | 26 | **24 of 26**, finished by `track/tools` as far as it could go and then by `track/imageio`, which took five: the four `tools/imageio` classes and `ExtractImages`. Then by `track/multipdf`, which took `PDFMerger` and `OverlayPDF`, so it is **24 of 26** and the two left are `track/raster`'s. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
+| 7 | `tools` | 26 | **25 of 26**, finished by `track/tools` as far as it could go and then by `track/imageio`, which took five: the four `tools/imageio` classes and `ExtractImages`. Then by `track/multipdf`, which took `PDFMerger` and `OverlayPDF`, and by `track/raster`, which took `PDFToImage`. The one left is `PrintPDF`, which waits for a printing system rather than for a raster. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
@@ -50,7 +50,7 @@ evidence; a name is not.
 | Group | Files | Verdict |
 | --- | ---: | --- |
 | `graphics/shading` `Paint` and `PaintContext` implementations | 19 | deliberate — slice 9 put the raster half behind `rendering.Backend` |
-| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | deliberate — same reason |
+| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | **all four ported by `track/raster`**, into `rendering/raster`. Slice 9 had put the raster half behind `rendering.Backend`; that branch wrote the backend |
 | `cos/COSInputStream`, `cos/COSOutputStream` | 2 | deliberate — one carries a `DecodeResult` Go returns directly, one is folded into `streamWriter` |
 | `encryption/MessageDigests`, `SecurityProvider` | 2 | deliberate — JCE lookups Go answers with `crypto/*` |
 | `graphics/color/PDJPXColorSpace` | 1 | deliberate — only the JPX filter constructs it |
@@ -524,7 +524,7 @@ fast path back in, so `ContentsForStreamParsing` now branches the way Java does
 | --- | --- | --- |
 | `PDLineDashPattern.java` | `graphics/pdlinedashpattern.go` | done |
 | `blend/BlendMode.java` | `graphics/blend/blendmode.go` | done — blend functions included |
-| `blend/BlendComposite.java`, `SoftMask.java` | — | not ported — both are `java.awt` raster classes, and slice 9 put the raster half behind `rendering.Backend`. The blend mode and the alpha constants a `BlendComposite` is built from are on the graphics state, and `rendering.SoftMaskedPaint` names the mask a `SoftMask` would rasterise |
+| `blend/BlendComposite.java`, `SoftMask.java` | `rendering/raster/composite.go`, `softmask.go` | both are `java.awt` raster classes and slice 9 put the raster half behind `rendering.Backend`, naming the blend mode and the alpha constants on the graphics state and the mask in `rendering.SoftMaskedPaint`. **`track/raster` ported both**, and every one of `BlendComposite`'s 340 reference pixels matches |
 | `color/PDColor.java` | `graphics/color/pdcolor.go` | done |
 | `color/PDColorSpace.java` | `graphics/color/colorspace.go` | partial — as an interface; the static `create` methods and the two `BufferedImage` methods are absent |
 | `color/PDDeviceColorSpace.java` | `graphics/color/colorspace.go` | done |
@@ -2010,7 +2010,7 @@ Seven of the eight pass now; the eighth reads `target/pdfs`.
 | `TestToUnicodeWriter` | `pdmodel/font/tounicodewriter_test.go` | all 8, complete — the A3 deferral from slice 3 |
 | `COSWriterCompressionPoolTest` | — | needs `PDDocumentOutline` and `PDOutlineItem` — slice 8 |
 | `COSDocumentCompressionTest` | — | all 5 need `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox` or `protect` |
-| `ContentStreamWriterTest` | — | needs `PDFRenderer` and `TestPDFToImage` — slice 9 |
+| `ContentStreamWriterTest` | `pdfwriter/contentstreamwriter_render_test.go` | **`track/raster`** — the round trip renders identically. Java reads a downloaded `PDFBOX-4750.pdf`; the port uses the page it writes for its own raster comparisons |
 | `PDFCloneUtilityTest` | `multipdf/pdfcloneutility_test.go` | all 3 — `track/multipdf` |
 | `OverlayTest` | `multipdf/overlay_test.go` | all 3 — `track/multipdf`, comparing content streams where the Java compares pixels |
 | `TestLayerUtility` | `multipdf/layerutility_test.go` | complete — `track/multipdf` |
@@ -2230,10 +2230,13 @@ additional actions, the markup information, the external data and the rest.
 from its `init`, which is how `PDAnnotation.constructAppearances` reaches a
 handler without this package naming each one.
 
-`PDSquigglyAppearanceHandler.generateNormalAppearance` is **not ported.** It
-fills the squiggle with a tiling pattern, which needs `PDTilingPattern`,
-`PDPatternContentStream` and the `PDPattern` colour space — all slice 9's. The
-handler is here and its comment says so.
+`PDSquigglyAppearanceHandler.generateNormalAppearance` was **not ported** in
+this slice. It fills the squiggle with a tiling pattern, which needs
+`PDTilingPattern`, `PDPatternContentStream` and the `PDPattern` colour space --
+all slice 9's. **`track/raster` ported it**, and the appearance it generates
+matches PDFBox's token for token across all three streams it is made of. The
+pattern reaches the handler through `annotation.NewSquigglyPatternColor`,
+because `graphics/pattern` imports `pdmodel`, which imports the handlers.
 
 ### `interactive/action` — all 25 files
 
@@ -2960,9 +2963,10 @@ narrow interface a security handler needs, so the one method is what lets a
 | `GlyphCache.java` | `rendering/glyphcache.go` | done |
 | `PDFRenderer.java` | `rendering/pdfrenderer.go` | done — minus the `BufferedImage` it makes |
 | `PageDrawer.java` | `rendering/pagedrawer.go`, `pagedrawer_oc.go` | done — minus four raster pieces |
-| `GroupGraphics.java` | — | not ported — a `Graphics2D` subclass |
-| `SoftMask.java` | — | not ported — a `java.awt.Paint` |
-| `TilingPaint.java`, `TilingPaintFactory.java` | — | not ported — a `java.awt.Paint` and its cache |
+| `GroupGraphics.java` | `rendering/raster/group.go` | a `Graphics2D` subclass, so slice 9 left it; **`track/raster` ported it**, as `PushGroup`, `PopGroup` and `removeBackdrop` |
+| `SoftMask.java` | `rendering/raster/softmask.go` | a `java.awt.Paint`, so slice 9 left it; **`track/raster` ported it**, with the drawer half in `rendering/softmask.go` |
+| `TilingPaint.java` | `rendering/raster/tiling.go` | a `java.awt.Paint`, so slice 9 left it; **`track/raster` ported it** |
+| `TilingPaintFactory.java` | `rendering/raster/tilingcache.go` | **`track/raster` ported it** -- a plain map rather than a WeakHashMap, with the lifetime written down. See JAVA-BUGS.md 86 |
 
 **`RenderDestination` had to move.** Java's `rendering` imports
 `graphics/optionalcontent` for the groups, and `optionalcontent` imports
@@ -3010,7 +3014,7 @@ rotation" — are written out against the matrix, with the Java bits named.
 | Java source | Go source | Status |
 | --- | --- | --- |
 | `Orientation.java`, `Scaling.java` | `printing/printing.go` | done |
-| `PDFPrintable.java` | `printing/pdfprintable.go` | done — minus rasterizing |
+| `PDFPrintable.java` | `printing/pdfprintable.go` | done |
 | `PDFPageable.java` | `printing/pdfpageable.go` | done |
 | `java.awt.print.Paper`, `PageFormat` | `printing/pageformat.go` | the state only |
 
@@ -3020,30 +3024,47 @@ workaround, the scale-to-fit arithmetic, the centering and its negative-value
 guard, and the page border. `java.awt.print.Printable` and `Pageable` become
 plain methods taking a `rendering.Backend`.
 
-Rasterizing a page to a bitmap before printing it answers
-`ErrRasterizeUnsupported`. Java makes a `BufferedImage` of the imageable area,
-renders into it and blits it; there is nothing to make that image with.
+Rasterizing a page to a bitmap before printing it used to answer
+`ErrRasterizeUnsupported`, because Java makes a `BufferedImage` of the
+imageable area, renders into it and blits it, and there was nothing to make
+that image with. `track/raster` closed it: `Backend` gained `NewOffscreen`,
+which is that `new BufferedImage(w, h, TYPE_INT_ARGB)` asked of the surface you
+already have, and `DrawSurface`, which is the `drawImage(image, 0, 0, null)`
+that puts it down. The error is gone.
 
-### What the raster decision costs
+What is still missing is the spooler, and it is what `PrintPDF` needs: Go has
+no `PrinterJob` and no `javax.print`, so there is nothing to enumerate the
+printers on the machine, read the trays and media sizes one offers, show a
+dialog, or hand it a job. That is a per-platform API and no pure-Go library
+binds it.
 
-Written down here rather than left implicit, which is what D9 asks.
+### What the raster decision cost
 
-**The port cannot produce a rendered page.** `PDFRenderer.RenderImage` and its
-four siblings answer `ErrNoBackend` — with the size, the type and the page they
-worked out, so the error says what would have been made. It is deliberately not
-a blank image, which would look like a rendered page.
+Written down here rather than left implicit, which is what D9 asks. **This is
+slice 9's record, and `track/raster` has since answered it** -- see that
+branch's section for what the backend matches and what it does not. What
+follows is what it was like without one, kept because it is what the interface
+was designed against and what a caller who brings a different backend still
+gets.
 
-**It therefore cannot rasterise, print, or run PDFBox's own image comparisons.**
-`TestPDFToImage`, `TestRendering` and `TestQuality` all compare against
-reference PNGs. `PDFPrintable` prints as vectors onto a backend and refuses to
-rasterise.
+**Without a backend the port cannot produce a rendered page.**
+`PDFRenderer.RenderImage` and its four siblings answer `ErrNoBackend` — with the
+size, the type and the page they worked out, so the error says what would have
+been made. It is deliberately not a blank image, which would look like a
+rendered page. `rendering/raster` is one, and `raster.RenderPage` puts the two
+halves back together for a caller that only wants an image.
+
+**It therefore could not rasterise, print, or run PDFBox's own image
+comparisons.** `TestPDFToImage`, `TestRendering` and `TestQuality` all compare
+against reference PNGs. `PDFPrintable` printed as vectors onto a backend and
+refused to rasterise; it rasterises now.
 
 **Everything above the interface runs.** A caller with a backend of their own —
 `golang.org/x/image/vector` plus a compositor, a Cairo or Skia binding, an SVG
 or PDF writer — gets a complete renderer: the whole content stream is walked,
 every operator is processed, the colours are converted, the shadings evaluate,
 the clip is computed, the optional content is resolved, the annotations are
-placed. `Backend` is fifteen methods.
+placed. `Backend` is seventeen methods.
 
 **What a backend has to do that the port does not describe for it:** anti-aliased
 scan conversion of a path under a winding rule; stroking a path into an outline
@@ -3057,8 +3078,10 @@ the shading for the colour at a point.
 **What the tests compare instead of pixels** is the A5 decision: `Area` against
 the JDK's documented contract, functions and colour conversions against values
 taken from the Java, and `PageDrawer` against a backend that records every call.
-An image comparison against PDFBox's reference PNGs stays possible once a
-backend exists, and is the thing this strategy does not cover.
+An image comparison stays possible once a backend exists, and is the thing this
+strategy does not cover — `track/raster` covers it, against pages it renders
+through PDFBox itself rather than against PDFBox's checked-in PNGs, which are
+not in this repository.
 
 ### The tests
 
@@ -3067,12 +3090,17 @@ Java's three rendering tests and one printing test do not port as they stand.
 - **`TestPDFToImage`** is disabled in Java itself, because different JVMs
   produce different images.
 - **`TestRendering`** renders twenty files and asserts that nothing threw.
-  Without a rasteriser there is nothing to render.
+  There is a rasteriser now, but the twenty files are not in this repository:
+  the Java build downloads them into `target/pdfs`. `track/raster` renders four
+  pages it writes itself instead, and compares them with PDFBox rather than
+  only asking that nothing threw.
 - **`TestQuality`** reads back four pixels of four files from `target/pdfs`,
   which the build downloads.
 - **`TestPDFPrintable`** has five cases: three port as they stand — the page
   index, the printer state left unchanged, and the result codes — and two read
-  back pixels to see whether the page border came out grey.
+  back pixels to see whether the page border came out grey. Those two are asked
+  of the recording backend instead, which sees the stroke rather than the
+  pixels it leaves.
 
 What each was asking is asked instead of a backend that records every call the
 drawer makes, over real content streams through the real engine:
@@ -5358,7 +5386,7 @@ the audit recorded at the end of this file.
 | `track/stale-deferrals` | 3 test classes, 3 methods | nothing | **done** — article beads, `sh`, public-key encryption |
 | `track/imageio` | 5 | nothing | **done** — `export:images` |
 | `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay`, and `Splitter`'s other half |
-| `track/raster` | 27 | `track/imageio`, for one task | `render`, `print`, every deferred pixel comparison |
+| `track/raster` | 27 | `track/imageio`, for one task | **done** — `render` and every deferred pixel comparison. Not `print`: see its section |
 | `track/java-bug-fixes` | **none — it is not a port** | nothing, and goes last | the 84 entries of `JAVA-BUGS.md` |
 
 **`track/imageio` is on the critical path and `track/multipdf` is not.**
@@ -5454,15 +5482,15 @@ carries name a dependency that has since been ported.
 
 | Found | Where | Now claimed by |
 | --- | --- | --- |
-| `PDPatternContentStream` unported | `pdmodel` | `track/raster` |
-| `BlendComposite` unported | `graphics/blend` | `track/raster` |
+| `PDPatternContentStream` unported | `pdmodel` | `track/raster` — **done** |
+| `BlendComposite` unported | `graphics/blend` | `track/raster` — **done** |
 | `PDFTextStripper.fillBeadRectangles` disabled — `PDThreadBead` is ported now | `text` | `track/stale-deferrals` |
 | `PDAbstractContentStream.shadingFill` missing — `PDShading` is ported now | `pdmodel` | `track/stale-deferrals` |
 | `PublicKeySecurityHandler` cannot encrypt — the recorded reason is "slice 7", which merged | `encryption` | `track/stale-deferrals`, and its A0 |
 | `COSWriterCompressionPoolTest`, `COSDocumentCompressionTest` — every blocker they name is ported | `pdfwriter` | `track/stale-deferrals` |
 | `TestPDDocument`, 6 cases — **recorded nowhere at all** | `pdmodel` | `track/stale-deferrals` |
 | `PDFCloneUtilityTest` — 2 of its 3 blockers are ported, the third is `PDFMergerUtility` | `multipdf` | `track/multipdf` |
-| `ContentStreamWriterTest` | `pdfwriter` | `track/raster` |
+| `ContentStreamWriterTest` | `pdfwriter` | `track/raster` — **done** |
 | `contentstream/operator/text` says `Tj`, `TJ`, `'` and `"` are absent; they were ported by slice 3 | doc comment | `track/stale-deferrals` |
 
 The `tools` count — 18 of 26, in this file and in `go/tools/notbuilt.go` — was
@@ -5884,8 +5912,8 @@ and PhotometricInterpretation 5, Separated. `tiffSamples` now has that arm.
 It cannot be reached through `ExtractImages` today, for the reason in the
 `-noColorConvert` section above -- no `ToRawImage` in this port answers a
 four-channel image yet. It was reachable through `imageio.WriteImage`, which is
-public and is what `track/raster` will call, and the two halves of the decision
-had to agree before that lands.
+public and is what `track/raster` calls now, from `pdfbox render`, and the two
+halves of the decision had to agree before that landed.
 
 **`isBitonal` read past the image.** It walked `img.Pix`, and `Pix` is not the
 image: a `SubImage` shares its parent's buffer and stride and its slice runs to
@@ -6298,3 +6326,535 @@ invited again.
 `AGENTS.md`'s "Status: early. Only the `pdfio` package ... is implemented" is
 badly stale and was left alone: it is outside this branch and what the status
 *is* belongs to this file.
+
+## Track `raster` — A0, what draws
+
+`PLAN.md`'s slice 9 named three ways to draw and slice 9 itself took a fourth,
+which was to draw nothing and put the interface in first. The three were: a
+Cairo or Skia binding, `golang.org/x/image/vector` plus hand-written
+compositing, or a rasteriser written here. **The answer is a fourth thing the
+task file did not name: `github.com/srwiley/rasterx`.**
+
+### The task file's own premise was stale
+
+It said of `x/image`: "It is not in `go.mod` and there is no network; settle how
+it gets there before choosing it." The network works — `go list -m -versions`
+answers from `proxy.golang.org` — so every pure-Go option is reachable and the
+question is which, not whether.
+
+### What was measured
+
+Four libraries were fetched and read, not recalled:
+
+| | fill | stroke: width, cap, join, dash | arbitrary clip | PDF's 16 blend modes | groups, soft masks | direct deps |
+| --- | :-: | :-: | :-: | :-: | :-: | ---: |
+| Cairo (`ungerik/go-cairo`) | yes | yes | yes | **yes** | **yes** | cgo + libcairo |
+| `srwiley/rasterx` | yes | **yes**, incl. miter limit | rectangle only | no | no | **1** |
+| `fogleman/gg` | yes | **no miter join** | yes, via mask | no | no | 2 |
+| `x/image/vector` | yes | no | no | no | no | 0 |
+
+- **Cairo covers all of it**, because Cairo implements the PDF and SVG
+  compositing model by design: `OPERATOR_MULTIPLY` through
+  `OPERATOR_HSL_LUMINOSITY` are PDF's sixteen blend modes under their SVG
+  names, and `PushGroup` is the transparency group. It is barred here for the
+  reason it has always been barred — it is C, and this port is pure Go.
+  [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) records what the other
+  ecosystems do about the same problem, which is the same thing: PdfPig, the
+  precedent `PLAN.md` cites for shipping without a renderer, has one now and it
+  binds Skia.
+- **`fogleman/gg` has only round and bevel joins.** PDF's default is miter,
+  which rules it out on the first stroke of most documents.
+- **`tdewolff/canvas` was checked and rejected on weight, not capability.** It
+  is actively maintained, has all four joins and a real `Path.Stroke`, and
+  requires **24 modules** — Fyne, Gio, OpenGL and GLFW (which is cgo), LaTeX,
+  WebP, AVIF, OpenStreetMap. `rasterx` requires one: `golang.org/x/image`.
+- **No pure-Go library has PDF's blend modes, transparency groups or soft
+  masks.** They are not a thing general 2D libraries do. That part is written
+  here whatever is chosen, and the model half of it — `blend.BlendMode` — is
+  already ported, so what is left is the loop that applies it per pixel.
+
+### What `rasterx` is
+
+Not famous by stars, and load-bearing anyway: **Fyne's `go.mod` requires it**,
+at the same pseudo-version taken here, so every SVG icon in every Fyne
+application is rasterised through `oksvg` → `rasterx`. Against that: it has no
+tagged release and its last commit is 2022-07-30. A rasteriser is a good place
+for that to be true — the algorithms do not move — but upstream will not fix
+anything.
+
+The exposure is one file. `rendering.Backend` is the interface slice 9 defined
+for exactly this, and swapping `rasterx` for Cairo or for hand-written scanline
+code later touches its implementation and nothing else.
+
+### What this costs
+
+`rasterx` answers the whole stroke model a PDF graphics state can ask for: `w`,
+`J`, `j`, `M` and `d`. What is written here is the compositor — the sixteen
+blend modes over the already-ported `blend.BlendMode`, the clip as an alpha
+mask, and the transparency-group and soft-mask buffers. About 600 lines, none
+of it new design.
+
+### The trap, pinned
+
+`Stroker.SetStroke` takes a gap function *and* a join mode, and the gap wins:
+it defaults from the join mode **only when the gap is nil**. Passing
+`rasterx.FlatGap` explicitly renders a round join as a bevel, silently.
+`go/pdfbox/rendering/raster/rasterx_test.go` is the A0 evidence and pins this:
+it drives all three joins, all three caps and a dash pattern, and every
+expected value in it was read off an ink map of what `rasterx` actually
+produced rather than reasoned about — two of them were wrong the first time,
+because pixel coverage is area coverage and a pixel counts as inked when any
+part of it is.
+
+### What `awt/geom.Area` still approximates
+
+The task file asks whether the choice changes this. It does not:
+`awt/geom/area.go` flattens curves to polylines where the JDK intersects them
+exactly, the clip is built from it, and that stays true. `rasterx` takes a path
+of its own and the clip reaches it as a mask, so the flattening happens once,
+in the same place, with the same tolerance. It is recorded there and unchanged.
+
+### Track `raster` — A1, the pixel comparisons
+
+Three of them are now written, and fail with `raster.ErrNotDrawn` until phase B
+fills the backend in. That is the intended phase-A state: a backend written
+first and compared afterwards is a backend written to whatever it happens to
+produce.
+
+| Comparison | Where | State |
+| --- | --- | --- |
+| `checkRenderIdent`, ligatures and kerning | `glyphlayout/renderident_test.go` | **written**, red until B |
+| `checkRenderIdent`, bidi | same | **written**, red until B |
+| `checkRenderIdent`, supplementary plane | same | **written**, red until B |
+| `ContentStreamWriterTest` | `pdfwriter/contentstreamwriter_render_test.go` | **written after all** — see below |
+| `PDAcroFormFlattenTest` | — | **still blocked, and not by the raster** |
+| `TestFontEmbedding`, the 6 unported cases | — | **still blocked, and not by the raster** |
+
+**What `checkRenderIdent` actually asserts, and why it is possible now.** It
+renders the PDF the test just wrote and the reference PDF checked into
+`pdfbox-layout-awt/src/test/resources/pdf/`, and compares them pixel for pixel.
+Both sides go through the *same* renderer, so it never asks this port's pixels
+to match Java's — it asks the port to draw the file it wrote and the file Java
+wrote the same way. That is a test of the layout and of the writer together,
+and it needs a backend but not a faithful-to-Java one.
+
+**`ContentStreamWriterTest` was written in the end.** A1 recorded it as blocked
+because it reads `target/pdfs/PDFBOX-4750.pdf`, which the Maven build
+downloads. What the test does with that file, though, is not about the file:
+parse a page's content stream, write the tokens straight back through
+`ContentStreamWriter`, render both documents and assert the images are
+identical. Phase B produced a page of its own that is dense enough to ask it of
+-- `rendering/raster/testdata/graphics.pdf`, which every kind of drawing this
+branch ported appears on -- so the comparison is made against that instead, with
+Java's own assertion: identical, not close. What is lost is the specific defect
+PDFBOX-4750 was about, and that is said in the test.
+
+**What stays blocked, and why it is not this branch's to unblock.**
+`PDAcroFormFlattenTest` reads a list of PDFs it downloads, and the six
+`TestFontEmbedding` cases read fonts from `target/fonts`. Those directories are
+filled by the Maven build downloading from the issue tracker, both are empty
+here, and **the port fetches nothing in a test** — the rule every slice has
+given for the same omission. The raster was the second reason those three were
+deferred; it was never the only one.
+
+### Track `raster` — A2, and the second stale premise
+
+The task file says "Port the shading tests — `PDShadingTest` and the
+type-specific cases assert colours at points". **There is no such test.**
+`grep -rli shading` over `pdfbox/src/test` finds two files and neither tests a
+shading: one lists operator names, the other checks that `shadingFill` refuses
+a shading built from an empty dictionary. Slice 9's A3 had already found this
+and wrote `graphics/shading/shading_test.go` from the Java source and the
+specification.
+
+So A2 is the same kind of work rather than a port: the colour a
+`ShadingContext` answers at a point, asserted with no rasteriser and no page.
+`go/pdfbox/rendering/raster/shading_test.go` holds the first two, for the axial
+type, and both fail with `ErrNotDrawn` until B3.
+
+**The expected values are derived and the derivation is in the test**, because
+a value read off the port would only say the port agrees with itself. Two
+details of `AxialShadingContext` that the derivation turns on, and that a
+reimplementation would get wrong:
+
+- **The colour is quantised through a table whose size depends on the device
+  bounds.** `factor = ceil(the diagonal of the device bounds)`, the table holds
+  `factor + 1` colours evaluated at `domain[0] + d1d0 * i / factor`, and the
+  raster loop reads `colorTable[(int)(inputValue * factor)]`. The same shading
+  over a different sized surface therefore quantises differently. The test uses
+  a 300 by 400 surface, whose diagonal is exactly 500, so the quarters fall on
+  table entries and the arithmetic stays checkable.
+- **`convertToRGB` truncates.** `(int) (rgbValues[0] * 255)` gives 127 for 0.5
+  and reaches 255 only at exactly 1.0. It is not rounding, and the difference
+  shows on every mid-tone.
+
+---
+
+## Track `raster` — what the branch built, and what it is measured against
+
+`rendering/raster` implements `rendering.Backend` over an in-memory image. It
+is a **substitution, not a transliteration**: there is no Java to port, because
+Java draws onto a `java.awt.Graphics2D` and Go has no such thing. What is
+written is what Graphics2D would have done, against the interface slice 9
+already defined.
+
+### What draws
+
+| Job | What does it | Why |
+| --- | --- | --- |
+| stroke a path | `github.com/srwiley/rasterx` | the only pure-Go stroker with miter, a miter limit, all three caps and dashes |
+| scan-convert a shape | `github.com/golang/freetype/raster` | both winding rules and native curves; rasterx's own scanner is nonzero-only, its `SetWinding` a documented no-op |
+| sample a scaled image | `golang.org/x/image/draw` | nearest-neighbour and bicubic, which are the two `KEY_INTERPOLATION` values PDFBox sets |
+| composite, clip, groups, shadings, masks, tiles | written here | the sixteen blend modes of ISO 32000-1 table 136 are not something a general 2D library carries |
+
+The choice is A0's, and what was measured to reach it is in the section above.
+
+### **PDFBox has no rendering test, so the tests are measured against Java**
+
+This is the thing to know about this branch. `conventions/tdd.md` says
+assertion values are copied verbatim from the Java, and there was no Java to
+copy from — the first draft of B1 asserted what the operations *mean* instead.
+That is not the rule. So three Java programs are checked in beside the tests
+they feed, and every number comes from running one of them:
+
+| Driver | Reference | What it measures |
+| --- | --- | --- |
+| `raster/testdata/Java2DDrv.java` | `java2d.txt` | 17 shapes drawn by a JDK 17 Graphics2D under PDFRenderer's own hints |
+| `raster/testdata/BlendDrv.java` | `blend.txt` | 340 pixels through PDFBox's own `BlendComposite`, every mode |
+| `raster/testdata/RenderDrv.java` | `*-java.png` | three whole pages through PDFBox's `PDFRenderer` |
+| `handlers/testdata/SquigglyDrv.java` | `squiggly.pdf` | the appearance PDFBox generates for a squiggly annotation |
+
+The pages the last two render are written by the port's own writer —
+`raster/testdata/genpdf.go`, `genpatterns.go`, `genmasks.go` — and checked in,
+so both renderers read the same bytes.
+
+### What matches exactly
+
+- **Every blend mode**, all 340 rows, including Normal reached through
+  `BlendComposite` by reflection.
+- **Eleven of the seventeen Java2D shapes under VALUE_STROKE_PURE, and eight
+  under VALUE_STROKE_NORMALIZE**: the fills, the clip, the transform, both
+  winding rules, the straight-line stroke, and the dashes with and without a
+  phase. Three more differ by one unit of one channel and nothing more.
+- **Every flat fill on a rendered page**, and every interior. On the two pages
+  with strokes, **no pixel anywhere is more than a quarter of a channel out**.
+- **A coloured tiling pattern**, 3036 pixels, none of them different.
+- **An Alpha soft mask, and a Luminosity one with a /BC backdrop.**
+- **The squiggly annotation's appearance**, token for token, across all three
+  streams it is made of.
+
+### What differs, and why
+
+Four things, each measured and pinned in a test rather than described:
+
+**1. Stroke normalization — ported, so this one is gone.**
+`PDFRenderer.createDefaultRenderingHints` sets three hints and **not**
+`KEY_STROKE_CONTROL`, so PDFBox renders under the JDK default, which is
+`VALUE_STROKE_NORMALIZE`: Marlin moves each segment endpoint onto a pixel
+centre before stroking -- a pixel quarter with anti-aliasing off -- so a thin
+line lands on whole pixels instead of straddling two.
+
+`rendering/raster/normalize.go` is that, ported, and `SetStrokeNormalization`
+is the hint, on by default. The seventeen shapes are held to **both** grids,
+which is a stronger statement than either alone: the same shapes drawn twice,
+against a Java2D told to do each thing. What is left where the two disagree is
+the coverage of an edge pixel and not where the ink is.
+
+**2. Anti-aliased coverage quantisation — up to 1 on a straight edge.**
+Marlin samples a pixel on an 8x8 subpixel grid and truncates the count to a
+byte; freetype's rasteriser integrates the area exactly. On an
+exactly-half-covered pixel one says `0x7f` and the other `0x80`. That single
+unit is all of `fillHalfAA` and all of `joinBevel`.
+
+**3. Curve flattening, and one pixel of every right-angle join — up to 64.**
+The two flatteners put their line segments in different places, so a round
+join, a round cap and a stroked cubic differ along their edges. And the inner
+corner of a right angle is one pixel out by 64: rasterx emits a stroke as
+separate outlines per segment where Marlin emits one, so a scanline rasteriser
+accumulates the two overlapping arms to full coverage where Java has three
+quarters. The ink is in the same place; what differs is how dark its edge is.
+
+**4. The JDK's sRGB-to-grey conversion — up to 38, and only for a Luminosity
+soft mask over a non-grey group.** Java draws the group's ARGB image onto a
+`TYPE_BYTE_GRAY` one, which runs the JDK's colour management: an ICC transform
+to `CS_GRAY`, whose grey diagonal measures as `1.055*x^(1/2.4)-0.055` and not
+the weighted sum the name suggests. There is no ICC engine here and there is
+not going to be one, so `luma` is the standard sRGB luminance. A **grey** group
+— which is what `isGray` is ported for, and what a mask usually is — never
+converts a colour at all and does not go near this.
+
+### What this closed elsewhere
+
+| Deferral | Where it was | Now |
+| --- | --- | --- |
+| `checkRenderIdent` | `pdfbox-layout-awt`'s layout tests | runs, with the pixel counts pinned |
+| `PDFPrintable`'s rasterizing | `printing/pdfprintable.go` | ported; `Backend` gained `NewOffscreen` and `DrawSurface`, which are the two Graphics2D calls it needs |
+| `PDPatternContentStream` | `pdmodel` | ported |
+| the squiggly appearance | `annotation/handlers` | ported |
+| `PDFToImage` | `go/tools/notbuilt.go` | ported, registered as `render` |
+
+### What it did not close
+
+**`PrintPDF`, and the row in `go/tools/notbuilt.go` now says why.** It was
+recorded as waiting for a `rendering.Backend`, which was wrong. Everything
+PDFBox computes about where a page lands on a sheet is ported —
+`PDFPrintable`, `PDFPageable`, the rotated boxes, the scale-to-fit, the
+centring, the page border, and now the rasterizing. What `PrintPDF` needs on
+top is `java.awt.print.PrinterJob` and `javax.print`: enumerating the printers
+on the machine, reading the trays and media sizes one offers, showing the
+dialog, handing it a job. Go's standard library has none of it and no pure-Go
+library does either — printing is per-platform spooler API.
+
+**`TilingPaintFactory` is ported after all**, in `rendering/raster/tilingcache.go`.
+Java holds it in a `WeakHashMap` on the PageDrawer, so its entries live as long
+as the page is being drawn; Go has no weak reference, so the cache is a plain
+map on the surface and `ClearTileCache` empties it. Nothing in a render calls
+that -- a page's patterns are wanted for the whole page -- and a caller who
+renders many documents through one surface can.
+
+Its key leaves out the colour, and that is Java's behaviour rather than a
+simplification: `hashCode` ends with the colour's identity hash and `SetColor`
+builds a new `PDColor` for every `scn`, so Java's cache never answers for an
+uncoloured pattern either. `JAVA-BUGS.md` 86 has the whole of it, including the
+`UnsupportedOperationException` its `equals` would throw if it ever did hit.
+
+### A port defect this found
+
+`PDTilingPattern.COSObject` answered the pattern's **dictionary** rather than
+its stream. Java needs no override — a `COSStream` *is* a `COSDictionary` and
+`PDAbstractPattern`'s field holds the stream itself — but a Go `*cos.Stream`
+carries its dictionary rather than being one, so `PDResources.AddPattern` wrote
+a pattern with no content in it. Adding a pattern to resources has been broken
+since it was written; nothing had done it until the squiggly appearance did.
+
+---
+
+## Track `raster` — D7, the adversarial review
+
+Nine sweeps. What each asked, what it found, and what was done.
+
+### D1 — every ported file against its Java, side by side
+
+`TilingPaint`, `SoftMask`, `applySoftMaskToPaint`, the `isSoftMask` arm of the
+`TransparencyGroup` constructor, `adjustImage`, `getOrigin`,
+`BlendCompositeContext.compose`, `GroupGraphics.removeBackdrop`,
+`PDFToImage.call`, `PDPatternContentStream` and
+`PDSquigglyAppearanceHandler.generateNormalAppearance`.
+
+**One divergence found.** `getAnchorRect` tests its steps with
+`Float.compare(xStep, 0) == 0`, and the port had `xStep == 0`. Those are not
+the same question: `Float.compare` orders `-0.0` below `+0.0`, so it answers
+zero for `+0.0` alone, and `== 0` in Go is true for both. A pattern whose
+`/XStep` is written `-0` would have taken the bbox width here and kept the
+negative zero in Java. `isPositiveZero` is now the test, and
+`TestIsPositiveZeroIsFloatCompare` pins all five cases including NaN.
+
+**Two asymmetries that look like bugs and are Java's, kept.** `getImage` takes
+`Math.abs` of the pattern matrix's scaling factors and `createContext` does
+not; `getAnchorRect` scales the bbox origin by the *signed* factors while
+clamping the size by the absolute ones. Both are carried as written.
+
+**Every narrowing cast is written out.** `(int) origin.getX()` truncates toward
+zero and so does Go's `int(float64)`; `Math.round` on a non-negative float is
+`math.Round`; `ceiling` is neither, and has an entry of its own.
+
+### D2 — silently dropped behaviour
+
+**Every `finally` is on the error path.** `DrawSoftMask` restores the drawer's
+seven fields before it looks at the error, the way `DrawTilingPattern` already
+did, because Java's `finally` runs before the exception leaves.
+
+**What Java logs and swallows, the port swallows.** The soft mask's transfer
+function throwing is "ignore exception, treat as outside" and answers the
+backdrop; a backdrop colour that will not convert to RGB "keeps default", which
+is zero; a singular pattern transform paints nothing, which is what
+`TexturePaint` does with one.
+
+**One thing Java does not guard and neither does this.** A tiling pattern whose
+content stream fills with itself recurses in both. `DrawObject` has the level
+counter and stops at 50; `processTilingPattern` has nothing, and Java's cache
+does not help because the entry is put in after the constructor returns. Left
+as Java has it.
+
+### D3 — the tests are Java-derived, not Go-derived
+
+This is the sweep that changed the branch. **The B1 assertions were
+Go-derived**, in the sense that mattered: there was no Java to copy from, so
+they said what the operations mean rather than what anything produces. Four
+Java drivers were written and every number now comes from running one. The
+section above lists them. Five hand-derived tests were deleted outright rather
+than kept beside the measured ones.
+
+**What was dropped from the Java tests, and why**, is in the A1 record and the
+slice 9 one: `TestPDFToImage` is disabled in Java itself, and
+`PDAcroFormFlattenTest` and six `TestFontEmbedding` cases read files the Maven
+build downloads. `ContentStreamWriterTest` was on that list and is not any
+more.
+
+### D4 — every function phase B touched has a test
+
+Named one by one. Five had none, and all five now do:
+
+| Function | Was | Now |
+| --- | --- | --- |
+| `tilingCeiling` | reached by every pattern, asserted by none | `TestTilingCeilingIsAFloor`, the eight JDK-measured values |
+| `signum` | only on the `MAXEDGE` path, which nothing took | `TestSignumIsJavas`, negative zero included |
+| `isPositiveZero` | new in D1 | `TestIsPositiveZeroIsFloatCompare` |
+| the soft mask's `/TR` | no fixture carried one | `TestASoftMaskAppliesTheTransferFunction` |
+| `NewOffscreen`, `DrawSurface` | the printing test saw the calls, not the pixels | `TestDrawSurfacePutsAnOffscreenDown`, `TestDrawSurfaceHonoursTheClip` |
+
+`adjustMask`'s non-identity arm had no fixture when this was first written --
+it only runs for a page whose transform is not a plain scale. `masksrot.pdf` is
+that page now, and writing it found a defect: the redraw sampled at the
+destination pixel's corner rather than its centre, which moved every hard mask
+edge by up to a pixel. Nothing in the branch is argued rather than measured any
+more.
+
+### D5 — every deferral is real and recorded
+
+Two left in the packages this branch touched, and each is a thing that is
+absent rather than work that was hard: `PrintPDF` (Go has no printing system)
+and `ErrNoBackend` itself, which is not a deferral but the state of a renderer
+with no backend installed. `TilingPaintFactory` was the third and is ported;
+the entry above says how, and why leaving the colour out of its key is Java's
+behaviour rather than a simplification.
+
+### D6 — the Java bugs
+
+One found: `JAVA-BUGS.md` 85, `TilingPaint.ceiling`. It has where, the code,
+what correct would be, why it matters, where the Go carries it and how
+confident. **It was not fixed on the way past** — `tilingCeiling` reproduces it
+and the test asserts the wrong answers.
+
+### D8 — this is a substitution, and every deviation is pinned
+
+They are listed above with their measured sizes. Each is pinned in both
+directions, so a deviation that disappears fails as loudly as one that appears:
+`TestAgainstJava2D` and `TestAgainstJava2DNormalized` pin seventeen
+differing-pixel counts each, under the two values of KEY_STROKE_CONTROL;
+`TestAlphaCompositeRoundsSourceOverDifferently` pins the five rows where Java
+disagrees with Java; and the four page tests pin whole-page counts.
+
+### D9 — the deferrals are closed, or have a new reason
+
+Six were held for a raster backend. Five run now — `checkRenderIdent`,
+`PDFPrintable`'s rasterizing, `PDPatternContentStream`, the squiggly
+appearance, `PDFToImage` — and `ContentStreamWriterTest`, which was held for
+something else, runs too. `PrintPDF` has a new reason, and it is not the raster.
+
+### What was open, and was then done
+
+**Stroke normalization** was the one thing left that could be closed by writing
+code rather than by binding an ICC engine, and it is closed:
+`rendering/raster/normalize.go` is
+`MarlinRenderingEngine.NormalizingPathIterator`, and `SetStrokeNormalization`
+is the hint, on by default because the JDK's default is. On the two pages with
+strokes on them it took the pixels more than a quarter of a channel out from
+1002 and 873 to **none**.
+
+### What is still open
+
+Nothing that can be written. `PrintPDF` needs a spooler binding, and the
+sRGB-to-CS_GRAY difference needs an ICC engine; both are above, with what they
+would take.
+
+---
+
+## Track `raster` — E, the review feedback
+
+Seven comments, two reviewers. Five were defects and are fixed; one was a
+stray file; one is declined, and the reason is Java's.
+
+### The surfaces were `image.RGBA` and held straight colour
+
+Two reviewers pointed at the same line from different sides. `image.RGBA` is
+documented alpha-premultiplied and `image.NRGBA` is not, and what `blendInto`
+computes is straight -- it is `BlendCompositeContext.compose`, whose components
+go in and out of `getNormalizedComponents` and `getDataElements` as straight
+values. So the type was wrong, and two things went wrong under it:
+
+- **A caller who encoded the surface got the wrong colours.** Go's PNG encoder
+  asks the image what it holds; an `image.RGBA` says premultiplied, so it
+  unpremultiplied on the way out. Blue at half alpha went out as 253 rather
+  than 255. Only `ImageType.ARGB` reaches this, because every other type ends
+  opaque and for an opaque pixel the two are the same.
+- **`PopGroup` called `unpremultiply` on pixels that were already straight**,
+  so a group whose contents were partly transparent came back paler than it was
+  drawn. Latent for the same reason.
+
+The surfaces are `image.NRGBA` now and the call is gone.
+`TestAnARGBSurfaceExportsItsOwnColours` and
+`TestAPartlyTransparentGroupKeepsItsColour` pin both, and both fail if the
+change is reverted. `drawSampled`'s scratch buffer stays an `image.RGBA` and
+still unpremultiplies, because that one really is premultiplied -- it is what
+`x/image/draw` writes.
+
+### `DrawSurface` ignored the transform
+
+`drawImage(image, 0, 0, null)` and `clearRect(0, 0, w, h)` both go through the
+Graphics2D's transform, and `PDFPrintable.Print` puts the imageable-area
+translation, the centring and the `scale / dpiScale` rescale on the surface
+before it calls either. Copying pixel to pixel put a rasterized page in the
+paper's corner at the wrong size. It goes through `i.transform` now, sampled
+with the interpolation the hints ask for, and the white ground covers the
+transformed rectangle rather than the whole surface.
+
+### `ImageType.GRAY` and `ImageType.BINARY` were discarded
+
+`NewImage` used the type to choose a white ground and then forgot it, so
+`pdfbox render -color GRAY` produced a colour image. Java draws onto a
+BufferedImage of that type and **the image quantizes what is written into it**,
+so a later composite reads back what the surface really holds; `quantize.go`
+does the same, at the same moment, and `asImageType` hands back the kind of
+image ImageIO would write as a greyscale or one-bit PNG.
+
+What a grey is was measured, not assumed: a JDK 17 `renderImage(0, 1,
+ImageType.GRAY)` of this branch's own page gives 61 for (26,51,204), 174 for
+(230,179,0), 162 for (102,204,102), 53 for (128,0,126) and 35 for (32,0,222),
+and `0.299R + 0.587G + 0.114B` rounded gives every one. Those are the BT.601
+luma coefficients, which is what Java2D's ByteGray surface converts with --
+**not** the ICC transform that drawing an *image* onto a grey surface goes
+through, which is the one the soft mask's `luma` approximates. Two different
+conversions, and the difference is which one Java reaches.
+
+Against PDFBox: **grey is 2182 pixels of 40000 and none of them more than a
+quarter of a channel** -- the RGB page's differences, collapsed, because the
+shading's colour drift is worth less once three channels become one. **One bit
+is 937, and every one is a flipped pixel on a stroke**: a surface with two
+colours in it has no way to be a little bit out, so the single unit of edge
+coverage the two rasterisers disagree about takes the whole pixel. The fills,
+the shading and the rotated square are exact.
+
+### `DrawStencil` read the wrong channel
+
+It asked `ImageOfRegion` for the mask and took the coverage from the alpha. An
+image mask has no colour space, so what comes back is opaque wherever it comes
+back at all, and **every stencil painted its whole rectangle**. It asks for the
+stencil image now, in an opaque black, and takes the alpha that
+`getStencilImage` sets from the mask's bits and from nothing else.
+
+`testdata/stencil.pdf` is four of them, two shapes in four colours, and it took
+the count against PDFBox from 3526 pixels of 16000 to **101**. The 101 are the
+sample boundaries, where a stencil has no partial coverage to be a little bit
+wrong with.
+
+### The stray file
+
+`bash.exe.stackdump` was committed by accident -- a crashed MSYS bash leaves
+one at the repository root. It is gone, and `go/.gitignore` has it.
+
+### Declined: `PixelTable`'s inclusive loop
+
+The clamp is `deviceBounds.x + deviceBounds.width` with a `<=` loop, so one
+extra row and column are computed. That is Java's, exactly:
+
+```java
+boundary[1] = Math.min(boundary[1], deviceBounds.x + deviceBounds.width);
+for (int x = boundary[0]; x <= boundary[1]; x++)
+```
+
+and `addValueToArray` guards its own indices, so the extra work is discarded
+rather than out of bounds. The port's table is a map, so it cannot go out of
+range either, and the callers read `x < Max.X` so the extra entries are never
+seen. Narrowing the clamp would be changing the Java, which this migration does
+not do. Recorded here rather than fixed.

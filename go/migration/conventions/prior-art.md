@@ -76,6 +76,12 @@ approach was the opposite one: humans reading Java and writing C#.
 
 Its structural decisions matter to us because it faced the same fork in the road.
 
+**What it does about the raster is written up separately**, in
+[`RASTER-PRECEDENT.md`](../RASTER-PRECEDENT.md): the core library renders
+nothing, and the rendering package a maintainer later wrote binds Skia. It was
+surveyed for `track/raster`'s A0 and is the answer to "what does everyone else
+do about `Graphics2D`".
+
 ### How it actually started: a literal transliteration, deleted 10 weeks later
 
 There is no porting document — not in the README, not in the author's writing,

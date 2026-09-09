@@ -338,3 +338,35 @@ func (b *bitReader) getBitOffset() int {
 	}
 	return b.bitOffset
 }
+
+// CalcColor interpolates the colour of the triangle at a point.
+//
+// Port of ShadedTriangle.calcColor. A triangle that has collapsed to a point
+// averages its three colours, one that has collapsed to a line interpolates
+// along it, and a real triangle interpolates barycentrically -- each corner
+// weighted by the area of the opposite sub-triangle.
+//
+// Added by `track/raster`: nothing needed a colour at a point until there was
+// something to paint it onto.
+func (t *shadedTriangle) CalcColor(p geom.Point2D) []float32 {
+	components := len(t.color[0])
+	switch t.degree {
+	case 1:
+		colors := make([]float32, components)
+		for i := range colors {
+			colors[i] = (t.color[0][i] + t.color[1][i] + t.color[2][i]) / 3
+		}
+		return colors
+	case 2:
+		return t.line.calcColor(roundPoint(p))
+	default:
+		colors := make([]float32, components)
+		aw := float32(triangleArea(p, t.corner[1], t.corner[2]) / t.area)
+		bw := float32(triangleArea(p, t.corner[2], t.corner[0]) / t.area)
+		cw := float32(triangleArea(p, t.corner[0], t.corner[1]) / t.area)
+		for i := range colors {
+			colors[i] = t.color[0][i]*aw + t.color[1][i]*bw + t.color[2][i]*cw
+		}
+		return colors
+	}
+}

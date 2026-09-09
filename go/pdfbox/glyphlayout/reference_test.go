@@ -132,15 +132,19 @@ func supplementaryPlanePage(t *testing.T, document *pdmodel.PDDocument,
 	processor := glyphlayout.NewProcessor()
 
 	const size = 12
-	showLine(t, stream, processor, sans, size, smpIntro)
+	const x = float32(12)
+	y := float32(780)
+
+	y = showComposites(t, stream, processor, sans, size, x, y, smpIntro)
 	// The Java writes `"Font used: " + mathFont.getName()`, which before
 	// subsetting is the font's own name.
-	showLine(t, stream, processor, sans, size, "Font used: NotoSansMath-Regular")
+	y = showComposites(t, stream, processor, sans, size, x, y,
+		"Font used: NotoSansMath-Regular")
 	for _, line := range strings.Split(string(mathematicalCodePoints), "\n") {
 		if line == "" {
 			continue
 		}
-		showLine(t, stream, processor, math, size, line)
+		y = showComposites(t, stream, processor, math, size, x, y, line)
 	}
 }
 
@@ -166,26 +170,55 @@ func ligaturesAndKerningPage(t *testing.T, document *pdmodel.PDDocument,
 	both := glyphlayout.NewProcessorWithFeatures(
 		glyphlayout.Features{Ligatures: true, Kerning: true})
 
+	// x and y are the Java's: `page.getBBox().getLowerLeftX() + fontSize` and
+	// `page.getBBox().getUpperRightY() - fontSize` over a default page.
 	const size = 12
-	showLine(t, stream, plain, fira, size, firacodeString)
-	showLine(t, stream, ligatures, fira, size, firacodeString+" (Ligatures)")
-	showLine(t, stream, plain, dejavu, size, dejavuString)
-	showLine(t, stream, ligatures, dejavu, size, dejavuString+" (Ligatures)")
-	showLine(t, stream, kerning, dejavu, size, dejavuString+" (Kerning)")
-	showLine(t, stream, both, dejavu, size, dejavuString+" (Ligatures and kerning)")
-	showLine(t, stream, both, thai, size, thaiString)
-	showLine(t, stream, plain, lohit, size, bengaliString+" (ভারত)")
+	const x = float32(12)
+	y := float32(780)
+
+	y = showComposites(t, stream, plain, fira, size, x, y, firacodeString)
+	y = showComposites(t, stream, ligatures, fira, size, x, y, firacodeString+" (Ligatures)")
+	y = showComposites(t, stream, plain, dejavu, size, x, y, dejavuString)
+	y = showComposites(t, stream, ligatures, dejavu, size, x, y, dejavuString+" (Ligatures)")
+	y = showComposites(t, stream, kerning, dejavu, size, x, y, dejavuString+" (Kerning)")
+	y = showComposites(t, stream, both, dejavu, size, x, y,
+		dejavuString+" (Ligatures and kerning)")
+	y = showComposites(t, stream, both, thai, size, x, y, thaiString)
+	y = showComposites(t, stream, plain, lohit, size, x, y-5, bengaliString+" (ভারত)")
 
 	// The Java test writes this one without the helper, to reach the "adjust
 	// the end position" branch at the end of showTextUni.
 	stream.SetGlyphLayoutProcessor(plain)
 	mustDo(t, stream.BeginText())
 	mustDo(t, stream.SetFont(lohit, 20))
-	mustDo(t, stream.NewLineAtOffset(12, 100))
+	mustDo(t, stream.NewLineAtOffset(x, y-20))
 	mustDo(t, stream.ShowText(bengaliString2))
 	mustDo(t, stream.ShowText(" "))
 	mustDo(t, stream.ShowText(bengaliString2))
 	mustDo(t, stream.EndText())
+
+	// The two rules the Java draws under the plain and the kerned line, whose
+	// lengths are the measured widths of the same string. They are the reason
+	// the test measures the widths at all -- the assertions on f1 to f4 are
+	// TestStringWidthGrowsWithTheText's, and these put the numbers on the page.
+	f3, err := plain.StringWidth(dejavu, size, dejavuString)
+	if err != nil {
+		t.Fatalf("StringWidth: %v", err)
+	}
+	f4, err := both.StringWidth(dejavu, size, dejavuString)
+	if err != nil {
+		t.Fatalf("StringWidth: %v", err)
+	}
+	rule(t, stream, x, 737, x+f3)
+	rule(t, stream, x, 676, x+f4)
+}
+
+// rule strokes a horizontal line, which is the Java's moveTo/lineTo/stroke.
+func rule(t *testing.T, stream *pdmodel.PDPageContentStream, x0, y, x1 float32) {
+	t.Helper()
+	mustDo(t, stream.MoveTo(x0, y))
+	mustDo(t, stream.LineTo(x1, y))
+	mustDo(t, stream.Stroke())
 }
 
 // bidiPage lays out GlyphLayoutBidiTest's two lines, the second of which
@@ -199,10 +232,13 @@ func bidiPage(t *testing.T, document *pdmodel.PDDocument,
 	stream.SetGlyphLayoutProcessor(processor)
 
 	const size = 12
-	showLine(t, stream, processor, arabic, size, bidiText1)
+	const x = float32(12)
+	y := float32(780)
+
+	y = showComposites(t, stream, processor, arabic, size, x, y, bidiText1)
 
 	mustDo(t, stream.BeginText())
-	mustDo(t, stream.NewLineAtOffset(12, 680))
+	mustDo(t, stream.NewLineAtOffset(x, y))
 	for _, part := range []struct {
 		f    *font.PDType0Font
 		text string
@@ -215,14 +251,37 @@ func bidiPage(t *testing.T, document *pdmodel.PDDocument,
 
 // showLine is TestBase.showCompositesLine.
 func showLine(t *testing.T, stream *pdmodel.PDPageContentStream,
-	processor *glyphlayout.Processor, f *font.PDType0Font, size float32, text string) {
+	processor *glyphlayout.Processor, f *font.PDType0Font, size, x, y float32, text string) {
 	t.Helper()
 	stream.SetGlyphLayoutProcessor(processor)
 	mustDo(t, stream.BeginText())
 	mustDo(t, stream.SetFont(f, size))
-	mustDo(t, stream.NewLineAtOffset(12, 700))
+	mustDo(t, stream.NewLineAtOffset(x, y))
 	mustDo(t, stream.ShowText(text))
 	mustDo(t, stream.EndText())
+}
+
+// showComposites is TestBase.showComposites: draw the line and answer the y
+// the next one starts at, a line height further down.
+//
+// The Java splits its argument on newlines and draws one line per piece; none
+// of the strings these tests use has one, so this draws the one line.
+//
+// Until `track/raster` this took no y at all and every line went to 700, so
+// they were drawn on top of each other. The operator comparison could not see
+// it -- what it dumps is the fonts, the glyphs and the adjustments inside each
+// text object, and never the `Td` that places it -- and the pixel comparison
+// A1 added found it on its first run.
+func showComposites(t *testing.T, stream *pdmodel.PDPageContentStream,
+	processor *glyphlayout.Processor, f *font.PDType0Font, size, x, y float32,
+	text string) float32 {
+	t.Helper()
+	showLine(t, stream, processor, f, size, x, y, text)
+	bbox, err := f.BoundingBox()
+	if err != nil {
+		t.Fatalf("BoundingBox: %v", err)
+	}
+	return y - bbox.Height()/1000*size
 }
 
 // loadLayoutFont loads one of the fonts the Java tests use.
@@ -289,6 +348,17 @@ func compareWithReference(t *testing.T, reference string,
 func layOutAndRead(t *testing.T,
 	page func(*testing.T, *pdmodel.PDDocument, *pdmodel.PDPageContentStream)) []string {
 	t.Helper()
+	reloaded := layOutAndReload(t, page)
+	defer reloaded.Close()
+	return textOperatorsOf(t, reloaded)
+}
+
+// layOutAndReload writes the page, saves it and loads it back, which is what
+// the Java tests do before they compare -- the file on disk is what is being
+// checked, not the object graph that made it. The caller closes the document.
+func layOutAndReload(t *testing.T,
+	page func(*testing.T, *pdmodel.PDDocument, *pdmodel.PDPageContentStream)) *pdmodel.PDDocument {
+	t.Helper()
 	document := pdmodel.NewPDDocument()
 	defer document.Close()
 	pdPage := pdmodel.NewPDPage()
@@ -312,8 +382,7 @@ func layOutAndRead(t *testing.T,
 	if err != nil {
 		t.Fatalf("LoadPDFBytes: %v", err)
 	}
-	defer reloaded.Close()
-	return textOperatorsOf(t, reloaded)
+	return reloaded
 }
 
 // positionTolerance is how far two positions may differ and still be the same

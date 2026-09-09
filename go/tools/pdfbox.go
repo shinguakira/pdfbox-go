@@ -46,6 +46,7 @@ func Subcommands() []Subcommand {
 		{"merge", func() Command { return NewPDFMerger() }},
 		{"split", func() Command { return NewPDFSplit() }},
 		{"fromtext", func() Command { return NewTextToPDF() }},
+		{"render", func() Command { return NewPDFToImage() }},
 		{"version", func() Command { return NewVersion() }},
 	}
 }

@@ -87,7 +87,7 @@ comparisons possible for the first time.
 
 # Phase A — Write the tests
 
-- [ ] A0. **Decide what draws.** `PLAN.md`'s slice 9 section names three ways
+- [x] A0. **Decide what draws.** `PLAN.md`'s slice 9 section names three ways
       and slice 9 took a fourth. The three are still the three:
   - `golang.org/x/image/vector` plus hand-written compositing — small
     dependency, most work. **It is not in `go.mod` and there is no network**;
@@ -101,7 +101,7 @@ comparisons possible for the first time.
   - Record the decision in `STATUS.md` before A1, the way `track/pdfbox-layout`
     recorded its A0.
 
-- [ ] A1. Port the pixel comparisons the earlier branches deferred
+- [x] A1. Port the pixel comparisons the earlier branches deferred
   - They are the tests this branch exists to make possible. `STATUS.md` records
     them per slice: `ContentStreamWriterTest`, `TestFontEmbedding`,
     `PDAcroFormFlattenTest`, `TestLayerUtility`, `TestImageIOUtils` and every
@@ -111,7 +111,7 @@ comparisons possible for the first time.
   - Do this **before** B, not after. A backend written first and compared
     afterwards is a backend written to whatever it happens to produce.
 
-- [ ] A2. Port the shading tests
+- [x] A2. Port the shading tests
   - `PDShadingTest` and the type-specific cases assert colours at points, which
     is what a `ShadingContext` answers. They can be asserted without a full
     page render.
@@ -124,17 +124,17 @@ comparisons possible for the first time.
 
 Ordered so that each step is testable before the next needs it.
 
-- [ ] B1. The backend itself: fill, stroke, clip, transform, over a solid paint
+- [x] B1. The backend itself: fill, stroke, clip, transform, over a solid paint
   - `Fill`, `Draw`, `SetClip`, `SetTransform`, `SetStroke`, `SetPaint` for
     `ColorPaint`, `SetAntiAliasing`. A page of black text on white is the first
     thing that should come out.
-- [ ] B2. `DrawImage` and `DrawStencil`, with both interpolations
+- [x] B2. `DrawImage` and `DrawStencil`, with both interpolations
   - `PDImage.Image()` already answers the pixels; this is placement and
     sampling.
-- [ ] B3. The shading contexts and paints, type by type
+- [x] B3. The shading contexts and paints, type by type
   - 1, 2 and 3 first — function, axial, radial. Then the mesh types 4 to 7,
     which share `TriangleBasedShadingContext` and `PatchMeshesShadingContext`.
-- [ ] B4. `TilingPaint`, `TilingPaintFactory`, `GroupGraphics`, `SoftMask`,
+- [x] B4. `TilingPaint`, `TilingPaintFactory`, `GroupGraphics`, `SoftMask`,
       `BlendComposite`
   - Transparency groups, blend modes and soft masks are `PushGroup`/`PopGroup`
     and `SoftMaskedPaint`. This is the part Java gets from `Graphics2D` for
@@ -143,7 +143,7 @@ Ordered so that each step is testable before the next needs it.
     not ported because it names `PDTilingPattern`, which this task brings.
   - `textmarkuphandlers.go` says `generateNormalAppearance` for the squiggly
     annotation is not ported for the same reason. Close it or restate it.
-- [ ] B5. `PDFToImage` and `PrintPDF`, and their rows out of
+- [x] B5. `PDFToImage` and `PrintPDF`, and their rows out of
       `go/tools/notbuilt.go`
   - **B5 needs `track/imageio` merged.** `PDFToImage` writes through
     `ImageIOUtil`. Everything above this line does not.
@@ -152,11 +152,11 @@ Ordered so that each step is testable before the next needs it.
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
-- [ ] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
+- [x] C5. Update `migration/STATUS.md`, and the rows in `go/tools/notbuilt.go`
       this branch closes — the dispatcher's help reads that list, so a command
       that now exists must come out of it
 
@@ -168,51 +168,51 @@ Ordered so that each step is testable before the next needs it.
 faithful migration. Go in assuming it is wrong. Every check below is a question
 the ported tests cannot answer.
 
-- [ ] D1. Read every ported file against its Java side by side
+- [x] D1. Read every ported file against its Java side by side
   - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
   - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
   - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
     such conversion written out?
 
-- [ ] D2. Hunt for silently dropped behaviour
+- [x] D2. Hunt for silently dropped behaviour
   - Anything Java does in a `finally` — is it still done on the Go error path?
   - Anything Java logs and swallows — does the Go swallow it too, or does it
     return an error the Java would not have?
   - Anything Java throws — is it an error, or a panic, and is that the right one?
 
-- [ ] D3. Check the tests are Java-derived, not Go-derived
+- [x] D3. Check the tests are Java-derived, not Go-derived
   - For each assertion: is that value in the Java test, or did it come from
     running the Go? A value read off the port proves nothing.
   - Which Java test cases were dropped, and is each one recorded with a reason?
 
-- [ ] D4. Check every function phase B touched has a test
+- [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green"
   - Where there is none, the function was changed on an argument rather than on
     evidence. Write the test, and take whatever it says
 
-- [ ] D5. Check every deferral is real and recorded
+- [x] D5. Check every deferral is real and recorded
   - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
   - Every deferral — is it deferred because the type is absent, or because it
     was hard? The second is not a deferral.
 
-- [ ] D6. Check the Java bugs
+- [x] D6. Check the Java bugs
   - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
     what correct would be, where the Go carries it, and how confident?
   - Was any of them "fixed" on the way past? Revert it.
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
-- [ ] D8. This is a substitution, not a transliteration — say so plainly
+- [x] D8. This is a substitution, not a transliteration — say so plainly
   - Whatever was chosen in A0, it is not `java.awt.Graphics2D`. Record every
     case where it draws differently, in `STATUS.md`, as a deviation, and pin
     each one in a test so that a deviation which disappears fails as loudly as
     one that appears. `track/pdfbox-layout` did this and its
     `reference_test.go` is the worked example.
 
-- [ ] D9. Close the deferrals, or say why not
+- [x] D9. Close the deferrals, or say why not
   - Every "held for a raster backend" in `STATUS.md` and every
     `rendering.ErrNoBackend` path. Each one either runs now or has a new reason.
 
@@ -222,13 +222,13 @@ And for this branch in particular:
 
 - [ ] E1. Stop and wait for the user's review. Do not start the next branch.
 
-- [ ] E2. For each item of feedback, judge it before acting
+- [x] E2. For each item of feedback, judge it before acting
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [ ] E3. Where it needs fixing, write a **strict** test first
+- [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go
@@ -241,5 +241,5 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] B5, until `track/imageio` is merged. Nothing else in this file is
+- [x] B5 — `track/imageio` merged, so it was not blocked. Nothing else in this file is
       blocked by anything outside it.

@@ -82,10 +82,13 @@ func din91379Page(t *testing.T, document *pdmodel.PDDocument,
 	t.Helper()
 	arimo := loadLayoutFont(t, document, "Arimo-Regular.ttf")
 	processor := glyphlayout.NewProcessor()
+	const size = 12
+	const x = float32(12)
+	y := float32(780)
 	for _, line := range strings.Split(latinCharsDin91379, "\n") {
 		if line == "" {
 			continue
 		}
-		showLine(t, stream, processor, arimo, 12, line)
+		y = showComposites(t, stream, processor, arimo, size, x, y, line)
 	}
 }

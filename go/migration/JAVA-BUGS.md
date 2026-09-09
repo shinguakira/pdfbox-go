@@ -4415,3 +4415,148 @@ outline nor the thumbnails". Tested by
 the same reason entry 83's test is.
 
 **Confidence** certain, from the source, both halves quoted above.
+
+---
+
+## 85. `TilingPaint.ceiling` is a floor, and its javadoc says otherwise
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/rendering/TilingPaint.java`,
+the private static `ceiling`.
+
+```java
+/**
+ * Returns the closest integer which is larger than the given number.
+ * Uses BigDecimal to avoid floating point error which would cause gaps in the tiling.
+ */
+private static int ceiling(double num)
+{
+    BigDecimal decimal = BigDecimal.valueOf(num);
+    decimal = decimal.setScale(5, RoundingMode.CEILING); // 5 decimal places of accuracy
+    return decimal.intValue();
+}
+```
+
+`setScale(5, CEILING)` rounds up at the **fifth decimal place**, not to a whole
+number, and `intValue()` then truncates toward zero. So every value below the
+next whole number stays where it was:
+
+```
+ceiling(3.0)         = 3
+ceiling(3.2)         = 3
+ceiling(3.5)         = 3
+ceiling(3.9)         = 3
+ceiling(2.999999999) = 3
+ceiling(0.5)         = 0
+```
+
+measured, not reasoned about. What the method computes is a **floor with a
+tolerance of 1e-5** -- which is a reasonable thing to want, and is what the
+second sentence of the javadoc describes -- but it is not what the first
+sentence says, and it is not what the name says.
+
+**What correct would be** `setScale(0, RoundingMode.CEILING)`, if the name and
+the first line of the javadoc are the intent. If the tolerance is the intent,
+the name and that line are wrong.
+
+**Why it matters** `getImage` uses it for the tile raster's size:
+
+```java
+int rasterWidth = Math.max(1, ceiling(width));
+int rasterHeight = Math.max(1, ceiling(height));
+```
+
+A tile that measures 3.9 device pixels across is rasterized 3 pixels wide and
+then stretched over 3.9 by the TexturePaint, so a pattern loses up to most of a
+pixel of resolution in each direction. It does not leave gaps -- TexturePaint
+maps the image onto the anchor rectangle whatever size it is, which is why this
+has never been visible as the "gaps in the tiling" the comment is guarding
+against.
+
+**Where the Go carries it** `go/pdfbox/rendering/raster/tiling.go`,
+`tilingCeiling`, which computes `int(math.Ceil(num*1e5) / 1e5)` -- the same two
+steps -- with the comment saying it is not a ceiling and why it is written that
+way.
+
+**Confidence** certain. The behaviour above is a JDK 17 run of the method's
+own body, not a reading of it.
+
+---
+
+## 86. `TilingPaintFactory`'s cache cannot hit for an uncoloured pattern, and would throw if it did
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/rendering/TilingPaintFactory.java`,
+`TilingPaintParameter.hashCode` and `.equals`, against
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColor.java`
+and
+`pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetColor.java`.
+
+The factory exists to render a pattern's tile once per page rather than once
+per fill:
+
+```java
+TilingPaintParameter tilingPaintParameter
+        = new TilingPaintParameter(drawer.getInitialMatrix(), pattern.getCOSObject(), colorSpace, color, xform);
+WeakReference<Paint> weakRef = weakCache.get(tilingPaintParameter);
+```
+
+Its key ends with the colour:
+
+```java
+hash = 23 * hash + (this.color != null ? this.color.hashCode() : 0);
+```
+
+`PDColor` overrides neither `hashCode` nor `equals`, so that is its identity
+hash. And `SetColor.process` builds a new one for every `scn`:
+
+```java
+setColor(new PDColor(array, colorSpace));
+```
+
+So two fills of the same uncoloured pattern carry two `PDColor` instances with
+two different identity hashes, land in two different buckets, and **the cache
+never answers.** Every fill renders the tile again, which is the thing the
+class was written to stop.
+
+A coloured pattern is unaffected: `getPaint` passes `null` for the colour
+there, `null` hashes to 0 every time, and the cache works.
+
+**And if it ever did hit a bucket, `equals` would throw.**
+
+```java
+if (this.color != null && other.color != null &&
+    this.color != other.color && this.color.toRGB() != other.color.toRGB())
+```
+
+The colour of an uncoloured tiling pattern is the graphics state's, whose
+colour space is `PDPattern`:
+
+```java
+@Override
+public float[] toRGB(float[] value)
+{
+    throw new UnsupportedOperationException();
+}
+```
+
+`UnsupportedOperationException` is unchecked, and the `catch` around that line
+is `catch (IOException ex)`, so it would not be caught — it would come out of
+`WeakHashMap.get` and end the render.
+
+**What correct would be** keying on the colour's components and its underlying
+colour space, which is what actually distinguishes two fills of the same
+uncoloured pattern, and comparing them directly rather than through `toRGB`.
+
+**Why it matters** A page that fills the same uncoloured pattern many times —
+a hatched table, a shaded map — renders its tile once per fill. The tile is a
+content stream run through the whole `PageDrawer`, so it is not cheap.
+
+**Where the Go carries it**
+`go/pdfbox/rendering/raster/tilingcache.go`, `tilingKeyOf`, which answers no
+key at all for a paint that carries a colour. The effect is Java's — an
+uncoloured pattern is drawn every time and a coloured one is cached — and the
+comment says that it is Java's by accident rather than by design.
+`TestAnUncolouredPatternIsNotCached` pins it.
+
+**Confidence** certain for the first half, from the four sources quoted. The
+second half is a reading: it needs two distinct `PDColor` instances to collide
+in a bucket, which identity hashes make unlikely rather than impossible.

@@ -6,8 +6,6 @@ package printing
 // and which implements java.awt.print.Printable.
 
 import (
-	"errors"
-	"fmt"
 	"log/slog"
 	"math"
 
@@ -37,15 +35,6 @@ const (
 	// NoSuchPage says there is no such page.
 	NoSuchPage PrintResult = 1
 )
-
-// ErrRasterizeUnsupported reports a print asked to rasterize the page to a
-// bitmap first, which needs a raster backend the port does not have.
-//
-// Java makes a BufferedImage of the imageable area, renders into it and blits
-// it onto the printer's Graphics2D. Everything up to making the image is
-// computed here; making it is the drawing slice 9 defers. See
-// migration/STATUS.md.
-var ErrRasterizeUnsupported = errors.New("printing: rasterizing to a bitmap needs a raster backend")
 
 // PDFPrintable prints pages from a PDF document using any page size or scaling
 // mode.
@@ -224,10 +213,27 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 	borderScale := scale
 
 	// rasterize to bitmap (optional)
+	//
+	// Java makes a BufferedImage, swaps the Graphics2D the page is drawn
+	// through for the image's, and rescales the printer's so that the blit
+	// lands at the right size. The port asks the printer's own backend for a
+	// surface of the same kind, which is what NewOffscreen is for.
+	drawOn := printerBackend
+	var offscreen rendering.Backend
 	if rasterDpi > 0 {
 		dpiScale := rasterDpi / 72
-		return NoSuchPage, fmt.Errorf("%w: page %d would be rasterized at %v DPI, scale %v",
-			ErrRasterizeUnsupported, pageIndex, rasterDpi, dpiScale)
+		slog.Debug("printing: rasterizing", "rasterDpi", rasterDpi, "dpiScale", dpiScale)
+		offscreen = printerBackend.NewOffscreen(
+			maxInt(1, int(imageableWidth*float64(dpiScale)/scale)),
+			maxInt(1, int(imageableHeight*float64(dpiScale)/scale)))
+		defer offscreen.Dispose()
+		drawOn = offscreen
+
+		// rescale
+		rescaled := printerBackend.Transform().Clone()
+		rescaled.Scale(scale/float64(dpiScale), scale/float64(dpiScale))
+		printerBackend.SetTransform(rescaled)
+		scale = float64(dpiScale)
 	}
 
 	// draw to graphics using PDFRender
@@ -235,10 +241,17 @@ func (p *PDFPrintable) Print(backend rendering.Backend, pageFormat PageFormat,
 	if p.renderingHints != nil {
 		p.renderer.SetRenderingHints(*p.renderingHints)
 	}
-	err := p.renderer.RenderPageToBackend(pageIndex, printerBackend,
+	err := p.renderer.RenderPageToBackend(pageIndex, drawOn,
 		float32(scale), float32(scale), rendering.Print)
 	if err != nil {
 		return NoSuchPage, err
+	}
+
+	// draw rasterized bitmap (optional)
+	if offscreen != nil {
+		if err := printerBackend.DrawSurface(offscreen); err != nil {
+			return NoSuchPage, err
+		}
 	}
 
 	// draw crop box on the printer graphics (always, whether rasterizing or not).
@@ -292,4 +305,13 @@ func RotatedMediaBox(page *pdmodel.PDPage) *common.PDRectangle {
 			mediaBox.Height(), mediaBox.Width())
 	}
 	return mediaBox
+}
+
+// maxInt is Java's Math.max for the rasterized surface's size, which must be
+// at least one pixel each way.
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

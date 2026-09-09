@@ -10,14 +10,16 @@ package rendering
 // subsampled. What happens to those decisions is the Backend's; see backend.go
 // and migration/STATUS.md.
 //
-// Four things in Java's PageDrawer are raster work end to end and are not here:
-// the TransparencyGroup inner class, which renders into a BufferedImage --
-// PushGroup and PopGroup stand for it; the pixel work of the
+// Four things in Java's PageDrawer are raster work end to end and are not in
+// this file: the TransparencyGroup inner class, which renders into a
+// BufferedImage -- PushGroup and PopGroup stand for it, and its soft-mask arm
+// is DrawSoftMask in softmask.go; the pixel work of the
 // stencil-mask-with-pattern arm of drawImage (dilateAlpha, the inverted lookup
 // table, the per-pixel alpha combine of PDFBOX-6077 and PDFBOX-5403) -- the
 // port decides "this stencil, that paint" and DrawStencil stands for the rest;
 // applySoftMaskToPaint's building of the mask raster -- SoftMaskedPaint names
-// the mask instead; and applyTransferFunction, which maps an image's pixels.
+// the mask and rendering/raster builds it; and applyTransferFunction, which
+// maps an image's pixels.
 
 import (
 	"fmt"
@@ -275,16 +277,26 @@ func (d *PageDrawer) Paint(c *color.PDColor) (Paint, error) {
 	}
 	switch p := found.(type) {
 	case *pattern.PDTilingPattern:
+		// pattern space -> user space, which is the first thing Java's
+		// TilingPaint constructor works out.
+		patternMatrix := util.Concatenate(d.InitialMatrix(), p.Matrix())
 		if p.PaintType() == pattern.PaintColored {
 			// colored tiling pattern
-			return TilingPaint{Pattern: p, Transform: d.xform}, nil
+			return TilingPaint{
+				Pattern:       p,
+				Transform:     d.xform,
+				Drawer:        d,
+				PatternMatrix: patternMatrix,
+			}, nil
 		}
 		// uncolored tiling pattern
 		return TilingPaint{
-			Pattern:    p,
-			ColorSpace: patternSpace.UnderlyingColorSpace(),
-			Color:      c,
-			Transform:  d.xform,
+			Pattern:       p,
+			ColorSpace:    patternSpace.UnderlyingColorSpace(),
+			Color:         c,
+			Transform:     d.xform,
+			Drawer:        d,
+			PatternMatrix: patternMatrix,
 		}, nil
 
 	case *pattern.PDShadingPattern:
@@ -545,7 +557,7 @@ func (d *PageDrawer) applySoftMaskToPaint(parentPaint Paint,
 	if subType != cos.Alpha && subType != cos.Luminosity {
 		return nil, fmt.Errorf("rendering: invalid soft mask subtype: %v", subType)
 	}
-	return SoftMaskedPaint{Paint: parentPaint, Mask: softMask}, nil
+	return SoftMaskedPaint{Paint: parentPaint, Mask: softMask, Drawer: d}, nil
 }
 
 // strokingPaint returns the paint a stroke is made with.

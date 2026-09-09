@@ -11,6 +11,10 @@ package rendering
 // installed they answer ErrNoBackend. renderPageToGraphics, which in Java takes
 // the drawing surface as an argument, is RenderPageToBackend here and is the
 // one that always works.
+//
+// rendering/raster.RenderPage is renderImage for a caller that wants the image
+// rather than the split: it asks SurfaceSizeOfPage what to make, makes it,
+// renders through it, and answers the pixels.
 
 import (
 	"fmt"
@@ -205,8 +209,16 @@ func (r *PDFRenderer) RenderImageOfType(pageIndex int, scale float32, imageType 
 // Port of renderImage(int, float, ImageType, RenderDestination), minus the
 // BufferedImage it makes and returns: everything up to the drawing is here, and
 // the drawing goes to the installed Backend.
-func (r *PDFRenderer) RenderImageTo(pageIndex int, scale float32, imageType ImageType,
-	destination RenderDestination) error {
+//
+// SurfaceSizeOfPage answers the size in pixels the given page needs at the
+// given scale, and the image type the surface has to be.
+//
+// This is the BufferedImage Java's renderImage makes for itself and never lets
+// anyone else see. The port draws through a Backend the caller installs, so
+// the caller has to make one of the right size, and this is how it asks. It is
+// the arithmetic of renderImage, up to the point where Java allocates.
+func (r *PDFRenderer) SurfaceSizeOfPage(pageIndex int, scale float32,
+	imageType ImageType) (width, height int, surfaceType ImageType, err error) {
 	page := r.pageTree.Get(pageIndex)
 	cropBox := page.CropBox()
 	widthPt := cropBox.Width()
@@ -218,12 +230,12 @@ func (r *PDFRenderer) RenderImageTo(pageIndex int, scale float32, imageType Imag
 
 	// PDFBOX-4518 the maximum size (w*h) of a buffered image is limited to Integer.MAX_VALUE
 	if int64(widthPx)*int64(heightPx) > maxInt32 {
-		return fmt.Errorf("Maximum size of image exceeded (w * h * scale ^ 2) = %v * %v * %v ^ 2 > %d",
-			widthPt, heightPt, scale, maxInt32)
+		return 0, 0, imageType,
+			fmt.Errorf("Maximum size of image exceeded (w * h * scale ^ 2) = %v * %v * %v ^ 2 > %d",
+				widthPt, heightPt, scale, maxInt32)
 	}
 
-	rotationAngle := page.Rotation()
-	surfaceType := imageType
+	surfaceType = imageType
 	if imageType != ARGB && r.hasBlendModeOnPage(page) {
 		// PDFBOX-4095: if the PDF has blending on the top level, draw on transparent background
 		// Inspired from PDF.js: if a PDF page uses any blend modes other than Normal,
@@ -233,9 +245,20 @@ func (r *PDFRenderer) RenderImageTo(pageIndex int, scale float32, imageType Imag
 	}
 
 	// swap width and height
-	surfaceWidth, surfaceHeight := widthPx, heightPx
-	if rotationAngle == 90 || rotationAngle == 270 {
-		surfaceWidth, surfaceHeight = heightPx, widthPx
+	if rotationAngle := page.Rotation(); rotationAngle == 90 || rotationAngle == 270 {
+		return heightPx, widthPx, surfaceType, nil
+	}
+	return widthPx, heightPx, surfaceType, nil
+}
+func (r *PDFRenderer) RenderImageTo(pageIndex int, scale float32, imageType ImageType,
+	destination RenderDestination) error {
+	page := r.pageTree.Get(pageIndex)
+	cropBox := page.CropBox()
+	rotationAngle := page.Rotation()
+
+	surfaceWidth, surfaceHeight, surfaceType, err := r.SurfaceSizeOfPage(pageIndex, scale, imageType)
+	if err != nil {
+		return err
 	}
 
 	if r.backend == nil {

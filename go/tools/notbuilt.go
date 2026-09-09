@@ -2,12 +2,16 @@ package tools
 
 // The commands this port does not build, and what each waits for.
 //
-// B10. Java's `tools` module has 26 main files. This package ports 22 of them,
-// the dispatcher among them, and the four below are missing.
+// B10. Java's `tools` module has 26 main files. This package ports 23 of them,
+// the dispatcher among them, and the three below are missing.
 //
 // The count was "18 of them plus the dispatcher" until track/imageio,
 // track/multipdf and track/raster were planned and the classes were counted
-// against the list below: it was 17 and 9 then, and it is 22 and 4 now.
+// against the list below: it was 17 and 9 then, and it is 23 and 3 now.
+//
+// track/raster took `PDFToImage`, which is the whole of what a Backend was
+// wanted for: load, render each page, write it out. It did not take `PrintPDF`,
+// and the row below now says what that one is really waiting for.
 //
 // track/imageio took five of the nine: the four `tools/imageio` classes and
 // `ExtractImages`, which never imported `rendering` -- it walks the content
@@ -34,10 +38,17 @@ type NotBuilt struct {
 // NotBuiltCommands is the list, so that the dispatcher's help and STATUS.md
 // cannot drift apart from each other.
 //
-// **Two wait for a raster.** `rendering.Backend` is the interface slice 9
-// defined for drawing a page into pixels, and nothing implements it. What Go
-// draws with is a design decision outside this branch, and it is named rather
-// than taken in passing.
+// **One waits for a printing system, and it is not the raster.**
+// `rendering/raster` draws a page into pixels now, and `PDFPrintable` and
+// `PDFPageable` -- everything PDFBox computes about where a page lands on a
+// sheet -- were ported by slice 9 and finished by `track/raster`. What
+// `PrintPDF` needs on top of that is `java.awt.print.PrinterJob` and
+// `javax.print`: enumerating the printers on the machine, choosing one,
+// reading the trays and media sizes it offers, showing the print dialog, and
+// handing it a job. Go's standard library has none of it, and no pure-Go
+// library does either -- printing is per-platform spooler API. Rendering the
+// page and writing a file is what `render` does; sending it to a printer is
+// the part that is missing.
 //
 // **Two wait for `multipdf`.** That is not the raster: `PDFMergerUtility`,
 // `LayerUtility` and `Overlay` were deferred by slice 7 to slice 8, slice 8
@@ -45,6 +56,6 @@ type NotBuilt struct {
 // names appear in a comment saying they are absent. `track/multipdf` claims
 // them now.
 var NotBuiltCommands = []NotBuilt{
-	{Java: "PDFToImage", Name: "render", Waiting: "a rendering.Backend implementation"},
-	{Java: "PrintPDF", Name: "print", Waiting: "a rendering.Backend implementation"},
+	{Java: "PrintPDF", Name: "print",
+		Waiting: "a printing system: Go has no PrinterJob, and no pure-Go library has one"},
 }
