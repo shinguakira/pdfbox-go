@@ -613,10 +613,14 @@ func (s *XMPSchema) UnqualifiedSequenceDateValueList(seqName string) []time.Time
 	for _, child := range seq.Container().AllProperties() {
 		if date, isDate := child.(*xmptype.DateType); isDate {
 			// Java adds getValue(), so an element holding no date puts a null
-			// in the list; a []time.Time cannot hold one, so the zero time
-			// stands in and the length is the same either way. See
-			// migration/STATUS.md.
-			value, _ := date.DateValue()
+			// in the list its javadoc says is a list of Calendar, and the
+			// caller that walks it raises NullPointerException somewhere else
+			// entirely. An element with no date has no date to add. See
+			// migration/JAVA-BUGS.md 61.
+			value, hasValue := date.DateValue()
+			if !hasValue {
+				continue
+			}
 			retval = append(retval, value)
 		}
 	}

@@ -3386,9 +3386,10 @@ imports nothing from `org.apache.xmpbox.xml`.
   `DocumentBuilderFactory` to fail to configure.
 - **A sequence holding an empty date can still have an element removed**, where
   Java raises NullPointerException on the empty one. JAVA-BUGS 60.
-- **A list of sequence dates holds the zero time** where Java holds a null,
-  because a `[]time.Time` cannot hold one; the length is the same either way.
-  JAVA-BUGS 61.
+- **A list of sequence dates leaves out an element that holds no date**, where
+  Java puts a null in the `List<Calendar>` its javadoc promises. Until
+  `track/java-bug-fixes` the port held the zero time there, since a
+  `[]time.Time` cannot hold a null; the entry is now fixed. JAVA-BUGS 61.
 
 ### Which Java tests are ported
 

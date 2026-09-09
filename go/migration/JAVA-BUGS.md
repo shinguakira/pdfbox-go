@@ -3014,6 +3014,15 @@ entirely, with nothing to say where the null came from.
 a `[]time.Time` cannot hold Java's null, so the zero time stands in it. Said
 where it is and in [`STATUS.md`](STATUS.md).
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 61. An element holding no
+date is left out of the list, which is the first of the two answers the entry
+names — the second, documenting that the list may hold nulls, is not open to a
+`[]time.Time`, and the javadoc promises a list of dates. Tested by
+`TestSequenceDateValueListSkipsAnEmptyDate` in
+`go/xmpbox/schema/javabug61_test.go`, whose empty element is a `DateType` built
+from a blank string, which is how `DateConverter.toCalendar` produces the null
+(PDFBOX-6029). The divergence note in [`STATUS.md`](STATUS.md) is updated.
+
 **Confidence** high. Reproduced against JDK 17: a sequence holding a date and an
 empty date prints `[java.util.GregorianCalendar[...], null]`.
 
