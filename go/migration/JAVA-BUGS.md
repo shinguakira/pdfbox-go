@@ -2263,6 +2263,15 @@ takes a `COSBase` and dereferences it itself.
 which reads `cos.Array.Get` and panics on an entry that is not a dictionary —
 the port's `ClassCastException`. Its comment points here.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 45. `Pages` reads each entry
+with `GetObject`, which dereferences, as `Fields`, `Annotations` and
+`FDFField.Kids` all do. The panic for an entry that is genuinely not a
+dictionary stays, since that is the Java's `ClassCastException` for a malformed
+file rather than for a well-formed indirect one. Tested by
+`TestPagesResolvesAnIndirectPage` in `go/pdfbox/pdmodel/fdf/javabug45_test.go`,
+with `TestPagesStillReadsADirectPage` beside it for the shape the Java could
+already read.
+
 **Confidence** high. The two accessors sit in the same file and differ only in
 that one call.
 
