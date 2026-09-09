@@ -17,11 +17,9 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 )
 
-// black and white are what a page of text is made of.
-var (
-	black = rendering.ColorPaint{Red: 0, Green: 0, Blue: 0, Alpha: 1}
-	white = goimagecolor.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-)
+// black is what a page of text is made of; white is image.go's, the ground
+// under a blit.
+var black = rendering.ColorPaint{Red: 0, Green: 0, Blue: 0, Alpha: 1}
 
 // at is the colour of one pixel of a backend.
 func at(i *Image, x, y int) goimagecolor.RGBA {

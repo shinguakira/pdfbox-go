@@ -17,7 +17,12 @@ import (
 // only wants an image.
 func RenderPage(document *pdmodel.PDDocument, pageIndex int, scale float32,
 	imageType rendering.ImageType) (goimage.Image, error) {
-	renderer := rendering.NewPDFRenderer(document)
+	return renderPage(rendering.NewPDFRenderer(document), document, pageIndex, scale, imageType)
+}
+
+// renderPage is what the two entry points share.
+func renderPage(renderer *rendering.PDFRenderer, document *pdmodel.PDDocument,
+	pageIndex int, scale float32, imageType rendering.ImageType) (goimage.Image, error) {
 	width, height, surfaceType, err := renderer.SurfaceSizeOfPage(pageIndex, scale, imageType)
 	if err != nil {
 		return nil, err
@@ -74,4 +79,16 @@ func onWhite(surface *goimage.RGBA) *goimage.RGBA {
 		}
 	}
 	return flattened
+}
+
+// RenderPageWithDPI renders one page at the given DPI and answers the pixels.
+//
+// This is Java's PDFRenderer.renderImageWithDPI(int, float, ImageType), which
+// is renderImage at `dpi / 72`, plus the setSubsamplingAllowed a caller would
+// have made on the renderer first.
+func RenderPageWithDPI(document *pdmodel.PDDocument, pageIndex int, dpi float32,
+	imageType rendering.ImageType, subsamplingAllowed bool) (goimage.Image, error) {
+	renderer := rendering.NewPDFRenderer(document)
+	renderer.SetSubsamplingAllowed(subsamplingAllowed)
+	return renderPage(renderer, document, pageIndex, dpi/72, imageType)
 }

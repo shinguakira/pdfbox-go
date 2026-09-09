@@ -10,7 +10,8 @@ package printing
 // calls instead. The other three port as they stand.
 
 import (
-	"errors"
+	goimage "image"
+
 	"fmt"
 	"strings"
 	"testing"
@@ -142,17 +143,48 @@ func TestNoBorderWhenNotAskedFor(t *testing.T) {
 	}
 }
 
-// TestRasterizingSaysItCannot is what the B0 decision costs printing: Java
-// renders the page into a BufferedImage at the requested DPI and blits it, and
-// there is nothing to make that image with.
-func TestRasterizingSaysItCannot(t *testing.T) {
+// TestRasterizingDrawsThroughASurfaceOfItsOwn is the -dpi arm: the page is
+// drawn into a surface at the requested resolution and that surface is put
+// down, rather than the page being drawn onto the printer directly.
+//
+// Java sizes the image `imageableWidth * dpiScale / scale` by
+// `imageableHeight * dpiScale / scale`, and here the scale is 1 and the DPI
+// 150, so the surface is the imageable area at 150/72.
+func TestRasterizingDrawsThroughASurfaceOfItsOwn(t *testing.T) {
 	document := documentOfSize(imageWidth, imageHeight)
 	printable := NewPDFPrintableRasterized(document, ActualSize, true, 150)
 
+	format := pageFormatOf(imageWidth, imageHeight)
 	backend := newRecordingBackend()
-	_, err := printable.Print(backend, pageFormatOf(imageWidth, imageHeight), 0)
-	if !errors.Is(err, ErrRasterizeUnsupported) {
-		t.Errorf("Print = %v, want ErrRasterizeUnsupported", err)
+	if _, err := printable.Print(backend, format, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	dpiScale := 150.0 / 72
+	want := goimage.Point{
+		X: int(format.ImageableWidth() * dpiScale),
+		Y: int(format.ImageableHeight() * dpiScale),
+	}
+	if got := backend.Offscreens(); len(got) != 1 || got[0] != want {
+		t.Errorf("the printable asked for %v, want one surface of %v", got, want)
+	}
+	if got := backend.SurfaceBlits(); got != 1 {
+		t.Errorf("the rasterized page was put down %d times, want once", got)
+	}
+}
+
+// TestNotRasterizingAsksForNoSurface is the same print without -dpi: the page
+// goes straight onto the printer.
+func TestNotRasterizingAsksForNoSurface(t *testing.T) {
+	document := documentOfSize(imageWidth, imageHeight)
+	printable := NewPDFPrintableRasterized(document, ActualSize, true, RasterizeOff)
+
+	backend := newRecordingBackend()
+	if _, err := printable.Print(backend, pageFormatOf(imageWidth, imageHeight), 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := backend.Offscreens(); len(got) != 0 {
+		t.Errorf("the printable asked for %v, want no surface at all", got)
 	}
 }
 
@@ -349,6 +381,11 @@ type recordingLog struct {
 	lastDrawTransform *geom.AffineTransform
 	disposals         int
 	transforms        []*geom.AffineTransform
+
+	// offscreens is the size of each surface NewOffscreen was asked for, and
+	// surfaceBlits how many were put down with DrawSurface.
+	offscreens   []goimage.Point
+	surfaceBlits int
 }
 
 var _ rendering.Backend = (*recordingBackend)(nil)
@@ -552,3 +589,25 @@ func TestPageBorderIsDrawnAroundTheRenderedPage(t *testing.T) {
 			at.TranslateX(), at.TranslateY())
 	}
 }
+
+// NewOffscreen answers another recorder over the same log, so that what is
+// drawn into the offscreen shows up in order with everything else.
+func (b *recordingBackend) NewOffscreen(width, height int) rendering.Backend {
+	b.log.offscreens = append(b.log.offscreens, goimage.Point{X: width, Y: height})
+	return &recordingBackend{
+		log:       b.log,
+		transform: geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
+	}
+}
+
+// DrawSurface records the blit.
+func (b *recordingBackend) DrawSurface(surface rendering.Backend) error {
+	b.log.surfaceBlits++
+	return nil
+}
+
+// Offscreens is the size of each surface the printable asked for.
+func (b *recordingBackend) Offscreens() []goimage.Point { return b.log.offscreens }
+
+// SurfaceBlits is how many of them were put down.
+func (b *recordingBackend) SurfaceBlits() int { return b.log.surfaceBlits }

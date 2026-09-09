@@ -234,3 +234,20 @@ func slogNoWriter(formatName string) {
 	slog.Error("imageio: supported formats", "formats",
 		[]string{"png", "jpg", "jpeg", "gif", "bmp", "wbmp", "tif", "tiff"})
 }
+
+// WriterFormatNames is `ImageIO.getWriterFormatNames()`, which PDFToImage
+// checks its -format option against and prints when it does not match.
+//
+// Java's list is what the installed ImageIO plug-ins answer to, and it holds
+// both the short and long spellings of each; this is the same, for the writers
+// writerFor has.
+func WriterFormatNames() []string {
+	return []string{"bmp", "gif", "jpeg", "jpg", "png", "tif", "tiff", "wbmp"}
+}
+
+// CanWrite reports whether a format has a writer, which is Java's
+//
+//	List.of(ImageIO.getWriterFormatNames()).contains(imageFormat)
+//
+// except that it is not case-sensitive, because writerFor is not either.
+func CanWrite(formatName string) bool { return writerFor(formatName) != nil }

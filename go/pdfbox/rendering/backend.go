@@ -216,6 +216,25 @@ type Backend interface {
 
 	// PopGroup composites the group PushGroup began and ends it.
 	PopGroup() error
+
+	// NewOffscreen returns a transparent surface of the given size, of the same
+	// kind as this one, for a caller that has to draw into one and put the
+	// result down with DrawSurface.
+	//
+	// Java writes `new BufferedImage(w, h, TYPE_INT_ARGB)` where it needs one,
+	// because it knows what it is drawing on. A caller here does not, so it
+	// asks the surface it has for another like it. PDFPrintable is the one
+	// that does: it rasterizes a page at the printer's DPI before printing it.
+	NewOffscreen(width, height int) Backend
+
+	// DrawSurface draws another backend's pixels onto this one at the origin,
+	// composited with the current blend mode and alpha.
+	//
+	// Port of `Graphics2D.drawImage(BufferedImage, 0, 0, null)`, which
+	// PDFPrintable uses to put a rasterized page down. It takes a Backend
+	// rather than an image because only NewOffscreen makes one, and an
+	// implementation may hold its pixels however it likes.
+	DrawSurface(surface Backend) error
 }
 
 // Interpolation is how a scaled image is sampled.

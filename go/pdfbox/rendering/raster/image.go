@@ -17,6 +17,7 @@ package raster
 import (
 	"errors"
 	goimage "image"
+	goimagecolor "image/color"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/blend"
@@ -57,6 +58,9 @@ type Image struct {
 }
 
 var _ rendering.Backend = (*Image)(nil)
+
+// white is the ground Graphics2D.clearRect puts down under a blit.
+var white = goimagecolor.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 
 // NewImage returns a backend drawing onto an image of the given size.
 //
@@ -227,3 +231,53 @@ var errNoGroup = errors.New("raster: PopGroup without PushGroup")
 // ErrNoPatternBBox is a tiling pattern with no /BBox, which Java's
 // TilingPaint.getAnchorRect throws an IOException for.
 var ErrNoPatternBBox = errors.New("raster: pattern /BBox is missing")
+
+// NewOffscreen returns a transparent surface of the given size.
+//
+// Java's `new BufferedImage(w, h, TYPE_INT_ARGB)`, which is what PDFPrintable
+// rasterizes a page into. The state is not carried over: Java's image comes
+// with a fresh Graphics2D, and so does this.
+func (i *Image) NewOffscreen(width, height int) rendering.Backend {
+	return NewImage(width, height, rendering.ARGB)
+}
+
+// DrawSurface draws another backend's pixels onto this one at the origin.
+//
+// Port of the three lines PDFPrintable ends its rasterizing arm with:
+//
+//	printerGraphics.setBackground(Color.WHITE);
+//	printerGraphics.clearRect(0, 0, image.getWidth(), image.getHeight());
+//	printerGraphics.drawImage(image, 0, 0, null);
+//
+// The clearRect is a white ground under the blit, not over it, and the
+// drawImage is source-over onto it. The clip in force applies to both, which
+// is what Graphics2D does.
+func (i *Image) DrawSurface(surface rendering.Backend) error {
+	source, isImage := surface.(*Image)
+	if !isImage {
+		return ErrNotDrawn
+	}
+	bounds := source.dst.Bounds().Intersect(i.dst.Bounds())
+	clip := i.clipCoverage()
+
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			coverage := 1.0
+			if clip != nil {
+				coverage = float64(clip.AlphaAt(x, y).A) / 255
+				if coverage == 0 {
+					continue
+				}
+			}
+			// the white ground clearRect puts down
+			i.blendPixel(x, y, white, coverage)
+
+			c := source.dst.RGBAAt(x, y)
+			if c.A == 0 {
+				continue
+			}
+			i.blendPixel(x, y, c, coverage*float64(c.A)/255)
+		}
+	}
+	return nil
+}

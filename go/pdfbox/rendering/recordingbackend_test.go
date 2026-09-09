@@ -189,3 +189,16 @@ func (b *recordingBackend) Rendered() *geom.AffineTransform {
 	}
 	return b.transforms[len(b.transforms)-2]
 }
+
+// NewOffscreen answers a recorder of its own; what is drawn into it is not
+// this one's business, and no test here draws into one.
+func (b *recordingBackend) NewOffscreen(width, height int) Backend {
+	b.record("newOffscreen %d %d", width, height)
+	return &recordingBackend{}
+}
+
+// DrawSurface records the blit.
+func (b *recordingBackend) DrawSurface(surface Backend) error {
+	b.record("drawSurface")
+	return nil
+}
