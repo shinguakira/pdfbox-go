@@ -4217,6 +4217,16 @@ and `addAll` appends it, so a document merged with N others ends up with
 **Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility.go`,
 `mergeThreads`, which reads the destination twice and says so at the site.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 82. `mergeThreads` clones
+the *source* catalog's `/Threads`, which is the one word the entry names, and
+takes the source catalog as an argument to do it. Tested by
+`TestMergeTakesTheSourcesThreads` in
+`go/pdfbox/multipdf/javabug82_test.go`, which merges a document of two threads
+into one of one and reads the titles back; without the fix the answer is
+`[dest one dest one]`, the destination's thread doubled and the source's gone.
+`TestMergeIntoADocumentWithNoThreadsTakesTheSources` covers the other arm of
+the same block, which answered nothing at all.
+
 **Confidence** certain, from the source: the two `getCOSArray` calls are on the
 same expression, five words apart.
 
