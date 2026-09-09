@@ -14,6 +14,7 @@ package raster
 // quantises it.
 
 import (
+	"fmt"
 	goimage "image"
 	goimagecolor "image/color"
 
@@ -32,17 +33,6 @@ type shadingContext interface {
 	colorAt(x, y int) (goimagecolor.RGBA, bool)
 }
 
-// newShadingContext returns the context for a shading, which is
-// PDShading.toPaint(Matrix) followed by createContext.
-//
-// matrix is the pattern matrix, xform the transform in force when the paint
-// was installed, and deviceBounds the pixels that will be asked for -- Java
-// sizes the colour table from its diagonal.
-func newShadingContext(sh shading.Shading, matrix *util.Matrix,
-	xform *geom.AffineTransform, deviceBounds goimage.Rectangle) (shadingContext, error) {
-	return nil, ErrNotDrawn
-}
-
 // convertToRGB is ShadingContext.convertToRGB: the shading's colour space
 // converts the components to RGB, and each channel is **truncated** to a byte
 // rather than rounded. `(int) (rgbValues[0] * 255)` gives 254 for 0.999 and
@@ -58,4 +48,27 @@ func convertToRGB(colorSpace color.PDColorSpace, values []float32) (goimagecolor
 		B: uint8(rgb[2] * 255),
 		A: 0xFF,
 	}, nil
+}
+
+// newShadingContext returns the context for a shading, which is
+// PDShading.toPaint(Matrix) followed by createContext.
+//
+// matrix is the pattern matrix, xform the transform in force when the paint
+// was installed, and deviceBounds the pixels that will be asked for -- Java
+// sizes the colour table from its diagonal.
+func newShadingContext(sh shading.Shading, matrix *util.Matrix,
+	xform *geom.AffineTransform, deviceBounds goimage.Rectangle) (shadingContext, error) {
+	model, ok := sh.(shadingModel)
+	if !ok {
+		return nil, fmt.Errorf("raster: %T is not a shading this backend can draw", sh)
+	}
+	switch sh.ShadingType() {
+	case shading.ShadingType1:
+		return newFunctionContext(model, matrix, xform)
+	case shading.ShadingType2:
+		return newAxialContext(model, matrix, xform, deviceBounds)
+	case shading.ShadingType3:
+		return newRadialContext(model, matrix, xform, deviceBounds)
+	}
+	return nil, ErrNotDrawn
 }

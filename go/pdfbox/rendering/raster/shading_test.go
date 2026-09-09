@@ -127,3 +127,79 @@ func floatArray(values []float32) *cos.Array {
 	array.SetFloatArray(values)
 	return array
 }
+
+// radialShading is a type 3 shading: two concentric circles at the origin,
+// the inner of radius 0 and the outer of radius 100, black at the centre and
+// white at the rim.
+//
+//	/ShadingType 3
+//	/Coords [0 0 0  0 0 100]
+func radialShading(t *testing.T) shading.Shading {
+	t.Helper()
+	fn := cos.NewDictionary()
+	fn.SetInt(cos.FunctionType, 2)
+	fn.SetItem(cos.Domain, floatArray([]float32{0, 1}))
+	fn.SetItem(cos.C0, floatArray([]float32{0, 0, 0}))
+	fn.SetItem(cos.C1, floatArray([]float32{1, 1, 1}))
+	fn.SetInt(cos.N, 1)
+
+	dictionary := cos.NewDictionary()
+	dictionary.SetInt(cos.ShadingType, 3)
+	dictionary.SetItem(cos.ColorSpace, cos.DeviceRGB)
+	dictionary.SetItem(cos.Coords, floatArray([]float32{0, 0, 0, 0, 0, 100}))
+	dictionary.SetItem(cos.Function, fn)
+	extend := cos.NewArray()
+	extend.Add(cos.GetBoolean(false))
+	extend.Add(cos.GetBoolean(false))
+	dictionary.SetItem(cos.Extend, extend)
+
+	return shading.NewPDShadingType3(dictionary)
+}
+
+// TestRadialShadingColourAtAPoint is RadialShadingContext.getRaster.
+//
+// The circles share a centre, so Adobe's quadratic reduces to the distance
+// from it over the radius: s = √(x² + y²) / 100. The colour table is the
+// axial one's -- the same 300 by 400 surface, so factor is 500 -- and the
+// same truncation applies.
+//
+//	(0,0)   -> s=0    -> key=0   -> 0
+//	(25,0)  -> s=0.25 -> key=125 -> (int)(0.25*255) = 63
+//	(60,80) -> s=1.00 -> key=500 -> 255, since √(3600+6400) = 100
+func TestRadialShadingColourAtAPoint(t *testing.T) {
+	context, err := newShadingContext(radialShading(t), util.NewMatrix(),
+		geom.NewAffineTransform(1, 0, 0, 1, 0, 0), goimage.Rect(0, 0, 300, 400))
+	if err != nil {
+		t.Fatalf("newShadingContext: %v", err)
+	}
+
+	for _, c := range []struct {
+		x, y, want int
+	}{{0, 0, 0}, {25, 0, 63}, {50, 0, 127}, {60, 80, 255}} {
+		got, painted := context.colorAt(c.x, c.y)
+		if !painted {
+			t.Errorf("(%d,%d) paints nothing, and it is inside the outer circle",
+				c.x, c.y)
+			continue
+		}
+		want := uint8(c.want)
+		if got.R != want || got.G != want || got.B != want {
+			t.Errorf("(%d,%d) is (%d,%d,%d), want (%d,%d,%d)",
+				c.x, c.y, got.R, got.G, got.B, want, want, want)
+		}
+	}
+}
+
+// TestRadialShadingPaintsNothingOutsideItsCircles is the unextended case: a
+// point beyond the outer circle has no parameter in range and nothing to
+// extend to.
+func TestRadialShadingPaintsNothingOutsideItsCircles(t *testing.T) {
+	context, err := newShadingContext(radialShading(t), util.NewMatrix(),
+		geom.NewAffineTransform(1, 0, 0, 1, 0, 0), goimage.Rect(0, 0, 300, 400))
+	if err != nil {
+		t.Fatalf("newShadingContext: %v", err)
+	}
+	if _, painted := context.colorAt(150, 0); painted {
+		t.Error("(150,0) is painted, and it is outside an unextended circle")
+	}
+}

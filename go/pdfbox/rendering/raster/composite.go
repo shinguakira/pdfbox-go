@@ -46,6 +46,16 @@ func (i *Image) sourceOf(paint rendering.Paint) (paintSource, float64, error) {
 			B: clampToByte(p.Blue),
 			A: 0xFF,
 		}}, float64(p.Alpha), nil
+
+	case rendering.ShadingPaint:
+		// A shading carries no alpha of its own; what it is drawn with comes
+		// from the composite, as it does in Java.
+		context, err := newShadingContext(p.Shading, p.Matrix, i.transform, i.dst.Bounds())
+		if err != nil {
+			return nil, 0, err
+		}
+		return context, 1, nil
+
 	default:
 		return nil, 0, ErrNotDrawn
 	}
