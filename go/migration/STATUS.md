@@ -50,7 +50,7 @@ evidence; a name is not.
 | Group | Files | Verdict |
 | --- | ---: | --- |
 | `graphics/shading` `Paint` and `PaintContext` implementations | 19 | deliberate — slice 9 put the raster half behind `rendering.Backend` |
-| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | deliberate — same reason |
+| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | **all four ported by `track/raster`**, into `rendering/raster`. Slice 9 had put the raster half behind `rendering.Backend`; that branch wrote the backend |
 | `cos/COSInputStream`, `cos/COSOutputStream` | 2 | deliberate — one carries a `DecodeResult` Go returns directly, one is folded into `streamWriter` |
 | `encryption/MessageDigests`, `SecurityProvider` | 2 | deliberate — JCE lookups Go answers with `crypto/*` |
 | `graphics/color/PDJPXColorSpace` | 1 | deliberate — only the JPX filter constructs it |
@@ -2966,7 +2966,7 @@ narrow interface a security handler needs, so the one method is what lets a
 | `GroupGraphics.java` | `rendering/raster/group.go` | a `Graphics2D` subclass, so slice 9 left it; **`track/raster` ported it**, as `PushGroup`, `PopGroup` and `removeBackdrop` |
 | `SoftMask.java` | `rendering/raster/softmask.go` | a `java.awt.Paint`, so slice 9 left it; **`track/raster` ported it**, with the drawer half in `rendering/softmask.go` |
 | `TilingPaint.java` | `rendering/raster/tiling.go` | a `java.awt.Paint`, so slice 9 left it; **`track/raster` ported it** |
-| `TilingPaintFactory.java` | — | not ported — a `WeakHashMap` in front of the constructor, and Go has no weak reference. See `track/raster`'s section |
+| `TilingPaintFactory.java` | `rendering/raster/tilingcache.go` | **`track/raster` ported it** -- a plain map rather than a WeakHashMap, with the lifetime written down. See JAVA-BUGS.md 86 |
 
 **`RenderDestination` had to move.** Java's `rendering` imports
 `graphics/optionalcontent` for the groups, and `optionalcontent` imports
@@ -6532,10 +6532,12 @@ so both renderers read the same bytes.
 
 - **Every blend mode**, all 340 rows, including Normal reached through
   `BlendComposite` by reflection.
-- **Eleven of the seventeen Java2D shapes**: the fills, the clip, the
-  transform, both winding rules, the butt and square caps, the miter join, and
-  the dashes with and without a phase.
-- **Every flat fill on a rendered page**, and every interior.
+- **Eleven of the seventeen Java2D shapes under VALUE_STROKE_PURE, and eight
+  under VALUE_STROKE_NORMALIZE**: the fills, the clip, the transform, both
+  winding rules, the straight-line stroke, and the dashes with and without a
+  phase. Three more differ by one unit of one channel and nothing more.
+- **Every flat fill on a rendered page**, and every interior. On the two pages
+  with strokes, **no pixel anywhere is more than a quarter of a channel out**.
 - **A coloured tiling pattern**, 3036 pixels, none of them different.
 - **An Alpha soft mask, and a Luminosity one with a /BC backdrop.**
 - **The squiggly annotation's appearance**, token for token, across all three
@@ -6545,21 +6547,18 @@ so both renderers read the same bytes.
 
 Four things, each measured and pinned in a test rather than described:
 
-**1. Stroke normalization — up to 191, and the largest of the four.**
+**1. Stroke normalization — ported, so this one is gone.**
 `PDFRenderer.createDefaultRenderingHints` sets three hints and **not**
 `KEY_STROKE_CONTROL`, so PDFBox renders under the JDK default, which is
 `VALUE_STROKE_NORMALIZE`: Marlin moves each segment endpoint onto a pixel
-centre before stroking, so a thin line lands on whole pixels instead of
-straddling two. This backend renders the geometry as given, so every stroke
-edge sits half a pixel over. Under `VALUE_STROKE_PURE` the two agree exactly.
+centre before stroking -- a pixel quarter with anti-aliasing off -- so a thin
+line lands on whole pixels instead of straddling two.
 
-It is an aesthetic pass and the javadoc says as much — "different normalization
-algorithms may be more successful than others for given input paths" — so what
-it does is unspecified, and a port that reproduced it would be reproducing one
-JDK's. `TestTheStrokeNormalizationCost` measures what leaving it out costs,
-case by case. **This is the one open question of the branch**: matching PDFBox's
-own output means porting `MarlinRenderingEngine.NormalizingPathIterator`, which
-is about fifty lines and is nobody's specification.
+`rendering/raster/normalize.go` is that, ported, and `SetStrokeNormalization`
+is the hint, on by default. The seventeen shapes are held to **both** grids,
+which is a stronger statement than either alone: the same shapes drawn twice,
+against a Java2D told to do each thing. What is left where the two disagree is
+the coverage of an edge pixel and not where the ink is.
 
 **2. Anti-aliased coverage quantisation — up to 1 on a straight edge.**
 Marlin samples a pixel on an 8x8 subpixel grid and truncates the count to a
@@ -6567,10 +6566,13 @@ byte; freetype's rasteriser integrates the area exactly. On an
 exactly-half-covered pixel one says `0x7f` and the other `0x80`. That single
 unit is all of `fillHalfAA` and all of `joinBevel`.
 
-**3. Curve flattening — up to 25.** The two flatteners put their line segments
-in different places, so a round join, a round cap and a stroked cubic differ
-along their edges. The ink is in the same place; what differs is how dark its
-edge is.
+**3. Curve flattening, and one pixel of every right-angle join — up to 64.**
+The two flatteners put their line segments in different places, so a round
+join, a round cap and a stroked cubic differ along their edges. And the inner
+corner of a right angle is one pixel out by 64: rasterx emits a stroke as
+separate outlines per segment where Marlin emits one, so a scanline rasteriser
+accumulates the two overlapping arms to full coverage where Java has three
+quarters. The ink is in the same place; what differs is how dark its edge is.
 
 **4. The JDK's sRGB-to-grey conversion — up to 38, and only for a Luminosity
 soft mask over a non-grey group.** Java draws the group's ARGB image onto a
@@ -6603,10 +6605,18 @@ on the machine, reading the trays and media sizes one offers, showing the
 dialog, handing it a job. Go's standard library has none of it and no pure-Go
 library does either — printing is per-platform spooler API.
 
-**`TilingPaintFactory`.** It is a `WeakHashMap` in front of the `TilingPaint`
-constructor. Go has no weak reference, and a cache that never releases is worse
-than none. What it buys is one render of a tile per distinct pattern per page;
-what leaving it out costs is one render per fill.
+**`TilingPaintFactory` is ported after all**, in `rendering/raster/tilingcache.go`.
+Java holds it in a `WeakHashMap` on the PageDrawer, so its entries live as long
+as the page is being drawn; Go has no weak reference, so the cache is a plain
+map on the surface and `ClearTileCache` empties it. Nothing in a render calls
+that -- a page's patterns are wanted for the whole page -- and a caller who
+renders many documents through one surface can.
+
+Its key leaves out the colour, and that is Java's behaviour rather than a
+simplification: `hashCode` ends with the colour's identity hash and `SetColor`
+builds a new `PDColor` for every `scn`, so Java's cache never answers for an
+uncoloured pattern either. `JAVA-BUGS.md` 86 has the whole of it, including the
+`UnsupportedOperationException` its `equals` would throw if it ever did hit.
 
 ### A port defect this found
 
@@ -6693,17 +6703,21 @@ Named one by one. Five had none, and all five now do:
 | the soft mask's `/TR` | no fixture carried one | `TestASoftMaskAppliesTheTransferFunction` |
 | `NewOffscreen`, `DrawSurface` | the printing test saw the calls, not the pixels | `TestDrawSurfacePutsAnOffscreenDown`, `TestDrawSurfaceHonoursTheClip` |
 
-`adjustMask`'s non-identity arm is still only reached by a rotated page, and
-there is no rotated fixture. It is the one function in the branch whose body is
-argued rather than measured, and it is said here rather than left implicit.
+`adjustMask`'s non-identity arm had no fixture when this was first written --
+it only runs for a page whose transform is not a plain scale. `masksrot.pdf` is
+that page now, and writing it found a defect: the redraw sampled at the
+destination pixel's corner rather than its centre, which moved every hard mask
+edge by up to a pixel. Nothing in the branch is argued rather than measured any
+more.
 
 ### D5 — every deferral is real and recorded
 
-Three left in the packages this branch touched, and each is a type that is
-absent rather than work that was hard: `TilingPaintFactory` (Go has no weak
-reference), `PrintPDF` (Go has no printing system), and `ErrNoBackend` itself,
-which is not a deferral but the state of a renderer with no backend installed.
-All three are above.
+Two left in the packages this branch touched, and each is a thing that is
+absent rather than work that was hard: `PrintPDF` (Go has no printing system)
+and `ErrNoBackend` itself, which is not a deferral but the state of a renderer
+with no backend installed. `TilingPaintFactory` was the third and is ported;
+the entry above says how, and why leaving the colour out of its key is Java's
+behaviour rather than a simplification.
 
 ### D6 — the Java bugs
 
@@ -6714,12 +6728,12 @@ and the test asserts the wrong answers.
 
 ### D8 — this is a substitution, and every deviation is pinned
 
-The four are listed above with their measured sizes. Each is pinned in both
+They are listed above with their measured sizes. Each is pinned in both
 directions, so a deviation that disappears fails as loudly as one that appears:
-`TestAgainstJava2D` pins seventeen differing-pixel counts,
-`TestTheStrokeNormalizationCost` pins what the JDK's stroke hint would cost per
-case, `TestAlphaCompositeRoundsSourceOverDifferently` pins the five rows where
-Java disagrees with Java, and the three page tests pin whole-page counts.
+`TestAgainstJava2D` and `TestAgainstJava2DNormalized` pin seventeen
+differing-pixel counts each, under the two values of KEY_STROKE_CONTROL;
+`TestAlphaCompositeRoundsSourceOverDifferently` pins the five rows where Java
+disagrees with Java; and the four page tests pin whole-page counts.
 
 ### D9 — the deferrals are closed, or have a new reason
 
@@ -6728,11 +6742,18 @@ Six were held for a raster backend. Five run now — `checkRenderIdent`,
 appearance, `PDFToImage` — and `ContentStreamWriterTest`, which was held for
 something else, runs too. `PrintPDF` has a new reason, and it is not the raster.
 
+### What was open, and was then done
+
+**Stroke normalization** was the one thing left that could be closed by writing
+code rather than by binding an ICC engine, and it is closed:
+`rendering/raster/normalize.go` is
+`MarlinRenderingEngine.NormalizingPathIterator`, and `SetStrokeNormalization`
+is the hint, on by default because the JDK's default is. On the two pages with
+strokes on them it took the pixels more than a quarter of a channel out from
+1002 and 873 to **none**.
+
 ### What is still open
 
-**Stroke normalization.** The port renders stroke geometry as given and PDFBox
-does not, because the JDK's default hint moves it. It is the largest difference
-on a rendered page and the only one that could be closed by writing code rather
-than by binding an ICC engine. Whether to is a decision, not an oversight: it
-means porting `MarlinRenderingEngine.NormalizingPathIterator`, an unspecified
-aesthetic pass, into a renderer that otherwise draws what the PDF says.
+Nothing that can be written. `PrintPDF` needs a spooler binding, and the
+sRGB-to-CS_GRAY difference needs an ICC engine; both are above, with what they
+would take.

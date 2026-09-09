@@ -4479,3 +4479,84 @@ way.
 
 **Confidence** certain. The behaviour above is a JDK 17 run of the method's
 own body, not a reading of it.
+
+---
+
+## 86. `TilingPaintFactory`'s cache cannot hit for an uncoloured pattern, and would throw if it did
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/rendering/TilingPaintFactory.java`,
+`TilingPaintParameter.hashCode` and `.equals`, against
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColor.java`
+and
+`pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetColor.java`.
+
+The factory exists to render a pattern's tile once per page rather than once
+per fill:
+
+```java
+TilingPaintParameter tilingPaintParameter
+        = new TilingPaintParameter(drawer.getInitialMatrix(), pattern.getCOSObject(), colorSpace, color, xform);
+WeakReference<Paint> weakRef = weakCache.get(tilingPaintParameter);
+```
+
+Its key ends with the colour:
+
+```java
+hash = 23 * hash + (this.color != null ? this.color.hashCode() : 0);
+```
+
+`PDColor` overrides neither `hashCode` nor `equals`, so that is its identity
+hash. And `SetColor.process` builds a new one for every `scn`:
+
+```java
+setColor(new PDColor(array, colorSpace));
+```
+
+So two fills of the same uncoloured pattern carry two `PDColor` instances with
+two different identity hashes, land in two different buckets, and **the cache
+never answers.** Every fill renders the tile again, which is the thing the
+class was written to stop.
+
+A coloured pattern is unaffected: `getPaint` passes `null` for the colour
+there, `null` hashes to 0 every time, and the cache works.
+
+**And if it ever did hit a bucket, `equals` would throw.**
+
+```java
+if (this.color != null && other.color != null &&
+    this.color != other.color && this.color.toRGB() != other.color.toRGB())
+```
+
+The colour of an uncoloured tiling pattern is the graphics state's, whose
+colour space is `PDPattern`:
+
+```java
+@Override
+public float[] toRGB(float[] value)
+{
+    throw new UnsupportedOperationException();
+}
+```
+
+`UnsupportedOperationException` is unchecked, and the `catch` around that line
+is `catch (IOException ex)`, so it would not be caught — it would come out of
+`WeakHashMap.get` and end the render.
+
+**What correct would be** keying on the colour's components and its underlying
+colour space, which is what actually distinguishes two fills of the same
+uncoloured pattern, and comparing them directly rather than through `toRGB`.
+
+**Why it matters** A page that fills the same uncoloured pattern many times —
+a hatched table, a shaded map — renders its tile once per fill. The tile is a
+content stream run through the whole `PageDrawer`, so it is not cheap.
+
+**Where the Go carries it**
+`go/pdfbox/rendering/raster/tilingcache.go`, `tilingKeyOf`, which answers no
+key at all for a paint that carries a colour. The effect is Java's — an
+uncoloured pattern is drawn every time and a coloured one is cached — and the
+comment says that it is Java's by accident rather than by design.
+`TestAnUncolouredPatternIsNotCached` pins it.
+
+**Confidence** certain for the first half, from the four sources quoted. The
+second half is a reading: it needs two distinct `PDColor` instances to collide
+in a bucket, which identity hashes make unlikely rather than impossible.

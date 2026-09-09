@@ -55,6 +55,11 @@ type Image struct {
 	// default is and PDFBox never sets the hint. See normalize.go.
 	strokeNormalization bool
 
+	// tiles is the tiling patterns rendered so far, which is Java's
+	// TilingPaintFactory. It is shared with every copy Create makes, the way
+	// Java's is a field of the one PageDrawer.
+	tiles map[tilingKey]*tilingSource
+
 	// groups is the stack of open transparency groups, and secondary the
 	// alpha-only surface the innermost one is drawn onto in parallel.
 	groups    []groupFrame

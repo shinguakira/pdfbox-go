@@ -69,7 +69,7 @@ func (i *Image) sourceOf(paint rendering.Paint) (paintSource, float64, error) {
 	case rendering.TilingPaint:
 		// A tiling pattern carries no alpha of its own either; the tile does,
 		// per pixel, and colorAt answers it.
-		source, err := i.newTilingSource(p)
+		source, err := i.cachedTilingSource(p)
 		if err != nil {
 			return nil, 0, err
 		}
