@@ -109,7 +109,7 @@ this is "JAVA-BUGS.md 47".
 
 # Phase A — Triage, then write the tests
 
-- [ ] A0. **Triage all 84 entries, in writing, before any code moves.** Put the
+- [x] A0. **Triage all 84 entries, in writing, before any code moves.** Put the
       table in `STATUS.md`. Every entry lands in exactly one column:
 
   - **Fix** — the Go carries it, what correct would be is a fact rather than a
@@ -141,7 +141,7 @@ this is "JAVA-BUGS.md 47".
   Record the count in each column and the reason for every **keep**. A0 is the
   document this branch is judged on; the code is downstream of it.
 
-- [ ] A1. For every entry in the **fix** column, write the failing test.
+- [x] A1. For every entry in the **fix** column, write the failing test.
   - It asserts what correct is, and says in a comment where that value came
     from: the specification, the arithmetic, or the entry's own analysis.
   - It fails before the fix. Run it and see it fail. A test that passes before
@@ -149,7 +149,7 @@ this is "JAVA-BUGS.md 47".
   - Where the Java has a test over the same code, the Go test sits beside it and
     the two disagree on purpose. Say so in both.
 
-- [ ] A2. For the **test only** entries, make the Go test stricter.
+- [x] A2. For the **test only** entries, make the Go test stricter.
   - The Java test is weak; the Go one does not have to be. Assert what the Java
     forgot to.
 
@@ -159,16 +159,16 @@ this is "JAVA-BUGS.md 47".
 
 **Every entry fixed in this phase needs a test from A1 that failed without it.**
 
-- [ ] B1. Fix them, one entry per commit, in entry order.
+- [x] B1. Fix them, one entry per commit, in entry order.
   - The commit message names the entry: `pdfbox: JAVA-BUGS 47, ...`.
   - The comment at the site says what the Java does, that the Go does not, and
     the entry number. A future reader comparing the two files needs to find
     that sentence without leaving the file.
 
-- [ ] B2. Update the entry in `migration/JAVA-BUGS.md` in the same commit.
+- [x] B2. Update the entry in `migration/JAVA-BUGS.md` in the same commit.
       See below for what an entry looks like afterwards.
 
-- [ ] B3. Where a fix changes what the port **writes** into a PDF rather than
+- [x] B3. Where a fix changes what the port **writes** into a PDF rather than
       what it reads, say so in the entry. That is the half of a fix that can
       reach someone else's software.
 
@@ -176,12 +176,12 @@ this is "JAVA-BUGS.md 47".
 
 # Phase C — Run and fix
 
-- [ ] C1. `gofmt -l .` clean
-- [ ] C2. `go vet ./...` clean
-- [ ] C3. `go test ./...` green
-- [ ] C4. Update `migration/JAVA-BUGS.md`: every fixed entry carries its new
+- [x] C1. `gofmt -l .` clean
+- [x] C2. `go vet ./...` clean
+- [x] C3. `go test ./...` green
+- [x] C4. Update `migration/JAVA-BUGS.md`: every fixed entry carries its new
       line, and the file's header says what the file now means
-- [ ] C5. Update `migration/STATUS.md` with the A0 table and its outcome
+- [x] C5. Update `migration/STATUS.md` with the A0 table and its outcome
 
 ## When a ported test fails
 
@@ -212,38 +212,38 @@ told apart by reading, not by guessing:
 right. Go in assuming each one is wrong, and in particular that it is wider than
 the entry it came from.
 
-- [ ] D1. Read every fix against the Java it diverges from
+- [x] D1. Read every fix against the Java it diverges from
   - Is the divergence exactly what the entry described, and nothing more?
   - Does the comment at the site say what the Java does, and the entry number?
   - Would a reader who knows only the Java understand why the two differ?
 
-- [ ] D2. Hunt for what the fix reached that it should not have
+- [x] D2. Hunt for what the fix reached that it should not have
   - Who else calls the function that changed? A fix to `equals` reaches every
     `indexOf` in the tree.
   - Does the fix change what the port **writes**, and is that said?
   - Is there a caller that was compensating for the bug, which now
     double-corrects?
 
-- [ ] D3. Check every expected value that changed
+- [x] D3. Check every expected value that changed
   - For each ported test whose expectation moved: is the new value derived from
     the specification or the arithmetic, and does the comment say which?
   - Is the Java's old value still there to be read?
 
-- [ ] D4. Check every fix has a test that failed without it
+- [x] D4. Check every fix has a test that failed without it
   - Name the test. Not "the suite is green"
   - Re-run each one with the fix reverted and confirm it fails. A fix whose
     test passes without it fixed nothing
 
-- [ ] D5. Check the **keep** column
+- [x] D5. Check the **keep** column
   - Every kept entry: is its reason one of the four, and is it written down?
   - Has any of them been fixed by accident, as a side effect of another fix?
 
-- [ ] D6. Check `JAVA-BUGS.md` is still true
+- [x] D6. Check `JAVA-BUGS.md` is still true
   - Every entry, fixed or kept, still describes the Java correctly
   - Every fixed entry says where the Go now differs
   - No entry was deleted
 
-- [ ] D7. Write the review down
+- [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
 
 ---
