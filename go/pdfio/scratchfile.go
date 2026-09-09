@@ -424,9 +424,10 @@ func (s *ScratchFile) markPagesAsFree(pageIndexes []int, off, count int) {
 	defer s.pagesLock.Unlock()
 
 	// Java walks from off to count rather than to off+count, so a release that
-	// starts past the first index frees fewer pages than it was given. Ported
-	// as written; see migration/JAVA-BUGS.md entry 62.
-	for aIdx := off; aIdx < count; aIdx++ {
+	// starts past the first index frees fewer pages than it was given -- and
+	// Clear passes an offset of 1, so every clear leaked the buffer's last
+	// page. See migration/JAVA-BUGS.md 62.
+	for aIdx := off; aIdx < off+count; aIdx++ {
 		pageIdx := pageIndexes[aIdx]
 		if pageIdx >= 0 && pageIdx < s.pageCount && !s.freePages[pageIdx] {
 			s.freePages[pageIdx] = true

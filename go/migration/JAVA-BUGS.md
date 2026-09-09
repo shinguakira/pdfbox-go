@@ -3066,6 +3066,14 @@ to `count` and says so.
 `TestClearLeaksTheLastPage` in `go/pdfio/scratchfilebuffer_test.go` pins it and
 names this entry.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 62. `markPagesAsFree` walks
+to `off + count`, so it frees the pages it was given and `Clear` leaks none.
+Tested by `TestClearFreesEveryPage` in `go/pdfio/javabug62_test.go`: three
+pages of main memory, three pages written, cleared, and filled again. Without
+the fix the third write fails with the same "Maximum allowed scratch file
+memory exceeded." the running Java gives. `TestClearLeaksTheLastPage`, which
+pinned the leak, is gone with it.
+
 **Confidence** high. Reproduced by compiling the `io` module against JDK 17 and
 running it: a `ScratchFile` of three pages of main memory, three pages written,
 `clear()`, and the second write fails with
