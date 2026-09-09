@@ -3300,6 +3300,23 @@ sites. Go's mutexes are not reentrant where Java's monitors are, but that
 changes nothing here: the two locks are distinct, so this is the same
 cross-goroutine hold-and-wait and not a new self-deadlock.
 
+**Fixed in the Go** `track/java-bug-fixes`, entry 66. `Close` takes `ioLock`,
+sets `isClosed`, takes the buffer list and releases `ioLock` before closing the
+buffers, which is the shape the entry names; it re-takes `ioLock` for the file
+itself. Nothing is lost by letting go: `isClosed` is already published, so
+`enlarge` refuses under `ioLock`, and the list has already been taken.
+
+This one does have a test after all, and the entry's reason for saying it could
+not was wrong in one direction: a test that hangs is worse than none, but a
+test that *bounds* the round and reports the hang is not.
+`TestCloseWhileWritingDoesNotDeadlock` in `go/pdfio/javabug66_test.go` runs
+eight writers, each on a buffer of its own, against one `Close`, over a
+temporary file — which is what puts real work inside `ioLock` and widens the
+window the cycle needs. Without the fix it reproduces the deadlock the JVM
+named, in round 26 of 150; with it the same 150 rounds finish in half a second.
+The writers recover from the buffer's own not-thread-safe race, which Java
+documents on the class and which is not a lock.
+
 **Confidence** reproduced. A probe that ran a writer and a `close()` against the
 same `ScratchFile` deadlocked in round 215 of 400, and the JVM's own detector
 named it:

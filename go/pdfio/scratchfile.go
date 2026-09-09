@@ -37,13 +37,13 @@ var ErrScratchFileClosed = errors.New("pdfio: scratch file already closed")
 //
 // Port of ScratchFile, which implements RandomAccessStreamCache.
 //
-// Safe for concurrent use, with the one hazard Java has: the two locks are
-// taken in both orders -- getNewPage holds pagesLock and reaches ioLock through
-// enlarge, while Close holds ioLock and reaches pagesLock through a buffer's
-// markPagesAsFree. A goroutine writing while another closes can deadlock. That
-// is Java's, ported as written; see migration/JAVA-BUGS.md entry 66. The
-// buffer list is the second hazard, entry 72: Close reads it under ioLock
-// while CreateBuffer holds buffersLock.
+// Safe for concurrent use. Java takes its two locks in both orders --
+// getNewPage holds the page lock and reaches ioLock through enlarge, while
+// close holds ioLock and reaches the page lock through a buffer's
+// markPagesAsFree -- so a thread writing while another closes can deadlock;
+// Close here releases ioLock before it closes the buffers. See
+// migration/JAVA-BUGS.md 66. The buffer list is the second hazard, entry 72:
+// Close reads it under ioLock while CreateBuffer holds buffersLock.
 type ScratchFile struct {
 	// ioLock guards the temporary file and the in-memory page array, which is
 	// Java's ioLock.
@@ -463,12 +463,22 @@ func (s *ScratchFile) Close() error {
 	// over a scratch file that is gone. That is Java: those two synchronize on
 	// the list and close does not. Ported as written; see
 	// migration/JAVA-BUGS.md entry 72.
-	for _, buffer := range s.buffers {
+	buffers := s.buffers
+	s.buffers = nil
+	// Java closes the buffers here, still holding ioLock, and each one reaches
+	// markPagesAsFree, which takes the page lock -- while getNewPage holds the
+	// page lock and reaches ioLock through enlarge. The two orders deadlock. A
+	// close does not need ioLock to close the buffers: isClosed is already set,
+	// so enlarge refuses, and the list is already taken. See
+	// migration/JAVA-BUGS.md 66.
+	s.ioLock.Unlock()
+	for _, buffer := range buffers {
 		if buffer != nil && !buffer.IsClosed() {
 			buffer.closeBuffer(false)
 		}
 	}
-	s.buffers = nil
+	s.ioLock.Lock()
+
 	if s.file != nil {
 		if err := s.file.Close(); err != nil {
 			ioexc = err
