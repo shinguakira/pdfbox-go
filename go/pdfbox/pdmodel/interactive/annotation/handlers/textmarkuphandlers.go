@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log/slog"
 	"math"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
 )
 
 // quadPointsBounds grows the annotation rectangle to hold every quad point,
@@ -522,11 +524,6 @@ func (h *PDHighlightAppearanceHandler) GenerateDownAppearance() error { return n
 // PDSquigglyAppearanceHandler draws a squiggly underline annotation.
 //
 // Port of PDSquigglyAppearanceHandler.
-//
-// generateNormalAppearance is not ported: it fills the squiggle with a tiling
-// pattern, and PDTilingPattern, PDPatternContentStream and the PDPattern colour
-// space all belong to the rendering this port has not reached. See
-// migration/STATUS.md.
 type PDSquigglyAppearanceHandler struct {
 	PDAbstractAppearanceHandler
 }
@@ -545,12 +542,141 @@ func NewPDSquigglyAppearanceHandlerInDocument(annot annotation.PDAnnotation,
 	return h
 }
 
-// GenerateNormalAppearance does nothing: the squiggle is drawn with a tiling
-// pattern this port has not reached.
-func (h *PDSquigglyAppearanceHandler) GenerateNormalAppearance() error { return nil }
+// GenerateNormalAppearance draws a squiggle under each quad.
+func (h *PDSquigglyAppearanceHandler) GenerateNormalAppearance() error {
+	annot, isSquiggly := h.Annotation().(*annotation.PDAnnotationSquiggly)
+	if !isSquiggly {
+		panic("handlers: the annotation of a squiggly handler is not a squiggly")
+	}
+	rect := annot.Rectangle()
+	if rect == nil {
+		return nil
+	}
+	pathsArray := annot.QuadPoints()
+	if pathsArray == nil {
+		return nil
+	}
+	ab := getAnnotationBorder(annot, annot.BorderStyle())
+	markupColor := annot.Color()
+	if markupColor == nil || len(markupColor.Components()) == 0 {
+		return nil
+	}
+	if ab.width == 0 {
+		// value found in adobe reader
+		ab.width = 1.5
+	}
+
+	// Adjust rectangle even if not empty, see PLPDF.com-MarkupAnnotations.pdf
+	// TODO in a class structure this should be overridable
+	// this is similar to polyline but different data type
+	// all coordinates (unlike painting) are used because I'm lazy
+	annot.SetRectangle(quadPointsBounds(rect, pathsArray, ab.width/2, ab.width/2))
+
+	cs, err := h.NormalAppearanceAsContentStream()
+	if err != nil {
+		slog.Error("handlers: squiggly appearance", slog.Any("error", err))
+		return nil
+	}
+	defer cs.Close()
+
+	if err := h.drawSquiggles(annot, markupColor, pathsArray, cs); err != nil {
+		slog.Error("handlers: squiggly appearance", slog.Any("error", err))
+	}
+	return nil
+}
+
+// drawSquiggles is the body of Java's try block: one form per quad, each
+// filled with the tiling pattern.
+func (h *PDSquigglyAppearanceHandler) drawSquiggles(
+	annot *annotation.PDAnnotationSquiggly, markupColor *color.PDColor,
+	pathsArray []float32, cs annotation.AppearanceContentStream) error {
+	if err := h.SetOpacity(cs, annot.ConstantOpacity()); err != nil {
+		return err
+	}
+	if err := cs.SetStrokingColor(markupColor); err != nil {
+		return err
+	}
+
+	// TODO we ignore dash pattern and line width for now. Do they have any effect?
+
+	// quadpoints spec is incorrect
+	// https://stackoverflow.com/questions/9855814/pdf-spec-vs-acrobat-creation-quadpoints
+	for i := 0; i < len(pathsArray)/8; i++ {
+		// Adobe uses a fixed pattern that assumes a height of 40, and it
+		// transforms to that height horizontally and the same / 1.8
+		// vertically. Translation apparently based on bottom left, but
+		// slightly different in Adobe.
+		// TODO what if the annotation is not horizontal?
+		height := pathsArray[i*8+1] - pathsArray[i*8+5]
+		if err := cs.Transform(util.NewMatrixOf(height/40, 0, 0, height/40/1.8,
+			pathsArray[i*8+4], pathsArray[i*8+5])); err != nil {
+			return err
+		}
+
+		// Create form, BBox is mostly fixed, except for the horizontal size
+		// which is horizontal size divided by the horizontal transform factor
+		// from above (almost).
+		width := (pathsArray[i*8+2] - pathsArray[i*8]) / height * 40
+		frm := form.NewPDFormXObjectOfStream(h.createCOSStream())
+		frm.SetBBox(common.NewPDRectangleOf(-0.5, -0.5, width+0.5, 13))
+		frm.SetResources(form.NewEmptyResources())
+		frm.SetMatrix(util.NewMatrixOf(1, 0, 0, 1, 0.5, 0.5))
+		if err := cs.DrawForm(frm); err != nil {
+			return err
+		}
+		if err := h.fillSquiggle(frm, markupColor, width); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fillSquiggle fills one quad's form with the tiling pattern.
+func (h *PDSquigglyAppearanceHandler) fillSquiggle(frm *form.PDFormXObject,
+	markupColor *color.PDColor, width float32) error {
+	formCS, err := annotation.NewFormContentStream(frm)
+	if err != nil {
+		return err
+	}
+	defer formCS.Close()
+
+	if annotation.NewSquigglyPatternColor == nil {
+		// graphics/pattern is not linked in, so there is nothing to fill
+		// with. This is the same build-time gap color.ErrColorSpaceNotPorted
+		// reports for the /Pattern colour space, and for the same reason.
+		return ErrPatternNotLinked
+	}
+	patternColor, err := annotation.NewSquigglyPatternColor(frm.Resources(),
+		markupColor.Components())
+	if err != nil {
+		return err
+	}
+	if err := formCS.SetNonStrokingColor(patternColor); err != nil {
+		return err
+	}
+
+	// With Adobe, the horizontal size is slightly different, don't know why
+	if err := formCS.AddRect(0, 0, width, 12); err != nil {
+		return err
+	}
+	return formCS.Fill()
+}
 
 // GenerateRolloverAppearance does nothing: no rollover appearance generated.
 func (h *PDSquigglyAppearanceHandler) GenerateRolloverAppearance() error { return nil }
 
 // GenerateDownAppearance does nothing: no down appearance generated.
 func (h *PDSquigglyAppearanceHandler) GenerateDownAppearance() error { return nil }
+
+// ErrPatternNotLinked is a squiggly annotation in a program that does not link
+// graphics/pattern.
+//
+// The squiggle is the only appearance made of a tiling pattern, and
+// PDTilingPattern lives in a package that imports pdmodel, which imports this
+// one -- so it reaches here through a function variable that package sets from
+// its init, and the variable is nil until something links it. Anything that
+// renders does; a program that only generates appearances may not, and then
+// this says so rather than drawing nothing. See color.ErrColorSpaceNotPorted,
+// which is the same gap for the /Pattern colour space.
+var ErrPatternNotLinked = errors.New(
+	"handlers: a squiggly annotation needs graphics/pattern linked in")

@@ -372,3 +372,19 @@ func (p *PDShadingPattern) SetShading(shadingResources shading.Shading) {
 	}
 	p.Dictionary().SetItem(cos.Shading, shadingResources.COSObject())
 }
+
+// COSObject returns the pattern stream, where the pattern is held as one.
+//
+// Java has no override here, because a COSStream **is** a COSDictionary and
+// PDAbstractPattern's field holds the stream itself. A Go *cos.Stream carries
+// its dictionary rather than being one, so the inherited method would answer
+// the dictionary alone and whatever it was written into would lose the
+// pattern's content. A tiling pattern read back from a file has no stream --
+// it was built from a dictionary -- and then there is nothing to answer but
+// that dictionary, which is what the caller already had.
+func (p *PDTilingPattern) COSObject() cos.Base {
+	if p.stream == nil {
+		return p.PDAbstractPattern.COSObject()
+	}
+	return p.stream
+}

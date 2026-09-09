@@ -729,3 +729,36 @@ type FormContentStream interface {
 
 // NewFormContentStream writes into the given form XObject. pdmodel sets it.
 var NewFormContentStream func(formXObject *form.PDFormXObject) (FormContentStream, error)
+
+// NewSquigglyPatternColor builds the tiling pattern
+// PDSquigglyAppearanceHandler fills the squiggle with, puts it into the given
+// form's resources, and answers the colour that names it.
+//
+// It is one function rather than the three Java writes inline because none of
+// the three can be named here: PDTilingPattern, PDPatternContentStream and the
+// PDPattern colour space all live in packages that import this one. pdmodel
+// sets it. What is inside is Java's, statement for statement --
+//
+//	PDTilingPattern pattern = new PDTilingPattern();
+//	pattern.setBBox(new PDRectangle(0, 0, 10, 12));
+//	pattern.setXStep(10);
+//	pattern.setYStep(13);
+//	pattern.setTilingType(TILING_CONSTANT_SPACING_FASTER_TILING);
+//	pattern.setPaintType(PAINT_UNCOLORED);
+//	// from Adobe
+//	patternCS.setLineCapStyle(1);
+//	patternCS.setLineJoinStyle(1);
+//	patternCS.setLineWidth(1);
+//	patternCS.setMiterLimit(10);
+//	patternCS.moveTo(0, 1);
+//	patternCS.lineTo(5, 11);
+//	patternCS.lineTo(10, 1);
+//	patternCS.stroke();
+//	COSName patternName = form.getResources().add(pattern);
+//	PDColorSpace patternColorSpace = new PDPattern(null, PDDeviceRGB.INSTANCE);
+//	PDColor patternColor = new PDColor(color.getComponents(), patternName, patternColorSpace);
+//
+// -- and it is here because that is the only thing the handler does with a
+// pattern.
+var NewSquigglyPatternColor func(resources form.ResourcesLike,
+	components []float32) (*color.PDColor, error)
