@@ -9,7 +9,7 @@ none". This file is where partial work and the reasons for it get recorded.
 
 Status values: `done` · `in progress` · `blocked` · `not started` · `out of scope`
 
-Last updated: 2026-09-06
+Last updated: 2026-09-10
 
 ## Summary
 
@@ -6986,3 +6986,70 @@ Two things were ruled out on the way, by measurement rather than by reading:
 Nothing in `JAVA-BUGS.md`, and nothing of the tile sampling that can be written
 without transliterating a JDK class. The 327 pixels above are what is left, and
 the section above says what they are.
+
+## Track `upstream-sync` — what the Apache merge of 2026-09-07 changed
+
+The merge is `3d024173c`, 25 Apache commits over 16 files, and this branch is
+what happens to the Go because of them. The branch task file is
+[`tasks/track-upstream-sync.md`](tasks/track-upstream-sync.md); it carries the
+six out-of-scope files and why, and the ten in-scope rows the table below is
+the outcome of.
+
+| Java | Apache | The Go |
+| --- | --- | --- |
+| `contentstream/operator/state/Concatenate` | PDFBOX-6255 `4a42d294e` | **fixed.** `util.ErrIllegalMatrixValues`, and `Concatenate.Process` recovers it |
+| `pdfparser/COSParser` | PDFBOX-5660 `de68eb3e3` | **fixed.** `FileParser.parseObjectDynamically` checks the pool answer |
+| `interactive/form/AppearanceGeneratorHelper` | PDFBOX-5660 `ced684bba` | **fixed.** `computeBBox` returns an error |
+| `pdfwriter/COSWriter` | PDFBOX-6236 `21661b79f` | **fixed.** `WriteSigned` takes the max of `/Size - 1` and the xref's highest |
+| `pdmodel/font/PDTrueTypeFont` | PDFBOX-5960 `a1f50ab4b` | **fixed.** `codeToGIDByName`, `hasContradictorySymbolicFlags`, `isRecognizedBaseEncoding` |
+| `util/DateConverter` (test) | PDFBOX-6254 `0079a9cc7` | **assertions ported.** Seven McMurdo dates the Java's own typo had been hiding |
+| `fixup/processor/AcroFormOrphanWidgetsProcessor` | PDFBOX-5660 `f7654f001` | **no change.** The port already returned; a test pins it |
+| `logicalstructure/PDUserAttributeObject` | PDFBOX-5660 ×3 | **no change.** `JAVA-BUGS.md` 38, fixed in `track/java-bug-fixes` |
+| `io/RandomAccessReadBufferedFile` | PDFBOX-5660 `b1d96635f` | **not applicable.** `seek` made `final`; Go has no method overriding, and `OpenBufferedFile` calls the package function `SeekTo` |
+| `pdmodel/fdf/FDFUtils` | PDFBOX-5660 `4aa80d810` | **not applicable.** Private constructor on a static-only class; the Go has `escapeXML10` as a package function in `fdf/small.go`, with no type to construct |
+
+### The one `JAVA-BUGS.md` entry the sync closed
+
+Entry 38, `PDUserAttributeObject` reading `/P` without checking. Upstream added
+the three null checks and landed on the same three answers
+`track/java-bug-fixes` had already chosen independently — including the one the
+entry's own "what correct would be" got wrong, that `removeUserProperty`
+returns rather than writing the array it is about to not remove from. The entry
+gains a **Resolved upstream** line and stays.
+
+No other entry is closed. Cross-checked two ways: by class name against all 86,
+and by behaviour — `getObjectFromPool`, `computeBBox`, `ensureFontResources`,
+`codeToGID`, `getHighestXRefObjectNumber` and `checkFloatValues` appear in none
+of them. The three entries that name a class the sync touched — 7 and 65 on
+`RandomAccessReadBufferedFile`, 8 on `COSParser`, 17 on `CFFParser` — are about
+other methods entirely.
+
+### What every fix was measured with
+
+Each fix has a test at the site that fails with the fix reverted, re-run to
+confirm it. Where a test is a guard rather than a test of the change — one that
+passes either way, on purpose — its comment says so, and each guard was proved
+load-bearing by a mutation of its own:
+
+- **PDFBOX-6255.** `TestConcatenateOverflowIsAnErrorNotAPanic` and
+  `TestConcatenateOverflowEndsTheWalk` fail without it, the first with the
+  panic escaping `ProcessPage`. Two guards beside them.
+- **PDFBOX-5660, COSParser.** Both tests fail without it, with the nil
+  dereference at `cos/object.go:92`.
+- **PDFBOX-5660, computeBBox.** Mutation-tested by removing the check alone and
+  keeping the signature: the case panics in `PDRectangle.UpperRightX`.
+- **PDFBOX-6236.** `/Size` 96 over a fixture whose xref tops out at 46: the new
+  object must be 96, and is 47 without the fix.
+- **PDFBOX-5960.** One test of the change and five guards, each proved by its
+  own mutation — dropping the flag check, dropping the base-encoding check,
+  dropping the `gid == 0` fallback guard, making the name path answer outright,
+  and making `codeToGIDByName` answer nothing.
+- **PDFBOX-6254.** Flipping 1980 to `+12` fails: the port answers `+13`, which
+  is what Apache asserts.
+- **AcroFormOrphanWidgetsProcessor.** No fix to revert, so the guard was proved
+  the other way: with the port's own early return removed, the case panics,
+  slice bounds out of range `[:-1]`, inside the fixup.
+
+### What is still open
+
+Nothing from this sync. The next one starts from `3d024173c`.
