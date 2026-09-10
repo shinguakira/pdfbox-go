@@ -1,0 +1,144 @@
+%PDF-1.4
+%öäüß
+1 0 obj
+<<
+/Type /Catalog
+/Version /1.4
+/Pages 2 0 R
+/Threads 3 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids 4 0 R
+/Count 1
+>>
+endobj
+3 0 obj
+[5 0 R 6 0 R]
+endobj
+4 0 obj
+[7 0 R]
+endobj
+5 0 obj
+<<
+/Type /Thread
+/I 8 0 R
+/F 9 0 R
+>>
+endobj
+6 0 obj
+<<
+/Type /Thread
+/I 10 0 R
+/F 11 0 R
+>>
+endobj
+7 0 obj
+<<
+/Type /Page
+/MediaBox 12 0 R
+/Parent 2 0 R
+/Resources 13 0 R
+/Contents 14 0 R
+>>
+endobj
+8 0 obj
+<<
+/Title (Source: appendix A)
+>>
+endobj
+9 0 obj
+<<
+/Type /Bead
+/N 9 0 R
+/V 9 0 R
+/P 7 0 R
+/R 15 0 R
+/T 5 0 R
+>>
+endobj
+10 0 obj
+<<
+/Title (Source: appendix B)
+>>
+endobj
+11 0 obj
+<<
+/Type /Bead
+/N 11 0 R
+/V 11 0 R
+/P 7 0 R
+/R 16 0 R
+/T 6 0 R
+>>
+endobj
+12 0 obj
+[0.0 0.0 595.2756 841.8898]
+endobj
+13 0 obj
+<<
+/Font 17 0 R
+>>
+endobj
+14 0 obj
+<<
+/Length 241
+>>
+stream
+BT /F1 16 Tf 56 760 Td (JAVA-BUGS 82 -- the source document) Tj ET
+BT /F1 11 Tf 56 735 Td (Its catalog carries these article threads:) Tj ET
+BT /F1 11 Tf 70 712 Td (Source: appendix A) Tj ET
+BT /F1 11 Tf 70 696 Td (Source: appendix B) Tj ET
+
+endstream
+endobj
+15 0 obj
+[56.0 600.0 539.0 700.0]
+endobj
+16 0 obj
+[56.0 480.0 539.0 580.0]
+endobj
+17 0 obj
+<<
+/F1 18 0 R
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+xref
+0 19
+0000000000 65535 f
+0000000015 00000 n
+0000000093 00000 n
+0000000148 00000 n
+0000000177 00000 n
+0000000200 00000 n
+0000000253 00000 n
+0000000308 00000 n
+0000000407 00000 n
+0000000456 00000 n
+0000000535 00000 n
+0000000585 00000 n
+0000000667 00000 n
+0000000711 00000 n
+0000000746 00000 n
+0000001041 00000 n
+0000001082 00000 n
+0000001123 00000 n
+0000001156 00000 n
+trailer
+<<
+/Root 1 0 R
+/ID [<E0AF4C96B5DBB2D54CB19357978FBB73ECE0FDBE73326A1D75E16CAFDE8060CE> <E0AF4C96B5DBB2D54CB19357978FBB73ECE0FDBE73326A1D75E16CAFDE8060CE>]
+/Size 19
+>>
+startxref
+1227
+%%EOF

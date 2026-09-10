@@ -4377,6 +4377,34 @@ into one of one and reads the titles back; without the fix the answer is
 `TestMergeIntoADocumentWithNoThreadsTakesTheSources` covers the other arm of
 the same block, which answered nothing at all.
 
+**Measured, not argued.** `go/pdfbox/multipdf/testdata/Merge82Drv.java` runs the
+merge through the running Java, JDK 17, against two files this repository now
+carries: `javabug82-dest.pdf`, one article thread, and `javabug82-src.pdf`, two.
+Both are written by `testdata/genjavabug82.go`, saved uncompressed so that
+`/Threads` can be read out of them with a text editor, and are as small as a
+legitimate thread gets: one page, one bead per thread, the bead's `/N` and `/V`
+pointing at itself, which is what a one-bead chain is. Its output:
+
+```
+before, destination: 1: Destination: quarterly report
+before, source:      2: Source: appendix A | Source: appendix B
+after,  destination: 2: Destination: quarterly report | Destination: quarterly report
+```
+
+Both of the source's threads are gone and the destination's is doubled. The
+same driver then merges the source in three times over, and the entry's 2^N
+claim is what happens:
+
+```
+after 1 merge(s):    2: ...
+after 2 merge(s):    4: ...
+after 3 merge(s):    8: ...
+```
+
+eight copies of one thread, and still nothing of the source's two. The Go
+answers the three titles in order; `TestMergeTheCheckedInPairTakesTheSourcesThreads`
+is that, over the same two files.
+
 **Confidence** certain, from the source: the two `getCOSArray` calls are on the
 same expression, five words apart.
 
