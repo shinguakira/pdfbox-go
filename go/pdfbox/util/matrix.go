@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"math"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
@@ -169,16 +170,27 @@ func (m *Matrix) Multiply(other *Matrix) *Matrix {
 	return &Matrix{single: checkFloatValues(multiplyArrays(m.single, other.single))}
 }
 
+// ErrIllegalMatrixValues is the value the arithmetic methods below panic with
+// when a product has run off the end of the float range.
+//
+// It is a value rather than a bare string because one caller recovers it:
+// PDFBOX-6255 made `cm` catch the IllegalArgumentException and rethrow it as an
+// IOException, and the recover that stands in for that catch must be able to
+// tell this panic from any other. See
+// go/pdfbox/contentstream/operator/state, Concatenate.Process.
+var ErrIllegalMatrixValues = errors.New(
+	"util: multiplying two matrices produces illegal values")
+
 // checkFloatValues rejects a matrix that has run off the end of the float
 // range.
 //
-// Java throws the unchecked IllegalArgumentException here and nothing in
-// PDFBox catches it, so the port panics rather than putting an error return on
-// every arithmetic method.
+// Java throws the unchecked IllegalArgumentException here and only `cm`
+// catches it, so the port panics rather than putting an error return on every
+// arithmetic method.
 func checkFloatValues(values [Size]float32) [Size]float32 {
 	for _, v := range values {
 		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-			panic("util: multiplying two matrices produces illegal values")
+			panic(ErrIllegalMatrixValues)
 		}
 	}
 	return values

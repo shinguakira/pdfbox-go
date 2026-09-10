@@ -6,6 +6,8 @@
 package state
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream"
@@ -108,13 +110,30 @@ func NewConcatenate(context *contentstream.PDFStreamEngine) *Concatenate {
 func (p *Concatenate) Name() string { return operator.Concat }
 
 // Process concatenates the matrix to the current transformation matrix.
-func (p *Concatenate) Process(op *operator.Operator, arguments []cos.Base) error {
+func (p *Concatenate) Process(op *operator.Operator, arguments []cos.Base) (err error) {
 	if len(arguments) < 6 {
 		return operator.MissingOperand(op, arguments)
 	}
 	if !contentstream.AllOperandsAre(arguments, isNumber) {
 		return nil
 	}
+	// PDFBOX-6255: a product that runs off the end of the float range raises
+	// the unchecked IllegalArgumentException, and this operator is the only
+	// place in PDFBox that catches it and rethrows it as an IOException. The
+	// port raises it as a panic carrying util.ErrIllegalMatrixValues, so the
+	// recover takes that one value and lets every other panic through.
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		if failure, isError := recovered.(error); isError &&
+			errors.Is(failure, util.ErrIllegalMatrixValues) {
+			err = fmt.Errorf("%s: %w", op.Name(), failure)
+			return
+		}
+		panic(recovered)
+	}()
 	p.Context().GraphicsState().CurrentTransformationMatrix().Concatenate(matrixOf(arguments))
 	return nil
 }
