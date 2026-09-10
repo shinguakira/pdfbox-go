@@ -1967,6 +1967,16 @@ the entry is written by the add that needs it. Tested by
 each on the object `NewPDUserAttributeObject` builds — the one the entry says
 throws from every method.
 
+**Resolved upstream** Apache `d404dd774`, `c766e8298` and `2ff5c9ab3`,
+PDFBOX-5660, 2026-09-03, in the sync of 2026-09-07. All three methods gained
+the null check, and the Java landed on the same three answers this branch had
+already chosen: an empty list from the getter, a new `COSArray` written into
+`/P` by `addUserProperty`, and a plain return from `removeUserProperty` rather
+than the array the "what correct would be" above asked for. The Go needs no
+change; the entry stays because it is the record of what the port carried and
+of who noticed. See
+[`tasks/track-upstream-sync.md`](tasks/track-upstream-sync.md).
+
 **Confidence** high. `COSDictionary.getCOSArray` returns null by contract, and
 none of the three tests for it.
 
