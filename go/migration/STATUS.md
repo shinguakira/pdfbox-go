@@ -7050,6 +7050,30 @@ load-bearing by a mutation of its own:
   the other way: with the port's own early return removed, the case panics,
   slice bounds out of range `[:-1]`, inside the fixup.
 
+### D — the adversarial review
+
+- **D1.** No Java moved. `git diff --name-only migration-base..HEAD` matches no
+  `.java`, no `pom.xml`, and nothing under `src/main/resources` or
+  `src/test/resources`. Eighteen files, all Go or `migration/`.
+- **D2.** All sixteen files the merge touched are accounted for: ten rows above
+  and six the task file rules out by name, with the reason for each.
+- **D3.** `checkFloatValues` panics with a value now instead of a string, and
+  four other places in the tree recover. `refreshAppearancesCatching`,
+  `stringWidthOfSpace` and `tools/command.go` all render the recovered value
+  with `%v` or `Error()`, and the message is the same text it was, so none of
+  them changes. `type1Parser` re-panics anything that is not its own type and is
+  unaffected. `matrix_test.go` asserts a bare `recover() != nil`.
+- **D4.** `Concatenate.Process` re-panics anything that is not
+  `util.ErrIllegalMatrixValues`, a runtime error included: those are `error`
+  values, and `errors.Is` says no. The recover is also placed after the two
+  operand checks, so the paths that return early do not pay for it.
+- **D5.** The `defer` on every `cm` was measured rather than assumed. 2000 `cm`
+  operators through `ProcessPage`: 2.77 ms with it and 2.94 ms without, which is
+  noise. Tokenizing the operands is what the time goes on.
+- **D6.** The error `cm` now returns lands in the `default` of
+  `OperatorException`, which rethrows, so the walk ends, which is what Java's
+  IOException does. `TestConcatenateOverflowEndsTheWalk` is that assertion.
+
 ### What is still open
 
 Nothing from this sync. The next one starts from `3d024173c`.
