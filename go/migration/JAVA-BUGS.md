@@ -4489,11 +4489,21 @@ to assert the defect and is gone, with a line there saying where its values
 went.
 
 What it costs is that a tiling pattern no longer matches PDFBox pixel for pixel
-where its tile does not land on whole pixels.
+where its tile does not land on whole pixels: a tile of a different resolution
+cannot agree with one of another, whatever is done with it afterwards.
 `testdata/patternscale.pdf` is that case and
-`TestAScaledTilingPatternRendersAsThePortMeansTo` pins it: 64 of its pixels are
-this fix, and 852 more predate it and are a separate, open difference in how a
-stretched tile resamples.
+`TestAScaledTilingPatternRendersAsThePortMeansTo` pins it, at **1250 differing
+pixels of 7200, 600 of them more than a quarter of a channel**.
+
+**That is not all this fix**, and the two halves do not subtract. Reverting
+only this one, with everything else as it is, leaves 550 and 327 — what is left
+of the tile sampling, which is `TexturePaintContext.Any`'s fixed-point stepping
+and twelve-bit weights and is not reachable without transliterating that class.
+The rest is this fix, and it is not "1250 minus 550" pixels of it: the
+rounding changes the raster the sampler then reads, so it moves pixels the
+sampler would have got right and rights some it would have got wrong. Both
+measurements are in `STATUS.md` under `track/java-bug-fixes`, with the two
+configurations named.
 
 **Confidence** certain. The behaviour above is a JDK 17 run of the method's
 own body, not a reading of it.

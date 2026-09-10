@@ -89,6 +89,15 @@ func TestTheSamePatternKeysTheSame(t *testing.T) {
 	if first == other {
 		t.Error("two different patterns key the same")
 	}
+
+	// So is the same pattern sampled the other way. The source bakes the
+	// filter in -- see tilingSource.blend -- so one built under
+	// NEAREST_NEIGHBOR must not be handed to a fill under BICUBIC.
+	unfiltered, _ := tilingKeyOf(paint, identity, false)
+	if first == unfiltered {
+		t.Error("a filtered and an unfiltered tile share a key, so one fill " +
+			"would take the other's sampling")
+	}
 }
 
 // TestAPatternsTileIsRenderedOnce is what the cache is for.

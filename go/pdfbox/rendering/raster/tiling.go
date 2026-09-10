@@ -218,7 +218,9 @@ func (i *Image) tileImage(paint rendering.TilingPaint,
 // What it costs is that a tiling pattern is rasterized at the size it is drawn
 // at rather than up to a pixel smaller in each direction, so a page of them
 // does not match PDFBox's pixel for pixel. That is measured, in
-// TestTilingPatternsRenderAsPDFBoxRendersThem.
+// TestAScaledTilingPatternRendersAsThePortMeansTo --
+// TestTilingPatternsRenderAsPDFBoxRendersThem cannot show it, because its tiles
+// are 1:1 and a whole number is its own ceiling either way.
 func tilingCeiling(num float64) int {
 	tolerated := math.Ceil(num*1e5) / 1e5
 	return int(math.Ceil(tolerated))

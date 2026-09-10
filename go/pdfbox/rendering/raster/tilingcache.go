@@ -14,10 +14,16 @@ package raster
 // it is worth is what Java's is worth: a pattern filled a hundred times has its
 // tile drawn once.
 //
-// The key is four of TilingPaintParameter's five fields: the pattern matrix,
-// the device transform, the pattern's stream and the colour space. The fifth is
-// the colour, and tilingKeyOf says why it is not here and why leaving it out
-// changes nothing.
+// The key is all five of TilingPaintParameter's fields -- the pattern matrix,
+// the device transform, the pattern's stream, the colour space and the colour
+// -- and two things Java has no field for, because its TexturePaint is handed
+// them afresh on every createContext where the port bakes them into the source:
+// the transform the paint is drawn under, and whether the tile is sampled with
+// the four texels around the point or the one it landed in.
+//
+// The colour is held as its components rather than as the object, which is
+// JAVA-BUGS.md 86: Java keys on the object's identity, and every `scn` builds
+// a new one, so its cache never answers for an uncoloured pattern.
 
 import (
 	"encoding/binary"
