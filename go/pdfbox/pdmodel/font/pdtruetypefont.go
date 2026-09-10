@@ -491,35 +491,29 @@ func (f *PDTrueTypeFont) CodeToGID(code int) (int, error) {
 		if name == ".notdef" {
 			return 0, nil
 		}
-		// (3, 1) - (Windows, Unicode)
-		if f.cmapWinUnicode != nil {
-			unicode := encoding.AdobeGlyphList().ToUnicode(name)
-			if unicode != "" {
-				uni := int([]rune(unicode)[0])
-				gid = f.cmapWinUnicode.GetGlyphID(uni)
-			}
-		}
-		// (1, 0) - (Macintosh, Roman)
-		if gid == 0 && f.cmapMacRoman != nil {
-			if macCode, ok := invertedMacOSRoman[name]; ok {
-				gid = f.cmapMacRoman.GetGlyphID(macCode)
-			}
-		}
-		// 'post' table
-		if gid == 0 {
-			var err error
-			gid, err = f.ttf.NameToGID(name)
-			if err != nil {
-				return 0, err
-			}
-		}
-		return gid, nil
+		return f.codeToGIDByName(name)
 	}
 
 	// symbolic
+	// PDFBOX-5960: some fonts have both the Symbolic and NonSymbolic flags set
+	// in their FontDescriptor, which is self-contradictory. When such a font
+	// also has an Encoding dictionary with a recognised /BaseEncoding, resolve
+	// the glyph by name first (as if the font were non-symbolic), and fall back
+	// to the code-based cmap lookup below only if that fails.
+	if dictionaryEncoding, isDictionary := f.encoding.(*encoding.DictionaryEncoding); isDictionary &&
+		f.hasContradictorySymbolicFlags() &&
+		isRecognizedBaseEncoding(dictionaryEncoding.BaseEncoding()) {
+		name := f.encoding.Name(code)
+		if name != ".notdef" {
+			var err error
+			if gid, err = f.codeToGIDByName(name); err != nil {
+				return 0, err
+			}
+		}
+	}
 	// PDFBOX-4755 / PDF.js #5501
 	// PDFBOX-3965: fallback for font has that the symbol flag but isn't
-	if f.cmapWinUnicode != nil {
+	if gid == 0 && f.cmapWinUnicode != nil {
 		switch f.encoding.(type) {
 		case *encoding.WinAnsiEncoding, *encoding.MacRomanEncoding:
 			name := f.encoding.Name(code)
@@ -563,6 +557,57 @@ func (f *PDTrueTypeFont) CodeToGID(code int) (int, error) {
 		gid = f.cmapMacRoman.GetGlyphID(code)
 	}
 	return gid, nil
+}
+
+// codeToGIDByName resolves a glyph name to a GID, the way a non-symbolic font
+// would: through the (3, 1) Windows/Unicode cmap, the (1, 0) Macintosh/Roman
+// cmap, or the 'post' table, in that order. It answers 0 where none of the
+// three has a mapping for the name.
+func (f *PDTrueTypeFont) codeToGIDByName(name string) (int, error) {
+	gid := 0
+	// (3, 1) - (Windows, Unicode)
+	if f.cmapWinUnicode != nil {
+		unicode := encoding.AdobeGlyphList().ToUnicode(name)
+		if unicode != "" {
+			uni := int([]rune(unicode)[0])
+			gid = f.cmapWinUnicode.GetGlyphID(uni)
+		}
+	}
+	// (1, 0) - (Macintosh, Roman)
+	if gid == 0 && f.cmapMacRoman != nil {
+		if macCode, ok := invertedMacOSRoman[name]; ok {
+			gid = f.cmapMacRoman.GetGlyphID(macCode)
+		}
+	}
+	// 'post' table
+	if gid == 0 {
+		var err error
+		gid, err = f.ttf.NameToGID(name)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return gid, nil
+}
+
+// hasContradictorySymbolicFlags reports whether the font descriptor has both
+// the Symbolic and the NonSymbolic flag set, which says nothing, so that the
+// Symbolic flag cannot be trusted on its own. PDFBOX-5960.
+func (f *PDTrueTypeFont) hasContradictorySymbolicFlags() bool {
+	fd := f.FontDescriptor()
+	return fd != nil && fd.IsSymbolic() && fd.IsNonSymbolic()
+}
+
+// isRecognizedBaseEncoding reports whether the given encoding is one of the
+// standard named ones, that is, whether it came from a recognized
+// /BaseEncoding entry rather than being synthesized as a fallback.
+func isRecognizedBaseEncoding(base encoding.Encoding) bool {
+	switch base.(type) {
+	case *encoding.StandardEncoding, *encoding.WinAnsiEncoding, *encoding.MacRomanEncoding:
+		return true
+	default:
+		return false
+	}
 }
 
 // extractCmapTable picks out the cmap subtables the code to glyph mapping goes
