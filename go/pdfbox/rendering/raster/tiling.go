@@ -39,6 +39,10 @@ type tilingSource struct {
 	// toAnchor maps a device pixel back into the space the anchor is in,
 	// which is the inverse of what Java's createContext hands TexturePaint.
 	toAnchor *geom.AffineTransform
+
+	// filter is Java's TexturePaintContext `filter`, which KEY_INTERPOLATION
+	// decides and PDFRenderer sets to BICUBIC.
+	filter bool
 }
 
 // newTilingSource renders one tile and answers the paint that repeats it.
@@ -75,7 +79,12 @@ func (i *Image) newTilingSource(paint rendering.TilingPaint) (*tilingSource, err
 		// TexturePaint does with one: its context answers a blank raster.
 		return nil, ErrNotDrawn
 	}
-	return &tilingSource{tile: tile, anchor: anchor, toAnchor: toAnchor}, nil
+	return &tilingSource{
+		tile:     tile,
+		anchor:   anchor,
+		toAnchor: toAnchor,
+		filter:   i.interpolation != rendering.NearestNeighbor,
+	}, nil
 }
 
 // anchorRect is getAnchorRect: the box one tile lands in, with the pattern
@@ -229,20 +238,32 @@ func maxInt(a, b int) int {
 // TexturePaint reads each at the coordinate it is given. Sampling the centre
 // instead was tried and takes the patterns page from 525 differing pixels
 // against PDFBox to 3876.
+//
+// Whether the four texels around that point are blended is Java's `filter`
+// flag: TexturePaintContext.getContext takes it from KEY_INTERPOLATION, and
+// PDFRenderer.createDefaultRenderingHints sets that to BICUBIC, so a page
+// renders with it on. It shows only where a tile does not land on whole pixels
+// -- at 1:1 the sample falls on a texel corner and the blend answers that
+// texel -- which is why a page of unscaled patterns is exact either way.
 func (t *tilingSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	point := []float64{float64(x), float64(y)}
 	t.toAnchor.TransformDoubles(point, 0, point, 0, 1)
 
-	column, inside := t.wrap(point[0]-t.anchor.X, t.anchor.Width, t.tile.Bounds().Dx())
+	column, columnWeight, inside := t.wrap(point[0]-t.anchor.X, t.anchor.Width,
+		t.tile.Bounds().Dx())
 	if !inside {
 		return goimagecolor.NRGBA{}, false
 	}
-	row, inside := t.wrap(point[1]-t.anchor.Y, t.anchor.Height, t.tile.Bounds().Dy())
+	row, rowWeight, inside := t.wrap(point[1]-t.anchor.Y, t.anchor.Height,
+		t.tile.Bounds().Dy())
 	if !inside {
 		return goimagecolor.NRGBA{}, false
 	}
 
 	c := t.tile.NRGBAAt(column, row)
+	if t.filter {
+		c = t.blend(column, columnWeight, row, rowWeight)
+	}
 	if c.A == 0 {
 		// Nothing of the tile is here, and a tile is drawn on nothing: the
 		// pattern's own background shows through, which for a PDF is whatever
@@ -252,22 +273,57 @@ func (t *tilingSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	return c, true
 }
 
+// blend is the four-texel average TexturePaintContext.Any makes when its
+// `filter` is on: the texel the sample landed in, the one after it along each
+// axis, and the one diagonally after, weighted by how far into its own texel
+// the sample fell.
+//
+// "The one after" wraps, because the texture repeats -- the texel after the
+// last column is the first column of the next tile, and it is the tile's own
+// first column.
+func (t *tilingSource) blend(column int, columnWeight float64,
+	row int, rowWeight float64) goimagecolor.NRGBA {
+	width, height := t.tile.Bounds().Dx(), t.tile.Bounds().Dy()
+	nextColumn := (column + 1) % width
+	nextRow := (row + 1) % height
+
+	topLeft := t.tile.NRGBAAt(column, row)
+	topRight := t.tile.NRGBAAt(nextColumn, row)
+	bottomLeft := t.tile.NRGBAAt(column, nextRow)
+	bottomRight := t.tile.NRGBAAt(nextColumn, nextRow)
+
+	across := func(left, right uint8) float64 {
+		return float64(left) + columnWeight*(float64(right)-float64(left))
+	}
+	down := func(top, bottom float64) uint8 {
+		return uint8(top + rowWeight*(bottom-top) + 0.5)
+	}
+	return goimagecolor.NRGBA{
+		R: down(across(topLeft.R, topRight.R), across(bottomLeft.R, bottomRight.R)),
+		G: down(across(topLeft.G, topRight.G), across(bottomLeft.G, bottomRight.G)),
+		B: down(across(topLeft.B, topRight.B), across(bottomLeft.B, bottomRight.B)),
+		A: down(across(topLeft.A, topRight.A), across(bottomLeft.A, bottomRight.A)),
+	}
+}
+
 // wrap turns an offset along one axis of the anchor into a column or row of
-// the tile, repeating the tile in both directions.
-func (t *tilingSource) wrap(offset, span float64, pixels int) (int, bool) {
+// the tile, repeating the tile in both directions, and how far into that texel
+// the sample fell.
+func (t *tilingSource) wrap(offset, span float64, pixels int) (int, float64, bool) {
 	if span == 0 || pixels == 0 {
-		return 0, false
+		return 0, 0, false
 	}
 	fraction := math.Mod(offset/span, 1)
 	if fraction < 0 {
 		fraction++
 	}
-	index := int(fraction * float64(pixels))
+	position := fraction * float64(pixels)
+	index := int(position)
 	if index < 0 {
 		index = 0
 	}
 	if index >= pixels {
 		index = pixels - 1
 	}
-	return index, true
+	return index, position - float64(index), true
 }

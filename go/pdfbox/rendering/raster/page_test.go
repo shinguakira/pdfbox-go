@@ -299,25 +299,37 @@ func TestStencilsRenderAsPDFBoxRendersThem(t *testing.T) {
 // package whose numbers are **not** a claim that the port matches PDFBox.
 //
 // The pattern carries a `/Matrix` that scales by 1.37, so its 10-unit step is
-// 13.7 device pixels and its tile does not land on whole ones. Two things
-// separate the two renderers there, and only one of them is deliberate:
+// 13.7 device pixels and its tile does not land on whole ones. `patterns.pdf`
+// cannot show any of this: its tiles are 1:1, where a stretched tile is not
+// stretched, a filtered sample lands on a texel corner, and a whole number is
+// its own ceiling.
 //
-//	852 pixels  predate this branch. A tile stretched over a fraction of a
-//	            pixel resamples differently here than TexturePaint does, and
-//	            `patterns.pdf` could not show it because its tiles are 1:1.
-//	            Sampling the pixel's centre rather than its corner was tried
-//	            and is not the answer -- it takes that page from 525 differing
-//	            pixels to 3876 -- so what it is remains open.
-//	 64 pixels  are JAVA-BUGS.md 85, on purpose. TilingPaint.ceiling truncates,
-//	            so Java rasterizes a 13.7-pixel tile 13 pixels wide and
-//	            stretches it; the port rounds up, as the method's javadoc asks,
-//	            and rasterizes 14.
+// Two things separate the two renderers here, and only one is deliberate:
 //
-// The count is pinned so that neither half moves unremarked.
+//	~550 pixels  are what is left of the tile sampling, with the rest of it
+//	             fixed -- the four-texel blend of TexturePaintContext's
+//	             `filter`, which took the gap from 852 pixels to 550 and the
+//	             badly-wrong ones from 634 to 327. What remains is inside that
+//	             class: it walks the texture with a 16.16 fixed-point
+//	             accumulator and quantises its weights to twelve bits, and
+//	             float weights from a transform do not land in the same place.
+//	~700 pixels  are JAVA-BUGS.md 85, on purpose. TilingPaint.ceiling
+//	             truncates, so Java rasterizes a 13.7-pixel tile 13 pixels wide
+//	             and stretches it; the port rounds up, as the method's javadoc
+//	             asks, and rasterizes 14. A tile of a different resolution
+//	             cannot agree pixel for pixel with one of another.
+//
+// The two are not separable by subtraction -- the second changes what the
+// first samples -- so what is pinned is the total, and the halves are the two
+// measurements above.
+//
+// Sampling the pixel's centre rather than its corner is **not** part of it: a
+// sweep over every quarter-pixel offset in both axes puts the best fit at
+// exactly (0, 0).
 func TestAScaledTilingPatternRendersAsThePortMeansTo(t *testing.T) {
 	const (
-		differingPixels = 916
-		beyondEdges     = 677
+		differingPixels = 1250
+		beyondEdges     = 600
 	)
 	differing, beyond := comparePage(t, "patternscale")
 	if differing != differingPixels || beyond != beyondEdges {

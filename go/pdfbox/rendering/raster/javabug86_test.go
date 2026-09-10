@@ -49,11 +49,11 @@ func TestAnUncolouredPatternIsCachedByItsColour(t *testing.T) {
 	identity := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
 
 	pattern := aTilingPaint(t)
-	first, ok := tilingKeyOf(uncolouredPaintOf(pattern, []float32{1, 0, 0}), identity)
+	first, ok := tilingKeyOf(uncolouredPaintOf(pattern, []float32{1, 0, 0}), identity, true)
 	if !ok {
 		t.Fatal("an uncoloured pattern has no key, so its tile is rendered per fill")
 	}
-	second, _ := tilingKeyOf(uncolouredPaintOf(pattern, []float32{1, 0, 0}), identity)
+	second, _ := tilingKeyOf(uncolouredPaintOf(pattern, []float32{1, 0, 0}), identity, true)
 	if first != second {
 		t.Error("the same pattern in the same colour keys differently, so the " +
 			"cache cannot answer -- which is what the Java does")
@@ -67,8 +67,8 @@ func TestAnUncolouredPatternInAnotherColourIsAnotherTile(t *testing.T) {
 	identity := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
 
 	pattern := aTilingPaint(t)
-	red, _ := tilingKeyOf(uncolouredPaintOf(pattern, []float32{1, 0, 0}), identity)
-	blue, _ := tilingKeyOf(uncolouredPaintOf(pattern, []float32{0, 0, 1}), identity)
+	red, _ := tilingKeyOf(uncolouredPaintOf(pattern, []float32{1, 0, 0}), identity, true)
+	blue, _ := tilingKeyOf(uncolouredPaintOf(pattern, []float32{0, 0, 1}), identity, true)
 	if red == blue {
 		t.Error("the same pattern in two colours keys the same, so one fill " +
 			"would take the other's tile")
@@ -79,7 +79,7 @@ func TestAnUncolouredPatternInAnotherColourIsAnotherTile(t *testing.T) {
 	inGray := pattern
 	inGray.ColorSpace = color.DeviceGray
 	inGray.Color = color.NewPDColorOfComponents([]float32{1, 0, 0}, color.DeviceGray)
-	gray, _ := tilingKeyOf(inGray, identity)
+	gray, _ := tilingKeyOf(inGray, identity, true)
 	if red == gray {
 		t.Error("the same components in two colour spaces key the same")
 	}
@@ -92,7 +92,7 @@ func TestAColouredPatternStillHasNoColourInItsKey(t *testing.T) {
 	identity := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
 
 	paint := aTilingPaint(t)
-	first, ok := tilingKeyOf(paint, identity)
+	first, ok := tilingKeyOf(paint, identity, true)
 	if !ok {
 		t.Fatal("a coloured pattern has no key")
 	}
@@ -101,7 +101,7 @@ func TestAColouredPatternStillHasNoColourInItsKey(t *testing.T) {
 		Transform:     geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
 		PatternMatrix: util.NewMatrixOf(1, 0, 0, 1, 0, 0),
 	}
-	second, _ := tilingKeyOf(same, geom.NewAffineTransform(1, 0, 0, 1, 0, 0))
+	second, _ := tilingKeyOf(same, geom.NewAffineTransform(1, 0, 0, 1, 0, 0), true)
 	if first != second {
 		t.Error("two fills of one coloured pattern key differently")
 	}

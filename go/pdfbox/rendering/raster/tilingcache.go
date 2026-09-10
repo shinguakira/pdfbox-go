@@ -48,6 +48,12 @@ type tilingKey struct {
 	// pixels the tile is rasterized into.
 	deviceScale [6]float64
 
+	// filter is whether the tile is sampled with the four texels around the
+	// point or with the one it landed in, which KEY_INTERPOLATION decides. Java
+	// has no such field, because its TexturePaint is handed the hints afresh on
+	// every createContext; the port bakes the answer into the source.
+	filter bool
+
 	// pattern is the pattern's stream, which is what `patternDict` is.
 	pattern *cos.Stream
 	// colorSpace is the underlying space of an uncoloured pattern, and nil for
@@ -75,7 +81,8 @@ type tilingKey struct {
 // does not catch. The components are what drawTilingPattern paints the tile
 // with, so they are what decides whether two fills produce the same tile, and
 // comparing them is also what keeps toRGB out of it.
-func tilingKeyOf(paint rendering.TilingPaint, transform *geom.AffineTransform) (tilingKey, bool) {
+func tilingKeyOf(paint rendering.TilingPaint, transform *geom.AffineTransform,
+	transformFilter bool) (tilingKey, bool) {
 	stream := paint.Pattern.ContentStream()
 	if stream == nil {
 		return tilingKey{}, false
@@ -92,6 +99,7 @@ func tilingKeyOf(paint rendering.TilingPaint, transform *geom.AffineTransform) (
 	} else {
 		return tilingKey{}, false
 	}
+	key.filter = transformFilter
 	transform.GetMatrix(key.transform[:])
 	if paint.Transform != nil {
 		paint.Transform.GetMatrix(key.deviceScale[:])
@@ -111,7 +119,8 @@ func matrixValues(m *util.Matrix) [6]float32 {
 
 // cachedTilingSource is newTilingSource behind the cache.
 func (i *Image) cachedTilingSource(paint rendering.TilingPaint) (paintSource, error) {
-	key, cacheable := tilingKeyOf(paint, i.transform)
+	key, cacheable := tilingKeyOf(paint, i.transform,
+		i.interpolation != rendering.NearestNeighbor)
 	if cacheable && i.tiles != nil {
 		if cached, found := i.tiles[key]; found {
 			return cached, nil

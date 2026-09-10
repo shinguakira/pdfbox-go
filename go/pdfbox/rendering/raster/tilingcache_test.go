@@ -54,7 +54,7 @@ func TestTheSamePatternKeysTheSame(t *testing.T) {
 	paint := aTilingPaint(t)
 	identity := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
 
-	first, ok := tilingKeyOf(paint, identity)
+	first, ok := tilingKeyOf(paint, identity, true)
 	if !ok {
 		t.Fatal("the paint has no key")
 	}
@@ -65,13 +65,13 @@ func TestTheSamePatternKeysTheSame(t *testing.T) {
 		Transform:     geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
 		PatternMatrix: util.NewMatrixOf(1, 0, 0, 1, 0, 0),
 	}
-	second, _ := tilingKeyOf(same, geom.NewAffineTransform(1, 0, 0, 1, 0, 0))
+	second, _ := tilingKeyOf(same, geom.NewAffineTransform(1, 0, 0, 1, 0, 0), true)
 	if first != second {
 		t.Error("the same pattern painted the same way keys differently")
 	}
 
 	// A different transform is a different tile: the raster is sized by it.
-	under, _ := tilingKeyOf(paint, geom.NewAffineTransform(2, 0, 0, 2, 0, 0))
+	under, _ := tilingKeyOf(paint, geom.NewAffineTransform(2, 0, 0, 2, 0, 0), true)
 	if first == under {
 		t.Error("the same pattern under a different transform keys the same")
 	}
@@ -79,13 +79,13 @@ func TestTheSamePatternKeysTheSame(t *testing.T) {
 	// So is a different pattern matrix.
 	moved := paint
 	moved.PatternMatrix = util.NewMatrixOf(1, 0, 0, 1, 5, 5)
-	shifted, _ := tilingKeyOf(moved, identity)
+	shifted, _ := tilingKeyOf(moved, identity, true)
 	if first == shifted {
 		t.Error("the same pattern under a different pattern matrix keys the same")
 	}
 
 	// And so is a different pattern.
-	other, _ := tilingKeyOf(aTilingPaint(t), identity)
+	other, _ := tilingKeyOf(aTilingPaint(t), identity, true)
 	if first == other {
 		t.Error("two different patterns key the same")
 	}
@@ -99,7 +99,8 @@ func TestAPatternsTileIsRenderedOnce(t *testing.T) {
 	// newTilingSource needs a drawer to run the tile's stream, and there is
 	// none here, so the cache is exercised through its own two calls: the
 	// second must answer the first's value without going near the drawer.
-	key, ok := tilingKeyOf(paint, i.transform)
+	key, ok := tilingKeyOf(paint, i.transform,
+		i.interpolation != rendering.NearestNeighbor)
 	if !ok {
 		t.Fatal("the paint has no key")
 	}
@@ -133,7 +134,7 @@ func TestAPaintWithNoStreamIsNotCached(t *testing.T) {
 		Pattern:       fromDictionary,
 		Transform:     geom.NewAffineTransform(1, 0, 0, 1, 0, 0),
 		PatternMatrix: util.NewMatrixOf(1, 0, 0, 1, 0, 0),
-	}, geom.NewAffineTransform(1, 0, 0, 1, 0, 0))
+	}, geom.NewAffineTransform(1, 0, 0, 1, 0, 0), true)
 	if ok {
 		t.Error("a pattern with no stream was given a key")
 	}
@@ -145,13 +146,13 @@ func TestADifferentDeviceScaleKeysDifferently(t *testing.T) {
 	paint := aTilingPaint(t)
 	identity := geom.NewAffineTransform(1, 0, 0, 1, 0, 0)
 
-	first, ok := tilingKeyOf(paint, identity)
+	first, ok := tilingKeyOf(paint, identity, true)
 	if !ok {
 		t.Fatal("the paint has no key")
 	}
 	atTwice := paint
 	atTwice.Transform = geom.NewAffineTransform(2, 0, 0, 2, 0, 0)
-	second, _ := tilingKeyOf(atTwice, identity)
+	second, _ := tilingKeyOf(atTwice, identity, true)
 	if first == second {
 		t.Error("the same pattern at two device scales keys the same")
 	}

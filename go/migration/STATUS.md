@@ -6917,19 +6917,45 @@ pattern whose `/Matrix` scales by 1.37, so its 10-unit step is 13.7 device
 pixels. `patterns.pdf` could not show it at all — its tiles are 1:1, and a
 whole number is its own ceiling either way.
 
-### What that fixture turned up, which is not this branch's
+### What that fixture turned up, and what was done about it
 
-852 of `patternscale.pdf`'s 916 differing pixels **predate the fix**. A tile
-stretched over a fraction of a pixel resamples differently here than
-`TexturePaint` does. Sampling the pixel's centre rather than its corner was
-tried and is not the answer: it takes `patterns.pdf` from 525 differing pixels
-against PDFBox to 3876, which is decisive evidence that the corner is the
-convention `TexturePaint` reads at. What it is instead is **open**, and the
-test comment says so rather than leaving the number unexplained.
+852 of `patternscale.pdf`'s differing pixels **predated the fix**, and were a
+port defect in merged work rather than an entry of `JAVA-BUGS.md`. The branch
+whose job that would have been — `track/stale-deferrals` — is merged, so it was
+taken here, on the user's instruction.
 
-It is recorded here rather than fixed because this branch fixes entries of
-`JAVA-BUGS.md`, and that is not one. It is a port defect in merged work, and
-the branch whose job that was — `track/stale-deferrals` — is merged too.
+**The tile was sampled with one texel where Java blends four.**
+`TexturePaintContext.getContext` takes a `filter` flag from
+`KEY_INTERPOLATION`, and `PDFRenderer.createDefaultRenderingHints` sets that to
+BICUBIC, so every page PDFBox renders has it on. `patterns.pdf` could not show
+it — at 1:1 the sample lands on a texel corner and the blend answers that texel,
+which is why that page is exact either way — and the scaled fixture could. The
+blend is `tilingSource.blend` now, and the flag is in the cache key because the
+source bakes it in.
+
+It took the gap from **852 differing pixels to 550**, and the ones more than a
+quarter of a channel out from **634 to 327**.
+
+### What is left of it, and why it stops there
+
+The 327 are inside `TexturePaintContext.Any`. It does not compute a position
+from a transform per pixel: it walks the texture with a 16.16 fixed-point
+accumulator, stepping `xerr` and `yerr` along each row, and quantises both
+blend weights to twelve bits before multiplying them. Float weights from an
+inverse transform do not land in the same places, and matching them means
+transliterating that class rather than porting what PDFBox does with it.
+
+Two things were ruled out on the way, by measurement rather than by reading:
+
+- **The sample point is the pixel's corner.** A sweep over every quarter-pixel
+  offset in both axes against the Java render puts the best fit at exactly
+  (0, 0) — 550 differing pixels there, against 604 at a quarter down, 723 at a
+  quarter up, and over 1000 for any offset in x.
+- **The phase and the period are right.** Both renders put a tile boundary
+  every 13.7 pixels and start the first at the same place, and a row of the two
+  agrees exactly except at the edges of what a tile draws — including the
+  interpolated values there, which a nearest-neighbour sampler cannot produce
+  at all.
 
 ### D — the adversarial review
 
@@ -6957,5 +6983,6 @@ the branch whose job that was — `track/stale-deferrals` — is merged too.
 
 ### What is still open
 
-Nothing in `JAVA-BUGS.md`. The 852 pixels above are the one thing this branch
-found and did not fix, and the reason is scope rather than difficulty.
+Nothing in `JAVA-BUGS.md`, and nothing of the tile sampling that can be written
+without transliterating a JDK class. The 327 pixels above are what is left, and
+the section above says what they are.
