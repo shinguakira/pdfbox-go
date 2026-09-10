@@ -5,12 +5,14 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
+import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 /**
  * Reads javabug82-dest.pdf and javabug82-src.pdf, merges the second into the
  * first with PDFMergerUtility.appendDocument, and prints the /Title of every
- * article thread the result carries.
+ * article thread the result carries, and writes the merged document out as
+ * javabug82-merged-java.pdf so that the result can be opened and read.
  *
  * Correct is the destination's one thread followed by the source's two. What
  * it prints instead is in JAVA-BUGS.md 82.
@@ -42,6 +44,9 @@ public class Merge82Drv
             System.out.println("before, source:      " + titles(src));
             new PDFMergerUtility().appendDocument(dest, src);
             System.out.println("after,  destination: " + titles(dest));
+            File merged = new File(dir, "javabug82-merged-java.pdf");
+            dest.save(merged, CompressParameters.NO_COMPRESSION);
+            System.out.println("wrote " + merged);
         }
 
         // The doubling compounds: each merge appends the destination to itself,

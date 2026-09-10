@@ -4405,6 +4405,17 @@ eight copies of one thread, and still nothing of the source's two. The Go
 answers the three titles in order; `TestMergeTheCheckedInPairTakesTheSourcesThreads`
 is that, over the same two files.
 
+Both merges are also saved, so that the result can be opened rather than read
+about: `javabug82-merged-java.pdf` from the driver and `javabug82-merged-go.pdf`
+from `testdata/genjavabug82merged.go`. The two pages of either look the same,
+which is the honest measure of what this costs -- `/Threads` is not something a
+page draws. The difference is one line of the catalog:
+
+```
+java   /Threads 17 0 R  ->  [20 0 R 21 0 R]          both "Destination: quarterly report"
+go     /Threads 17 0 R  ->  [20 0 R 21 0 R 22 0 R]   the destination's, then the source's two
+```
+
 **Confidence** certain, from the source: the two `getCOSArray` calls are on the
 same expression, five words apart.
 
