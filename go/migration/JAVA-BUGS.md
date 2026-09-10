@@ -4357,7 +4357,8 @@ below then appends the destination's threads to themselves.
 on the second line. Every other block of `appendDocument` reads the source and
 writes the destination; this one reads the destination twice.
 
-**Why it matters** Two things, in opposite directions. A source document's
+**Why it matters** Two things, in opposite directions, and the second is worse
+than it looks -- see "the clone is not a dictionary" below. A source document's
 article threads are silently dropped by every merge -- the reading order they
 describe is lost, which is what /Threads is for. And a destination that has
 threads gets them **twice**: the clone is a fresh array of fresh dictionaries,
@@ -4415,6 +4416,44 @@ page draws. The difference is one line of the catalog:
 java   /Threads 17 0 R  ->  [20 0 R 21 0 R]          both "Destination: quarterly report"
 go     /Threads 17 0 R  ->  [20 0 R 21 0 R 22 0 R]   the destination's, then the source's two
 ```
+
+**And the clone is not a dictionary, it is the page.** `cloneForNewDocument`
+deep-copies what it is given, and a thread reaches a long way: thread -> `/F`
+bead -> `/P` **the page** -> `/Parent` **the page tree node** -> the page's
+`/Resources`, its fonts, its content stream. All of it is copied, and none of
+the copy is reachable from the catalog, because the catalog's page tree still
+names the originals. The merged file carries a second whole page as garbage.
+
+In `javabug82-merged-java.pdf`, whose page tree is `[22 0 R 23 0 R]`:
+
+```
+34 0 obj  /Type /Page   /Font 38 0 R  /Contents 39 0 R    <- not in the page tree
+37 0 obj  /Type /Pages  /Kids [34 0 R]  /Count 1          <- an orphan page tree
+39 0 obj  /Length 207                                     <- the content stream, again
+42 0 obj  /Type /Font  /Subtype /Type1                    <- the font, again
+```
+
+So the cost is not bloat in a corner of the catalog. It is **the destination's
+own pages, copied into the file once per merge and doubling each time**,
+measured by the driver over three merges of a one-page source into a one-page
+destination:
+
+| merges | real pages | bytes | objects | `/Type /Page` | `/Type /Pages` |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 2 | 3,486 | 28 | 3 | 2 |
+| 2 | 3 | 7,354 | 54 | 7 | 4 |
+| 3 | 4 | 15,295 | 106 | 15 | 8 |
+
+Four pages of content in a file holding fifteen page objects and eight page
+trees, and the file doubling every time one page is added. On a destination
+whose pages carry embedded fonts or images, that is the file size doubling.
+
+**What limits it** is the destination: `destThreads == null` takes the other
+arm, and there the clone of the destination's absent `/Threads` is null, so
+nothing is written and nothing is copied. Only a destination that already has
+article threads pays. That excludes `pdfbox merge`, which starts from
+`new PDDocument()` -- the damage is on the `appendDocument(existing, src)` path,
+which is what a caller merging into a document they loaded is on.
 
 **Confidence** certain, from the source: the two `getCOSArray` calls are on the
 same expression, five words apart.

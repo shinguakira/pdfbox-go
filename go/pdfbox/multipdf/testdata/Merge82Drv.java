@@ -59,7 +59,10 @@ public class Merge82Drv
                 {
                     new PDFMergerUtility().appendDocument(dest, src);
                 }
-                System.out.println("after " + i + " merge(s):    " + titles(dest));
+                File out = new File(dir, "javabug82-merged" + i + "-java.pdf");
+                dest.save(out, CompressParameters.NO_COMPRESSION);
+                System.out.println("after " + i + " merge(s): " + out.length()
+                        + " bytes, " + titles(dest));
             }
         }
     }
