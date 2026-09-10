@@ -1440,6 +1440,11 @@ func (w *COSWriter) WriteSigned(doc PDDocumentLike, signInterface SignatureInter
 	w.signatureInterface = signInterface
 	w.number = w.pdDocument.Document().HighestXRefObjectNumber()
 	if w.incrementalUpdate {
+		// PDFBOX-6236: use the size of the origin document trailer size as
+		// starter for the incremented one. GetLong answers -1 where there is
+		// no /Size to read, so the max keeps the number the xref gave.
+		trailerSize := trailer.GetLong(cos.Size)
+		w.number = max(trailerSize-1, w.number)
 		w.prepareIncrement()
 	}
 	var idTime int64
