@@ -303,6 +303,11 @@ func (p *FileParser) DereferenceObject(obj *cos.Object) (cos.Base, error) {
 // cross-reference table says it is.
 func (p *FileParser) parseObjectDynamically(objKey *cos.ObjectKey, requireExistingNotCompressedObj bool) (cos.Base, error) {
 	pdfObject := p.Document().ObjectFromPool(objKey)
+	if pdfObject == nil {
+		// PDFBOX-5660: ObjectFromPool answers nil for a nil key, which is what
+		// COSObject(COSBase, ICOSParser) leaves a reference holding.
+		return nil, fmt.Errorf("pdfparser: ObjectFromPool(%v) returns null", objKey)
+	}
 	if !pdfObject.IsObjectNull() {
 		return pdfObject.Object(), nil
 	}
