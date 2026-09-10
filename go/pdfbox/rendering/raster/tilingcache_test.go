@@ -14,7 +14,6 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
-	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/pattern"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
@@ -121,16 +120,9 @@ func TestAPatternsTileIsRenderedOnce(t *testing.T) {
 	}
 }
 
-// TestAnUncolouredPatternIsNotCached is what Java does without meaning to: its
-// key ends with the colour's identity hash and every `scn` makes a new PDColor,
-// so no two fills of an uncoloured pattern ever meet in the map.
-func TestAnUncolouredPatternIsNotCached(t *testing.T) {
-	paint := aTilingPaint(t)
-	paint.Color = color.NewPDColorOfComponents([]float32{1, 0, 0}, color.DeviceRGB)
-	if _, ok := tilingKeyOf(paint, geom.NewAffineTransform(1, 0, 0, 1, 0, 0)); ok {
-		t.Error("an uncoloured pattern was given a key")
-	}
-}
+// What an uncoloured pattern does with the cache is JAVA-BUGS.md 86, and the
+// test that pinned Java's answer -- that it is never cached at all -- is in
+// javabug86_test.go with the corrected one beside it.
 
 // TestAPaintWithNoStreamIsNotCached is the other guard: a pattern read back
 // from a dictionary has no stream to key on, and drawing it every time is
