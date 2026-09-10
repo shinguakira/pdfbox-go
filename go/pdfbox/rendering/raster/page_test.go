@@ -294,3 +294,35 @@ func TestStencilsRenderAsPDFBoxRendersThem(t *testing.T) {
 			differing, beyond, differingPixels, beyondEdges)
 	}
 }
+
+// TestAScaledTilingPatternRendersAsThePortMeansTo is the one page in this
+// package whose numbers are **not** a claim that the port matches PDFBox.
+//
+// The pattern carries a `/Matrix` that scales by 1.37, so its 10-unit step is
+// 13.7 device pixels and its tile does not land on whole ones. Two things
+// separate the two renderers there, and only one of them is deliberate:
+//
+//	852 pixels  predate this branch. A tile stretched over a fraction of a
+//	            pixel resamples differently here than TexturePaint does, and
+//	            `patterns.pdf` could not show it because its tiles are 1:1.
+//	            Sampling the pixel's centre rather than its corner was tried
+//	            and is not the answer -- it takes that page from 525 differing
+//	            pixels to 3876 -- so what it is remains open.
+//	 64 pixels  are JAVA-BUGS.md 85, on purpose. TilingPaint.ceiling truncates,
+//	            so Java rasterizes a 13.7-pixel tile 13 pixels wide and
+//	            stretches it; the port rounds up, as the method's javadoc asks,
+//	            and rasterizes 14.
+//
+// The count is pinned so that neither half moves unremarked.
+func TestAScaledTilingPatternRendersAsThePortMeansTo(t *testing.T) {
+	const (
+		differingPixels = 916
+		beyondEdges     = 677
+	)
+	differing, beyond := comparePage(t, "patternscale")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}

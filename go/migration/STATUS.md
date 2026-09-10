@@ -6117,8 +6117,17 @@ a **keep** names one of the four reasons the task file allows.
 | 82 | fix | the destination's threads merged into themselves |
 | 83 | fix | `/Suspect` written twice and `/UserProperties` never |
 | 84 | fix | a branch that cannot run, so the page mode is never merged |
+| 85 | fix | a method named ceiling that takes the floor, so a tile is rasterized smaller than it is drawn |
+| 86 | fix | a cache keyed on an identity hash of a value rebuilt per operator, so it never answers |
 
-**59 fix, 8 keep, 15 not carried, 2 test only.** The not-carried count was
+**61 fix, 8 keep, 15 not carried, 2 test only.** Entries 85 and 86 were added
+after this branch first merged, by `track/raster`, which is the thing
+`BRANCHING.md` says this branch goes last to avoid: "every branch before it adds
+entries to the file this one works from". It was taken before the last porting
+branch finished, so it is taken again for the two. The counts below were 59 fix
+before them.
+
+**The original 84.** The not-carried count was
 written as 15 in every earlier revision of this line and the list under it
 always had sixteen members, so the fix count was one too many with it; the
 table is what was counted here, and entry 35 then moved from not carried to

@@ -184,21 +184,36 @@ func (i *Image) tileImage(paint rendering.TilingPaint,
 	return tile.dst, nil
 }
 
-// tilingCeiling is TilingPaint.ceiling, and it is not a ceiling.
+// tilingCeiling is TilingPaint.ceiling, **corrected**, and it is the one place
+// in this package where the Go deliberately does not do what the Java does.
+// See migration/JAVA-BUGS.md 85.
+//
+// Java is
 //
 //	BigDecimal decimal = BigDecimal.valueOf(num);
 //	decimal = decimal.setScale(5, RoundingMode.CEILING);
 //	return decimal.intValue();
 //
-// Rounding up at the fifth decimal place and then truncating to an int leaves
-// every value below the next whole number where it was: `ceiling(3.9)` is 3.
-// What the method does is take the floor, with a tolerance of 1e-5 so that a
-// width that should have been whole and came out as 2.999999999 counts as 3.
-// Its name and its javadoc -- "the closest integer which is larger than the
-// given number" -- describe something else. See migration/JAVA-BUGS.md.
+// which rounds up at the fifth decimal place and then **truncates**, so every
+// value below the next whole number stays where it was and `ceiling(3.9)` is 3.
+// Its javadoc asks for two things --
+//
+//	Returns the closest integer which is larger than the given number.
+//	Uses BigDecimal to avoid floating point error which would cause gaps in
+//	the tiling.
+//
+// -- and the truncation satisfies the second and not the first. Rounding up at
+// the fifth decimal place and then taking the ceiling satisfies both: 3.9
+// becomes 4, and a width that should have been whole and came out as
+// 2.999999999 stays 3 rather than buying an extra pixel from a float error.
+//
+// What it costs is that a tiling pattern is rasterized at the size it is drawn
+// at rather than up to a pixel smaller in each direction, so a page of them
+// does not match PDFBox's pixel for pixel. That is measured, in
+// TestTilingPatternsRenderAsPDFBoxRendersThem.
 func tilingCeiling(num float64) int {
-	rounded := math.Ceil(num*1e5) / 1e5
-	return int(rounded)
+	tolerated := math.Ceil(num*1e5) / 1e5
+	return int(math.Ceil(tolerated))
 }
 
 func maxInt(a, b int) int {
@@ -209,6 +224,12 @@ func maxInt(a, b int) int {
 }
 
 // colorAt answers the tile's colour under a device pixel, repeating.
+//
+// The pixel's **corner** is what is mapped back, and not its centre: Java's
+// PaintContext is handed `getRaster(x1, y1, w, h)` in device coordinates and
+// TexturePaint reads each at the coordinate it is given. Sampling the centre
+// instead was tried and takes the patterns page from 525 differing pixels
+// against PDFBox to 3876.
 func (t *tilingSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	point := []float64{float64(x), float64(y)}
 	t.toAnchor.TransformDoubles(point, 0, point, 0, 1)

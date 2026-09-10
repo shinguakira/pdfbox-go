@@ -13,37 +13,10 @@ import (
 	"testing"
 )
 
-// TestTilingCeilingIsAFloor is JAVA-BUGS.md 85.
-//
-// The values are a JDK 17 run of TilingPaint.ceiling's own body:
-//
-//	BigDecimal decimal = BigDecimal.valueOf(num);
-//	decimal = decimal.setScale(5, RoundingMode.CEILING);
-//	return decimal.intValue();
-//
-// It rounds up at the fifth decimal place and then truncates to an int, so
-// every value below the next whole number stays where it was. Its javadoc says
-// "the closest integer which is larger than the given number", and that is not
-// what it does.
-func TestTilingCeilingIsAFloor(t *testing.T) {
-	for _, c := range []struct {
-		num  float64
-		want int
-	}{
-		{3.0, 3},
-		{3.2, 3},
-		{3.5, 3},
-		{3.9, 3},
-		{2.999999999, 3},
-		{3.000001, 3},
-		{0.5, 0},
-		{-3.2, -3},
-	} {
-		if got := tilingCeiling(c.num); got != c.want {
-			t.Errorf("tilingCeiling(%v) = %d, want %d", c.num, got, c.want)
-		}
-	}
-}
+// What TilingPaint.ceiling answers is no longer what tilingCeiling answers:
+// JAVA-BUGS.md 85 is fixed, and javabug85_test.go holds both columns -- the
+// corrected value and, beside each, what the Java gives. The test that pinned
+// the Java's answers alone was here, and is there now.
 
 // TestSignumIsJavas is Math.signum, which keeps the sign of a zero.
 func TestSignumIsJavas(t *testing.T) {
