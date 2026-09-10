@@ -6706,7 +6706,7 @@ Named one by one. Five had none, and all five now do:
 
 | Function | Was | Now |
 | --- | --- | --- |
-| `tilingCeiling` | reached by every pattern, asserted by none | `TestTilingCeilingIsAFloor`, the eight JDK-measured values |
+| `tilingCeiling` | reached by every pattern, asserted by none | `TestTilingCeilingIsAFloor`, the eight JDK-measured values. `track/java-bug-fixes` has since fixed JAVA-BUGS.md 85, and that test is now `TestTilingCeilingRoundsUp` in `javabug85_test.go`, carrying the Java's answers beside the corrected ones |
 | `signum` | only on the `MAXEDGE` path, which nothing took | `TestSignumIsJavas`, negative zero included |
 | `isPositiveZero` | new in D1 | `TestIsPositiveZeroIsFloatCompare` |
 | the soft mask's `/TR` | no fixture carried one | `TestASoftMaskAppliesTheTransferFunction` |
@@ -6732,8 +6732,9 @@ behaviour rather than a simplification.
 
 One found: `JAVA-BUGS.md` 85, `TilingPaint.ceiling`. It has where, the code,
 what correct would be, why it matters, where the Go carries it and how
-confident. **It was not fixed on the way past** — `tilingCeiling` reproduces it
-and the test asserts the wrong answers.
+confident. **It was not fixed on the way past** — `tilingCeiling` reproduced it
+and the test asserted the wrong answers. `track/java-bug-fixes` fixed it
+afterwards, which is that branch's job and not this one's.
 
 ### D8 — this is a substitution, and every deviation is pinned
 
@@ -6867,3 +6868,94 @@ rather than out of bounds. The port's table is a map, so it cannot go out of
 range either, and the callers read `x < Max.X` so the extra entries are never
 seen. Narrowing the clamp would be changing the Java, which this migration does
 not do. Recorded here rather than fixed.
+
+---
+
+## Track `java-bug-fixes` — the second pass, for entries 85 and 86
+
+`BRANCHING.md` says this branch goes **last**, "once every other branch is
+merged", and gives the reason: "every branch before it adds entries to the file
+this one works from". It was taken before the last porting branch finished, and
+`track/raster` then added two entries. So it is taken again, for those two and
+for nothing else.
+
+Every other branch really is merged now, so there is no third pass to expect.
+
+### A0 — the triage
+
+Both **fix**. Neither is a keep for any of the four reasons: what correct would
+be is a fact in both cases, and a caller can tell the difference in both.
+
+| # | Column | Why |
+| ---: | --- | --- |
+| 85 | fix | a method named `ceiling` that takes the floor, so a tile is rasterized smaller than it is drawn |
+| 86 | fix | a cache keyed on an identity hash of a value rebuilt per operator, so it never answers |
+
+**85's correct value comes from the method's own javadoc**, which asks for two
+things — "the closest integer which is larger than the given number" and "avoid
+floating point error which would cause gaps in the tiling" — and whose body
+satisfies the second and not the first. Rounding up at the fifth decimal place
+and then taking the ceiling satisfies both. That is a reading of what is
+written, not a guess about intent, which is what keeps it out of the "correct
+is a judgement" column.
+
+**86's comes from what the class is for.** A cache that never answers is not
+one, and what distinguishes two fills of an uncoloured pattern is the colour's
+components and their space — the two things `drawTilingPattern` is handed and
+paints the tile with.
+
+### What each fix cost
+
+| | Where | What moved |
+| --- | --- | --- |
+| 85 | `raster/tiling.go`, `tilingCeiling` | a tile whose device size is not whole is rasterized a pixel bigger in each direction |
+| 86 | `raster/tilingcache.go`, `tilingKeyOf` | `patterns.pdf` renders three tiles instead of one, and the two it used to throw away are kept |
+
+**85 is the only fix in this branch that makes a rendered page differ from
+PDFBox's**, and `testdata/patternscale.pdf` is the page that shows it: a
+pattern whose `/Matrix` scales by 1.37, so its 10-unit step is 13.7 device
+pixels. `patterns.pdf` could not show it at all — its tiles are 1:1, and a
+whole number is its own ceiling either way.
+
+### What that fixture turned up, which is not this branch's
+
+852 of `patternscale.pdf`'s 916 differing pixels **predate the fix**. A tile
+stretched over a fraction of a pixel resamples differently here than
+`TexturePaint` does. Sampling the pixel's centre rather than its corner was
+tried and is not the answer: it takes `patterns.pdf` from 525 differing pixels
+against PDFBox to 3876, which is decisive evidence that the corner is the
+convention `TexturePaint` reads at. What it is instead is **open**, and the
+test comment says so rather than leaving the number unexplained.
+
+It is recorded here rather than fixed because this branch fixes entries of
+`JAVA-BUGS.md`, and that is not one. It is a port defect in merged work, and
+the branch whose job that was — `track/stale-deferrals` — is merged too.
+
+### D — the adversarial review
+
+- **D1.** Both divergences are exactly what their entry describes and no wider.
+  `tilingCeiling` changes one arithmetic step; `tilingKeyOf` adds two fields to
+  a key. Both sites carry a comment saying what the Java does and the entry
+  number.
+- **D2.** `tilingCeiling` has two callers, both the tile raster's size in
+  `tileImage`. `tilingKeyOf` has one, `cachedTilingSource`. Neither fix reaches
+  anything the port **writes**; both are render-time only. Nothing was
+  compensating for either bug: `maxInt(1, ...)` guards a zero and still does.
+- **D3.** Two ported expectations moved, and both are case 1 of "when a ported
+  test fails" — the test asserted the bug. `TestTilingCeilingIsAFloor` and
+  `TestAnUncolouredPatternIsNotCached` are gone, the Java's answers are in the
+  `javabug8*_test.go` beside the corrected ones, and a line in each old file
+  says where they went.
+- **D4.** Each fix has a test that fails without it, re-run with the fix
+  reverted: `TestTilingCeilingRoundsUp` (five of seven rows) and
+  `TestAPageOfUncolouredPatternsRendersEachTileOnce` (1 tile against 3).
+- **D5.** The keep column is untouched. Neither fix goes near a kept entry.
+- **D6.** 86 entries, none deleted, 64 now carrying a "Fixed in the Go" line.
+  Both new entries say where the Go differs. `track/raster`'s own review said
+  85 "was not fixed on the way past", which was true of that branch; a line
+  there now points at this one.
+
+### What is still open
+
+Nothing in `JAVA-BUGS.md`. The 852 pixels above are the one thing this branch
+found and did not fix, and the reason is scope rather than difficulty.

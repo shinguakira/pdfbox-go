@@ -4472,10 +4472,28 @@ maps the image onto the anchor rectangle whatever size it is, which is why this
 has never been visible as the "gaps in the tiling" the comment is guarding
 against.
 
-**Where the Go carries it** `go/pdfbox/rendering/raster/tiling.go`,
-`tilingCeiling`, which computes `int(math.Ceil(num*1e5) / 1e5)` -- the same two
-steps -- with the comment saying it is not a ceiling and why it is written that
+**Where the Go carried it** `go/pdfbox/rendering/raster/tiling.go`,
+`tilingCeiling`, which computed `int(math.Ceil(num*1e5) / 1e5)` -- the same two
+steps -- with the comment saying it is not a ceiling and why it was written that
 way.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 85. `tilingCeiling` rounds up
+at the fifth decimal place and then takes the **ceiling** rather than the
+truncation, which is the reading that satisfies both sentences of the javadoc:
+3.9 becomes 4, and a width that should have been whole and came out as
+2.999999999 stays 3 rather than buying an extra pixel from a float error.
+Tested by `TestTilingCeilingRoundsUp` in
+`go/pdfbox/rendering/raster/javabug85_test.go`, which keeps the Java's answer
+beside each corrected one; `TestTilingCeilingIsAFloor` in `tiling_test.go` used
+to assert the defect and is gone, with a line there saying where its values
+went.
+
+What it costs is that a tiling pattern no longer matches PDFBox pixel for pixel
+where its tile does not land on whole pixels.
+`testdata/patternscale.pdf` is that case and
+`TestAScaledTilingPatternRendersAsThePortMeansTo` pins it: 64 of its pixels are
+this fix, and 852 more predate it and are a separate, open difference in how a
+stretched tile resamples.
 
 **Confidence** certain. The behaviour above is a JDK 17 run of the method's
 own body, not a reading of it.
@@ -4550,12 +4568,24 @@ uncoloured pattern, and comparing them directly rather than through `toRGB`.
 a hatched table, a shaded map — renders its tile once per fill. The tile is a
 content stream run through the whole `PageDrawer`, so it is not cheap.
 
-**Where the Go carries it**
-`go/pdfbox/rendering/raster/tilingcache.go`, `tilingKeyOf`, which answers no
-key at all for a paint that carries a colour. The effect is Java's — an
-uncoloured pattern is drawn every time and a coloured one is cached — and the
-comment says that it is Java's by accident rather than by design.
-`TestAnUncolouredPatternIsNotCached` pins it.
+**Where the Go carried it**
+`go/pdfbox/rendering/raster/tilingcache.go`, `tilingKeyOf`, which answered no
+key at all for a paint that carries a colour. The effect was Java's — an
+uncoloured pattern drawn every time and a coloured one cached — and the
+comment said that it was Java's by accident rather than by design.
+
+**Fixed in the Go** `track/java-bug-fixes`, entry 86. The key holds the
+colour's components and their colour space. Those are what `drawTilingPattern`
+paints the tile with, so they are what decides whether two fills produce the
+same tile, and comparing them directly is also what keeps `toRGB` out of it.
+Rendering `testdata/patterns.pdf` goes from one cached tile to three — one for
+the coloured pattern and one for each colour of the uncoloured one — which is
+what that page needs. Tested by `TestAnUncolouredPatternIsCachedByItsColour`,
+`TestAnUncolouredPatternInAnotherColourIsAnotherTile` and
+`TestAPageOfUncolouredPatternsRendersEachTileOnce` in
+`go/pdfbox/rendering/raster/javabug86_test.go`;
+`TestAnUncolouredPatternIsNotCached` in `tilingcache_test.go` used to assert
+the defect and is gone.
 
 **Confidence** certain for the first half, from the four sources quoted. The
 second half is a reading: it needs two distinct `PDColor` instances to collide
