@@ -8,11 +8,10 @@ package raster
 // backend of its own -- this one, recursively -- and repeats it here, because
 // there is no TexturePaint to hand it to.
 //
-// TilingPaintFactory is not ported. All it is is a WeakHashMap in front of the
-// constructor, keyed on the matrix, the pattern dictionary, the colour and the
-// transform; Go has no weak reference, and a cache that never releases is
-// worse than none. What it buys is one render of a tile per distinct pattern
-// per page, and what it costs to leave out is one render per fill.
+// TilingPaintFactory, the WeakHashMap in front of the constructor, is
+// tilingcache.go. What it buys is one render of a tile per distinct pattern per
+// page, and Go has no weak reference, so the lifetime is written down there
+// instead of inferred from one.
 
 import (
 	goimage "image"
@@ -40,6 +39,10 @@ type tilingSource struct {
 	// toAnchor maps a device pixel back into the space the anchor is in,
 	// which is the inverse of what Java's createContext hands TexturePaint.
 	toAnchor *geom.AffineTransform
+
+	// filter is Java's TexturePaintContext `filter`, which KEY_INTERPOLATION
+	// decides and PDFRenderer sets to BICUBIC.
+	filter bool
 }
 
 // newTilingSource renders one tile and answers the paint that repeats it.
@@ -76,7 +79,12 @@ func (i *Image) newTilingSource(paint rendering.TilingPaint) (*tilingSource, err
 		// TexturePaint does with one: its context answers a blank raster.
 		return nil, ErrNotDrawn
 	}
-	return &tilingSource{tile: tile, anchor: anchor, toAnchor: toAnchor}, nil
+	return &tilingSource{
+		tile:     tile,
+		anchor:   anchor,
+		toAnchor: toAnchor,
+		filter:   i.interpolation != rendering.NearestNeighbor,
+	}, nil
 }
 
 // anchorRect is getAnchorRect: the box one tile lands in, with the pattern
@@ -184,21 +192,38 @@ func (i *Image) tileImage(paint rendering.TilingPaint,
 	return tile.dst, nil
 }
 
-// tilingCeiling is TilingPaint.ceiling, and it is not a ceiling.
+// tilingCeiling is TilingPaint.ceiling, **corrected**, and it is the one place
+// in this package where the Go deliberately does not do what the Java does.
+// See migration/JAVA-BUGS.md 85.
+//
+// Java is
 //
 //	BigDecimal decimal = BigDecimal.valueOf(num);
 //	decimal = decimal.setScale(5, RoundingMode.CEILING);
 //	return decimal.intValue();
 //
-// Rounding up at the fifth decimal place and then truncating to an int leaves
-// every value below the next whole number where it was: `ceiling(3.9)` is 3.
-// What the method does is take the floor, with a tolerance of 1e-5 so that a
-// width that should have been whole and came out as 2.999999999 counts as 3.
-// Its name and its javadoc -- "the closest integer which is larger than the
-// given number" -- describe something else. See migration/JAVA-BUGS.md.
+// which rounds up at the fifth decimal place and then **truncates**, so every
+// value below the next whole number stays where it was and `ceiling(3.9)` is 3.
+// Its javadoc asks for two things --
+//
+//	Returns the closest integer which is larger than the given number.
+//	Uses BigDecimal to avoid floating point error which would cause gaps in
+//	the tiling.
+//
+// -- and the truncation satisfies the second and not the first. Rounding up at
+// the fifth decimal place and then taking the ceiling satisfies both: 3.9
+// becomes 4, and a width that should have been whole and came out as
+// 2.999999999 stays 3 rather than buying an extra pixel from a float error.
+//
+// What it costs is that a tiling pattern is rasterized at the size it is drawn
+// at rather than up to a pixel smaller in each direction, so a page of them
+// does not match PDFBox's pixel for pixel. That is measured, in
+// TestAScaledTilingPatternRendersAsThePortMeansTo --
+// TestTilingPatternsRenderAsPDFBoxRendersThem cannot show it, because its tiles
+// are 1:1 and a whole number is its own ceiling either way.
 func tilingCeiling(num float64) int {
-	rounded := math.Ceil(num*1e5) / 1e5
-	return int(rounded)
+	tolerated := math.Ceil(num*1e5) / 1e5
+	return int(math.Ceil(tolerated))
 }
 
 func maxInt(a, b int) int {
@@ -209,20 +234,38 @@ func maxInt(a, b int) int {
 }
 
 // colorAt answers the tile's colour under a device pixel, repeating.
+//
+// The pixel's **corner** is what is mapped back, and not its centre: Java's
+// PaintContext is handed `getRaster(x1, y1, w, h)` in device coordinates and
+// TexturePaint reads each at the coordinate it is given. Sampling the centre
+// instead was tried and takes the patterns page from 525 differing pixels
+// against PDFBox to 3876.
+//
+// Whether the four texels around that point are blended is Java's `filter`
+// flag: TexturePaintContext.getContext takes it from KEY_INTERPOLATION, and
+// PDFRenderer.createDefaultRenderingHints sets that to BICUBIC, so a page
+// renders with it on. It shows only where a tile does not land on whole pixels
+// -- at 1:1 the sample falls on a texel corner and the blend answers that
+// texel -- which is why a page of unscaled patterns is exact either way.
 func (t *tilingSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	point := []float64{float64(x), float64(y)}
 	t.toAnchor.TransformDoubles(point, 0, point, 0, 1)
 
-	column, inside := t.wrap(point[0]-t.anchor.X, t.anchor.Width, t.tile.Bounds().Dx())
+	column, columnWeight, inside := t.wrap(point[0]-t.anchor.X, t.anchor.Width,
+		t.tile.Bounds().Dx())
 	if !inside {
 		return goimagecolor.NRGBA{}, false
 	}
-	row, inside := t.wrap(point[1]-t.anchor.Y, t.anchor.Height, t.tile.Bounds().Dy())
+	row, rowWeight, inside := t.wrap(point[1]-t.anchor.Y, t.anchor.Height,
+		t.tile.Bounds().Dy())
 	if !inside {
 		return goimagecolor.NRGBA{}, false
 	}
 
 	c := t.tile.NRGBAAt(column, row)
+	if t.filter {
+		c = t.blend(column, columnWeight, row, rowWeight)
+	}
 	if c.A == 0 {
 		// Nothing of the tile is here, and a tile is drawn on nothing: the
 		// pattern's own background shows through, which for a PDF is whatever
@@ -232,22 +275,57 @@ func (t *tilingSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	return c, true
 }
 
+// blend is the four-texel average TexturePaintContext.Any makes when its
+// `filter` is on: the texel the sample landed in, the one after it along each
+// axis, and the one diagonally after, weighted by how far into its own texel
+// the sample fell.
+//
+// "The one after" wraps, because the texture repeats -- the texel after the
+// last column is the first column of the next tile, and it is the tile's own
+// first column.
+func (t *tilingSource) blend(column int, columnWeight float64,
+	row int, rowWeight float64) goimagecolor.NRGBA {
+	width, height := t.tile.Bounds().Dx(), t.tile.Bounds().Dy()
+	nextColumn := (column + 1) % width
+	nextRow := (row + 1) % height
+
+	topLeft := t.tile.NRGBAAt(column, row)
+	topRight := t.tile.NRGBAAt(nextColumn, row)
+	bottomLeft := t.tile.NRGBAAt(column, nextRow)
+	bottomRight := t.tile.NRGBAAt(nextColumn, nextRow)
+
+	across := func(left, right uint8) float64 {
+		return float64(left) + columnWeight*(float64(right)-float64(left))
+	}
+	down := func(top, bottom float64) uint8 {
+		return uint8(top + rowWeight*(bottom-top) + 0.5)
+	}
+	return goimagecolor.NRGBA{
+		R: down(across(topLeft.R, topRight.R), across(bottomLeft.R, bottomRight.R)),
+		G: down(across(topLeft.G, topRight.G), across(bottomLeft.G, bottomRight.G)),
+		B: down(across(topLeft.B, topRight.B), across(bottomLeft.B, bottomRight.B)),
+		A: down(across(topLeft.A, topRight.A), across(bottomLeft.A, bottomRight.A)),
+	}
+}
+
 // wrap turns an offset along one axis of the anchor into a column or row of
-// the tile, repeating the tile in both directions.
-func (t *tilingSource) wrap(offset, span float64, pixels int) (int, bool) {
+// the tile, repeating the tile in both directions, and how far into that texel
+// the sample fell.
+func (t *tilingSource) wrap(offset, span float64, pixels int) (int, float64, bool) {
 	if span == 0 || pixels == 0 {
-		return 0, false
+		return 0, 0, false
 	}
 	fraction := math.Mod(offset/span, 1)
 	if fraction < 0 {
 		fraction++
 	}
-	index := int(fraction * float64(pixels))
+	position := fraction * float64(pixels)
+	index := int(position)
 	if index < 0 {
 		index = 0
 	}
 	if index >= pixels {
 		index = pixels - 1
 	}
-	return index, true
+	return index, position - float64(index), true
 }
