@@ -289,6 +289,7 @@ func TestToString(t *testing.T) {
 	tzMaputo := mustLoadZone(t, "Africa/Maputo")        // +2 +2
 	tzAruba := mustLoadZone(t, "America/Aruba")         // -4 -4
 	tzJamaica := mustLoadZone(t, "America/Jamaica")     // -5 -5
+	tzMcMurdo := mustLoadZone(t, "Antarctica/McMurdo")  // +12 +13
 	tzAdelaide := mustLoadZone(t, "Australia/Adelaide") // +9:30 +10:30
 
 	if _, ok := ToCalendar(""); ok {
@@ -311,6 +312,19 @@ func TestToString(t *testing.T) {
 	checkToString(t, 2020, 2, 29, 0, 0, 0, tzMaputo, +2, 0)
 	checkToString(t, 2015, 8, 28, 3, 14, 15, tzAdelaide, +9, 30)
 	checkToString(t, 2016, 2, 28, 3, 14, 15, tzAdelaide, +10, 30)
+	// PDFBOX-6254, Apache 0079a9cc7. These seven replaced a twelve-month loop
+	// that asserted +0 for every month of the year, under a zone the Java asked
+	// for as "Antartica/McMurdo": TimeZone.getTimeZone answers GMT for a name it
+	// does not know, so the loop was asserting nothing about McMurdo at all. The
+	// port had dropped the loop rather than carry it, because Go's
+	// LoadLocation reports the unknown name instead of substituting.
+	checkToString(t, 1980, 1, 1, 1, 14, 15, tzMcMurdo, +13, 0)
+	checkToString(t, 1983, 3, 1, 1, 14, 15, tzMcMurdo, +13, 0)
+	checkToString(t, 1984, 4, 1, 1, 14, 15, tzMcMurdo, +12, 0)
+	checkToString(t, 1988, 8, 1, 1, 14, 15, tzMcMurdo, +12, 0)
+	checkToString(t, 1989, 9, 4, 1, 14, 15, tzMcMurdo, +12, 0)
+	checkToString(t, 1990, 10, 4, 1, 14, 15, tzMcMurdo, +12, 0)
+	checkToString(t, 1991, 11, 4, 1, 14, 15, tzMcMurdo, +13, 0)
 }
 
 // mustLoadZone loads a zone or fails the test.
