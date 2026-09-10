@@ -54,6 +54,68 @@ to write down.
 reader's only handle on any of this is "JAVA-BUGS.md 47", and the task files,
 the commit messages and the comments in the Go all use it.
 
+## How they group
+
+Written once all 86 were in. The numbered list below is in the order the
+defects were found, which is the order the port went in, and that order says
+nothing about what any of them takes to reach or how much it costs. This is the
+second index.
+
+### By what it takes to reproduce one
+
+The question anyone judging an entry asks first. Every number appears exactly
+once.
+
+| | Group | Entries | | What reproducing one takes |
+| --- | --- | --- | ---: | --- |
+| A | parser and filters | 6, 8, 9, 10, 14, 23, 27, 29, 30, 32, 63 | 11 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream |
+| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86 | 7 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
+| C | fonts | 12, 13, 16, 17, 18, 19, 20, 21, 74 | 9 | **a font file, not a PDF.** A CID-keyed CFF with a sheared FontMatrix in both DICTs, a `uniXXXX` name with no cmap, a scan of the system fonts |
+| D | XMP | 56, 57 | 2 | a malformed XMP packet, which a PDF can carry |
+| E | writing, merging, round trip | 33, 35, 40, 43, 44, 45, 48, 79, 82, 83 | 10 | **write it and read it back.** `/Type /BEAD`, `/Reasons` written as strings and read as names, a merge that mixes the destination into itself |
+| F | the Java API alone | 1, 5, 24, 25, 26, 34, 38, 39, 41, 52, 53, 54, 55, 58, 59, 60, 61, 64 | 18 | **no PDF reaches these.** The caller has to hold the object and call the method |
+| G | the io layer | 2, 7, 47, 62, 65, 66, 67, 68, 69, 70, 71, 72, 73 | 13 | timing, or the life of the process: a lock order, a leaked handle, a swallowed close failure, a read count that is one too many |
+| H | unreachable code | 3, 11, 22, 28, 36, 37, 42, 80, 84 | 9 | **nothing reproduces these.** The defect is that a branch cannot be taken: `/Suspects` cannot be set to true, `KerningTable`'s version 1 arm cannot run, the merge's page-mode branch cannot run |
+| I | a Java test | 4, 46, 78, 81 | 4 | nothing. The library is right and the test is not |
+| J | tools and diagnostics | 75, 76, 77 | 3 | run the command |
+
+So **20 of 86 are reachable by handing PDFBox a file** — A, B and D — and 29 if
+a font counts. The rest need an API call, a race, or cannot be reached at all.
+
+### By the shape of the mistake
+
+Not a partition: an entry can be two shapes at once, and 28 is.
+
+| Shape | Entries | |
+| --- | --- | ---: |
+| a setter and its getter disagree on the type, so nothing round-trips | 40, 43, 44, 54, 55 | 5 |
+| the `-1` a read returns is added to a count | 2, 3, 30 | 3 |
+| fields saved and restored without a `finally`, so a throw leaves the wreckage | 47, 49, 50, 71, 73 | 5 |
+| a null that is never checked | 14, 25, 38, 52, 57, 60, 65, 76 | 8 |
+| bits and integers: `%` for `&`, a truncation to 32, a sign extension, a floor called a ceiling | 1, 16, 19, 20, 28, 74, 85 | 7 |
+| a branch that cannot be taken | 22, 28, 36, 37, 42, 80, 84, 86 | 8 |
+
+Five of the six shapes repeat across files that have nothing to do with each
+other, which is the argument that they are mistakes rather than decisions: the
+same `-1` accumulation is written out three times, in three packages, by three
+people.
+
+### Two things the grouping shows
+
+**Group B cannot fail upstream's build.** PDFBox has no rendering test — the
+finding that `track/raster` was built around — so nothing in that group has a
+test that could ever go red. 85 and 86 were found by running the JDK as a
+reference implementation and comparing pixels, which upstream has no way to do.
+
+**Group C is CI-dependent for three of its nine.** 19, 20 and 21 are in
+`FileSystemFontProvider`, which walks the fonts installed on the machine. What
+reproduces them depends on what is installed.
+
+**The null group is the one upstream is currently working through.** Every
+`PDFBOX-5660` commit in the sync of 2026-09-07 is a null check, and one of them
+closed entry 38 — see the **Resolved upstream** line there. That campaign is
+where the rest of that row is most likely to go.
+
 ---
 
 ## 1. `COSInteger.equals` truncates to 32 bits
