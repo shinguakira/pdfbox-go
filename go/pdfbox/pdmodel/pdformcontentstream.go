@@ -7,10 +7,6 @@ import (
 // PDFormContentStream writes the content stream of a form XObject.
 //
 // Port of PDFormContentStream, which Java declares final.
-//
-// PDPatternContentStream, its one sibling, is not ported: it names
-// PDTilingPattern, which belongs to the rendering this port has not reached.
-// See migration/STATUS.md.
 type PDFormContentStream struct {
 	pdAbstractContentStream
 }

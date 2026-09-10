@@ -8,11 +8,10 @@ package raster
 // backend of its own -- this one, recursively -- and repeats it here, because
 // there is no TexturePaint to hand it to.
 //
-// TilingPaintFactory is not ported. All it is is a WeakHashMap in front of the
-// constructor, keyed on the matrix, the pattern dictionary, the colour and the
-// transform; Go has no weak reference, and a cache that never releases is
-// worse than none. What it buys is one render of a tile per distinct pattern
-// per page, and what it costs to leave out is one render per fill.
+// TilingPaintFactory, the WeakHashMap in front of the constructor, is
+// tilingcache.go. What it buys is one render of a tile per distinct pattern per
+// page, and Go has no weak reference, so the lifetime is written down there
+// instead of inferred from one.
 
 import (
 	goimage "image"
