@@ -190,6 +190,39 @@ rule that they go down and never up: raising one is a regression, and dropping
 one to zero is the fix and should delete the row. Finding where `Flatten`
 composes the widget's appearance is its own piece of work and is not done here.
 
+
+**A second defect, found through this one and not the cause of it.**
+`test-2586.pdf` is encrypted, and its page content stream is 145 bytes: nine
+whole AES blocks and one byte over. The port refused it —
+"input length not a multiple of the block size" — and answered nothing, so the
+page came back **blank**, silently. Java reads it: `javax.crypto.CipherInputStream`
+does not throw, by contract, and reports the end of the stream having already
+written out every complete block it decrypted.
+
+`securityhandler.go`, `aesCBC`, now decrypts the whole blocks and drops the
+remainder, which is what Java gets.
+`encryption/trailingblock_test.go` pins it at the 160 bytes the running Java
+answers, and at the page's own text; it read 0 before the fix.
+`aesCBCNoPadding` in `standardsecurityhandler.go` carries the same message and
+is left alone: it is the AES-256 key derivation, its inputs are fixed-length,
+and Java's `doFinal` does throw there.
+
+**It is not what makes the four files differ.** The counts above are the same
+before and after the fix, which follows: the page text was missing from the
+render on both sides of the flatten and cancelled out. Two other hypotheses
+were tried and are also wrong, and are written down so they are not tried
+again:
+
+- *the transform is computed at a different precision.* Java's
+  `resolveTransformationMatrix` works in double and rounds once, at the end;
+  the port narrowed to float32 first. Making the port match changed nothing.
+- *the matrix is written to the content stream with fewer digits.* Both write
+  five: Java's `PDPageContentStream` raises the default of four to five, and
+  `pdpagecontentstream.go` does the same.
+
+What the comparison of the two flattened files did establish is that the
+content streams agree operator for operator. Where the remaining difference
+comes from is open.
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
 whose stated reason was the input:

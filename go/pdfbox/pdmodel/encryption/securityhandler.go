@@ -332,15 +332,25 @@ func aesCBC(key, iv, data []byte, decrypt bool) ([]byte, error) {
 		return nil, err
 	}
 	if decrypt {
-		if len(data)%aes.BlockSize != 0 {
-			// javax.crypto.IllegalBlockSizeException
-			return nil, fmt.Errorf(
-				"encryption: input length not a multiple of the block size: %d", len(data))
-		}
 		if len(data) == 0 {
 			return nil, &badPaddingError{reason: "no data to decrypt"}
 		}
-		plain := make([]byte, len(data))
+		// A trailing partial block is not an error here, and this is the one
+		// place in the port where that matters. Java reads through
+		// javax.crypto.CipherInputStream, whose contract is that it does not
+		// throw: the exception doFinal raises on a short final block is
+		// swallowed and the stream reports its end, having already written
+		// every complete block it decrypted. A file whose stream length is not
+		// a whole number of blocks therefore still gives Java its content, and
+		// refusing it here returned nothing at all -- a blank page, silently.
+		// Found by test-2586.pdf, whose page content stream is 145 bytes: nine
+		// whole blocks and one byte over.
+		whole := len(data) - len(data)%aes.BlockSize
+		if whole == 0 {
+			return nil, &badPaddingError{reason: "fewer bytes than one block"}
+		}
+		data = data[:whole]
+		plain := make([]byte, whole)
 		cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, data)
 		unpadded, err := pkcs5Unpad(plain)
 		if err != nil {
