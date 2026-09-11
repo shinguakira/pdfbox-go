@@ -96,7 +96,7 @@ cluster in:
 | ids | Java test class | Go port | input |
 | ---: | --- | --- | --- |
 | 18 | `PDAcroFormFlattenTest` | partial | fetched by `fetch-flatten.ps1` |
-| 17 | `TestPDFParser` | **none** | all present |
+| 17 | `TestPDFParser` | **ported** | all present |
 | 9 | `PDAcroFormTest` | partial | — |
 | 9 | `PDFontTest` | partial | all present, `calibri.ttf` off the machine |
 | 7 | `PDFMergerUtilityTest` | partial | — |
@@ -150,9 +150,10 @@ unwritten test code, and the order to write it in is below.
 per-slice tables rather than from either proxy, and restricted to the entries
 whose stated reason was the input:
 
-1. **`TestPDFParser`, 17 of 18** — "the twenty cases not ported" lists it, and
-   16 of the 17 can be read now. It is the recovery suite for broken files, so
-   it is the largest single quality gap in the tree.
+1. ~~**`TestPDFParser`, 17 of 18**~~ — **done.** All eighteen are ported:
+   seventeen in `go/pdfbox/testpdfparser_test.go` and the render half of
+   testPDFBox3950 in `rendering/raster/pdfbox3950_test.go`, which is where the
+   backend is. Every fixture was already in `target/pdfs`.
 2. **`PDAcroFormFlattenTest`** — renders and compares pixel for pixel, so it
    needs the raster backend, which `track/raster` built. Two of its inputs are
    still absent; the rest are here.
@@ -4105,7 +4106,7 @@ writing one.
 
 | Java case | Why |
 | --- | --- |
-| `TestPDFParser`, 17 of 18 | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetched nothing in a test. **[input present since 2026-09-11; see "What the fetch unblocked"]** 16 of the 17 are readable now; `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` is the one the fetch did not land. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
+| ~~`TestPDFParser`, 17 of 18~~ **ported, all 18** | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetched nothing in a test. **[input present since 2026-09-11; see "What the fetch unblocked"]** 16 of the 17 are readable now; `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` is the one the fetch did not land. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
 | `TestCOSIncrement.testConcurrentModification` | Downloads a PDF from `issues.apache.org` |
 | `TestCOSIncrement.testSubsetting` | ~~Needs `PDType0Font.load`, which is font embedding~~ — **ported by `track/font-embedding`**, which brought the load. It is `TestSubsetting` in `go/pdfbox/increment_test.go`, so nineteen of the twenty are still out |
 | `TestNumberFormatUtil.testFormattingInRange` | A property test comparing against `BigDecimal` with `HALF_UP` rounding. Go has no arbitrary-precision decimal in its standard library, and re-implementing one to check a formatter would be checking the re-implementation. The five example-based cases it is built on are ported, with the exact bytes |
