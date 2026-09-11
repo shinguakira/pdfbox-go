@@ -93,43 +93,58 @@ gave the input as the reason, and that reason has expired.
 caveats above. What it is good for is showing which classes the citations
 cluster in:
 
-| ids | Java test class | Go port | input still absent |
+| ids | Java test class | Go port | input |
 | ---: | --- | --- | --- |
-| 18 | `PDAcroFormFlattenTest` | partial | `PDFBOX-4889-5254.pdf`, `PDFBOX-5225.pdf` |
-| 17 | `TestPDFParser` | **none** | `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` (1 of 17) |
+| 18 | `PDAcroFormFlattenTest` | partial | fetched by `fetch-flatten.ps1` |
+| 17 | `TestPDFParser` | **none** | all present |
 | 9 | `PDAcroFormTest` | partial | — |
-| 9 | `PDFontTest` | partial | `calibri.ttf` |
+| 9 | `PDFontTest` | partial | all present, `calibri.ttf` off the machine |
 | 7 | `PDFMergerUtilityTest` | partial | — |
 | 5 | `LosslessFactoryTest` | partial | — |
-| 5 | `TestSymmetricKeyEncryption` | **none** | `innerFile.pdf` |
+| 5 | `TestSymmetricKeyEncryption` | **none** | all present |
 | 4 | `DomXmpParserTest`, `PDAcroFormGenerateAppearancesTest`, `JPEGFactoryTest` | partial | — |
-| 4 | `TestTextStripper` | **none** | `FVS318Ref.pdf` |
+| 4 | `TestTextStripper` | **none** | all present |
 | 4 | `TestQuality` | **none** | — |
 | 3 | `TestFontEmbedding` | **none** | — |
-| 3 | `TTFSubsetterTest` | partial | `simhei.ttf` |
+| 3 | `TTFSubsetterTest` | partial | no SimHei; the Java skips itself too |
 | 2 ×6 | `XMPMetaDataTest`, `TestRadioButtons`, `PDFieldTreeTest`, `PDChoiceTest`, `PDAcroFormFromAnnotsTest`, `PDInlineImageTest` | 5 partial, 1 none | — |
 | 1 ×24 | the tail, across 24 classes | half and half | — |
 
 "partial" means the class has a Go counterpart that does not cover these
 numbers; "none" means no Go test names the class at all.
 
-**The eight files still absent, and why.** These are the whole of what the fetch
-did not solve:
+**Nothing is absent any more, and five of the eight never were.** An earlier
+draft of this section listed eight missing input files. Chasing each one to its
+source found that most of the list was an artefact of how it was built --
+filenames were pulled out of the Java test sources as quoted strings, and a
+quoted string is not always a file the test opens:
 
-| File | Why |
+| File | What it really was |
 | --- | --- |
-| `calibri.ttf` | a Windows system font, not a download. `PDFontTest` reads it off the machine |
-| `simhei.ttf` | a Chinese system font, the same |
-| `PDFBOX-5955.pdf` | named by `testPDFBox5955`; no pom declares it |
-| `PDFBOX-4889-5254.pdf` | `PDAcroFormFlattenTest` fetches its own list, outside the pom |
-| `PDFBOX-5225.pdf` | the same |
-| `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` | declared by `pdfbox/pom.xml`; **the only one of the eight the pom does declare**, so `fetch-testdata.ps1` should be re-run or the failure looked at |
-| `innerFile.pdf` | `TestSymmetricKeyEncryption` builds it, then reads it back; not an input at all on a green run |
-| `FVS318Ref.pdf` | named by `TestTextStripper`; no pom declares it |
+| `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` | present all along. The pom saves it as `PDFBOX-4153-WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` and `TestPDFParser` opens that name; the bare one appears only in the javadoc above the method |
+| `PDFBOX-5955.pdf` | never a filename. `TestSymmetricKeyEncryption` opens `PDFBOX-5955-40bit.pdf` and `PDFBOX-5955-48bit.pdf`, and both are in `target/pdfs` |
+| `FVS318Ref.pdf` | inside a commented-out `System.setProperty` line in `TestTextStripper`. Nothing reads it |
+| `innerFile.pdf` | written by the test before it is read back |
+| `calibri.ttf` | on the machine, at `C:\Windows\Fonts\calibri.ttf`, which is where `PDFontTest` looks |
 
-So of the 128, exactly **one** is blocked by a download that was supposed to
-work, two by system fonts, and three by files nobody fetches. The rest is
-unwritten test code.
+Of the three that were real, two are now fetched and one is not a blocker:
+
+| File | State |
+| --- | --- |
+| `PDFBOX-4889-5254.pdf` | **fetched.** `PDAcroFormFlattenTest` carries its own list of JIRA URLs in the source rather than in a pom, so `fetch-testdata.ps1` never saw it |
+| `PDFBOX-5225.pdf` | **fetched**, the same way |
+| `simhei.ttf` | a Chinese system font this machine does not have. **The Java test skips itself without it** -- `Assumptions.assumeTrue(simhei != null, "SimHei font not available on this machine, test skipped")` -- so the Go is not behind by skipping too, and the font is Microsoft's and not ours to fetch |
+
+`migration/scripts/fetch-flatten.ps1` fills
+`pdfbox/target/test-output/flatten/in` with the twelve that class downloads: the
+ten in its `String[]` plus the two written inline in `flattenTestPDFBOX5254` and
+`flattenTestPDFBOX5225`. It skips what is already there, and it rejects a
+response that does not start with `%PDF`, because a JIRA attachment that has
+gone away answers with an HTML page and an HTML page fails much later as a parse
+error nobody traces back to the download. All twelve fetch today.
+
+So **no Java test in this tree is now waiting on input.** What is left is
+unwritten test code, and the order to write it in is below.
 
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
