@@ -9,7 +9,7 @@ none". This file is where partial work and the reasons for it get recorded.
 
 Status values: `done` · `in progress` · `blocked` · `not started` · `out of scope`
 
-Last updated: 2026-09-10
+Last updated: 2026-09-12
 
 ## Summary
 
@@ -28,6 +28,88 @@ Last updated: 2026-09-10
 | 7 | `tools` | 26 | **25 of 26**, finished by `track/tools` as far as it could go and then by `track/imageio`, which took five: the four `tools/imageio` classes and `ExtractImages`. Then by `track/multipdf`, which took `PDFMerger` and `OverlayPDF`, and by `track/raster`, which took `PDFToImage`. The one left is `PrintPDF`, which waits for a printing system rather than for a raster. The package is `go/tools` and the one binary `go/cmd/pdfbox`, settled in that branch A0: the row used to say `cmd/pdfbox`, which `PLAN.md` never said, and that is the binary rather than the package. The count was 18 until the three tracks were planned and the classes counted against `go/tools/notbuilt.go`: 17 and 9 is 26, and 18 was not |
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
+
+### What the fetch unblocked, and what it did not
+
+Measured 2026-09-12. On 2026-09-11 the directories the Java build downloads
+into -- `pdfbox/target/{pdfs,fonts,imgs}`, `fontbox/target/fonts` -- were filled
+for the first time, by `migration/scripts/fetch-testdata.ps1`. All 78 downloads
+the four poms declare are present. **Everything
+below this line in the file that says a Java test is unported because its input
+"is not carried here" was true when it was written and is no longer.** Those
+sentences are left standing, because they are the record of why each branch did
+what it did; each one now carries a note saying the reason expired.
+
+The reason expired for almost all of them. All 78 declared downloads are
+present, and `src/test/resources` was always here, so the question "can this
+Java test be ported" is now almost entirely "has anyone written it".
+
+**How far behind the Go is, counted in numbered bugs.** PDFBox writes a
+regression test per JIRA issue and names the issue in it, so the issue number is
+a countable unit of coverage. What is counted below is the *number as a string*
+in a test source file — which over-counts, since an issue mentioned in passing
+in a comment counts the same as a test written for it.
+
+| | |
+| ---: | --- |
+| 244 | distinct `PDFBOX-NNNN` appearing in the Java test tree |
+| 153 | distinct `PDFBOX-NNNN` appearing in the Go test tree |
+| 116 | in both — **48% of the Java's** |
+| 128 | in the Java's tests and not in the Go's |
+| 37 | in the Go's and not in the Java's, every one of them a number the Java names in a **main** source comment and never tests. The port wrote a test for the workaround; upstream has none |
+
+The 128 split by whether the Java class has any Go counterpart at all: **46 in
+classes with none, 86 in classes already partly ported** (132 by this count,
+because four numbers appear in two classes each).
+
+**Where the 128 sit.** Ranked, with what is still missing:
+
+| ids | Java test class | Go port | input still absent |
+| ---: | --- | --- | --- |
+| 18 | `PDAcroFormFlattenTest` | partial | `PDFBOX-4889-5254.pdf`, `PDFBOX-5225.pdf` |
+| 17 | `TestPDFParser` | **none** | `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` (1 of 17) |
+| 9 | `PDAcroFormTest` | partial | — |
+| 9 | `PDFontTest` | partial | `calibri.ttf` |
+| 7 | `PDFMergerUtilityTest` | partial | — |
+| 5 | `LosslessFactoryTest` | partial | — |
+| 5 | `TestSymmetricKeyEncryption` | **none** | `innerFile.pdf` |
+| 4 | `DomXmpParserTest`, `PDAcroFormGenerateAppearancesTest`, `JPEGFactoryTest` | partial | — |
+| 4 | `TestTextStripper` | **none** | `FVS318Ref.pdf` |
+| 4 | `TestQuality` | **none** | — |
+| 3 | `TestFontEmbedding` | **none** | — |
+| 3 | `TTFSubsetterTest` | partial | `simhei.ttf` |
+| 2 ×6 | `XMPMetaDataTest`, `TestRadioButtons`, `PDFieldTreeTest`, `PDChoiceTest`, `PDAcroFormFromAnnotsTest`, `PDInlineImageTest` | 5 partial, 1 none | — |
+| 1 ×24 | the tail, across 24 classes | half and half | — |
+
+"partial" means the class has a Go counterpart that does not cover these
+numbers; "none" means no Go test names the class at all.
+
+**The eight files still absent, and why.** These are the whole of what the fetch
+did not solve:
+
+| File | Why |
+| --- | --- |
+| `calibri.ttf` | a Windows system font, not a download. `PDFontTest` reads it off the machine |
+| `simhei.ttf` | a Chinese system font, the same |
+| `PDFBOX-5955.pdf` | named by `testPDFBox5955`; no pom declares it |
+| `PDFBOX-4889-5254.pdf` | `PDAcroFormFlattenTest` fetches its own list, outside the pom |
+| `PDFBOX-5225.pdf` | the same |
+| `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` | declared by `pdfbox/pom.xml`; **the only one of the eight the pom does declare**, so `fetch-testdata.ps1` should be re-run or the failure looked at |
+| `innerFile.pdf` | `TestSymmetricKeyEncryption` builds it, then reads it back; not an input at all on a green run |
+| `FVS318Ref.pdf` | named by `TestTextStripper`; no pom declares it |
+
+So of the 128, exactly **one** is blocked by a download that was supposed to
+work, two by system fonts, and three by files nobody fetches. The rest is
+unwritten test code.
+
+**The order the work is worth doing in**, by ids bought per unit of effort:
+
+1. `PDAcroFormTest`, 9, inputs present, class already ported — the cheapest nine.
+2. `TestPDFParser`, 16 of 17 — no Go counterpart at all, and it is the recovery
+   suite for broken files, so it is the largest quality gap in the tree.
+3. `PDAcroFormFlattenTest`, 16 of 18 — needs the raster backend, which exists.
+4. `TestFontEmbedding` 3 and `TestQuality` 4 — inputs present, no counterpart.
+5. The tail of 24 singles, one commit each.
 
 
 ## What is left, and the four tracks that claim it
@@ -681,7 +763,7 @@ Two things Go cannot reproduce directly, both commented where they are:
   name.
 
 `TestCMapSubtable` is not ported: both of its tests read fonts the Java build
-downloads into `target/fonts`, which this repository does not carry.
+downloads into `target/fonts`, which this repository does not carry. **[input present since 2026-09-11; see "What the fetch unblocked"]**
 `TestTTFParser.testParseVertical` and `testParseHeaders` likewise.
 
 ### `pdmodel/font/encoding` — all 12 files
@@ -993,7 +1075,7 @@ whole sum is masked, while Go's binds tighter.
 | `CFFParser`, `CFFFont`, `CFFCIDFont`, `CFFType1Font`, the four charsets and the two encodings, `CFFStandardString`, `CFFOperator`, `CharStringCommand`, `Type1CharString`, `Type2CharString`, the two charstring parsers, `DataInput` and its two implementations, `CharStringHandler`, `IndexData`, `FDSelect` and its two formats | `cff/` (15 files) | done — 5 of the 6 Java tests |
 
 `CFFParserTest` skips: it reads a font the Java build downloads into
-`target/fonts`.
+`target/fonts`. **[input present since 2026-09-11; see "What the fetch unblocked"]**
 
 `DataInput.readByte` is `ReadSignedByte` here, because `go vet` reserves
 `ReadByte() (byte, error)` for `io.ByteReader`.
@@ -1325,7 +1407,7 @@ the encrypting code that does not need a writer, and leaves the tests that save
 to the slice that can run them.
 
 `testPDFBox5955` and `testPDFBox5639` read PDFs the Java build downloads into
-`target/pdfs`, which this repository does not carry.
+`target/pdfs`, which this repository does not carry. **[input present since 2026-09-11; see "What the fetch unblocked"]**
 
 ### Infrastructure the port supplies, which is not a migration
 
@@ -1660,7 +1742,7 @@ recursion test for that colour space is what found it.
 | `CCITTFactoryTest`, `LosslessFactoryTest`, `PNGConverterTest`, `PDImageXObjectTest` | no |
 
 `testPDFBOX4517` reads `target/pdfs/PDFBOX-4517-cryptfilter.pdf`, which the Java
-build downloads and this repository does not carry — the same reason two of
+build downloads and this repository does not carry **[input present since 2026-09-11; see "What the fetch unblocked"]** — the same reason two of
 slice 5's tests are absent.
 
 The four image tests that are not ported all **save the document** and several
@@ -1998,7 +2080,7 @@ split a tagged document and check what came with it, and they sit in the
 merger's test class because they use its structure-tree helpers —
 `checkForPageOrphans` and the two static tree flatteners. So they could not be
 ported until this branch brought the flatteners, and once brought, they failed.
-Seven of the eight pass now; the eighth reads `target/pdfs`.
+Seven of the eight pass now; the eighth reads `target/pdfs`. **[input present since 2026-09-11; see "What the fetch unblocked"]**
 
 ### Which Java tests are ported, and which are not
 
@@ -2480,13 +2562,13 @@ compares rendered images:
 
 | Java test | Why |
 | --- | --- |
-| `PDFieldTreeTest` | reads PDFs the build downloads into `target/pdfs` |
+| `PDFieldTreeTest` | reads PDFs the build downloads into `target/pdfs` **[input present since 2026-09-11; see "What the fetch unblocked"]** |
 | `PDAcroFormGenerateAppearancesTest` | the same |
 | `PDAcroFormFromAnnotsTest` | the same |
 | `PDAcroFormFlattenTest` | downloads its PDFs and compares `PDFRenderer` output pixel by pixel |
 | `AppearanceGenerationTest` — the two rendering cases | they compare rendered images; the rest of the class is ported |
 | `TestOptionalContentGroups` — two cases | `testOCGsWithSameNameCanHaveDifferentVisibility` and `testOCGGenerationSameNameCanHaveSameVisibilityOff` read pixels out of a `PDFRenderer` image |
-| `TestFDF.testPDFBox5894` | reads `target/pdfs/PDFBOX-5894.fdf` |
+| `TestFDF.testPDFBox5894` | reads `target/pdfs/PDFBOX-5894.fdf` **[input present since 2026-09-11; see "What the fetch unblocked"]** |
 | `TestPDDocumentCatalog.handleOutputIntents` | builds a `PDOutputIntent` from `sRGB.icc` through the constructor that needs `ICC_Profile`; the half that does not is ported |
 
 `interactive/digitalsignature`, `interactive/measurement` and
@@ -2681,7 +2763,7 @@ found, and each was accounted for:
 - `PDFieldTest.testHashCode` asserts equal hash codes, and Go has no `hashCode`
   contract; `Equals` is ported and `TestFieldEquals` covers it.
 - `TestCheckBox.testPDFBox6207` reads `target/pdfs`, which the Maven build
-  downloads.
+  downloads. **[input present since 2026-09-11; see "What the fetch unblocked"]**
 - **`PDChoiceTest.getOptionsFromMixed` was simply missing**, and is ported now.
 
 The three that stay unported now say so in the header of the file a reader would
@@ -3095,7 +3177,7 @@ Java's three rendering tests and one printing test do not port as they stand.
   pages it writes itself instead, and compares them with PDFBox rather than
   only asking that nothing threw.
 - **`TestQuality`** reads back four pixels of four files from `target/pdfs`,
-  which the build downloads.
+  which the build downloads. **[input present since 2026-09-11; see "What the fetch unblocked"]**
 - **`TestPDFPrintable`** has five cases: three port as they stand — the page
   index, the printer state left unchanged, and the result codes — and two read
   back pixels to see whether the page border came out grey. Those two are asked
@@ -3967,7 +4049,7 @@ writing one.
 
 | Java case | Why |
 | --- | --- |
-| `TestPDFParser`, 17 of 18 | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetches nothing in a test. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
+| `TestPDFParser`, 17 of 18 | They read from `target/pdfs`, a directory the Maven build fills by downloading PDFs over the network. The port fetched nothing in a test. **[input present since 2026-09-11; see "What the fetch unblocked"]** 16 of the 17 are readable now; `WXMDXCYRWFDCMOSFQJ5OAJIAFXYRZ5OA.pdf` is the one the fetch did not land. `testPDFBox3950` also needs `PDFRenderer`, which is behind `rendering.Backend` |
 | `TestCOSIncrement.testConcurrentModification` | Downloads a PDF from `issues.apache.org` |
 | `TestCOSIncrement.testSubsetting` | ~~Needs `PDType0Font.load`, which is font embedding~~ — **ported by `track/font-embedding`**, which brought the load. It is `TestSubsetting` in `go/pdfbox/increment_test.go`, so nineteen of the twenty are still out |
 | `TestNumberFormatUtil.testFormattingInRange` | A property test comparing against `BigDecimal` with `HALF_UP` rounding. Go has no arbitrary-precision decimal in its standard library, and re-implementing one to check a formatter would be checking the re-implementation. The five example-based cases it is built on are ported, with the exact bytes |
@@ -4177,7 +4259,7 @@ Nothing else this branch touched turned out to be the Java behaving oddly.
 
 `TestFontEmbedding`, 17 cases. **Eleven are ported.** The six that are not each
 read a font the Maven build downloads into `target/fonts`, and the port fetches
-nothing in a test:
+nothing in a test: **[input present since 2026-09-11; see "What the fetch unblocked"]**
 
 | Java case | Font it needs |
 | --- | --- |
@@ -4221,7 +4303,7 @@ over.
 
 **`javac` needs no Maven.** 784 sources compile in one call with `log4j-api` on
 the class path. What actually blocks it is one class: `PublicKeySecurityHandler`
-imports Bouncy Castle, there is no jar for it here and no network to fetch one,
+imports Bouncy Castle, there is no jar for it here and nobody has fetched one, **[2026-09-12: the network works — see "The task file's own premise was stale". What is true is that nobody has put it in the local cache.]**
 and `PDDocument` reaches it through `SecurityHandlerFactory`. A stand-in that
 declares the same methods and refuses lets everything compile; it is a build
 shim in a scratch directory, not a change to the reference, and public-key
@@ -4453,7 +4535,7 @@ both, and the Java tests read `System.out` after replacing it.
 **`tools` cannot be run here.** Every other module of this port can be compiled
 with `javac` and driven to settle an argument — `track/font-embedding` did it
 for the whole of `pdfbox`. This one cannot: picocli is not in the local Maven
-repository and there is no network to fetch it. So the CLI layer is ported from
+repository and nobody has fetched it. **[2026-09-12: the network works — see "The task file's own premise was stale". What is true is that nobody has put it in the local cache.]** So the CLI layer is ported from
 the source alone, and the assertion values that *are* Java's come from the four
 ported test classes.
 
@@ -4849,7 +4931,7 @@ which is why there are two backend modules and not one implementation. Writing
 `layoutGlyphVector` in Go is not a port of anything in this repository; it is a
 new component, and a large one. What is offline here is `x/image/font/sfnt`,
 which gives outlines and advances and does no shaping; there is no HarfBuzz
-binding and no `go-text/typesetting` in the module cache, and no network.
+binding and no `go-text/typesetting` in the module cache. **[2026-09-12: the network works — see "The task file's own premise was stale". What is true is that nobody has put it in the local cache.]**
 `fontbox` has GSUB — slice 4 ported it, and `fontbox/ttf/gsub` is in the tree —
 but for positioning it has only the old `kern` table's `KerningSubtable`, no
 GPOS.
@@ -5546,7 +5628,7 @@ The wrapper has to be marshalled by hand.
 **The compression tests were about what a document still says after it has been
 written out compressed** — the same pages, the same thirteen fields, the same
 attachment at the same length. Four of the five cases port; `testPDFBox5927`
-loads a PDF the Maven build downloads and this repository does not carry.
+loads a PDF the Maven build downloads and this repository does not carry **[input present since 2026-09-11; see "What the fetch unblocked"]**.
 
 ### One assertion that could not be ported, and why
 
@@ -5730,7 +5812,7 @@ zero. `ImageIOUtil` picks its writer with a loop that prefers one whose
 metadata *is* writable, and `tools/pom.xml` puts `jai-imageio-core` -- which
 registers such a BMP writer -- on the class path **in test scope**, which is
 why the Java's own `checkBmpResolution` asserts 36 and gets it. The JAI jars
-are not in the local Maven repository and there is no network, so that run
+are not in the local Maven repository and nobody has fetched them, **[2026-09-12: the network works — see "The task file's own premise was stale". What is true is that nobody has put it in the local cache.]** so that run
 could not be made here. The port has no plugin registry and no read-only
 metadata, so it writes the fields always: the JAI-present behaviour, and what
 the test asserts. Recorded as JAVA-BUGS.md 81.
@@ -6461,8 +6543,8 @@ PDFBOX-4750 was about, and that is said in the test.
 **What stays blocked, and why it is not this branch's to unblock.**
 `PDAcroFormFlattenTest` reads a list of PDFs it downloads, and the six
 `TestFontEmbedding` cases read fonts from `target/fonts`. Those directories are
-filled by the Maven build downloading from the issue tracker, both are empty
-here, and **the port fetches nothing in a test** — the rule every slice has
+filled by the Maven build downloading from the issue tracker, both were empty
+here, and **the port fetched nothing in a test** **[input present since 2026-09-11; see "What the fetch unblocked"]** — the rule every slice has
 given for the same omission. The raster was the second reason those three were
 deferred; it was never the only one.
 
