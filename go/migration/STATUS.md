@@ -104,8 +104,8 @@ cluster in:
 | 5 | `TestSymmetricKeyEncryption` | **none** | all present |
 | 4 | `DomXmpParserTest`, `PDAcroFormGenerateAppearancesTest`, `JPEGFactoryTest` | partial | — |
 | 4 | `TestTextStripper` | **none** | all present |
-| 4 | `TestQuality` | **none** | — |
-| 3 | `TestFontEmbedding` | **none** | — |
+| 4 | `TestQuality` | **ported** | — |
+| 3 | `TestFontEmbedding` | **ported** | — |
 | 3 | `TTFSubsetterTest` | partial | no SimHei; the Java skips itself too |
 | 2 ×6 | `XMPMetaDataTest`, `TestRadioButtons`, `PDFieldTreeTest`, `PDChoiceTest`, `PDAcroFormFromAnnotsTest`, `PDInlineImageTest` | 5 partial, 1 none | — |
 | 1 ×24 | the tail, across 24 classes | half and half | — |
@@ -223,6 +223,45 @@ again:
 What the comparison of the two flattened files did establish is that the
 content streams agree operator for operator. Where the remaining difference
 comes from is open.
+
+### `TestFontEmbedding`'s six, and `TestQuality`, ported
+
+**`TestFontEmbedding` is complete, 17 of 17.** The six that were waiting on
+`target/fonts` are in
+`go/pdfbox/pdmodel/font/fontembeddingfonts_test.go`, and every expected value
+is the Java's:
+
+| Java case | What it pins |
+| --- | --- |
+| `testCIDFontType2VerticalSubsetMonospace` | the vertical form of `「` is CID 7392, not the 441 it is without the substitution, and `/W2` is empty because IPA Gothic is monospaced |
+| `testCIDFontType2VerticalSubsetProportional` | CID 12607, not 12461, and `/W2` carries `-570 500 450 -570 500 880` from CID 12607 |
+| `testMaxEntries` | 100 distinct characters, which is exactly `MAX_ENTRIES_PER_OPERATOR`, survive the round trip — the corner where the `/ToUnicode` writer has to open a second operator |
+| `testSurrogatePairCharacter` | U+29E3D twice, PDFBOX-5812 |
+| `testToUnicodePrefersUsedCodePoint` | a glyph reachable from two code points extracts as the one that was written, not the lower one sharing it. The pair is searched for in the font, as the Java does |
+| `testToUnicodeCjkAndRadicalLookAlike` | the same with the pair named: 食 U+98DF and ⻝ U+2EDD share a glyph, and each must come back as itself |
+
+Both vertical cases were mutation-checked: with 7392 moved to 441 and the last
+`/W2` metric to 881 they fail, so the numbers are read out of the font and not
+out of the test.
+
+`testSurrogatePairCharacter` also renders and compares in Java, and Java does
+**not** fail on a difference — its own comment says rendering differs between
+systems and the result has to be looked at. There is nothing to assert there, so
+the port asserts what Java asserts, the round trip through the extractor.
+
+**`TestQuality` is complete, 4 of 4**, in
+`go/pdfbox/rendering/raster/testquality_test.go`. Four cases, each one pixel or
+one count, each the whole of what a numbered bug was about:
+
+| Java case | What it pins |
+| --- | --- |
+| `testPDFBox4831` | a 300 dpi bitonal scan rendered at 300 dpi still holds two colours, and is the scan |
+| `testPDFBox6077` | the gap between a pattern's tiles inside a stencil mask stays white, not opaque black |
+| `testPDFBox5842` | a soft mask on a pattern used as a stencil fill is still visible |
+| `testPDFBox5403` | no hairline seam between tiles shows through text: the red at (159,115) is 48, and under 100 is the assertion |
+
+Mutation-checked on three of the four.
+
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
 whose stated reason was the input:
@@ -233,9 +272,8 @@ whose stated reason was the input:
    backend is. Every fixture was already in `target/pdfs`.
 2. ~~**`PDAcroFormFlattenTest`**~~ — **done**, all thirteen cases, and it found
    a port defect on four of the twelve documents. See the section above.
-3. **`TestFontEmbedding`, the 6 deferred cases** — the fonts are in
-   `target/fonts` now.
-4. **`TestQuality`** — four pixels of four files, all four present.
+3. ~~**`TestFontEmbedding`, the 6 deferred cases**~~ — **done**, 17 of 17.
+4. ~~**`TestQuality`**~~ — **done**, 4 of 4.
 5. **`TestCMapSubtable`, `CFFParserTest`, `MergeAnnotationsTest`,
    `TestFDF.testPDFBox5894`, `TestCheckBox.testPDFBox6207`, `PDFieldTreeTest`**
    and the other singles the tables name — one commit each.
