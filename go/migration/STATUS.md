@@ -44,25 +44,54 @@ The reason expired for almost all of them. All 78 declared downloads are
 present, and `src/test/resources` was always here, so the question "can this
 Java test be ported" is now almost entirely "has anyone written it".
 
-**How far behind the Go is, counted in numbered bugs.** PDFBox writes a
-regression test per JIRA issue and names the issue in it, so the issue number is
-a countable unit of coverage. What is counted below is the *number as a string*
-in a test source file — which over-counts, since an issue mentioned in passing
-in a comment counts the same as a test written for it.
+**How far behind the Go is: two proxies, both of which overstate it.** The
+honest answer is that neither is a measurement, and this section says so before
+giving them, because both were tried and both were caught being wrong.
+
+*Proxy one, the issue number.* PDFBox writes a regression test per JIRA issue and
+names the issue in it, so `PDFBOX-NNNN` as a string is countable.
 
 | | |
 | ---: | --- |
-| 244 | distinct `PDFBOX-NNNN` appearing in the Java test tree |
-| 153 | distinct `PDFBOX-NNNN` appearing in the Go test tree |
-| 116 | in both — **48% of the Java's** |
-| 128 | in the Java's tests and not in the Go's |
-| 37 | in the Go's and not in the Java's, every one of them a number the Java names in a **main** source comment and never tests. The port wrote a test for the workaround; upstream has none |
+| 244 | distinct `PDFBOX-NNNN` in the Java test tree |
+| 153 | distinct `PDFBOX-NNNN` in the Go test tree |
+| 116 | in both |
+| 128 | in the Java's and not the Go's |
+| 37 | in the Go's and not the Java's — every one a number the Java names in a **main** source comment and never tests. The port wrote a test for the workaround; upstream has none |
 
-The 128 split by whether the Java class has any Go counterpart at all: **46 in
-classes with none, 86 in classes already partly ported** (132 by this count,
-because four numbers appear in two classes each).
+**Why 128 is too high.** It counts a citation, not a test. Nine of the 128 are in
+`PDAcroFormTest`, and six of those nine are javadoc lines on methods the port
+already has — `testFlattenWidgetNoRef`, `testAcroFormDefaultFonts`,
+`testDontAddMissingInformationOnDocumentLoad`, `testIllegalFieldsDefinition`,
+`testBadDA`, `testCycle` are all in
+`pdmodel/interactive/form/pdacroform_external_test.go`. The Go simply does not
+repeat the number in the comment.
 
-**Where the 128 sit.** Ranked, with what is still missing:
+*Proxy two, the method name.* The port keeps Java's names — `testBadDA` becomes
+`TestBadDA` — so the names can be matched.
+
+| | |
+| ---: | --- |
+| 977 | distinct `test*`/`should*` method names in the Java test tree |
+| 1,835 | `func Test*` in the Go test tree |
+| 502 | matching by name |
+| 475 | Java names with no Go counterpart |
+
+**Why 475 is too high as well.** The port consolidates. Java's twenty
+`GsubWorkerForBengaliTest.testApplyTransforms_*` methods are one table-driven
+`TestBengaliApplyTransforms`; `BlendModeTest`'s per-mode methods are
+`TestSeparableBlendModes` and `TestNonSeparableBlendModes`. Every consolidated
+case counts as missing under this proxy and is not.
+
+**So the unit that can be trusted is the test class**, which is what the
+per-slice tables in this file already record by hand, class by class, with a
+reason for each one that is absent. Those tables are the backlog. What the fetch
+changed is not their contents but their *reasons*: the thirteen marked below
+gave the input as the reason, and that reason has expired.
+
+**Where the 128 sit.** A pointer, not a backlog — read it with the two
+caveats above. What it is good for is showing which classes the citations
+cluster in:
 
 | ids | Java test class | Go port | input still absent |
 | ---: | --- | --- | --- |
@@ -102,14 +131,26 @@ So of the 128, exactly **one** is blocked by a download that was supposed to
 work, two by system fonts, and three by files nobody fetches. The rest is
 unwritten test code.
 
-**The order the work is worth doing in**, by ids bought per unit of effort:
+**The order the work is worth doing in.** Taken from the hand-maintained
+per-slice tables rather than from either proxy, and restricted to the entries
+whose stated reason was the input:
 
-1. `PDAcroFormTest`, 9, inputs present, class already ported — the cheapest nine.
-2. `TestPDFParser`, 16 of 17 — no Go counterpart at all, and it is the recovery
-   suite for broken files, so it is the largest quality gap in the tree.
-3. `PDAcroFormFlattenTest`, 16 of 18 — needs the raster backend, which exists.
-4. `TestFontEmbedding` 3 and `TestQuality` 4 — inputs present, no counterpart.
-5. The tail of 24 singles, one commit each.
+1. **`TestPDFParser`, 17 of 18** — "the twenty cases not ported" lists it, and
+   16 of the 17 can be read now. It is the recovery suite for broken files, so
+   it is the largest single quality gap in the tree.
+2. **`PDAcroFormFlattenTest`** — renders and compares pixel for pixel, so it
+   needs the raster backend, which `track/raster` built. Two of its inputs are
+   still absent; the rest are here.
+3. **`TestFontEmbedding`, the 6 deferred cases** — the fonts are in
+   `target/fonts` now.
+4. **`TestQuality`** — four pixels of four files, all four present.
+5. **`TestCMapSubtable`, `CFFParserTest`, `MergeAnnotationsTest`,
+   `TestFDF.testPDFBox5894`, `TestCheckBox.testPDFBox6207`, `PDFieldTreeTest`**
+   and the other singles the tables name — one commit each.
+
+`PDAcroFormTest` is **not** on this list. Proxy one put it first with nine
+ids; six of those nine turned out to be javadoc on methods the port already
+has. That is the correction that produced the two caveats above.
 
 
 ## What is left, and the four tracks that claim it
