@@ -95,7 +95,7 @@ cluster in:
 
 | ids | Java test class | Go port | input |
 | ---: | --- | --- | --- |
-| 18 | `PDAcroFormFlattenTest` | partial | fetched by `fetch-flatten.ps1` |
+| 18 | `PDAcroFormFlattenTest` | **ported** | fetched by `fetch-flatten.ps1` |
 | 17 | `TestPDFParser` | **ported** | all present |
 | 9 | `PDAcroFormTest` | partial | — |
 | 9 | `PDFontTest` | partial | all present, `calibri.ttf` off the machine |
@@ -146,6 +146,50 @@ error nobody traces back to the download. All twelve fetch today.
 So **no Java test in this tree is now waiting on input.** What is left is
 unwritten test code, and the order to write it in is below.
 
+### `PDAcroFormFlattenTest`, ported, and the port defect it found
+
+Thirteen cases, in
+`go/pdfbox/pdmodel/interactive/form/pdacroformflatten_external_test.go`. Twelve
+of them assert one thing and it is a strong thing: **flattening must not change
+what the page looks like.** Each renders the form as it arrives, flattens it,
+renders it again, and requires the two to match. Java compares the two PNGs byte
+for byte through `TestPDFToImage.filesAreIdentical`; the port compares pixels,
+which is the same claim without depending on the encoder. The thirteenth,
+`flattenSingleField`, reads a checked-in fixture and asserts the field count
+rather than the pixels.
+
+The twelve documents are the ones `fetch-flatten.ps1` brings down. This is the
+one Java test class whose input is not in a pom: it carries its own list of JIRA
+URLs in its source and downloads them at run time.
+
+**Eight of the twelve match exactly. Four do not, and that is a port defect.**
+
+| File | Pixels differing after flattening |
+| --- | ---: |
+| `test-2586.pdf` | 322 |
+| `PDFBOX-5225.pdf` | 51, over two pages |
+| `PDFBOX-4955.pdf` | 4 |
+| `Signed-Document-1.pdf` | 2 |
+
+Java passes all twelve, so this is the port's `Flatten` doing something the
+Java's does not.
+
+**What the difference is not.** No content appears, disappears or moves. On all
+four the differing pixels are one to five levels of grey along an edge, inside a
+region a few hundred pixels across — anti-aliasing landing one step over, which
+is what happens when an appearance stream is composed onto the page through a
+transform that differs in the last bit. The test asserts that too: no channel
+may be more than 8 levels out, and none is.
+
+**What was ruled out.** A save-and-reload *without* flattening was run as a
+control on all four. It changes nothing, zero pixels, so the writer is not what
+does it. The difference is made by `Flatten` itself.
+
+The four counts are recorded in the test as `differingAfterFlatten`, with the
+rule that they go down and never up: raising one is a regression, and dropping
+one to zero is the fix and should delete the row. Finding where `Flatten`
+composes the widget's appearance is its own piece of work and is not done here.
+
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
 whose stated reason was the input:
@@ -154,9 +198,8 @@ whose stated reason was the input:
    seventeen in `go/pdfbox/testpdfparser_test.go` and the render half of
    testPDFBox3950 in `rendering/raster/pdfbox3950_test.go`, which is where the
    backend is. Every fixture was already in `target/pdfs`.
-2. **`PDAcroFormFlattenTest`** — renders and compares pixel for pixel, so it
-   needs the raster backend, which `track/raster` built. Two of its inputs are
-   still absent; the rest are here.
+2. ~~**`PDAcroFormFlattenTest`**~~ — **done**, all thirteen cases, and it found
+   a port defect on four of the twelve documents. See the section above.
 3. **`TestFontEmbedding`, the 6 deferred cases** — the fonts are in
    `target/fonts` now.
 4. **`TestQuality`** — four pixels of four files, all four present.
