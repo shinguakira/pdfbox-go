@@ -98,7 +98,7 @@ type PDFTextStripper struct {
 	hasActualText           bool
 
 	charactersByArticle  [][]*TextPosition
-	characterListMapping map[string]map[float32]map[float32]bool
+	characterListMapping map[string]*characterPositions
 
 	output io.Writer
 
@@ -140,7 +140,7 @@ func NewPDFTextStripper() *PDFTextStripper {
 		spacingTolerance:     .5,
 		averageCharTolerance: .3,
 
-		characterListMapping: map[string]map[float32]map[float32]bool{},
+		characterListMapping: map[string]*characterPositions{},
 	}
 	s.SetOverrides(s)
 	s.SetProcessTextPosition(s.ProcessTextPosition)
@@ -178,9 +178,16 @@ func (s *PDFTextStripper) GetTextOfPages(pages *pdmodel.PDPageTree) (string, err
 // ProcessPages walks the pages, writing out the text of each.
 //
 // Port of processPages. The bookmark range Java also honours needs PDDocument.
+//
+// Java's loop is `for (PDPage page : pages)`, and walking the tree by index
+// instead is not the same thing on a malformed file. PDPageTree guards against
+// a cyclic page tree in two places and they differ on purpose: the indexed
+// accessor throws, and the iterator logs "This page tree node has already been
+// visited" and skips the kid, citing PDFBOX-5009 and PDFBOX-3953. Iterating is
+// what puts this method on the forgiving one, which is where Java has it. See
+// TestProcessPagesWalksTheTreeTheWayJavaDoes.
 func (s *PDFTextStripper) ProcessPages(pages *pdmodel.PDPageTree) error {
-	for i := 0; i < pages.Count(); i++ {
-		page := pages.Get(i)
+	for page := range pages.All {
 		if page == nil {
 			continue
 		}
@@ -220,7 +227,7 @@ func (s *PDFTextStripper) ProcessPage(page *pdmodel.PDPage) error {
 			s.charactersByArticle = append(s.charactersByArticle, nil)
 		}
 	}
-	s.characterListMapping = map[string]map[float32]map[float32]bool{}
+	s.characterListMapping = map[string]*characterPositions{}
 
 	if err := s.LegacyPDFStreamEngine.ProcessPage(page); err != nil {
 		return err
@@ -657,7 +664,7 @@ func (s *PDFTextStripper) ProcessTextPosition(text *TextPosition) error {
 		textY := text.Y()
 		sameTextCharacters, ok := s.characterListMapping[textCharacter]
 		if !ok {
-			sameTextCharacters = map[float32]map[float32]bool{}
+			sameTextCharacters = &characterPositions{}
 			s.characterListMapping[textCharacter] = sameTextCharacters
 		}
 
@@ -671,31 +678,14 @@ func (s *PDFTextStripper) ProcessTextPosition(text *TextPosition) error {
 		// the character width, and the TJ just backs up to compensate after
 		// each character). Also, we subtract an amount to allow for kerning (a
 		// percentage of the width of the last character).
-		suppressCharacter := false
 		tolerance := text.Width() / float32(utf16Length(textCharacter)) / 3.0
-		// Java walks a sorted map's submap; the port walks the keys it holds
-		// and takes the same range.
-		for x, xMatch := range sameTextCharacters {
-			if x < textX-tolerance || x >= textX+tolerance {
-				continue
-			}
-			for y := range xMatch {
-				if y >= textY-tolerance && y < textY+tolerance {
-					suppressCharacter = true
-					break
-				}
-			}
-			if suppressCharacter {
-				break
-			}
-		}
-		if !suppressCharacter {
-			ySet, ok := sameTextCharacters[textX]
-			if !ok {
-				ySet = map[float32]bool{}
-				sameTextCharacters[textX] = ySet
-			}
-			ySet[textY] = true
+		// Java asks a TreeMap for subMap(textX - tolerance, textX + tolerance)
+		// and each value for subSet(textY - tolerance, textY + tolerance).
+		// characterPositions is that pair of ordered ranges; walking unordered
+		// keys answers the same question and is quadratic in the glyphs on the
+		// page, which is what made three of the corpus documents time out.
+		if !sameTextCharacters.anyWithin(textX, textY, tolerance) {
+			sameTextCharacters.add(textX, textY)
 			showCharacter = true
 		}
 	}
@@ -1295,7 +1285,7 @@ func (s *PDFTextStripper) SetArticleEnd(articleEndValue string) { s.articleEnd =
 // clearCharacterListMapping empties what the duplicate suppression remembers,
 // which Java's processPage does before walking a page.
 func (s *PDFTextStripper) clearCharacterListMapping() {
-	s.characterListMapping = map[string]map[float32]map[float32]bool{}
+	s.characterListMapping = map[string]*characterPositions{}
 }
 
 // resetEngine puts the stripper back where it started, so that one stripper can

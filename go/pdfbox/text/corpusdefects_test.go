@@ -5,8 +5,11 @@ package text_test
 // and each one fails without its fix.
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/text"
 )
 
@@ -48,5 +51,65 @@ func TestHandleDirectionTakesAWordWithNoRuns(t *testing.T) {
 		if got := text.HandleDirectionForTest(word); got != word {
 			t.Errorf("handleDirection(%q) = %q, want %q", word, got, word)
 		}
+	}
+}
+
+// TestProcessPagesWalksTheTreeTheWayJavaDoes pins the second defect the corpus
+// found: qpdf/deep-pages.pdf, a page tree that contains itself.
+//
+// PDFBox reads that file. It prints "ERROR PDPageTree This page tree node has
+// already been visited" and carries on, ending with one page and no text. The
+// port panicked with "possible recursion found when searching for page 1".
+//
+// Both sides carry both of PDPageTree's guards, and the two differ on purpose.
+// The indexed accessor -- Java's get(int, COSDictionary, int) -- throws
+// IllegalStateException on a repeated node. The iterator's enqueueKids logs that
+// error and skips the kid, and the comment on it cites PDFBOX-5009 and
+// PDFBOX-3953. What the port had wrong was which one this method reaches: Java's
+// processPages is `for (PDPage page : pages)` and the port walked `pages.Get(i)`
+// over `pages.Count()`, so a tree Java skips past went through the throwing
+// guard instead.
+//
+// The tree below is the smallest one that tells them apart. Its intermediate
+// node lists itself before the page, so the iterator skips the repeat and yields
+// the one page, and the indexed walk re-enters the node it is already inside.
+func TestProcessPagesWalksTheTreeTheWayJavaDoes(t *testing.T) {
+	page := cos.NewDictionary()
+	page.SetItem(cos.Type, cos.Page)
+
+	node := cos.NewDictionary()
+	node.SetItem(cos.Type, cos.Pages)
+	node.SetInt(cos.Count, 1)
+	kids := cos.NewArray()
+	kids.Add(node) // itself, first, so the indexed walk re-enters it
+	kids.Add(page)
+	node.SetItem(cos.Kids, kids)
+
+	root := cos.NewDictionary()
+	root.SetItem(cos.Type, cos.Pages)
+	root.SetInt(cos.Count, 1)
+	rootKids := cos.NewArray()
+	rootKids.Add(node)
+	root.SetItem(cos.Kids, rootKids)
+
+	tree := pdmodel.NewPDPageTreeOf(root)
+
+	// what Java's iterator answers, and therefore what processPages sees
+	var walked int
+	for range tree.All {
+		walked++
+	}
+	if walked != 1 {
+		t.Fatalf("the iterator walked %d pages, want 1 -- the fixture is wrong, not the code", walked)
+	}
+
+	stripper := text.NewPDFTextStripper()
+	var out strings.Builder
+	stripper.SetOutput(&out)
+	if err := stripper.ProcessPages(tree); err != nil {
+		t.Fatalf("ProcessPages: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "" {
+		t.Errorf("text = %q, want empty -- the page has no contents", got)
 	}
 }
