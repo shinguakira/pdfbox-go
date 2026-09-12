@@ -40,10 +40,13 @@ Three things this is not:
 | [`conventions/java-to-go.md`](conventions/java-to-go.md) | How Java constructs are translated. Read this before porting anything |
 | [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then fixed 61 of the 84 in the Go, and every entry says which it is |
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
+| [`TESTDATA.md`](TESTDATA.md) | What the port is checked against: the 168 documents in the repository, the 78 the Java build downloads and nothing here ever fetched, the third-party suites worth adding, and how to score a corpus |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
 | [`scripts/inventory.ps1`](scripts/inventory.ps1) | Regenerates `inventory.tsv` from the Java tree |
+| [`scripts/fetch-testdata.ps1`](scripts/fetch-testdata.ps1) | Fetches the 78 test files the Java build declares, into the `target/` directories the Java build puts them in. See [`TESTDATA.md`](TESTDATA.md) |
+| [`scripts/fetch-corpus.ps1`](scripts/fetch-corpus.ps1) | Fetches the third-party PDF suites the port is scored against, into `go/testdata/corpus/` |
 
 ## Porting a package
 

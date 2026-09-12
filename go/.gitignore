@@ -10,3 +10,8 @@ coverage.html
 # A crashed MSYS bash leaves one of these at the repository root. One was
 # committed once; it is not a build product of anything here.
 bash.exe.stackdump
+
+# Third-party test corpora, fetched by migration/scripts/fetch-corpus.ps1.
+# Other projects' files under other projects' licences; read as test input,
+# never redistributed from here.
+testdata/corpus/
