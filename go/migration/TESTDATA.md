@@ -210,10 +210,13 @@ line above it carries `IndexOutOfBoundsException` the same way.
 
 **Running the Java says otherwise. PDFBox opens the file, reports one page, and
 extracts from it without the guard firing.** So the port's recursion detection
-fires where the Java's does not, on identical input, and that is a port defect
-rather than a carry. It is in the list below, unfixed, and it is the reason this
-section is worth its length: reading two implementations side by side is how the
-wrong conclusion got written down here in the first place.
+fired where the Java's does not, on identical input, and that was a port defect
+rather than a carry — fixed below, along with four other files that had looked
+like unrelated single-character disagreements and were the same defect.
+
+This section is worth its length for the reason it was wrong: reading two
+implementations side by side is how the wrong conclusion got written down here in
+the first place, and running them side by side is what caught it.
 
 ### And the one that ends the process
 
@@ -264,20 +267,31 @@ cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
     ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
 ```
 
-Over the same 3,646 files:
+Over the same 3,646 files, the first run found twelve disagreements. All twelve
+were the port's, eleven of them are fixed, and this is where it stands now:
+
+```
+3646 files, 27 of them encrypted and skipped
+  open    both 3600, neither 46, behind 0, ahead 0
+  pages   0 disagree
+  text    both 3597, neither 3, behind 0, ahead 0
+  chars   3596 the same length, 1 not
+
+  1 of 3646 files disagree (0.03%)
+```
+
+**There is no document in the corpus that PDFBox reads and the port does not.**
+Not one, at either stage. No page count disagrees anywhere, and of the 3,597
+documents both extract, 3,596 come out the same length. The twelfth disagreement
+is one character in 126,330, and it is described below.
+
+For contrast, the first run of this comparison — before any of the fixes — read:
 
 ```
   open    both 3596, neither 46, behind 4, ahead 0
-  pages   0 disagree
   text    both 3590, neither 3, behind 3, ahead 0
   chars   3585 the same length, 5 not
-
-  12 of 3646 files disagree (0.33%)
 ```
-
-**Nothing in the corpus opens in the port and not in PDFBox, and no page count
-disagrees anywhere.** That is the headline: across three thousand documents
-chosen for being difficult, the two implementations reach the same structure.
 
 ### The separator, which has to be dealt with before any of this means anything
 
@@ -294,64 +308,105 @@ So the oracle forces both to LF, and `run-oracle.ps1 -Crlf` reproduces the
 confusion on demand. The deviation is real and deliberate; it is a convention,
 not a defect, and comparing content requires taking it out first.
 
-### The twelve
+### The twelve, and what each one turned out to be
 
-| File | Port | PDFBox |
+Every one of them was the port's defect, not a difference of opinion with
+PDFBox. Eleven are fixed; the twelfth is a character and is described below.
+
+| File | Was | Cause |
 | --- | --- | --- |
-| `verapdf` Isartor PDFA-1b 6.1.12 `t01-fail-a` | timeout at 20 s | ok, **10,000 pages**, 20,000 chars |
-| `verapdf` PDF_A-1b 6.1.12 `t03-fail-c` | timeout at 20 s | ok, 1 page, **65,540 chars** |
-| `verapdf` TWG `A005-pdfa1-fail-c` | timeout at 20 s | ok, 1 page, **65,540 chars** |
-| `qpdf/issue-202.pdf` | `Page tree root must be a dictionary` | ok, 10 pages, 5,769 chars |
-| `qpdf/shared-images-errors.pdf` | text: `flate: corrupt input before offset 5` | ok, 65 chars |
-| `qpdf/shared-images-errors-2-out.pdf` | text: same | ok, 1 char |
-| `qpdf/deep-pages.pdf` | text: panics on the page-tree recursion guard | ok, 0 chars — **the guard does not fire in Java** |
-| `qpdf/fuzz-16214.pdf` | 1 char | 0 chars |
-| `qpdf/many-nulls.pdf` | 0 chars | 1 char |
-| `qpdf/no-pages-types.pdf` | 7 chars | 0 chars |
-| `qpdf/pages-loop.pdf` | 7 chars | 14 chars |
-| `pdfbox/target/pdfs/PDFBOX-3951-FIHUZ…` | 126,331 chars | 126,330 chars |
+| `qpdf/deep-pages.pdf` | text panicked on the page-tree recursion guard | **page tree** |
+| `qpdf/fuzz-16214.pdf` | 1 char against 0 | page tree |
+| `qpdf/many-nulls.pdf` | 0 chars against 1 | page tree |
+| `qpdf/no-pages-types.pdf` | 7 chars against 0 | page tree |
+| `qpdf/pages-loop.pdf` | 7 chars against 14 | page tree |
+| `qpdf/issue-202.pdf` | `Page tree root must be a dictionary`; PDFBox reads 10 pages | **xref repair** |
+| `qpdf/shared-images-errors.pdf` | text failed on a damaged Flate stream | **filter close** |
+| `qpdf/shared-images-errors-2-out.pdf` | the same | filter close |
+| `verapdf` PDF_A-1b 6.1.12 `t03-fail-c` | timeout; 65,540 chars on one page | **quadratic lookup** |
+| `verapdf` TWG `A005-pdfa1-fail-c` | timeout; the same shape | quadratic lookup |
+| `verapdf` Isartor PDFA-1b 6.1.12 `t01-fail-a` | timeout; 10,000 pages | **quadratic xref copy** |
+| `pdfbox/target/pdfs/PDFBOX-3951-FIHUZ…` | 126,331 chars against 126,330 | font metrics — **open** |
 
-They group into four:
+#### Five were one walk
 
-**Three are speed, not correctness.** All three timeouts are clause 6.1.12,
-*implementation limits* — a 10,000-page document, and two that put 65,540
-characters on one page. PDFBox reads all three. The port does not finish inside
-twenty seconds, which on this input is a statement about complexity somewhere,
-not about the answer being wrong.
+`PDPageTree` guards against a cyclic page tree in two places and the two behave
+differently **on purpose**. The indexed accessor, `get(int, COSDictionary, int)`,
+throws `IllegalStateException`. The iterator's `enqueueKids` logs
+`This page tree node has already been visited` and skips the kid, and the comment
+on it cites PDFBOX-5009 and PDFBOX-3953. The port carries both, faithfully.
 
-**Two are a filter that gives up where PDFBox does not.** `shared-images-errors`
-carries a deliberately damaged Flate stream. PDFBox returns what it managed to
-inflate; the port returns the error. That is a real behavioural difference in
-`filter`, and it is the kind real documents hit.
+What it had wrong was which one text extraction reaches. Java's `processPages` is
+`for (PDPage page : pages)`; the port's walked `pages.Get(i)` over
+`pages.Count()`. On a well-formed file those are the same walk. On five corpus
+files they are not, and `deep-pages.pdf` — where PDFBox prints that error and
+carries on to extract — is the one that made it obvious. Iterating fixed all
+five, including four that had looked like unrelated single-character
+disagreements.
 
-**Two are the page tree, and one of them is pinned.** `issue-202.pdf` the port
-refuses to open at all. `deep-pages.pdf` trips a recursion guard PDFBox does not
-trip — and running the Java says exactly why, because it prints
-`ERROR PDPageTree This page tree node has already been visited` and then carries
-on.
+#### One was a repair that was computed and then dropped
 
-`PDPageTree` has **two** guards against a cyclic page tree and they behave
-differently on purpose. The indexed accessor, `get(int, COSDictionary, int)`,
-throws `IllegalStateException`. The iterator's `enqueueKids` logs that error and
-skips the kid — the comment on it cites PDFBOX-5009 and PDFBOX-3953. The port
-carries both faithfully. What differs is which one text extraction reaches:
-Java's `PDFTextStripper.processPages` iterates the tree, and the port's walks it
-by index —
+`issue-202.pdf` has two cross-reference entries pointing at each other's objects.
+Both implementations notice, both log it, and both compute the swap;
+`XrefParser.validateXrefOffsets` in Java then applies it, because
+`XrefTrailerResolver.getXrefTable()` hands out the resolver's own map and the
+method edits it in place. The port's `XrefTable` answers a copy — the right shape
+in Go — so the repair landed in a value that went out of scope at the end of
+`checkXrefOffsets`. The failure path already wrote its result back; the success
+path did not.
 
-```go
-for i := 0; i < pages.Count(); i++ {
-    page := pages.Get(i)
-```
+#### Two were a `Close` that undid its own `Read`
 
-— so a tree Java skips past takes the port through the throwing guard instead.
-Unfixed, and noted here rather than in `JAVA-BUGS.md` because it is not a Java
-bug: both guards are the Java's, and the port picked the wrong one to walk with.
+`shared-images-errors` carries a damaged Flate stream. The port's read side was
+already right — Java's `FlateFilterDecoderStream.fetch` catches the
+`DataFormatException`, keeps what inflated and reports end of data, and the port
+does the same. But `compress/flate` remembers the error and hands it back from
+`Close`, while Java's close is `inflater.end()` and cannot. So the stream said
+"no more data", the caller believed it, and closing raised the damage the read
+had already absorbed.
 
-**Five are a character.** Four of them are documents with under fifteen
-characters of text, where one character is the whole disagreement; the fifth is
-one character in 126,330. Small, and they are still differences — length is a
-weak check and two of these could be a glyph mapped differently rather than a
-character miscounted.
+#### Three were speed, and speed is behaviour when there is a timeout
+
+Neither of these changes an answer. Both change a complexity.
+
+`PDFTextStripper`'s duplicate suppression asks Java's
+`TreeMap<Float, TreeSet<Float>>` for `subMap(x - tolerance, x + tolerance)` and
+then `subSet(y - tolerance, y + tolerance)`. Both are ordered, so both ranges are
+found by search. The port used Go maps and scanned every key — the same answer,
+quadratic in the glyphs on the page. On the two clause 6.1.12 files, which put
+65,539 characters on a single page on purpose, that was 22 seconds against
+PDFBox's fraction of one.
+
+`COSDocument.getXrefTable` returns the live map in Java and a copy in the port,
+because the Go table is keyed by internal hash rather than by the key object.
+That is fine everywhere except `COSParser.getObjectKey`, which the port carries
+line for line and which runs once per object read: copying the whole table to ask
+how big it is is quadratic in the objects. A profile of the ten-thousand-page
+Isartor file put 71% of 238 seconds inside it. With `XRefTableSize` and
+`EachXRefKey` answering without copying, **238 seconds became 0.51**.
+
+#### One is still open, and it is one character
+
+`PDFBOX-3951-FIHUZ…` is 142 pages and differs from PDFBox by a single character
+in 126,330: the copyright line reads `©  ECRI` here and `© ECRI` there. The extra
+space is a word separator the port inserts because it thinks the gap is wider
+than PDFBox does, and the gap is wider because the two disagree about the glyph
+before it.
+
+Measured on both sides, the `©` is drawn from `GHLILD+SymbolMT`, non-embedded,
+and everything about the position agrees except the width — PDFBox makes it
+8.6742 and the port 6.5891, a ratio of exactly 790 to 600.09766. Those two
+numbers are the font's standard-14 width and the width its substitute reports.
+What is *not* yet explained is that the two implementations also read a different
+character code for the same glyph: PDFBox's `TextPosition` carries code 148 and
+the port's `ShowGlyph` is handed 120. That is an encoding question in a symbolic
+TrueType font, it is a layer below the text stripper, and it wants its own piece
+of work rather than a guess.
+
+Left open deliberately. It is recorded here with the measurements so the next
+person starts where this stopped, and it is one character out of 126,330 in one
+document out of 3,646.
+
 
 ### What this does and does not establish
 
