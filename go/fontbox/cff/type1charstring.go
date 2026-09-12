@@ -87,6 +87,17 @@ func (c *Type1CharString) Path() *geom.Path2D {
 // inside render, and where the accent resolves back to this same charstring a
 // Go mutex would deadlock where Java's re-entrant one does not. The port leaves
 // the check unguarded, as the TrueTypeFont table read does for the same reason.
+//
+// **So `go test -race` reports this, and the report is real.** Two goroutines
+// asking one glyph for its path both write c.path, c.width and the rest. It is
+// not what made CFFParserTest.testMultiThreadParse end the process -- that was
+// the charstring cache's map, which is fixed -- and it is not fixed here,
+// because every cheap answer is wrong: sync.Once and sync.Mutex both deadlock
+// on the self-referential seac that the `c.path == accentPath` check below
+// exists to catch, and rendering eagerly would build the path of every glyph a
+// caller never draws. Doing it properly means giving render a re-entrancy it
+// does not have, which is its own piece of work and not a change to make in
+// passing.
 func (c *Type1CharString) renderOnce() {
 	if c.path == nil {
 		c.render()

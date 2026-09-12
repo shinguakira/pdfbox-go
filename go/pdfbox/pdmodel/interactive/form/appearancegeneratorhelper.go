@@ -2,6 +2,7 @@ package form
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -201,7 +202,10 @@ func (h *appearanceGeneratorHelper) setWidgetAppearanceValue(
 
 	appearanceCharacteristics := widget.AppearanceCharacteristics()
 	widgetRotation := resolveRotation(appearanceCharacteristics)
-	newBBox := computeBBox(widget, widgetRotation)
+	newBBox, err := computeBBox(widget, widgetRotation)
+	if err != nil {
+		return err
+	}
 	var appearanceStream *annotation.PDAppearanceStream
 	// We're using the existing appearance if possible (since 2013 or even earlier)
 	// However, except for the file from PDFBOX-2586 we could ignore it
@@ -288,12 +292,18 @@ func (h *appearanceGeneratorHelper) prepareNormalAppearanceStream(bbox *common.P
 
 // computeBBox returns the size of the appearance of a widget turned by the
 // given rotation. Java declares it private static.
-func computeBBox(widget *annotation.PDAnnotationWidget, widgetRotation int) *common.PDRectangle {
+func computeBBox(widget *annotation.PDAnnotationWidget, widgetRotation int) (
+	*common.PDRectangle, error) {
 	rect := widget.Rectangle()
+	if rect == nil {
+		// PDFBOX-5660. The one caller checks this itself twenty lines earlier
+		// and skips the widget, so this is for the next one.
+		return nil, errors.New("Missing rectangle")
+	}
 	matrix := util.RotateInstance(toRadians(float64(widgetRotation)), 0, 0)
 	point2D := matrix.TransformPoint(rect.Width(), rect.Height())
 	return common.NewPDRectangleOfSize(
-		float32(math.Abs(point2D.X())), float32(math.Abs(point2D.Y())))
+		float32(math.Abs(point2D.X())), float32(math.Abs(point2D.Y()))), nil
 }
 
 // toRadians is java.lang.Math.toRadians.

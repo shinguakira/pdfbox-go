@@ -178,6 +178,9 @@ func resolveNonRootField(acroForm *form.PDAcroForm, parent *cos.Dictionary,
 func (p *AcroFormOrphanWidgetsProcessor) ensureFontResources(
 	defaultResources *pdmodel.PDResources, field *form.PDVariableText) {
 	daString := field.DefaultAppearance()
+	// PDFBOX-5660: Java returns here on a null /DA, which is what
+	// getDefaultAppearance answers for anything that is not a COSString. The
+	// port answers the empty string for the same thing, and HasPrefix takes it.
 	if !strings.HasPrefix(daString, "/") || len(daString) <= 1 {
 		return
 	}

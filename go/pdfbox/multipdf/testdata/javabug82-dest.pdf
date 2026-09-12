@@ -1,0 +1,114 @@
+%PDF-1.4
+%цдья
+1 0 obj
+<<
+/Type /Catalog
+/Version /1.4
+/Pages 2 0 R
+/Threads 3 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids 4 0 R
+/Count 1
+>>
+endobj
+3 0 obj
+[5 0 R]
+endobj
+4 0 obj
+[6 0 R]
+endobj
+5 0 obj
+<<
+/Type /Thread
+/I 7 0 R
+/F 8 0 R
+>>
+endobj
+6 0 obj
+<<
+/Type /Page
+/MediaBox 9 0 R
+/Parent 2 0 R
+/Resources 10 0 R
+/Contents 11 0 R
+>>
+endobj
+7 0 obj
+<<
+/Title (Destination: quarterly report)
+>>
+endobj
+8 0 obj
+<<
+/Type /Bead
+/N 8 0 R
+/V 8 0 R
+/P 6 0 R
+/R 12 0 R
+/T 5 0 R
+>>
+endobj
+9 0 obj
+[0.0 0.0 595.2756 841.8898]
+endobj
+10 0 obj
+<<
+/Font 13 0 R
+>>
+endobj
+11 0 obj
+<<
+/Length 207
+>>
+stream
+BT /F1 16 Tf 56 760 Td (JAVA-BUGS 82 -- the destination document) Tj ET
+BT /F1 11 Tf 56 735 Td (Its catalog carries these article threads:) Tj ET
+BT /F1 11 Tf 70 712 Td (Destination: quarterly report) Tj ET
+
+endstream
+endobj
+12 0 obj
+[56.0 600.0 539.0 700.0]
+endobj
+13 0 obj
+<<
+/F1 14 0 R
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+xref
+0 15
+0000000000 65535 f
+0000000015 00000 n
+0000000093 00000 n
+0000000148 00000 n
+0000000171 00000 n
+0000000194 00000 n
+0000000247 00000 n
+0000000345 00000 n
+0000000405 00000 n
+0000000484 00000 n
+0000000527 00000 n
+0000000562 00000 n
+0000000823 00000 n
+0000000864 00000 n
+0000000897 00000 n
+trailer
+<<
+/Root 1 0 R
+/ID [<0BB55DB9A28C8E4A7D062FD0EAF598D41281CA8C62FF4549821B4ECC93312759> <0BB55DB9A28C8E4A7D062FD0EAF598D41281CA8C62FF4549821B4ECC93312759>]
+/Size 15
+>>
+startxref
+968
+%%EOF

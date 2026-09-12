@@ -7,6 +7,7 @@ package multipdf_test
 import (
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/pdfbox"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/multipdf"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
@@ -100,5 +101,57 @@ func TestMergeIntoADocumentWithNoThreadsTakesTheSources(t *testing.T) {
 	got := threadTitles(t, destination)
 	if len(got) != 1 || got[0] != "src one" {
 		t.Errorf("the merged /Threads holds %v, want the source's one thread", got)
+	}
+}
+
+// TestMergeTheCheckedInPairTakesTheSourcesThreads is the same defect over two
+// files on disk rather than two documents built in memory.
+//
+// `testdata/javabug82-dest.pdf` and `testdata/javabug82-src.pdf` are written by
+// `testdata/genjavabug82.go` and are as small as a legitimate article thread
+// gets: one page, one thread per title, one bead per thread with its /N and /V
+// pointing at itself, which is what a one-bead chain is. ISO 32000-1 table 161
+// for the thread, 162 for the bead. They are saved uncompressed so that
+// /Threads can be read out of them with a text editor.
+//
+// They exist because a claim about the Java is worth more measured than
+// argued. `testdata/Merge82Drv.java` runs the same merge through the Java, and
+// its output is in JAVA-BUGS.md 82.
+func TestMergeTheCheckedInPairTakesTheSourcesThreads(t *testing.T) {
+	destination, err := pdfbox.LoadPDF("testdata/javabug82-dest.pdf")
+	if err != nil {
+		t.Fatalf("loading the destination: %v", err)
+	}
+	defer destination.Close()
+	source, err := pdfbox.LoadPDF("testdata/javabug82-src.pdf")
+	if err != nil {
+		t.Fatalf("loading the source: %v", err)
+	}
+	defer source.Close()
+
+	if got := threadTitles(t, destination); len(got) != 1 {
+		t.Fatalf("the destination carries %v, want one thread", got)
+	}
+	if got := threadTitles(t, source); len(got) != 2 {
+		t.Fatalf("the source carries %v, want two threads", got)
+	}
+
+	if err := multipdf.NewPDFMergerUtility().AppendDocument(destination, source); err != nil {
+		t.Fatalf("AppendDocument: %v", err)
+	}
+
+	got := threadTitles(t, destination)
+	want := []string{
+		"Destination: quarterly report",
+		"Source: appendix A",
+		"Source: appendix B",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("the merged /Threads holds %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("thread %d is %q, want %q", i, got[i], want[i])
+		}
 	}
 }
