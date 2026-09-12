@@ -1,6 +1,9 @@
 package text
 
-import "sort"
+import (
+	"math"
+	"sort"
+)
 
 // characterPositions records where one character has already been drawn, so
 // that PDFTextStripper can suppress a second drawing of it at the same place.
@@ -65,11 +68,17 @@ func (p *characterPositions) anyWithin(x, y, tolerance float32) bool {
 	lowX, highX := x-tolerance, x+tolerance
 	lowY, highY := y-tolerance, y+tolerance
 
+	// The probe carries the lowest possible y, not zero. Java's subMap is over
+	// the x keys alone and takes every y under them; flattening the two levels
+	// means the search has to start before any y that x could have, and text
+	// space has negative coordinates in it.
+	from := position{x: lowX, y: float32(math.Inf(-1))}
+
 	// The first block that can hold an x at or after the low bound, then every
 	// block after it until the entries run past the high bound.
-	for b := p.blockFor(position{x: lowX}); b < len(p.blocks); b++ {
+	for b := p.blockFor(from); b < len(p.blocks); b++ {
 		block := p.blocks[b]
-		for i := lowerBound(block, position{x: lowX}); i < len(block); i++ {
+		for i := lowerBound(block, from); i < len(block); i++ {
 			if block[i].x >= highX {
 				return false
 			}

@@ -142,3 +142,23 @@ func TestCharacterPositionsAgreeWithABruteForceScan(t *testing.T) {
 		}
 	}
 }
+
+// TestCharacterPositionsNegativeY pins the edge the flattening introduced.
+//
+// Java's subMap is over the x keys alone and takes whatever y values sit under
+// them. Holding the pairs in one order instead means the search has to begin
+// before any y the low x could carry, and PDF text space has negative
+// coordinates in it -- a probe starting at y=0 would step straight over a
+// position recorded below the axis at exactly the low bound.
+func TestCharacterPositionsNegativeY(t *testing.T) {
+	var positions characterPositions
+	positions.add(100, -200)
+
+	if !positions.anyWithin(100.5, -199.5, 1) {
+		t.Error("a position with a negative y is not found inside the tolerance")
+	}
+	// x exactly on the low bound, which is where the probe starts
+	if !positions.anyWithin(101, -199.5, 1) {
+		t.Error("a position with a negative y is not found when x sits on the low bound")
+	}
+}
