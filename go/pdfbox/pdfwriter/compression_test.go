@@ -15,6 +15,7 @@ package pdfwriter_test
 // quietly break.
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/encryption"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/documentnavigation/outline"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/form"
 )
 
 // compressionInputs is the Java's INDIR.
@@ -304,3 +306,46 @@ func TestCompressionPoolTakesADeepOutline(t *testing.T) {
 // TestPDFBox5927 is not ported: it loads `target/pdfs/PDFBOX-5927.pdf`, which
 // the Maven build downloads and this repository does not carry. See
 // migration/STATUS.md.
+
+// TestPDFBox5927 is COSDocumentCompressionTest.testPDFBox5927, which reads
+// `target/pdfs/PDFBOX-5927.pdf`: a checked check box must still be checked
+// after the document is written out and read back.
+//
+// It was deferred while that directory was empty;
+// `migration/scripts/fetch-testdata.ps1` fills it.
+func TestPDFBox5927(t *testing.T) {
+	const path = "../../../pdfbox/target/pdfs/PDFBOX-5927.pdf"
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("PDFBOX-5927.pdf is not there; " +
+			"run migration/scripts/fetch-testdata.ps1")
+	}
+
+	original, err := pdfbox.LoadPDF(path)
+	if err != nil {
+		t.Fatalf("LoadPDF: %v", err)
+	}
+	var saved bytes.Buffer
+	if err := original.Save(&saved); err != nil {
+		original.Close()
+		t.Fatalf("Save: %v", err)
+	}
+	original.Close()
+
+	reloaded, err := pdfbox.LoadPDFBytes(saved.Bytes())
+	if err != nil {
+		t.Fatalf("LoadPDFBytes: %v", err)
+	}
+	defer reloaded.Close()
+
+	acroForm := form.AcroFormOfCatalog(reloaded.DocumentCatalog())
+	if acroForm == nil {
+		t.Fatal("the reloaded document has no AcroForm")
+	}
+	checkBox, isCheckBox := acroForm.Field("chkPrivacy1").(*form.PDCheckBox)
+	if !isCheckBox {
+		t.Fatalf("chkPrivacy1 is %T, want a check box", acroForm.Field("chkPrivacy1"))
+	}
+	if !checkBox.IsChecked() {
+		t.Error("chkPrivacy1 is not checked after the round trip")
+	}
+}

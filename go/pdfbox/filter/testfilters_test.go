@@ -17,9 +17,8 @@ import (
 // with testPDFBOX1977, testRLE and testEmptyFilterList, which slice 1 left for
 // the filters they exercise.
 //
-// testPDFBOX4517 is not ported. It reads target/pdfs/PDFBOX-4517-cryptfilter.pdf,
-// which the Java build downloads and this repository does not carry; the same
-// reason two of slice 5's tests are absent.
+// testPDFBOX4517 is in pdfbox4517_test.go, which is package filter_test: it
+// loads a document, and `pdfbox` cannot be imported from inside this package.
 
 // filterFixture is where the Java test resources of this package live,
 // relative to it.

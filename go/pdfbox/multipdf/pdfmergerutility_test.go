@@ -896,16 +896,30 @@ func kidsClaimMCID(t *testing.T, page *pdmodel.PDPage,
 		if !isReference || mcr.MCID() != mcid {
 			continue
 		}
+		// Java compares with assertEquals, and PDPage.equals is
+		// `other.getCOSObject() == this.getCOSObject()` -- the dictionary, not
+		// the wrapper. mcr.getPage() builds a fresh PDPage over the same
+		// dictionary every call, so comparing the wrappers reports every page
+		// as a different one.
 		if mcrPage := mcr.Page(); mcrPage != nil {
-			if mcrPage != page {
+			if !samePage(mcrPage, page) {
 				t.Error("the marked content reference names another page")
 			}
 			return true
 		}
-		if elementPage := structureElement.Page(); elementPage != page {
+		if elementPage := structureElement.Page(); !samePage(elementPage, page) {
 			t.Error("the structure element names another page")
 		}
 		return true
 	}
 	return false
+}
+
+// samePage is PDPage.equals: two wrappers are the same page when they hold
+// the same dictionary.
+func samePage(left common.COSObjectable, right *pdmodel.PDPage) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	return left.COSObject() == right.COSObject()
 }

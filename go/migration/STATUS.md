@@ -301,6 +301,48 @@ non-re-entrant Go mutex would deadlock where Java's does not. The reason is
 written at the site. It is a pre-existing decision and wants its own look, not a
 change made in passing.
 
+
+### The rest of the deferred tests, and the two defects they found
+
+Everything the tables below deferred for want of `target/pdfs` or
+`target/fonts` is now written. Twenty-four cases across seven classes:
+
+| Java | Cases | Where |
+| --- | ---: | --- |
+| `TestSymmetricKeyEncryption.testPDFBox5955`, `testPDFBox5639` | 2 | `pdmodel/encryption/downloaded_test.go` |
+| `TestFilters.testPDFBOX4517` | 1 | `filter/pdfbox4517_test.go`, its own file because it loads a document and `pdfbox` imports `filter` |
+| `PDFieldTreeTest.test5044`, `TestCheckBox.testPDFBox6207` | 2 | `pdmodel/interactive/form/downloaded_test.go` |
+| `TestFDF.testPDFBox5894` | 1 | `pdmodel/fdf5894_test.go` |
+| `COSDocumentCompressionTest.testPDFBox5927` | 1 | appended to `pdfwriter/compression_test.go` |
+| `MergeAcroFormsTest`, `MergeAnnotationsTest` | 3 | `multipdf/mergedownloaded_test.go` |
+| `PDFMergerUtilityTest` | 12 | `multipdf/mergerdownloaded_test.go` |
+
+`PDFMergerUtilityTest` is now 30 of 30 and `MergeAcroFormsTest` and
+`MergeAnnotationsTest` are complete.
+
+**No test downloads anything.** Two of the Java classes fetch inside the test
+body -- `PDFieldTreeTest` and `PDAcroFormFlattenTest` -- and that half is not
+ported. Their files are fetched once, ahead of time, and the Go tests read them
+by path like every other fixture.
+
+**Two defects, both in the port.**
+
+*`CFFType1Font` and `CFFCIDFont` raced on their charstring cache.* See the
+section above; `CFFParserTest.testMultiThreadParse` had been skipping and ended
+the process the first time it ran.
+
+*`checkWithNumberTree` compared pages by pointer.* The helper
+`pdfmergerutility_test.go` carries for the merger cases reported "the marked
+content reference names another page" on documents Java accepts — including on
+the **unmerged** sources, which is what gave it away. Java compares with
+`assertEquals`, and `PDPage.equals` is
+`other.getCOSObject() == this.getCOSObject()`: the dictionary, not the wrapper.
+`mcr.getPage()` builds a fresh `PDPage` over the same dictionary on every call,
+so comparing wrappers reports every page as a different one. `samePage` now
+compares what Java compares. It was a defect in the test helper, not in the
+merger, and it had been masking nothing because the cases that use it could not
+run.
+
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
 whose stated reason was the input:
@@ -313,9 +355,11 @@ whose stated reason was the input:
    a port defect on four of the twelve documents. See the section above.
 3. ~~**`TestFontEmbedding`, the 6 deferred cases**~~ — **done**, 17 of 17.
 4. ~~**`TestQuality`**~~ — **done**, 4 of 4.
-5. **`TestCMapSubtable`, `CFFParserTest`, `MergeAnnotationsTest`,
+5. ~~**`TestCMapSubtable`, `CFFParserTest`, `MergeAnnotationsTest`,
    `TestFDF.testPDFBox5894`, `TestCheckBox.testPDFBox6207`, `PDFieldTreeTest`**
-   and the other singles the tables name — one commit each.
+   and the other singles~~ — **done**, all of them. See the two sections above.
+
+**Nothing in this file is deferred for want of test input any more.**
 
 `PDAcroFormTest` is **not** on this list. Proxy one put it first with nine
 ids; six of those nine turned out to be javadoc on methods the port already
