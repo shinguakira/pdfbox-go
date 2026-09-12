@@ -761,19 +761,21 @@ func (p *ObjectParser) ObjectKey(num int64, gen int) (*cos.ObjectKey, error) {
 	if p.document == nil {
 		return cos.NewObjectKey(num, gen)
 	}
-	xrefTable := p.document.XRefTable()
-	if len(xrefTable) == 0 {
+	// Java reads document.getXrefTable() here, which hands back the live map;
+	// the port's XRefTable answers a copy, and building one per object read is
+	// quadratic on a document with many of them. The size and the keys are all
+	// this needs, and Document answers both without copying.
+	size := p.document.XRefTableSize()
+	if size == 0 {
 		return cos.NewObjectKey(num, gen)
 	}
-	if len(xrefTable) > len(p.keyCache) {
-		for key := range xrefTable {
-			if key == nil {
-				continue
-			}
+	if size > len(p.keyCache) {
+		p.document.EachXRefKey(func(key *cos.ObjectKey) bool {
 			if _, exists := p.keyCache[key.InternalHash()]; !exists {
 				p.keyCache[key.InternalHash()] = key
 			}
-		}
+			return true
+		})
 	}
 	if found, ok := p.keyCache[cos.ComputeInternalHash(num, gen)]; ok {
 		return found, nil

@@ -56,10 +56,11 @@ the commit messages and the comments in the Go all use it.
 
 ## How they group
 
-Written once all 86 were in. The numbered list below is in the order the
-defects were found, which is the order the port went in, and that order says
-nothing about what any of them takes to reach or how much it costs. This is the
-second index.
+Written once all 86 were in, and extended as later entries arrive — 87 was found
+by the corpus of [`TESTDATA.md`](TESTDATA.md), after the fix branch had closed.
+The numbered list below is in the order the defects were found, which is the
+order the port went in, and that order says nothing about what any of them takes
+to reach or how much it costs. This is the second index.
 
 ### By what it takes to reproduce one
 
@@ -69,7 +70,7 @@ once.
 | | Group | Entries | | What reproducing one takes |
 | --- | --- | --- | ---: | --- |
 | A | parser and filters | 6, 8, 9, 10, 14, 23, 27, 29, 30, 32, 63 | 11 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream |
-| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86 | 7 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
+| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86, 87 | 8 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
 | C | fonts | 12, 13, 16, 17, 18, 19, 20, 21, 74 | 9 | **a font file, not a PDF.** A CID-keyed CFF with a sheared FontMatrix in both DICTs, a `uniXXXX` name with no cmap, a scan of the system fonts |
 | D | XMP | 56, 57 | 2 | a malformed XMP packet, which a PDF can carry |
 | E | writing, merging, round trip | 33, 35, 40, 43, 44, 45, 48, 79, 82, 83 | 10 | **write it and read it back.** `/Type /BEAD`, `/Reasons` written as strings and read as names, a merge that mixes the destination into itself |
@@ -94,11 +95,13 @@ Not a partition: an entry can be two shapes at once, and 28 is.
 | a null that is never checked | 14, 25, 38, 52, 57, 60, 65, 76 | 8 |
 | bits and integers: `%` for `&`, a truncation to 32, a sign extension, a floor called a ceiling | 1, 16, 19, 20, 28, 74, 85 | 7 |
 | a branch that cannot be taken | 22, 28, 36, 37, 42, 80, 84, 86 | 8 |
+| a guard the class already carries, not applied on every path that needs it | 87 | 1 |
 
-Five of the six shapes repeat across files that have nothing to do with each
-other, which is the argument that they are mistakes rather than decisions: the
-same `-1` accumulation is written out three times, in three packages, by three
-people.
+Five of the first six shapes repeat across files that have nothing to do with
+each other, which is the argument that they are mistakes rather than decisions:
+the same `-1` accumulation is written out three times, in three packages, by
+three people. The seventh has one entry and may stay that way; it is here because
+the shape is worth naming, not because it recurs yet.
 
 ### Two things the grouping shows
 
@@ -106,6 +109,8 @@ people.
 finding that `track/raster` was built around — so nothing in that group has a
 test that could ever go red. 85 and 86 were found by running the JDK as a
 reference implementation and comparing pixels, which upstream has no way to do.
+87 was found the other way, by rendering a corpus nobody had pointed at the port
+before: see [`TESTDATA.md`](TESTDATA.md).
 
 **Group C is CI-dependent for three of its nine.** 19, 20 and 21 are in
 `FileSystemFontProvider`, which walks the fonts installed on the machine. What
@@ -4750,3 +4755,88 @@ the defect and is gone.
 **Confidence** certain for the first half, from the four sources quoted. The
 second half is a reading: it needs two distinct `PDColor` instances to collide
 in a bucket, which identity hashes make unlikely rather than impossible.
+
+---
+
+## 87. Type 3 glyph recursion is unbounded, and the guard for it is in the same class
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/contentstream/PDFStreamEngine.java`,
+`showType3Glyph` and `processType3Stream`, against `increaseLevel`, `getLevel`
+and `decreaseLevel` in the same file and the three `DrawObject` operators that
+use them.
+
+A Type 3 font's glyph is a content stream. Nothing stops that stream from
+showing text in the same Type 3 font, and `showType3Glyph` runs it without
+asking how deep it already is:
+
+```java
+protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
+        Vector displacement) throws IOException
+{
+    PDType3CharProc charProc = font.getCharProc(code);
+    if (charProc != null)
+    {
+        processType3Stream(charProc, textRenderingMatrix);
+    }
+}
+```
+
+`processType3Stream` pushes resources, saves the graphics stack and calls
+`processStreamOperators`, which dispatches `Tj`, which reaches `showText`,
+`showGlyph` and `showType3Glyph` again. The cycle closes with nothing in it that
+counts.
+
+**The class already has the counter.** `PDFStreamEngine` carries a `level` field
+with `increaseLevel`, `getLevel` and `decreaseLevel`, and its own Javadoc says
+what it is for: *"Get the current level. This can be used to decide whether a
+recursion has done too deep"*. Three classes use it, and all three are
+`DrawObject` — the `Do` operator, in `operator`, `operator/graphics` and
+`operator/markedcontent`:
+
+```java
+context.increaseLevel();
+if (context.getLevel() > 50)
+{
+    LOG.error("recursion is too deep, skipping form XObject");
+    return;
+}
+```
+
+So a Form XObject that draws itself is stopped at fifty and a Type 3 glyph that
+draws itself is not stopped at all. The guard was written for one recursive path
+in the engine and never applied to the other.
+
+**What correct would be** the same three lines around `processType3Stream` that
+`DrawObject` puts around `PDFormXObject`. The bound does not have to be fifty,
+and it does not have to match — it has to exist.
+
+**Why it matters** `showType3Glyph` runs while rasterizing, so the depth is a
+`PageDrawer` frame plus a stream engine frame plus an operator frame per level,
+and it is reached by a file a few hundred bytes long. PDFBox's own
+[`SECURITY.md`](../../SECURITY.md) puts `StackOverflowError` from a malformed PDF
+among the known limitations rather than the vulnerabilities, which is the reason
+this is an entry here and not a report anywhere: it is a defect in a class that
+already solved the problem next door, not a security finding.
+
+**Where the Go carries it** `go/pdfbox/contentstream/text.go`,
+`ShowType3Glyph` and `ProcessType3Stream`, which have no bound either;
+`go/pdfbox/contentstream/drawobject.go` carries the `Level() > 50` guard in both
+of its arms, exactly as the Java does. The port reproduces the asymmetry.
+
+The consequence is not the same on both sides, and the difference is Go's rather
+than the port's. Java throws `StackOverflowError`, which is an `Error` and which
+a caller can catch. Go's stack overflow is a fatal runtime error: no deferred
+`recover` runs for it and the process ends. Measured on
+`go/testdata/corpus/safedocs-targeted/ContentStreamCycleType3insideType3.pdf` —
+a SafeDocs file written for this — `raster.RenderPageWithDPI` reaches
+`fatal error: stack overflow` after **3,880,308 elided frames**, with the cycle
+`ShowType3Glyph → ProcessType3Stream → processStreamOperators → ProcessOperator
+→ ShowText.Process → showText → ShowGlyph → PageDrawer.ShowType3Glyph` repeating
+all the way down. Text extraction does not reach it; the file strips in 8 ms.
+
+That is why `go/cmd/corpus` scores each file in a child process by default — see
+[`TESTDATA.md`](TESTDATA.md). Without it, one file ends the run.
+
+**Confidence** certain, on both halves. The absent guard is in the quoted source
+and the present one is quoted from the class that uses it; the Go behaviour is
+measured, not read.

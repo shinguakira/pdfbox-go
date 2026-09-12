@@ -506,6 +506,15 @@ func (x *XrefParser) checkXrefOffsets() error {
 		return err
 	}
 	if valid {
+		// Java's getXrefTable hands out the resolver's own map and
+		// validateXrefOffsets edits it in place, so the entries it repairs are
+		// repaired for everyone. XrefTable here answers a copy -- which is the
+		// right shape in Go and the reason this line has to exist -- so without
+		// putting it back the repairs are computed, logged, and dropped. That
+		// is the whole of qpdf/issue-202.pdf: two entries pointing at each
+		// other's objects, noticed, corrected, and forgotten. See
+		// TestSwappedXrefEntriesAreRepaired.
+		x.xrefTrailerResolver.ReplaceXrefTable(xrefOffset.ToKeyed())
 		return nil
 	}
 	bf, err := x.parser.BruteForceParser()

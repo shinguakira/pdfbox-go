@@ -10,3 +10,13 @@ coverage.html
 # A crashed MSYS bash leaves one of these at the repository root. One was
 # committed once; it is not a build product of anything here.
 bash.exe.stackdump
+
+# Third-party test corpora, fetched by migration/scripts/fetch-corpus.ps1.
+# Other projects' files under other projects' licences; read as test input,
+# never redistributed from here.
+testdata/corpus/
+
+# The compiled Java oracle and what it writes -- jars from Maven Central, class
+# files from the frozen Java tree, and the tables it produces. All build
+# products of migration/scripts/run-oracle.ps1.
+testdata/oracle/

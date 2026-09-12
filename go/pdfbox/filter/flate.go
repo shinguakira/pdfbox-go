@@ -154,6 +154,15 @@ func NewFlateDecoderReader(r io.Reader) (io.ReadCloser, error) {
 type flateDecoderStream struct {
 	inflated io.ReadCloser
 	isEOF    bool
+
+	// absorbed records that a Read took Java's decision: it saw damage, kept
+	// what had inflated and reported the end of the stream. Only then may Close
+	// stay quiet about the same damage. Without it, Close would have to judge
+	// the error on its own, and it cannot: io.ErrUnexpectedEOF is both what a
+	// truncated deflate stream looks like and what a source that stopped early
+	// returns, so swallowing it unconditionally would hide a real failure of
+	// the reader underneath.
+	absorbed bool
 }
 
 func (f *flateDecoderStream) Read(p []byte) (int, error) {
@@ -168,6 +177,7 @@ func (f *flateDecoderStream) Read(p []byte) (int, error) {
 		}
 		slog.Warn("filter: premature end of flate stream", "err", err)
 		f.isEOF = true
+		f.absorbed = true
 		if n > 0 {
 			return n, nil
 		}
@@ -195,4 +205,19 @@ func isDeflateDamage(err error) bool {
 // Close releases the inflater, which is FlateFilterDecoderStream.close's
 // inflater.end(). The stream it reads from is not closed: Java reaches that one
 // through a RandomAccessInputStream, whose close is the inherited no-op.
-func (f *flateDecoderStream) Close() error { return f.inflated.Close() }
+//
+// Damage does not come back out of here. compress/flate's reader remembers the
+// error it stopped on and returns it again from Close; inflater.end() returns
+// void and cannot. Reporting it would undo the whole of the Read above, which
+// has already taken Java's decision to end the stream rather than fail it --
+// the caller was told there was no more data and acted on it, and a close that
+// then raises the same damage turns a readable page into a failed one. That is
+// how qpdf/shared-images-errors.pdf failed. See
+// TestFlateDecoderReaderCloseSwallowsDamage.
+func (f *flateDecoderStream) Close() error {
+	err := f.inflated.Close()
+	if err != nil && f.absorbed && isDeflateDamage(err) {
+		return nil
+	}
+	return err
+}

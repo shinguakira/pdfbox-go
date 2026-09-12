@@ -2,6 +2,7 @@ package filter
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/zlib"
 	"errors"
 	"io"
@@ -396,5 +397,100 @@ func TestFlateDecoderReaderPassesSourceErrorsOn(t *testing.T) {
 		t.Errorf("ReadAll = %v, want the source's own error: Java lets an "+
 			"IOException out of the wrapped stream propagate and swallows "+
 			"only DataFormatException", err)
+	}
+}
+
+// TestFlateDecoderReaderCloseSwallowsDamage pins the fourth defect the corpus
+// found: qpdf/shared-images-errors.pdf and shared-images-errors-2-out.pdf, whose
+// page content streams are deliberately damaged Flate. PDFBox extracts 65 and 1
+// characters from them; the port failed the whole extraction with
+// "flate: corrupt input before offset 5".
+//
+// The Read side was already right, and says so at length: Java's
+// FlateFilterDecoderStream.fetch catches the DataFormatException, keeps what
+// inflated and reports end of data, and the port does the same. What leaked was
+// Close. compress/flate's decompressor stores the error it stopped on and hands
+// it back from Close; Java's close is inflater.end() plus FilterInputStream.close
+// on a RandomAccessInputStream, and neither of those can report a format
+// problem. So the stream said "no more data", the caller believed it, and then
+// closing raised the damage the Read had already dealt with.
+func TestFlateDecoderReaderCloseSwallowsDamage(t *testing.T) {
+	// two zlib header bytes, then bytes that are not a deflate stream
+	damaged := []byte{0x78, 0x9c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+
+	reader, err := NewFlateDecoderReader(bytes.NewReader(damaged))
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+
+	// Reading is expected to end quietly: Java keeps what inflated, which here
+	// is nothing, and reports end of stream rather than failing.
+	if _, err := io.ReadAll(reader); err != nil {
+		t.Errorf("ReadAll = %v, want nil -- damaged data ends the stream, it does not fail it", err)
+	}
+
+	if err := reader.Close(); err != nil {
+		t.Errorf("Close = %v, want nil -- Java's close is inflater.end(), which cannot report damage", err)
+	}
+}
+
+// failingReader yields some valid deflate data and then a real I/O failure,
+// which is the case Close must not confuse with damage.
+type failingReader struct {
+	data []byte
+	at   int
+	err  error
+}
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if r.at >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.at:])
+	r.at += n
+	return n, nil
+}
+
+// TestFlateDecoderReaderCloseKeepsASourceFailure is the other half of
+// TestFlateDecoderReaderCloseSwallowsDamage: Close stays quiet about damage a
+// Read already absorbed, and about nothing else.
+//
+// Unlike the tests around it, this one does not fail without its change -- it
+// passes against the Close that classified the error on its own too, and it is
+// here because that Close was one error value away from being wrong.
+// io.ErrUnexpectedEOF is both what a truncated deflate stream looks like and
+// what a source that stopped early returns, so a Close that decides by looking
+// at the error alone cannot tell a damaged document from a failing disk. Java
+// never has to: it reads the source outside the try and catches
+// DataFormatException alone. The port's equivalent is for Close to follow the
+// decision Read already took rather than take its own, which is what `absorbed`
+// records, and this pins the contract that arrangement exists for.
+func TestFlateDecoderReaderCloseKeepsASourceFailure(t *testing.T) {
+	var compressed bytes.Buffer
+	compressed.Write([]byte{0x78, 0x9c}) // the two header bytes the reader skips
+	writer, err := flate.NewWriter(&compressed, flate.DefaultCompression)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	if _, err := writer.Write([]byte("a readable page")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// the source gives up part way through, the way a failing disk would
+	sourceErr := errors.New("the disk went away")
+	source := &failingReader{data: compressed.Bytes()[:len(compressed.Bytes())/2], err: sourceErr}
+
+	reader, err := NewFlateDecoderReader(source)
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+	if _, err := io.ReadAll(reader); !errors.Is(err, sourceErr) {
+		t.Errorf("ReadAll = %v, want the source's own error", err)
+	}
+	if err := reader.Close(); err == nil {
+		t.Error("Close = nil, want the failure reported -- no Read absorbed anything here")
 	}
 }

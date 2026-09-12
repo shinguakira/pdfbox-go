@@ -22,6 +22,20 @@ func handleDirection(word string) string {
 		return word
 	}
 
+	// A word with no runs at all has to be answered before anything asks the
+	// paragraph its direction, and this is the port's problem rather than
+	// Java's. x/text resolves a word that is only paragraph separators -- the
+	// empty string, or one made solely of Unicode bidi class B: U+000A, U+000D,
+	// U+001C, U+001D, U+001E, U+0085 -- to zero runs, and its
+	// Ordering.Direction indexes the first of them, so asking panics with an
+	// index out of range. java.text.Bidi has no such edge: the paragraph is not
+	// mixed and its base level is DIRECTION_LEFT_TO_RIGHT, so Java takes the
+	// arm below and returns the word untouched. Nothing to reorder means the
+	// word is already in visual order, which is the same answer.
+	if order.NumRuns() == 0 {
+		return word
+	}
+
 	// if there is pure LTR text no need to process further
 	if order.NumRuns() <= 1 && p.Direction() == bidi.LeftToRight {
 		return word

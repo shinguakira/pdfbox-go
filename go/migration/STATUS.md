@@ -57,6 +57,39 @@ stage, `-baseline` to report only what changed since the last run. **It is not a
 port.** PDFBox has no such command; it is migration tooling, and it is the second
 binary in the tree after `go/cmd/pdfbox`, which remains the only *ported* one.
 
+`migration/scripts/run-oracle.ps1` is the other half, and the more important one.
+It compiles `io`, `fontbox` and `pdfbox` out of the tree with `javac` — no Maven
+— runs PDFBox over the same list, and writes the same table, which
+`corpus -oracle` then joins.
+
+**Measured 2026-09-12 over 3,646 files. The first run found twelve
+disagreements; every one of them was the port's and eleven are fixed. What is
+left is one character in one document — 1 of 3,646, 0.03%.**
+
+```
+  open    both 3600, neither 46, behind 0, ahead 0
+  pages   0 disagree
+  text    both 3597, neither 3, behind 0, ahead 0
+  chars   3596 the same length, 1 not
+```
+
+There is no document in the corpus PDFBox reads and the port does not, at either
+stage. The twelve and what each turned out to be are in
+[`TESTDATA.md`](TESTDATA.md); in summary, five were `PDFTextStripper.processPages`
+walking the page tree by index where Java iterates it — the two guards
+`PDPageTree` carries against a cycle differ on purpose, and the port reached the
+throwing one; one was an xref repair computed and then dropped because the port's
+`XrefTable` answers a copy; two were `compress/flate` raising from `Close` the
+damage its `Read` had already absorbed, which `inflater.end()` cannot do; and
+three were complexity rather than behaviour — an unordered lookup where Java has
+a `TreeMap` sub-range, and the same copied xref table, which together took a
+ten-thousand-page document from 238 seconds to 0.51.
+
+One thing that comparison needed first: Java initialises `PDFTextStripper`'s
+`lineSeparator` and `pageEnd` from `System.lineSeparator()`, CRLF on Windows,
+and the port hardcodes LF. Before that is forced equal, 2,925 of the documents
+differ by exactly one character and the comparison says nothing at all.
+
 All of it is described in [`TESTDATA.md`](TESTDATA.md), including the first run:
 **3,646 files, 99.4% open and 99.2% text after the one fix below**, and four
 groups of failure of which one was a port defect.
@@ -72,16 +105,30 @@ the direction. Java returns such a word untouched. `direction.go` now answers
 before asking, and `pdfbox/text/corpusdefects_test.go` pins the empty string and
 all six code points of Unicode bidi class B.
 
-**The gap it corroborated.** Eighteen `qpdf/issue-*.pdf` files come back
-`Missing root object specification in trailer` or `Page tree root must be a
-dictionary` — the cross-reference recovery path, which is the hole this file
-already names: `TestCOSParser` and `TestPDFParser`, 47 `@Test` methods, have
-never run in the port.
+**The gap it looked like it corroborated, and did not.** Eighteen
+`qpdf/issue-*.pdf` files come back `Missing root object specification in trailer`
+or `Page tree root must be a dictionary`, which was read here as the
+cross-reference recovery path failing — the hole this file names, `TestCOSParser`
+and `TestPDFParser`, 47 `@Test` methods never run in the port.
 
-**What was left alone.** `qpdf/deep-pages.pdf` panics with the port's carry of
-Java's own `IllegalStateException` about page-tree recursion, and three veraPDF
-files in clause 6.1.12 time out, which is what a file built to exceed
-implementation limits is for. And `safedocs-targeted`'s
+Running PDFBox over the same eighteen says otherwise. **Seventeen of them fail in
+the Java too, with the identical message**, `IOException: Missing root object
+specification in trailer.` and `IOException: Page tree root must be a
+dictionary`. The port is reproducing PDFBox, not falling short of it. One file,
+`issue-202.pdf`, is a real difference: PDFBox opens it at ten pages and the port
+does not. The test-class backlog stands on its own merits; these files were never
+evidence for it.
+
+**What was left alone, and what was wrong about that.** Three veraPDF files in
+clause 6.1.12 timed out, which is what a file built to exceed implementation
+limits is for — except that PDFBox reads all three, so what the limit found was
+the port's complexity and not the file's size. `qpdf/deep-pages.pdf` was written
+down here as the port's carry of Java's own `IllegalStateException` about
+page-tree recursion; **PDFBox opens that file and extracts from it without the
+guard firing**, so it was a port defect and not a carry. All four are fixed, and
+the reasoning that got them wrong is kept in [`TESTDATA.md`](TESTDATA.md)
+alongside the comparison that caught it. What is *genuinely* left alone is
+`safedocs-targeted`'s
 `ContentStreamCycleType3insideType3.pdf`, a Type 3 glyph that draws itself,
 recurses until Go's stack overflow ends the process — the Java is no better,
 since neither side bounds Type 3 recursion, because the `level` guard both carry

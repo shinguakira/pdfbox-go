@@ -178,6 +178,14 @@ func (e *PDFStreamEngine) ShowFontGlyph(textRenderingMatrix *util.Matrix, f font
 // ShowType3Glyph runs the content stream that draws one glyph of a Type 3 font.
 //
 // Port of showType3Glyph.
+//
+// There is no depth bound here, because Java has none: a glyph procedure that
+// shows text in the same Type 3 font recurses until the stack runs out. The
+// engine's own Level counter -- IncreaseLevel, Level, DecreaseLevel -- is the
+// guard for exactly this, and the Java wires it into the three DrawObject
+// operators and not into this path. Carried, including the asymmetry. See
+// migration/JAVA-BUGS.md 87, which measures what it costs on the Go side:
+// Java's StackOverflowError is catchable and Go's stack overflow is fatal.
 func (e *PDFStreamEngine) ShowType3Glyph(textRenderingMatrix *util.Matrix, f *font.PDType3Font, code int, displacement util.Vector) error {
 	charProc := f.CharProc(code)
 	if charProc != nil {

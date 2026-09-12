@@ -253,6 +253,37 @@ func (d *Document) AddXRefTable(entries map[*ObjectKey]int64) {
 	}
 }
 
+// XRefTableSize returns how many cross-reference entries there are.
+//
+// Java's getXrefTable hands back the live map and callers ask it for its size;
+// the port's answers a copy, so a caller doing the same builds one every time.
+// COSParser.getObjectKey is such a caller and runs once per object read, which
+// on a ten thousand page document is quadratic -- 71% of the time spent opening
+// veraPDF's isartor-6-1-12-t01-fail-a.pdf was inside XRefTable. This and
+// EachXRefKey are what that caller needs, and neither copies.
+func (d *Document) XRefTableSize() int {
+	size := len(d.xrefTable)
+	if d.nilKeyEntry != nil {
+		// Java's HashMap holds the null key as an entry and counts it
+		size++
+	}
+	return size
+}
+
+// EachXRefKey calls yield with every cross-reference key, stopping early if it
+// answers false. The nil key the table may hold is not offered: it is not a key
+// anything can be looked up by.
+func (d *Document) EachXRefKey(yield func(key *ObjectKey) bool) {
+	for _, e := range d.xrefTable {
+		if e.key == nil {
+			continue
+		}
+		if !yield(e.key) {
+			return
+		}
+	}
+}
+
 // XRefTable returns the cross-reference entries, keyed by the first key object
 // seen for each.
 func (d *Document) XRefTable() map[*ObjectKey]int64 {
