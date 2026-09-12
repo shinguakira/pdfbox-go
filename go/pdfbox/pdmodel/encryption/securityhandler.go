@@ -264,7 +264,7 @@ func (h *securityHandlerBase) encryptDataAESother(finalKey []byte, data io.Reade
 	// Java feeds the stream through Cipher.update in 256-byte pieces and then
 	// calls doFinal; for CBC that is the same as running the whole input at
 	// once, and a GeneralSecurityException from either becomes an IOException.
-	result, err := aesCBC(finalKey, iv, rest, decrypt)
+	result, err := aesCBC(finalKey, iv, rest, decrypt, false)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func (h *securityHandlerBase) encryptDataAES256(data io.Reader, output io.Writer
 	if err != nil {
 		return err
 	}
-	result, err := aesCBC(h.encryptionKey, iv, rest, decrypt)
+	result, err := aesCBC(h.encryptionKey, iv, rest, decrypt, true)
 	if err != nil {
 		// starting with java 8 the JVM wraps an IOException around a
 		// GeneralSecurityException; it should be safe to swallow a
@@ -326,7 +326,15 @@ func (e *badPaddingError) Error() string { return e.reason }
 // Port of SecurityHandler.createCipher and the update/doFinal calls around it.
 // Java asks the JCE for "AES/CBC/PKCS5Padding"; Go's crypto/cipher has the mode
 // but not the padding, so the padding is written out.
-func aesCBC(key, iv, data []byte, decrypt bool) ([]byte, error) {
+// tolerateShortFinalBlock says whether a trailing partial block is an error.
+// It is false for AES-128 and AES-192, where Java calls Cipher.doFinal and the
+// IllegalBlockSizeException it raises comes back as an IOException, and true
+// for AES-256, where Java reads through javax.crypto.CipherInputStream, which
+// by contract swallows that failure and reports the end of the stream.
+type tolerateShortFinalBlock bool
+
+func aesCBC(key, iv, data []byte, decrypt bool,
+	tolerateShort tolerateShortFinalBlock) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -335,21 +343,25 @@ func aesCBC(key, iv, data []byte, decrypt bool) ([]byte, error) {
 		if len(data) == 0 {
 			return nil, &badPaddingError{reason: "no data to decrypt"}
 		}
-		// A trailing partial block is not an error here, and this is the one
-		// place in the port where that matters. Java reads through
-		// javax.crypto.CipherInputStream, whose contract is that it does not
-		// throw: the exception doFinal raises on a short final block is
-		// swallowed and the stream reports its end, having already written
-		// every complete block it decrypted. A file whose stream length is not
-		// a whole number of blocks therefore still gives Java its content, and
-		// refusing it here returned nothing at all -- a blank page, silently.
-		// Found by test-2586.pdf, whose page content stream is 145 bytes: nine
-		// whole blocks and one byte over.
-		whole := len(data) - len(data)%aes.BlockSize
-		if whole == 0 {
+		if remainder := len(data) % aes.BlockSize; remainder != 0 {
+			if !tolerateShort {
+				// javax.crypto.IllegalBlockSizeException out of doFinal,
+				// which encryptDataAESother turns into an IOException.
+				return nil, fmt.Errorf(
+					"encryption: input length not a multiple of the block size: %d",
+					len(data))
+			}
+			// AES-256 only. CipherInputStream does not throw on a short final
+			// block: it reports the end of the stream, having already written
+			// every complete block it decrypted. Refusing it returned nothing
+			// at all -- a blank page, silently. Found by test-2586.pdf, whose
+			// page content stream is 145 bytes, nine whole blocks and one over.
+			data = data[:len(data)-remainder]
+		}
+		if len(data) == 0 {
 			return nil, &badPaddingError{reason: "fewer bytes than one block"}
 		}
-		data = data[:whole]
+		whole := len(data)
 		plain := make([]byte, whole)
 		cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, data)
 		unpadded, err := pkcs5Unpad(plain)

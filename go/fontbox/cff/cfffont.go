@@ -320,9 +320,15 @@ func (f *CFFType1Font) getType2CharString(gid int, name string) (*Type2CharStrin
 	// The lock covers the whole body, not just the map. getParser and
 	// getLocalSubrIndex below are lazy too, and Java leaves both unsynchronised
 	// -- a race the JVM survives, since the worst of it is two parsers built and
-	// one dropped. Go calls a racing write undefined and the race detector
-	// calls it a failure, so the port serialises what Java leaves to chance.
-	// Said here because it is a deliberate deviation; see migration/STATUS.md.
+	// one dropped. Go calls a racing write undefined, so this serialises them.
+	//
+	// **This does not make the font thread-safe.** What it fixes is the one
+	// failure that is fatal in Go and not in Java: two goroutines writing the
+	// map at once end the process. The charstring this hands back still renders
+	// its path lazily in Type1CharString.renderOnce, which is unguarded on
+	// purpose -- see the comment there -- so `go test -race` still reports that
+	// one. Said here because it is a deliberate deviation; see
+	// migration/STATUS.md.
 	f.charStringCacheMu.Lock()
 	defer f.charStringCacheMu.Unlock()
 	if type2, ok := f.charStringCache[gid]; ok {

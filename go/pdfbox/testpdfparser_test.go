@@ -15,6 +15,7 @@ package pdfbox
 // values are the Java's, copied, not recomputed.
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -26,16 +27,19 @@ import (
 // targetPDFDir is Java's TARGETPDFDIR.
 const targetPDFDir = "../../pdfbox/target/pdfs/"
 
-// openTarget loads one of them, failing the test where the fetch has not been
-// run rather than where the parse goes wrong, because the two look the same
-// from a bare error.
+// openTarget loads one of them, skipping where the fetch has not been run
+// rather than failing: a fresh clone has no target/pdfs, and an absent
+// download is not a defect in the port. A parse that goes wrong still fails,
+// which is what the case is for.
 func openTarget(t *testing.T, name string) *pdmodel.PDDocument {
 	t.Helper()
-	document, err := LoadPDF(targetPDFDir + name)
+	path := targetPDFDir + name
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("%s is not there; run migration/scripts/fetch-testdata.ps1", name)
+	}
+	document, err := LoadPDF(path)
 	if err != nil {
-		t.Fatalf("LoadPDF(%s): %v\n"+
-			"if the file is not there, run migration/scripts/fetch-testdata.ps1",
-			name, err)
+		t.Fatalf("LoadPDF(%s): %v", name, err)
 	}
 	t.Cleanup(func() { document.Close() })
 	return document

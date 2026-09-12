@@ -290,8 +290,13 @@ The lock is held across the whole of `getType2CharString` rather than around the
 map alone, and that is a **deliberate deviation**: `getParser` and
 `getLocalSubrIndex` beside it are lazy too and Java leaves both unsynchronised,
 a race the JVM survives because the worst of it is two parsers built and one
-dropped. Go calls a racing write undefined. The port serialises what Java leaves
-to chance.
+dropped. Go calls a racing write undefined.
+
+**This does not make the font thread-safe, and the commit that did it should not
+have implied otherwise.** What it fixes is the one failure that is fatal in Go
+and not in Java. The charstring it hands back still renders its path lazily in
+`Type1CharString.renderOnce`, and two goroutines asking the same glyph for its
+path still race there.
 
 `go test -race` on that package is still not clean, and the remaining report is
 `Type1CharString.renderOnce`. That one is **not** touched here: Java guards it
@@ -342,6 +347,47 @@ so comparing wrappers reports every page as a different one. `samePage` now
 compares what Java compares. It was a defect in the test helper, not in the
 merger, and it had been masking nothing because the cases that use it could not
 run.
+
+
+### The review of that work, and what it caught
+
+**The partial-block tolerance was applied to the wrong half of AES.** Java has
+two paths and they differ exactly there: `encryptDataAESother`, which is AES-128
+and AES-192, ends on `Cipher.doFinal`, and the `IllegalBlockSizeException` a
+short final block raises is caught as a `GeneralSecurityException` and rethrown
+as an IOException. Only `encryptDataAES256` reads through `CipherInputStream`,
+which swallows it. `aesCBC` is shared by both, so putting the tolerance inside
+it let AES-128 return truncated plaintext where Java errors.
+
+It now takes a `tolerateShortFinalBlock`, true only from the AES-256 path.
+`TestAES128RefusesATrailingPartialBlock` in
+`encryption/trailingblockunit_test.go` pins all three cases: nine blocks and one
+byte over is refused on the AES-128 path, taken on the AES-256 one, and a
+block-aligned input is refused by neither.
+
+The diagnosis that found this was not wrong -- `test-2586.pdf` is
+`/V 5 /R 5 /CFM /AESV3`, so AES-256, and Java does read it. Only the reach of
+the fix was.
+
+**Two helpers loaded before checking.** `openTarget` in
+`pdfbox/testpdfparser_test.go` and `TestPDFBox3950Renders` called `LoadPDF` on a
+`target/pdfs` file without a `os.Stat` first, so a fresh clone failed the
+package instead of skipping it. Both check now, and it was confirmed by moving
+the two fixtures aside and watching the three cases skip.
+
+**The CFF thread-safety claim was overstated, and is corrected rather than
+made true.** The lock added to the charstring cache fixes the one failure that
+is fatal in Go and not in Java, the concurrent map write. It does not make the
+font thread-safe: `Type1CharString.renderOnce` still renders lazily and
+unguarded, and `go test -race` still reports it.
+
+That one is deliberately not fixed, and the reason is now at the site. Every
+cheap answer is wrong. `sync.Once` and `sync.Mutex` both deadlock on the
+self-referential seac that the `c.path == accentPath` check exists to catch,
+because Java's `synchronized(LOG)` is re-entrant and neither of those is.
+Rendering eagerly would build the path of every glyph a caller never draws.
+Doing it properly means giving `render` a re-entrancy it does not have, which is
+its own piece of work.
 
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
