@@ -195,4 +195,18 @@ func isDeflateDamage(err error) bool {
 // Close releases the inflater, which is FlateFilterDecoderStream.close's
 // inflater.end(). The stream it reads from is not closed: Java reaches that one
 // through a RandomAccessInputStream, whose close is the inherited no-op.
-func (f *flateDecoderStream) Close() error { return f.inflated.Close() }
+//
+// Damage does not come back out of here. compress/flate's reader remembers the
+// error it stopped on and returns it again from Close; inflater.end() returns
+// void and cannot. Reporting it would undo the whole of the Read above, which
+// has already taken Java's decision to end the stream rather than fail it --
+// the caller was told there was no more data and acted on it, and a close that
+// then raises the same damage turns a readable page into a failed one. That is
+// how qpdf/shared-images-errors.pdf failed. See
+// TestFlateDecoderReaderCloseSwallowsDamage.
+func (f *flateDecoderStream) Close() error {
+	if err := f.inflated.Close(); err != nil && !isDeflateDamage(err) {
+		return err
+	}
+	return nil
+}

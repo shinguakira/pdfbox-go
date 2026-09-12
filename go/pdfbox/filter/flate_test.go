@@ -398,3 +398,37 @@ func TestFlateDecoderReaderPassesSourceErrorsOn(t *testing.T) {
 			"only DataFormatException", err)
 	}
 }
+
+// TestFlateDecoderReaderCloseSwallowsDamage pins the fourth defect the corpus
+// found: qpdf/shared-images-errors.pdf and shared-images-errors-2-out.pdf, whose
+// page content streams are deliberately damaged Flate. PDFBox extracts 65 and 1
+// characters from them; the port failed the whole extraction with
+// "flate: corrupt input before offset 5".
+//
+// The Read side was already right, and says so at length: Java's
+// FlateFilterDecoderStream.fetch catches the DataFormatException, keeps what
+// inflated and reports end of data, and the port does the same. What leaked was
+// Close. compress/flate's decompressor stores the error it stopped on and hands
+// it back from Close; Java's close is inflater.end() plus FilterInputStream.close
+// on a RandomAccessInputStream, and neither of those can report a format
+// problem. So the stream said "no more data", the caller believed it, and then
+// closing raised the damage the Read had already dealt with.
+func TestFlateDecoderReaderCloseSwallowsDamage(t *testing.T) {
+	// two zlib header bytes, then bytes that are not a deflate stream
+	damaged := []byte{0x78, 0x9c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+
+	reader, err := NewFlateDecoderReader(bytes.NewReader(damaged))
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+
+	// Reading is expected to end quietly: Java keeps what inflated, which here
+	// is nothing, and reports end of stream rather than failing.
+	if _, err := io.ReadAll(reader); err != nil {
+		t.Errorf("ReadAll = %v, want nil -- damaged data ends the stream, it does not fail it", err)
+	}
+
+	if err := reader.Close(); err != nil {
+		t.Errorf("Close = %v, want nil -- Java's close is inflater.end(), which cannot report damage", err)
+	}
+}
