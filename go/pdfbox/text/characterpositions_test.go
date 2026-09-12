@@ -43,25 +43,102 @@ func TestCharacterPositionsRange(t *testing.T) {
 }
 
 // TestCharacterPositionsStaySorted pins the invariant the search depends on:
-// the columns are ordered and hold no duplicates however they are added.
+// every position is found again however the positions arrived, and a repeat is
+// not recorded twice.
 func TestCharacterPositionsStaySorted(t *testing.T) {
-	var positions characterPositions
-	for _, xy := range [][2]float32{
+	added := [][2]float32{
 		{3, 30}, {1, 10}, {2, 20}, {1, 5}, {1, 10}, {2, 20},
-	} {
+	}
+
+	var positions characterPositions
+	for _, xy := range added {
 		positions.add(xy[0], xy[1])
 	}
 
-	wantXs := []float32{1, 2, 3}
-	if len(positions.xs) != len(wantXs) {
-		t.Fatalf("xs = %v, want %v", positions.xs, wantXs)
-	}
-	for i, want := range wantXs {
-		if positions.xs[i] != want {
-			t.Fatalf("xs = %v, want %v", positions.xs, wantXs)
+	// a tolerance small enough that only an exact position answers
+	const exact = 0.001
+	for _, xy := range added {
+		if !positions.anyWithin(xy[0]+exact/2, xy[1]+exact/2, exact) {
+			t.Errorf("(%v, %v) was added and is not found", xy[0], xy[1])
 		}
 	}
-	if got := positions.ys[0]; len(got) != 2 || got[0] != 5 || got[1] != 10 {
-		t.Errorf("the column at x=1 is %v, want [5 10]", got)
+	if positions.anyWithin(1+exact/2, 20+exact/2, exact) {
+		t.Error("(1, 20) was never added and is found")
+	}
+
+	if got := positions.count(); got != 4 {
+		t.Errorf("holding %d positions, want 4 -- the two repeats must not be recorded twice", got)
+	}
+}
+
+// TestCharacterPositionsAgreeWithABruteForceScan checks the blocked structure
+// against the obvious implementation over enough positions to fill several
+// blocks and force the splits.
+//
+// The structure earns its complexity on speed alone -- it answers exactly what
+// a linear scan of the same set answers -- so a linear scan is what it is held
+// to. The positions are generated rather than listed because the interesting
+// cases are the ones at a block boundary, and which positions those are depends
+// on the split.
+func TestCharacterPositionsAgreeWithABruteForceScan(t *testing.T) {
+	// deterministic, and deliberately not in order: insertion order is what
+	// decides where the blocks break
+	const count = 4000
+	xs := make([]float32, 0, count)
+	ys := make([]float32, 0, count)
+	seed := uint32(12345)
+	next := func() float32 {
+		seed = seed*1664525 + 1013904223
+		return float32(seed%2000) / 4
+	}
+
+	var positions characterPositions
+	var flat []position
+	for i := 0; i < count; i++ {
+		x, y := next(), next()
+		xs, ys = append(xs, x), append(ys, y)
+		positions.add(x, y)
+
+		known := false
+		for _, p := range flat {
+			if p.x == x && p.y == y {
+				known = true
+				break
+			}
+		}
+		if !known {
+			flat = append(flat, position{x: x, y: y})
+		}
+	}
+
+	if got := positions.count(); got != len(flat) {
+		t.Fatalf("holding %d positions, want %d -- duplicates are not being dropped", got, len(flat))
+	}
+
+	bruteForce := func(x, y, tolerance float32) bool {
+		for _, p := range flat {
+			if p.x >= x-tolerance && p.x < x+tolerance &&
+				p.y >= y-tolerance && p.y < y+tolerance {
+				return true
+			}
+		}
+		return false
+	}
+
+	// every tolerance from "only this exact spot" to "most of the page"
+	for _, tolerance := range []float32{0.001, 0.25, 1, 10} {
+		for i := 0; i < count; i++ {
+			// the position itself, and a point beside it
+			for _, probe := range [][2]float32{
+				{xs[i], ys[i]},
+				{xs[i] + 0.3, ys[i] - 0.3},
+			} {
+				want := bruteForce(probe[0], probe[1], tolerance)
+				if got := positions.anyWithin(probe[0], probe[1], tolerance); got != want {
+					t.Fatalf("anyWithin(%v, %v, %v) = %v, want %v",
+						probe[0], probe[1], tolerance, got, want)
+				}
+			}
+		}
 	}
 }
