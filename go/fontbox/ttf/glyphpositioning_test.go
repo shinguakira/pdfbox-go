@@ -8,6 +8,7 @@ package ttf
 // size the font declares, and that a font with no GPOS answers nothing.
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
@@ -16,19 +17,26 @@ import (
 // layoutFonts is where the pdfbox-layout-awt test resources are.
 const layoutFonts = "../../../pdfbox-layout-awt/src/test/resources/ttf/"
 
-// openFontFile parses a font from the layout test resources.
-func openFontFile(t *testing.T, name string) *TrueTypeFont {
+// openFontPath parses a font from anywhere in the tree. The kern-agreement
+// case needs one that is not among the layout resources.
+func openFontPath(t *testing.T, path string) *TrueTypeFont {
 	t.Helper()
-	source, err := pdfio.OpenBufferedFile(layoutFonts + name)
+	source, err := pdfio.OpenBufferedFile(path)
 	if err != nil {
-		t.Skipf("%s is not in this repository: %v", name, err)
+		t.Skipf("%s is not in this repository: %v", path, err)
 	}
 	font, err := NewOTFParser().Parse(source)
 	if err != nil {
-		t.Fatalf("parsing %s: %v", name, err)
+		t.Fatalf("parsing %s: %v", path, err)
 	}
 	t.Cleanup(func() { font.Close() })
 	return font.TrueTypeFont
+}
+
+// openFontFile parses a font from the layout test resources.
+func openFontFile(t *testing.T, name string) *TrueTypeFont {
+	t.Helper()
+	return openFontPath(t, layoutFonts+name)
 }
 
 // glyphsOf answers the glyph ids of a string, through the font's Unicode cmap.
@@ -200,19 +208,26 @@ func TestArabicMarksAttach(t *testing.T) {
 // and a font may update one and not the other. What the case asserts is that
 // they agree wherever the old table has a pair at all -- a disagreement means
 // the GPOS reader is reading the wrong bytes, not that the font is subtle.
+//
+// The two fonts below are every font in this repository that carries both
+// tables; a sweep of all 114 found no third. Arimo and FiraCode, which the
+// other cases use, carry GPOS and no `kern` at all, so they have nothing to
+// compare and are deliberately not here -- listing them only bought two
+// subtests that skipped.
 func TestGPOSKerningAgreesWithTheKernTable(t *testing.T) {
-	for _, name := range []string{
-		"DejaVuSans.ttf", "Arimo-Regular.ttf", "FiraCode-Regular.ttf",
+	for _, path := range []string{
+		layoutFonts + "DejaVuSans.ttf",
+		"../../../fontbox/src/test/resources/ttf/LiberationSans-Regular.ttf",
 	} {
-		t.Run(name, func(t *testing.T) {
-			font := openFontFile(t, name)
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			font := openFontPath(t, path)
 			gpos, err := font.GPOS()
 			if err != nil || gpos == nil {
-				t.Skip("no GPOS table")
+				t.Fatal("the font has no GPOS table; this case needs one")
 			}
 			kerning, err := font.Kerning()
 			if err != nil || kerning == nil {
-				t.Skip("no kern table")
+				t.Fatal("the font has no kern table; this case needs one")
 			}
 			subtable := kerning.HorizontalKerningSubtable()
 			if subtable == nil {

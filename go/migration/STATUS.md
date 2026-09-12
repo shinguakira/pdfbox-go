@@ -29,6 +29,66 @@ Last updated: 2026-09-12
 | — | `xmpbox` | 74 | **done — all 74 files**, and all 27 test files |
 | — | `pdfbox/glyphlayout` | 7 | **the backend is built** — `track/pdfbox-layout`. Not a port: PDFBox has no shaper of its own, so `go/pdfbox/glyphlayout` is one, over ported GSUB and GPOS written from the specification. The four `*Awt`/`*Fop` classes stay unported by name; see its section |
 
+## Test data
+
+The port had never read a file the Java build downloads. `pdfbox/pom.xml`,
+`fontbox/pom.xml`, `examples/pom.xml` and `benchmark/pom.xml` declare 78 of them
+through `download-maven-plugin`, each pinned by a SHA-512 the pom carries and
+each the reduced reproducer of a numbered PDFBOX issue; nothing here runs Maven,
+so `target/` was empty in every checkout. **29 Java test classes read out of
+it**, holding 240 `@Test` methods between them, and 27 comments across 22 Go
+files name one of those directories, eleven of them to say a test is unported for
+exactly that reason.
+
+`migration/scripts/fetch-testdata.ps1` fills those directories without a JDK,
+reading the manifest out of the poms rather than copying it. 74 of the 78 still
+fetch; the four that do not are all `benchmark` inputs no test reads — two hosts
+that no longer resolve, one file whose host stopped serving the pinned bytes, and
+Adobe's copy of ISO 32000-1.
+
+`migration/scripts/fetch-corpus.ps1` brings down the third-party suites that are
+organised one-file-one-rule rather than one-file-one-bug — veraPDF's 2,908 atomic
+ISO clause tests, qpdf's 639 cross-reference and encryption permutations, the
+SafeDocs hand-coded parser traps, the PDF 2.0 examples — into
+`go/testdata/corpus/`, which is gitignored.
+
+`go/cmd/corpus` scores a directory of them: one row per file, one column per
+stage, `-baseline` to report only what changed since the last run. **It is not a
+port.** PDFBox has no such command; it is migration tooling, and it is the second
+binary in the tree after `go/cmd/pdfbox`, which remains the only *ported* one.
+
+All of it is described in [`TESTDATA.md`](TESTDATA.md), including the first run:
+**3,646 files, 99.4% open and 99.2% text after the one fix below**, and four
+groups of failure of which one was a port defect.
+
+**The port defect, found and fixed.** Three files panicked in
+`text.handleDirection` with an index out of range, two of them from the set the
+Java build downloads and therefore in front of the Java's own tests
+(`PDFBOX-4418-000314.pdf`, `PDFBOX-4418-000671.pdf`). The cause is the one
+substitution that method makes: `java.text.Bidi` has no counterpart in Go's
+standard library, and `golang.org/x/text/unicode/bidi` resolves a word made only
+of paragraph separators to zero runs, then indexes the first of them when asked
+the direction. Java returns such a word untouched. `direction.go` now answers
+before asking, and `pdfbox/text/corpusdefects_test.go` pins the empty string and
+all six code points of Unicode bidi class B.
+
+**The gap it corroborated.** Eighteen `qpdf/issue-*.pdf` files come back
+`Missing root object specification in trailer` or `Page tree root must be a
+dictionary` — the cross-reference recovery path, which is the hole this file
+already names: `TestCOSParser` and `TestPDFParser`, 47 `@Test` methods, have
+never run in the port.
+
+**What was left alone.** `qpdf/deep-pages.pdf` panics with the port's carry of
+Java's own `IllegalStateException` about page-tree recursion, and three veraPDF
+files in clause 6.1.12 time out, which is what a file built to exceed
+implementation limits is for. And `safedocs-targeted`'s
+`ContentStreamCycleType3insideType3.pdf`, a Type 3 glyph that draws itself,
+recurses until Go's stack overflow ends the process — the Java is no better,
+since neither side bounds Type 3 recursion, because the `level` guard both carry
+is wired into the three `DrawObject` operators and not into `showType3Glyph`. But
+Java's `StackOverflowError` is catchable and Go's is fatal, which is why
+`cmd/corpus` isolates each file in a child process.
+
 ### What the fetch unblocked, and what it did not
 
 Measured 2026-09-12. On 2026-09-11 the directories the Java build downloads
@@ -145,6 +205,37 @@ error nobody traces back to the download. All twelve fetch today.
 
 So **no Java test in this tree is now waiting on input.** What is left is
 unwritten test code, and the order to write it in is below.
+
+### Every skip in the suite, and what actually causes it
+
+`go test ./... -v` on 2026-09-12: **PASS 2749 / SKIP 8 / FAIL 0.** Each skip was
+opened and checked against the file it names, not inferred from its wording.
+
+| Skipped | Message | Checked |
+| --- | --- | --- |
+| `TestOnWindows/c:/windows/fonts/mingliu.ttc` | `the system font collection is not present: ... The system cannot find the file specified` | `C:\Windows\Fonts` holds 163 `.ttf`/`.ttc` and `mingliu.ttc` is not among them (`mingliub.ttc`, a different collection, is). Java skips too: `checkTrueTypeCollection` opens with `assumeTrue(file.exists())` |
+| `TestOnMac` | `the Java test is @EnabledOnOs(OS.MAC)` | `TrueTypeFontCollectionTest.java:71` carries that annotation |
+| `TestPDFBox3319` | `SimHei font not available on this machine, test skipped` | `C:\Windows\Fonts\simhei.ttf` absent. The message is Java's own, verbatim from `TTFSubsetterTest.java:156` |
+| `TestLatinViaCns1NonEmbedded` | `no CID-keyed substitute for Adobe-CNS1 installed, can't test` | verbatim from `PDCIDFontType0SubstituteTest.java:56`, the same `assumeTrue(mapping.isCIDFont(), ...)`. `msjh.ttc` and `mingliub.ttc` are installed, but they are TrueType-outline, not CID-keyed CFF, so Java skips on this machine too |
+| `TestSaveResources/JBIG2Image.pdf` | `this port has no JBIG2 decoder` | true, and **Java does not skip it** — see the filters section |
+| `TestSaveResources/JPXTest{CMYK,Grey,RGB}.pdf` | `this port has no JPEG 2000 decoder` | the same: three more subtests that run in Java |
+
+So seven of the eight are Java's own assumptions firing on this machine, and the
+four `TestSaveResources` ones are the port being behind. (Four of eight overlaps
+because the JBIG2 row covers one file and the JPX row three.)
+
+**Two skips that used to be here are gone.**
+`TestGPOSKerningAgreesWithTheKernTable` listed `Arimo-Regular.ttf` and
+`FiraCode-Regular.ttf` beside `DejaVuSans.ttf`, and both skipped with `no kern
+table`. That was not a missing font: both are in the tree and both parse. A
+direct read of their sfnt table directories — 16 tables each, `GDEF GPOS GSUB
+OS/2 STAT cmap gasp glyf head hhea hmtx loca maxp name post prep` — shows they
+carry GPOS and no `kern` at all, so there was never anything for that case to
+compare and two of its three subtests asserted nothing. A sweep of all 114
+fonts in the tree found exactly two that carry both tables: `DejaVuSans.ttf`
+and `LiberationSans-Regular.ttf`. The case now names those two and `t.Fatal`s
+if either table is missing, which turns a silent skip into a failure if the
+fixture ever changes. It went from 89 checked pairs to 152, all agreeing.
 
 ### `PDAcroFormFlattenTest`, ported, and the port defect it found
 
@@ -1910,6 +2001,16 @@ Neither format has PDFBox code to port — both are handed to the plugin — and
 has no decoder for either. A document using one still opens; only that image is
 missing, as in Java.
 
+**PDFBox's own test build is not such a build.** `pdfbox/pom.xml` pulls
+`org.apache.pdfbox:jbig2-imageio`, `com.github.jai-imageio:jai-imageio-core`
+and `...:jai-imageio-jpeg2000`, all at `<scope>test</scope>` — the second and
+third carry the comment that their licence forbids distributing them, which is
+why they are test-only rather than absent. So the Java tests decode both
+formats and the port's do not: `TestSaveResources` skips
+`JBIG2Image.pdf`, `JPXTestCMYK.pdf`, `JPXTestGrey.pdf` and `JPXTestRGB.pdf`,
+four subtests that run in Java. That is a coverage gap, not parity, and it is
+the only place in the suite where the port skips what Java runs.
+
 **DCT cannot be byte-identical to Java's**, and says so where it is:
 
 - `image/jpeg` has already applied the Adobe inversion a CMYK JPEG stores its
@@ -2173,9 +2274,11 @@ None of them returns nothing, which is the failure D8 is about.
 
 Five, all recorded in `migration/STATUS.md` and none of them a Java bug:
 
-- **JBIG2 and JPX**: no decoder in Go, and none in PDFBox either — both are
-  handed to an ImageIO plugin. The port reports the missing reader, which is
-  what Java reports without the jars.
+- **JBIG2 and JPX**: no decoder in Go, and no PDFBox *code* for either — both
+  are handed to an ImageIO plugin. The port reports the missing reader, which
+  is what Java reports without the jars. But `pdfbox/pom.xml` pulls those jars
+  at test scope, so the Java suite is never without them: `TestSaveResources`
+  skips four subtests that Java runs. Recorded above under the filters.
 - **TIFF**: `createFromByteArray` falls through to ImageIO for a TIFF the CCITT
   reader refuses. `lzw.tif` loads in Java and does not here;
   `TestCreateFromByteArrayLZWTiff` pins the gap.
