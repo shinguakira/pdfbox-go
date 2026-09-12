@@ -3,6 +3,7 @@ package cff
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/fontbox"
@@ -218,7 +219,13 @@ type CFFType1Font struct {
 	privateDictOrder []string
 	encoding         *CFFEncoding
 
-	charStringCache map[int]*Type2CharString
+	// charStringCache is Java's ConcurrentHashMap, and the lock is why it is
+	// one here. GetPath is called from whatever goroutine is drawing, and Go's
+	// map is fail-fast: two of them writing at once ends the process with
+	// "concurrent map writes" rather than corrupting quietly the way a
+	// java.util.HashMap would. CFFParserTest.testMultiThreadParse is the case.
+	charStringCacheMu sync.Mutex
+	charStringCache   map[int]*Type2CharString
 
 	charStringParser *Type2CharStringParser
 
@@ -310,6 +317,14 @@ func (f *CFFType1Font) GetType2CharString(gid int) (*Type2CharString, error) {
 // getType2CharString returns the Type 2 charstring for the given GID, with name
 // for debugging.
 func (f *CFFType1Font) getType2CharString(gid int, name string) (*Type2CharString, error) {
+	// The lock covers the whole body, not just the map. getParser and
+	// getLocalSubrIndex below are lazy too, and Java leaves both unsynchronised
+	// -- a race the JVM survives, since the worst of it is two parsers built and
+	// one dropped. Go calls a racing write undefined and the race detector
+	// calls it a failure, so the port serialises what Java leaves to chance.
+	// Said here because it is a deliberate deviation; see migration/STATUS.md.
+	f.charStringCacheMu.Lock()
+	defer f.charStringCacheMu.Unlock()
 	if type2, ok := f.charStringCache[gid]; ok {
 		return type2, nil
 	}
@@ -433,8 +448,10 @@ type CFFCIDFont struct {
 	privateDictionaries []map[string]any
 	fdSelect            FDSelect
 
-	charStringCache  map[int]*CIDKeyedType2CharString
-	charStringParser *Type2CharStringParser
+	// As in CFFType1Font: Java declares this a ConcurrentHashMap.
+	charStringCacheMu sync.Mutex
+	charStringCache   map[int]*CIDKeyedType2CharString
+	charStringParser  *Type2CharStringParser
 }
 
 var (
@@ -528,6 +545,10 @@ func (f *CFFCIDFont) getLocalSubrIndex(gid int) [][]byte {
 
 // CIDKeyedCharString returns the Type 2 charstring for the given CID.
 func (f *CFFCIDFont) CIDKeyedCharString(cid int) (*CIDKeyedType2CharString, error) {
+	// As in CFFType1Font.getType2CharString: the whole body, for the lazy
+	// fields below as well as for the map.
+	f.charStringCacheMu.Lock()
+	defer f.charStringCacheMu.Unlock()
 	if type2, ok := f.charStringCache[cid]; ok {
 		return type2, nil
 	}

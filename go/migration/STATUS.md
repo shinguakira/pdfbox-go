@@ -262,6 +262,45 @@ one count, each the whole of what a numbered bug was about:
 
 Mutation-checked on three of the four.
 
+
+### `TestCMapSubtable` and `CFFParserTest`, and the concurrency defect one of them found
+
+**`TestCMapSubtable` is ported, both cases**, in
+`go/fontbox/ttf/testcmapsubtable_test.go`: one glyph of NotoSansSC reachable
+from the two character codes 19981 and 63847, answered the same by the unicode
+lookup and by both the BMP and the full subtable; and `「` and `」` in IPA
+Gothic moving from glyphs 441 and 442 to 7392 and 7393 when vertical
+substitution is turned on. Mutation-checked on both.
+
+**`CFFParserTest` was already ported and was skipping.** It reads
+`SourceSansProBold.otf`, so every case ran for the first time on 2026-09-11 —
+and `testMultiThreadParse` **failed**, fatally:
+
+```
+fatal error: concurrent map writes
+  cff.(*CFFType1Font).getType2CharString cfffont.go:331
+  cff.(*CFFType1Font).GetPath
+```
+
+Java declares that cache `new ConcurrentHashMap<>()`, in both `CFFType1Font` and
+`CFFCIDFont`; the port had a bare map. Go's map is fail-fast, so where Java
+would have corrupted quietly the port ended the process. Both now carry a mutex.
+
+The lock is held across the whole of `getType2CharString` rather than around the
+map alone, and that is a **deliberate deviation**: `getParser` and
+`getLocalSubrIndex` beside it are lazy too and Java leaves both unsynchronised,
+a race the JVM survives because the worst of it is two parsers built and one
+dropped. Go calls a racing write undefined. The port serialises what Java leaves
+to chance.
+
+`go test -race` on that package is still not clean, and the remaining report is
+`Type1CharString.renderOnce`. That one is **not** touched here: Java guards it
+with `synchronized(LOG)`, a re-entrant monitor, and the port deliberately left
+it unguarded because seac renders another charstring from inside `render` and a
+non-re-entrant Go mutex would deadlock where Java's does not. The reason is
+written at the site. It is a pre-existing decision and wants its own look, not a
+change made in passing.
+
 **The order the work is worth doing in.** Taken from the hand-maintained
 per-slice tables rather than from either proxy, and restricted to the entries
 whose stated reason was the input:
