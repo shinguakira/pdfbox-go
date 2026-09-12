@@ -2,6 +2,7 @@ import java.io.File;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -45,6 +46,11 @@ import org.apache.pdfbox.text.PDFTextStripper;
  * {@code migration/scripts/run-oracle.ps1}.
  */
 public class JavaCorpus {
+
+    // How many timed-out tasks may still be running before the run gives up.
+    // Each one holds a thread, a document and a file handle that nothing can
+    // reclaim; see the comment at the check.
+    static final int MAX_STUCK = 4;
 
     static boolean LF = false;
     static final String LFS = String.valueOf((char) 10);
@@ -114,6 +120,7 @@ public class JavaCorpus {
         // alive. Each one gets its own executor because the previous one may
         // still be stuck in it.
         System.out.println("file\topen\tpages\ttext\tchars");
+        List<Future<String[]>> stuck = new ArrayList<>();
         int i = 0;
         for (String path : files) {
             i++;
@@ -125,11 +132,13 @@ public class JavaCorpus {
                 return t;
             });
             String[] row;
+            Future<String[]> future = null;
             try {
-                Future<String[]> future = pool.submit((Callable<String[]>) () -> score(path));
+                future = pool.submit((Callable<String[]>) () -> score(path));
                 row = future.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 row = new String[] { "timeout", "0", "-", "0" };
+                stuck.add(future);
             } catch (Throwable t) {
                 row = new String[] { shorten(t), "0", "-", "0" };
             } finally {
@@ -137,6 +146,24 @@ public class JavaCorpus {
             }
             System.out.println(path + "\t" + row[0] + "\t" + row[1] + "\t" + row[2] + "\t" + row[3]);
             System.out.flush();
+
+            // shutdownNow can only interrupt, and a parser that is not sitting
+            // at an interruptible point ignores it, so a timed-out task keeps
+            // its thread, its PDDocument and its file handle for the rest of
+            // the run. Go solved this by scoring each file in a child process;
+            // doing that here would mean a JVM start per file. So it is bounded
+            // instead: a few are affordable, and past that the run stops rather
+            // than going on measuring files on a JVM that is still busy with
+            // the ones before them.
+            stuck.removeIf(Future::isDone);
+            if (stuck.size() > MAX_STUCK) {
+                System.err.println();
+                System.err.println("JavaCorpus: " + stuck.size() + " files have timed out and are still "
+                        + "running; stopping at " + i + " of " + files.size() + ".");
+                System.err.println("The table above this line is complete. Narrow the list and run the rest "
+                        + "separately, or raise the timeout if these files are slow rather than stuck.");
+                System.exit(3);
+            }
         }
         System.err.println();
     }

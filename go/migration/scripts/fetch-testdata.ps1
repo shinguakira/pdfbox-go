@@ -229,17 +229,29 @@ foreach ($entry in ($manifest | Sort-Object @{ Expression = { $order[$_.Module] 
 
             $size = (Get-Item -LiteralPath $temp).Length
             Move-Item -LiteralPath $temp -Destination $target -Force
-            $bytes += $size
-            $ok = $true
 
+            # The archive and what comes out of it are one cached unit. Unpack
+            # before calling the entry done, because the check that skips it
+            # next time is a hash of the archive: an extraction that failed
+            # after the archive landed would leave that check passing and the
+            # extracted tree missing, with nothing reported and no retry.
             if ($entry.Unpack) {
-                Expand-Archive -LiteralPath $target -DestinationPath $outDir -Force
+                try {
+                    Expand-Archive -LiteralPath $target -DestinationPath $outDir -Force
+                }
+                catch {
+                    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+                    throw
+                }
                 "$label  $([math]::Round($size/1KB)) KB, unpacked"
             }
             else {
                 "$label  $([math]::Round($size/1KB)) KB"
             }
+
+            $bytes += $size
             $fetched++
+            $ok = $true
         }
         catch {
             if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }

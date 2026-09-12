@@ -211,11 +211,26 @@ function Get-ApiSuite {
     $headers = @{ 'User-Agent' = 'pdfbox-go-fetch-corpus' }
     $entries = Invoke-RestMethod -Uri $S.Api -Headers $headers -TimeoutSec 120
 
-    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-    foreach ($e in $entries) {
-        if ($e.type -ne 'file') { continue }
-        Invoke-WebRequest -Uri $e.download_url -OutFile (Join-Path $Dest $e.name) `
-            -TimeoutSec 300 -UseBasicParsing
+    # Staged and then moved into place, for the two reasons the archive path is:
+    # a suite that is half downloaded when the network gives out must not look
+    # complete to the next run, whose only check is that the directory exists;
+    # and -Force has to answer with what is upstream now, not with that plus
+    # whatever was deleted or renamed there since.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corpus-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try {
+        foreach ($e in $entries) {
+            if ($e.type -ne 'file') { continue }
+            Invoke-WebRequest -Uri $e.download_url -OutFile (Join-Path $tmp $e.name) `
+                -TimeoutSec 300 -UseBasicParsing
+        }
+
+        if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Dest) | Out-Null
+        Move-Item -LiteralPath $tmp -Destination $Dest
+    }
+    finally {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

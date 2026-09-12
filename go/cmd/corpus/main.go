@@ -571,7 +571,14 @@ func compareOracle(path string, results []result) (int, error) {
 		lines                                        []string
 	)
 
-	note := func(format string, args ...any) {
+	// The counters above count mismatches and one file can hold more than one
+	// of them -- a page count and a character count can both differ on the same
+	// document. This counts the files, which is what the summary line says it
+	// is reporting.
+	disagreed := map[string]bool{}
+
+	note := func(path, format string, args ...any) {
+		disagreed[path] = true
 		lines = append(lines, fmt.Sprintf(format, args...))
 	}
 
@@ -591,10 +598,10 @@ func compareOracle(path string, results []result) (int, error) {
 			openNeither++
 		case javaOpened:
 			openBehind++
-			note("  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", now.path, now.open, them.pages)
+			note(now.path, "  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", now.path, now.open, them.pages)
 		default:
 			openAhead++
-			note("  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", now.path, now.pages, them.open)
+			note(now.path, "  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", now.path, now.pages, them.open)
 		}
 		if !goOpened || !javaOpened {
 			continue
@@ -602,7 +609,7 @@ func compareOracle(path string, results []result) (int, error) {
 
 		if now.pages != them.pages {
 			pageDiff++
-			note("  PAGES  %s: go %d, java %d", now.path, now.pages, them.pages)
+			note(now.path, "  PAGES  %s: go %d, java %d", now.path, now.pages, them.pages)
 		}
 
 		goText, javaText := now.text == "ok", them.text == "ok"
@@ -613,16 +620,16 @@ func compareOracle(path string, results []result) (int, error) {
 				charsSame++
 			} else {
 				charsDiff++
-				note("  CHARS  %s: go %d, java %d", now.path, now.chars, them.chars)
+				note(now.path, "  CHARS  %s: go %d, java %d", now.path, now.chars, them.chars)
 			}
 		case !goText && !javaText:
 			textNeither++
 		case javaText:
 			textBehind++
-			note("  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", now.path, now.text, them.chars)
+			note(now.path, "  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", now.path, now.text, them.chars)
 		default:
 			textAhead++
-			note("  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", now.path, now.chars, them.text)
+			note(now.path, "  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", now.path, now.chars, them.text)
 		}
 	}
 
@@ -638,9 +645,11 @@ func compareOracle(path string, results []result) (int, error) {
 		textBoth, textNeither, textBehind, textAhead)
 	fmt.Fprintf(out, "  chars   %d the same length, %d not\n", charsSame, charsDiff)
 
-	disagreements := openBehind + openAhead + pageDiff + textBehind + textAhead + charsDiff
-	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", disagreements, compared,
-		percent(disagreements, compared))
+	// Files, not mismatches: a document whose page count and character count both
+	// differ is one file that disagrees, and summing the counters above would
+	// call it two.
+	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", len(disagreed), compared,
+		percent(len(disagreed), compared))
 
 	sort.Strings(lines)
 	for _, line := range lines {

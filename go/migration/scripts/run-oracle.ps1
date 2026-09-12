@@ -119,7 +119,8 @@ foreach ($jar in $jars) {
 # lists, AFMs and predefined CMaps off it, and javac does not copy them.
 $classpath = (@($classes) +
     @((Join-Path $RepoRoot 'pdfbox/src/main/resources'), (Join-Path $RepoRoot 'fontbox/src/main/resources')) +
-    @(Get-ChildItem -LiteralPath $lib -Filter *.jar | ForEach-Object { $_.FullName })) -join ';'
+    @(Get-ChildItem -LiteralPath $lib -Filter *.jar | ForEach-Object { $_.FullName })) -join
+    [System.IO.Path]::PathSeparator
 
 # ------------------------------------------------------------------ the compile
 
