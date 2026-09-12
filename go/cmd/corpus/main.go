@@ -7,19 +7,26 @@
 // "is this byte right" but "which of these can the port open, read and draw at
 // all, and did that change since the last run".
 //
-// It is deliberately dumb about correctness. Nothing here compares against the
-// Java, because the Java cannot be run over three thousand files cheaply either.
 // What it produces is a table: one row per file, one column per stage, each cell
-// ok or the first thing that went wrong. Saved and passed back through -baseline,
-// the table turns into a regression check -- a file that used to open and no
-// longer does is a defect the unit tests did not catch, and a file that used to
-// fail and now opens is a slice landing.
+// ok or the first thing that went wrong. The table is then read two ways.
+//
+// -baseline compares it against an earlier run of itself, which makes it a
+// regression check: a file that used to open and no longer does is a defect the
+// unit tests did not catch, and a file that used to fail and now opens is a
+// slice landing.
+//
+// -oracle compares it against the same table produced by PDFBox, which makes it
+// the thing migration/README.md has always asked for and never had at this
+// scale -- "PDFBox is the oracle" run over three thousand files instead of one.
+// migration/scripts/run-oracle.ps1 produces that table; it needs a JDK and no
+// Maven. Exit status is non-zero when the port is behind the Java.
 //
 // Usage:
 //
 //	go run ./cmd/corpus testdata/corpus/verapdf > verapdf.tsv
 //	go run ./cmd/corpus -render testdata/corpus/safedocs-targeted
 //	go run ./cmd/corpus -baseline verapdf.tsv testdata/corpus/verapdf
+//	go run ./cmd/corpus -oracle ../go/testdata/oracle/java-corpus.tsv testdata/corpus
 package main
 
 import (
@@ -30,6 +37,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -67,6 +75,7 @@ func main() {
 		timeout  = flag.Duration("timeout", 30*time.Second, "give up on one file after this; 0 disables")
 		out      = flag.String("o", "", "write the table here instead of stdout")
 		baseline = flag.String("baseline", "", "compare against a table from a previous run and report only the changes")
+		oracle   = flag.String("oracle", "", "compare against a table PDFBox produced (migration/scripts/run-oracle.ps1) and report where the port and the Java disagree")
 		quiet    = flag.Bool("q", false, "summary only")
 		isolate  = flag.Bool("isolate", true, "score each file in its own process, so one that takes the runtime down does not end the run")
 		one      = flag.Bool("one", false, "score exactly one file and print its row; how -isolate re-enters this program")
@@ -136,6 +145,17 @@ func main() {
 			os.Exit(1)
 		}
 		if regressed > 0 {
+			os.Exit(1)
+		}
+	}
+
+	if *oracle != "" {
+		behind, err := compareOracle(*oracle, results)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		if behind > 0 {
 			os.Exit(1)
 		}
 	}
@@ -483,4 +503,148 @@ func compare(path string, results []result) (int, error) {
 		fmt.Fprintln(os.Stderr, line)
 	}
 	return regressed, nil
+}
+
+// rootRelative puts a path this program produced into the form the Java oracle
+// produces. cmd/corpus is run from go/, so it says "testdata/corpus/x.pdf" and
+// "../pdfbox/target/pdfs/y.pdf"; JavaCorpus is run from the repository root and
+// says "go/testdata/corpus/x.pdf" and "pdfbox/target/pdfs/y.pdf".
+func rootRelative(p string) string {
+	// Clean first: a directory argument of "./testdata/corpus" leaves every
+	// path under it with a "./" that the oracle's table does not have.
+	p = path.Clean(filepath.ToSlash(p))
+	if trimmed := strings.TrimPrefix(p, "../"); trimmed != p {
+		return trimmed
+	}
+	if strings.HasPrefix(p, "go/") {
+		return p
+	}
+	return "go/" + p
+}
+
+// compareOracle reports where the port and PDFBox disagree, and returns how
+// many files the port is behind on.
+//
+// "Behind" is a document PDFBox reads and the port does not, at either stage.
+// The other direction -- the port reading what PDFBox refuses -- is reported
+// just as loudly and is not a success: this is a port, and being more permissive
+// than the thing being reproduced is a difference like any other.
+//
+// The character counts are compared for length only, which is worth saying
+// plainly: two documents of the same length are not two identical documents.
+// Length catches a stage that silently produced nothing, a glyph that came out
+// as two characters, a page that was not walked. It does not catch a wrong
+// character. Run the oracle with -Crlf once to see why even this much needs
+// the separators forced equal.
+func compareOracle(path string, results []result) (int, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+
+	type javaRow struct {
+		open, text   string
+		pages, chars int
+	}
+	java := map[string]javaRow{}
+	for i, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 5 {
+			continue
+		}
+		row := javaRow{open: fields[1], text: fields[3]}
+		fmt.Sscan(fields[2], &row.pages)
+		fmt.Sscan(fields[4], &row.chars)
+		java[filepath.ToSlash(fields[0])] = row
+	}
+
+	var (
+		compared                                     int
+		openBoth, openNeither, openBehind, openAhead int
+		pageDiff                                     int
+		textBoth, textNeither, textBehind, textAhead int
+		charsSame, charsDiff                         int
+		notInOracle                                  int
+		lines                                        []string
+	)
+
+	note := func(format string, args ...any) {
+		lines = append(lines, fmt.Sprintf(format, args...))
+	}
+
+	for _, now := range results {
+		them, known := java[rootRelative(now.path)]
+		if !known {
+			notInOracle++
+			continue
+		}
+		compared++
+
+		goOpened, javaOpened := now.open == "ok", them.open == "ok"
+		switch {
+		case goOpened && javaOpened:
+			openBoth++
+		case !goOpened && !javaOpened:
+			openNeither++
+		case javaOpened:
+			openBehind++
+			note("  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", now.path, now.open, them.pages)
+		default:
+			openAhead++
+			note("  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", now.path, now.pages, them.open)
+		}
+		if !goOpened || !javaOpened {
+			continue
+		}
+
+		if now.pages != them.pages {
+			pageDiff++
+			note("  PAGES  %s: go %d, java %d", now.path, now.pages, them.pages)
+		}
+
+		goText, javaText := now.text == "ok", them.text == "ok"
+		switch {
+		case goText && javaText:
+			textBoth++
+			if now.chars == them.chars {
+				charsSame++
+			} else {
+				charsDiff++
+				note("  CHARS  %s: go %d, java %d", now.path, now.chars, them.chars)
+			}
+		case !goText && !javaText:
+			textNeither++
+		case javaText:
+			textBehind++
+			note("  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", now.path, now.text, them.chars)
+		default:
+			textAhead++
+			note("  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", now.path, now.chars, them.text)
+		}
+	}
+
+	out := os.Stderr
+	fmt.Fprintf(out, "\nagainst PDFBox (%s): %d files compared", path, compared)
+	if notInOracle > 0 {
+		fmt.Fprintf(out, ", %d not in the oracle's table", notInOracle)
+	}
+	fmt.Fprintf(out, "\n\n  open    both %d, neither %d, behind %d, ahead %d\n",
+		openBoth, openNeither, openBehind, openAhead)
+	fmt.Fprintf(out, "  pages   %d disagree\n", pageDiff)
+	fmt.Fprintf(out, "  text    both %d, neither %d, behind %d, ahead %d\n",
+		textBoth, textNeither, textBehind, textAhead)
+	fmt.Fprintf(out, "  chars   %d the same length, %d not\n", charsSame, charsDiff)
+
+	disagreements := openBehind + openAhead + pageDiff + textBehind + textAhead + charsDiff
+	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", disagreements, compared,
+		percent(disagreements, compared))
+
+	sort.Strings(lines)
+	for _, line := range lines {
+		fmt.Fprintln(out, line)
+	}
+	return openBehind + textBehind, nil
 }

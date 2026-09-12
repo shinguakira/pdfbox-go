@@ -15,3 +15,8 @@ bash.exe.stackdump
 # Other projects' files under other projects' licences; read as test input,
 # never redistributed from here.
 testdata/corpus/
+
+# The compiled Java oracle and what it writes -- jars from Maven Central, class
+# files from the frozen Java tree, and the tables it produces. All build
+# products of migration/scripts/run-oracle.ps1.
+testdata/oracle/

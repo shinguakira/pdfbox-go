@@ -47,6 +47,8 @@ Three things this is not:
 | [`scripts/inventory.ps1`](scripts/inventory.ps1) | Regenerates `inventory.tsv` from the Java tree |
 | [`scripts/fetch-testdata.ps1`](scripts/fetch-testdata.ps1) | Fetches the 78 test files the Java build declares, into the `target/` directories the Java build puts them in. See [`TESTDATA.md`](TESTDATA.md) |
 | [`scripts/fetch-corpus.ps1`](scripts/fetch-corpus.ps1) | Fetches the third-party PDF suites the port is scored against, into `go/testdata/corpus/` |
+| [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) | Compiles the Java tree with `javac` and runs PDFBox over a corpus, so `cmd/corpus -oracle` can say where the port and the Java disagree. No Maven needed |
+| [`oracle/JavaCorpus.java`](oracle/JavaCorpus.java) | The driver that script runs. The only `.java` file this repository owns; it sits outside the Maven module directories and compiles against them |
 
 ## Porting a package
 
@@ -97,6 +99,29 @@ mvn -pl examples exec:java -Dexec.mainClass=org.apache.pdfbox.examples.rendering
 When a comparison settles a question, put the answer in a Go test rather than in
 a commit message. The point of the exercise is to convert "PDFBox does something
 we did not expect" into a pinned assertion.
+
+### The same thing over a corpus
+
+The above is one file at a time, which is right when there is a question. It is
+the wrong shape for "is the port behaving like PDFBox at all", because that
+question has no single file to point at.
+
+[`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) is the other shape. It
+compiles `io`, `fontbox` and `pdfbox` straight out of the tree with `javac` —
+**no Maven, and no JDK beyond the one the poms already ask for** — runs PDFBox
+over a list of documents, and writes the table `go/cmd/corpus` writes.
+`corpus -oracle` then joins the two and reports every disagreement, and exits
+non-zero when the port is behind.
+
+```bash
+pwsh go/migration/scripts/run-oracle.ps1
+cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv ./testdata/corpus
+```
+
+The first run of it is in [`TESTDATA.md`](TESTDATA.md): twelve files out of
+3,646 disagree, and one of the twelve had already been written down in that file
+as a faithful carry on the strength of reading the Java. It was not. That is
+what this is for.
 
 ## Refreshing the inventory
 

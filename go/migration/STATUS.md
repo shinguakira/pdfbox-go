@@ -57,6 +57,20 @@ stage, `-baseline` to report only what changed since the last run. **It is not a
 port.** PDFBox has no such command; it is migration tooling, and it is the second
 binary in the tree after `go/cmd/pdfbox`, which remains the only *ported* one.
 
+`migration/scripts/run-oracle.ps1` is the other half, and the more important one.
+It compiles `io`, `fontbox` and `pdfbox` out of the tree with `javac` — no Maven
+— runs PDFBox over the same list, and writes the same table, which
+`corpus -oracle` then joins. **Measured 2026-09-12 over 3,646 files: nothing in
+the corpus opens in the port and not in PDFBox, no page count disagrees anywhere,
+and 3,585 of the 3,590 documents both extract come out the same length. Twelve
+files disagree, 0.33%.** The full list and what the four groups are is in
+[`TESTDATA.md`](TESTDATA.md).
+
+One thing that comparison needed first: Java initialises `PDFTextStripper`'s
+`lineSeparator` and `pageEnd` from `System.lineSeparator()`, CRLF on Windows,
+and the port hardcodes LF. Before that is forced equal, 2,925 of the documents
+differ by exactly one character and the comparison says nothing at all.
+
 All of it is described in [`TESTDATA.md`](TESTDATA.md), including the first run:
 **3,646 files, 99.4% open and 99.2% text after the one fix below**, and four
 groups of failure of which one was a port defect.
@@ -72,16 +86,28 @@ the direction. Java returns such a word untouched. `direction.go` now answers
 before asking, and `pdfbox/text/corpusdefects_test.go` pins the empty string and
 all six code points of Unicode bidi class B.
 
-**The gap it corroborated.** Eighteen `qpdf/issue-*.pdf` files come back
-`Missing root object specification in trailer` or `Page tree root must be a
-dictionary` — the cross-reference recovery path, which is the hole this file
-already names: `TestCOSParser` and `TestPDFParser`, 47 `@Test` methods, have
-never run in the port.
+**The gap it looked like it corroborated, and did not.** Eighteen
+`qpdf/issue-*.pdf` files come back `Missing root object specification in trailer`
+or `Page tree root must be a dictionary`, which was read here as the
+cross-reference recovery path failing — the hole this file names, `TestCOSParser`
+and `TestPDFParser`, 47 `@Test` methods never run in the port.
 
-**What was left alone.** `qpdf/deep-pages.pdf` panics with the port's carry of
-Java's own `IllegalStateException` about page-tree recursion, and three veraPDF
-files in clause 6.1.12 time out, which is what a file built to exceed
-implementation limits is for. And `safedocs-targeted`'s
+Running PDFBox over the same eighteen says otherwise. **Seventeen of them fail in
+the Java too, with the identical message**, `IOException: Missing root object
+specification in trailer.` and `IOException: Page tree root must be a
+dictionary`. The port is reproducing PDFBox, not falling short of it. One file,
+`issue-202.pdf`, is a real difference: PDFBox opens it at ten pages and the port
+does not. The test-class backlog stands on its own merits; these files were never
+evidence for it.
+
+**What was left alone, and what was wrong about that.** Three veraPDF files in
+clause 6.1.12 time out, which is what a file built to exceed implementation
+limits is for — though PDFBox reads all three, so it is the port's complexity
+that the limit finds. `qpdf/deep-pages.pdf` was written down here as the port's
+carry of Java's own `IllegalStateException` about page-tree recursion; **PDFBox
+opens that file and extracts from it without the guard firing**, so it is a port
+defect and not a carry. Both corrected in [`TESTDATA.md`](TESTDATA.md), which
+carries the full comparison. And `safedocs-targeted`'s
 `ContentStreamCycleType3insideType3.pdf`, a Type 3 glyph that draws itself,
 recurses until Go's stack overflow ends the process — the Java is no better,
 since neither side bounds Type 3 recursion, because the `level` guard both carry

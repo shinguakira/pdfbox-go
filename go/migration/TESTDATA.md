@@ -200,14 +200,20 @@ them on purpose. Not opening one inside twenty seconds is close to what they
 test for. Worth revisiting only with a number attached: which limit, and what
 PDFBox does with the same file.
 
-### One faithful panic, left alone
+### One panic that looked faithful and is not
 
 `qpdf/deep-pages.pdf` panics with `pdmodel: possible recursion found when
-searching for page 1`, which is the port's carry of Java's
-`IllegalStateException("Possible recursion found when searching for page …")` in
-`PDPageTree.get`. That method declares no checked exception, so the port has no
-error channel to use and carries the unchecked throw as a panic — the same
-line above it does it for `IndexOutOfBoundsException`. Nothing to do.
+searching for page 1`. Read against the Java that looks like a faithful carry:
+`PDPageTree.get` throws `IllegalStateException` with that message, declares no
+checked exception, and so has no error channel the port could have used — the
+line above it carries `IndexOutOfBoundsException` the same way.
+
+**Running the Java says otherwise. PDFBox opens the file, reports one page, and
+extracts from it without the guard firing.** So the port's recursion detection
+fires where the Java's does not, on identical input, and that is a port defect
+rather than a carry. It is in the list below, unfixed, and it is the reason this
+section is worth its length: reading two implementations side by side is how the
+wrong conclusion got written down here in the first place.
 
 ### And the one that ends the process
 
@@ -239,6 +245,123 @@ and "has the open rate moved", over inputs nobody curated.
 | [GovDocs1](https://digitalcorpora.org/corpora/files) | ~231k PDFs | Public-domain real-world government documents. Unbiased in a way none of the above are: nothing in it was chosen because it broke something |
 | [CC-MAIN-2021-31-PDF-UNTRUNCATED](https://digitalcorpora.org/cc-main-2021-31-pdf-untruncated/) | ~8M PDFs | The web as it is. Only worth it for a producer-distribution question |
 | [pdf-association/pdf-corpora](https://github.com/pdf-association/pdf-corpora) | — | The index the three above came from, and the place to look before going hunting. Around fifty corpora with sizes and licences |
+
+## Measured against the Java, 2026-09-12
+
+The section above scores the port on its own: what it opens, what it reads. That
+answers "where does it fall over", not "does it agree with PDFBox", and those are
+different questions. This is the second one, and it is the first time it has been
+asked at this scale.
+
+`migration/scripts/run-oracle.ps1` compiles `io`, `fontbox` and `pdfbox` out of
+the tree with `javac` — no Maven, and it fetches the four compile-scope jars the
+poms name — and runs PDFBox over the same file list, writing the same table.
+`corpus -oracle` joins the two.
+
+```bash
+pwsh go/migration/scripts/run-oracle.ps1
+cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
+    ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
+```
+
+Over the same 3,646 files:
+
+```
+  open    both 3596, neither 46, behind 4, ahead 0
+  pages   0 disagree
+  text    both 3590, neither 3, behind 3, ahead 0
+  chars   3585 the same length, 5 not
+
+  12 of 3646 files disagree (0.33%)
+```
+
+**Nothing in the corpus opens in the port and not in PDFBox, and no page count
+disagrees anywhere.** That is the headline: across three thousand documents
+chosen for being difficult, the two implementations reach the same structure.
+
+### The separator, which has to be dealt with before any of this means anything
+
+The first run of this comparison said 3,470 of 3,590 documents differed in text
+length by more than 2%, which read as a broken extractor. It is not. Java's
+`PDFTextStripper` initialises both `lineSeparator` and `pageEnd` from
+`System.lineSeparator()`, which on Windows is CRLF; the port hardcodes LF and
+says so at `text/pdftextstripper.go:22`. Every line of every document therefore
+costs one character more on the Java side. The delta distribution says it
+outright — 2,925 files differed by exactly **-1**, and the eight that matched
+were the eight with no text at all.
+
+So the oracle forces both to LF, and `run-oracle.ps1 -Crlf` reproduces the
+confusion on demand. The deviation is real and deliberate; it is a convention,
+not a defect, and comparing content requires taking it out first.
+
+### The twelve
+
+| File | Port | PDFBox |
+| --- | --- | --- |
+| `verapdf` Isartor PDFA-1b 6.1.12 `t01-fail-a` | timeout at 20 s | ok, **10,000 pages**, 20,000 chars |
+| `verapdf` PDF_A-1b 6.1.12 `t03-fail-c` | timeout at 20 s | ok, 1 page, **65,540 chars** |
+| `verapdf` TWG `A005-pdfa1-fail-c` | timeout at 20 s | ok, 1 page, **65,540 chars** |
+| `qpdf/issue-202.pdf` | `Page tree root must be a dictionary` | ok, 10 pages, 5,769 chars |
+| `qpdf/shared-images-errors.pdf` | text: `flate: corrupt input before offset 5` | ok, 65 chars |
+| `qpdf/shared-images-errors-2-out.pdf` | text: same | ok, 1 char |
+| `qpdf/deep-pages.pdf` | text: panics on the page-tree recursion guard | ok, 0 chars — **the guard does not fire in Java** |
+| `qpdf/fuzz-16214.pdf` | 1 char | 0 chars |
+| `qpdf/many-nulls.pdf` | 0 chars | 1 char |
+| `qpdf/no-pages-types.pdf` | 7 chars | 0 chars |
+| `qpdf/pages-loop.pdf` | 7 chars | 14 chars |
+| `pdfbox/target/pdfs/PDFBOX-3951-FIHUZ…` | 126,331 chars | 126,330 chars |
+
+They group into four:
+
+**Three are speed, not correctness.** All three timeouts are clause 6.1.12,
+*implementation limits* — a 10,000-page document, and two that put 65,540
+characters on one page. PDFBox reads all three. The port does not finish inside
+twenty seconds, which on this input is a statement about complexity somewhere,
+not about the answer being wrong.
+
+**Two are a filter that gives up where PDFBox does not.** `shared-images-errors`
+carries a deliberately damaged Flate stream. PDFBox returns what it managed to
+inflate; the port returns the error. That is a real behavioural difference in
+`filter`, and it is the kind real documents hit.
+
+**Two are the page tree, and one of them is pinned.** `issue-202.pdf` the port
+refuses to open at all. `deep-pages.pdf` trips a recursion guard PDFBox does not
+trip — and running the Java says exactly why, because it prints
+`ERROR PDPageTree This page tree node has already been visited` and then carries
+on.
+
+`PDPageTree` has **two** guards against a cyclic page tree and they behave
+differently on purpose. The indexed accessor, `get(int, COSDictionary, int)`,
+throws `IllegalStateException`. The iterator's `enqueueKids` logs that error and
+skips the kid — the comment on it cites PDFBOX-5009 and PDFBOX-3953. The port
+carries both faithfully. What differs is which one text extraction reaches:
+Java's `PDFTextStripper.processPages` iterates the tree, and the port's walks it
+by index —
+
+```go
+for i := 0; i < pages.Count(); i++ {
+    page := pages.Get(i)
+```
+
+— so a tree Java skips past takes the port through the throwing guard instead.
+Unfixed, and noted here rather than in `JAVA-BUGS.md` because it is not a Java
+bug: both guards are the Java's, and the port picked the wrong one to walk with.
+
+**Five are a character.** Four of them are documents with under fifteen
+characters of text, where one character is the whole disagreement; the fifth is
+one character in 126,330. Small, and they are still differences — length is a
+weak check and two of these could be a glyph mapped differently rather than a
+character miscounted.
+
+### What this does and does not establish
+
+It compares **length**, not content: two documents of the same length are not the
+same document. What length catches is a stage that silently produced nothing, a
+page that was not walked, a glyph that came out as two characters. What it cannot
+catch is a wrong character in the right place. The ported Java tests are what
+covers that, because their assertions are the Java's own values — this is the
+layer underneath them, and its job is to say that nothing is wrong at a scale
+those tests cannot reach.
 
 ## Scoring a corpus
 
