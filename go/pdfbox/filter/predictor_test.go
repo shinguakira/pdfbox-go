@@ -168,3 +168,48 @@ func assertBytes(t *testing.T, want, got []byte) {
 		}
 	}
 }
+
+// TestCalculateRowLengthOverflowsAsJavaDoes pins the width of the arithmetic,
+// which is load-bearing here and is not the width Go's int has.
+//
+// Found by benchmarking: qpdf/issue-1688a.pdf is 531 bytes and declares
+// `/Predictor 2 /Colors 536870913 /Columns 1 /BitsPerComponent 8`. PDFBox reads
+// it in 0.3ms; the port took 435ms, and 83% of that was the runtime zeroing
+// memory.
+//
+// The reason is the multiply. Java's int is 32 bits, so 536870913 * 8 wraps to
+// 8, bytesPerPixel is 1, and the row is one byte long. Go's int is 64 bits on
+// this machine, so the same expression is 4294967304, the row is 536,870,913
+// bytes, and decodePredictor allocates two of them -- a gigabyte of zeroed
+// memory from a 531-byte file.
+//
+// conventions/java-to-go.md already said which width to use: "Java int is
+// 32-bit: use int32 where the width is load-bearing (format fields,
+// overflow-sensitive arithmetic)". This is that case, and the port had int.
+//
+// So the expected values are Java's, overflow included. Reproducing the wrap is
+// the point: PDFBox's answer for this file is a one-byte row, and a port that
+// computes the arithmetically honest answer instead disagrees with it and hands
+// an attacker a gigabyte for 531 bytes. Recorded in JAVA-BUGS.md.
+func TestCalculateRowLengthOverflowsAsJavaDoes(t *testing.T) {
+	cases := []struct {
+		name                              string
+		colors, bitsPerComponent, columns int
+		want                              int
+	}{
+		{"the ordinary case", 3, 8, 100, 300},
+		{"one bit per component", 1, 1, 17, 3},
+		// 536870913 * 8 == 0x2_0000_0008, which is 8 in 32 bits
+		{"qpdf issue-1688a", 536870913, 8, 1, 1},
+		// 268435457 * 16 == 0x1_0000_0010, which is 16 in 32 bits
+		{"the same wrap at 16 bits per component", 268435457, 16, 1, 2},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := calculateRowLength(c.colors, c.bitsPerComponent, c.columns); got != c.want {
+				t.Errorf("calculateRowLength(%d, %d, %d) = %d, want %d",
+					c.colors, c.bitsPerComponent, c.columns, got, c.want)
+			}
+		})
+	}
+}

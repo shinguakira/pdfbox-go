@@ -156,8 +156,21 @@ func abs(v int) int {
 // calculateRowLength returns the number of bytes one row occupies, rounded up
 // to a whole byte.
 func calculateRowLength(colors, bitsPerComponent, columns int) int {
-	bitsPerPixel := colors * bitsPerComponent
-	return (columns*bitsPerPixel + 7) / 8
+	// The width is load-bearing, so the arithmetic is done in the width Java
+	// does it in. Java's int is 32 bits and this expression is allowed to wrap;
+	// Go's int is 64 bits and would not, which sounds like an improvement and
+	// is not. qpdf/issue-1688a.pdf is 531 bytes and declares /Colors 536870913:
+	// in 32 bits that multiply wraps to 8 and the row is one byte, which is
+	// what PDFBox answers, and in 64 bits it is 536,870,913 and decodePredictor
+	// allocates two rows of it. A gigabyte of zeroed memory for a 531-byte
+	// file, and a different answer from the reference.
+	//
+	// See conventions/java-to-go.md on int width, JAVA-BUGS.md for the overflow
+	// itself, and TestCalculateRowLengthOverflowsAsJavaDoes.
+	// The division is inside the conversion because Java's is inside the int:
+	// the whole expression is 32-bit there, not just the multiply.
+	bitsPerPixel := int32(colors) * int32(bitsPerComponent)
+	return int((int32(columns)*bitsPerPixel + 7) / 8)
 }
 
 // getBitSeq reads a bit field out of a byte.
