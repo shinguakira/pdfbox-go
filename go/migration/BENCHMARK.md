@@ -68,8 +68,52 @@ cores to spare, wall clock is the answer and PDFBox wins by 4.2×. Under a
 one-core quota, the CPU column is the answer and the gap is 1.6×. Neither is the
 "real" one.
 
-It also means the port has headroom PDFBox has already spent: nothing here
-processes documents concurrently, and documents are independent.
+### Where those cores go, and whether the port is missing something
+
+The obvious reading of 2.86 against 1.10 is that PDFBox parallelises something
+the port does not. It does not.
+
+**PDFBox processes documents on one thread.** Its whole source has a single
+`Thread`, in `IOUtils`, and it is a shutdown hook that deletes temporary
+directories. No `ExecutorService`, no `parallelStream`, no `ForkJoinPool`. The
+port has no goroutines in its ported packages either. On this they are equal.
+
+The cores are the JIT, and constraining the JVM says so:
+
+| | wall | CPU | cores |
+| --- | ---: | ---: | ---: |
+| default | 18.9 s | 50.9 s | 2.69 |
+| `-XX:+UseSerialGC` | 18.5 s | 49.8 s | 2.68 |
+| serial GC, one compiler thread | 25.6 s | 43.7 s | 1.71 |
+
+Serialising the collector changes nothing, so it is not GC. Restricting the
+compiler to one thread drops it to 1.71 cores — and costs 35% of the wall clock.
+So the extra cores are not overhead being wasted: PDFBox is buying speed with
+them, by compiling on other cores while its one application thread runs.
+
+**And no, the port is not leaving a win on the table that PDFBox has taken.**
+Both were given a worker pool over the same corpus — `-workers` here,
+`ExecutorService` there — and they scale the same:
+
+| workers | port | PDFBox | port ÷ PDFBox |
+| ---: | ---: | ---: | ---: |
+| 1 | 38,299 ms | 6,625 ms | 5.8× |
+| 4 | 18,806 ms | 3,533 ms | 5.3× |
+| 12 | 17,504 ms | 2,958 ms | 5.9× |
+| **speedup** | **2.19×** | **2.24×** | |
+
+The output was identical at every worker count on both sides, which is also the
+answer to whether the port has shared mutable state getting in the way: it does
+not.
+
+Parallelism helps both and closes nothing, because both hit the same ceiling.
+Ten documents are 79% of the port's time and the slowest is 10.5 s on its own —
+no number of workers gets below one document. The tail is the problem, and the
+tail is `compress/flate`.
+
+The memory cost is not symmetric, though: the port's peak went 729 MB → 1,605 MB
+across those runs, PDFBox's 593 MB → 847 MB. Workers are cheaper for PDFBox than
+for the port.
 
 ## Starting up
 

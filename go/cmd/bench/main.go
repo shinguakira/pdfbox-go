@@ -44,6 +44,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -64,6 +65,7 @@ func main() {
 		passes  = flag.Int("passes", 3, "timed passes over the list, for throughput")
 		out     = flag.String("o", "", "write per-document timings here")
 		skipPer = flag.Bool("throughput-only", false, "skip the per-document phase")
+		workers = flag.Int("workers", 1, "documents to process at once; 1 is the shape PDFBox runs in")
 	)
 	flag.Parse()
 
@@ -84,7 +86,7 @@ func main() {
 	// here keeps the two harnesses the same shape, and it warms the page cache
 	// so neither side is timed against a cold disk.
 	fmt.Fprintln(os.Stderr, "warmup ...")
-	runPass(files)
+	runPass(files, *workers)
 
 	// ---- phase 1: throughput, and the peak heap while it runs
 
@@ -94,7 +96,7 @@ func main() {
 	var chars int64
 	for pass := 1; pass <= *passes; pass++ {
 		started := time.Now()
-		chars = runPass(files)
+		chars = runPass(files, *workers)
 		elapsed := time.Since(started)
 		if elapsed < bestTotal {
 			bestTotal = elapsed
@@ -154,16 +156,52 @@ func sampleHeap() (func(), *atomic.Uint64) {
 	}, peak
 }
 
-func runPass(files []string) int64 {
-	var chars int64
+// runPass walks every file once, with the given number in flight at a time.
+//
+// Neither implementation processes documents concurrently. PDFBox has exactly
+// one Thread in its source and it is a shutdown hook that deletes temporary
+// directories; the cores it uses beyond one are the JIT compiling while its
+// single application thread runs, which restricting the compiler to one thread
+// confirms -- 2.68 cores becomes 1.71.
+//
+// So -workers is not catching up with something Java does. It is ground neither
+// has taken, on work that is embarrassingly parallel: documents do not know
+// about each other, and each gets its own PDDocument and its own stripper.
+func runPass(files []string, workers int) int64 {
+	if workers <= 1 {
+		var chars int64
+		for i, path := range files {
+			if i%200 == 0 {
+				fmt.Fprintf(os.Stderr, "\r  %d/%d", i, len(files))
+			}
+			chars += scoreOne(path)
+		}
+		fmt.Fprintf(os.Stderr, "\r%-24s\r", "")
+		return chars
+	}
+
+	var chars atomic.Int64
+	var wg sync.WaitGroup
+	queue := make(chan string, workers)
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range queue {
+				chars.Add(scoreOne(path))
+			}
+		}()
+	}
 	for i, path := range files {
 		if i%200 == 0 {
 			fmt.Fprintf(os.Stderr, "\r  %d/%d", i, len(files))
 		}
-		chars += scoreOne(path)
+		queue <- path
 	}
+	close(queue)
+	wg.Wait()
 	fmt.Fprintf(os.Stderr, "\r%-24s\r", "")
-	return chars
+	return chars.Load()
 }
 
 // measurePerDocument repeats each document until the accumulated time is worth

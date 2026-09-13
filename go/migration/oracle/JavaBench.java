@@ -61,16 +61,37 @@ public class JavaBench {
         }
     }
 
-    static long runPass(List<String> files) {
-        long chars = 0;
-        for (int i = 0; i < files.size(); i++) {
-            if (i % 200 == 0) {
-                System.err.print("\r  " + i + "/" + files.size());
+    /**
+     * Walks every file once, with {@code workers} in flight.
+     *
+     * <p>PDFBox does not process documents concurrently -- its only Thread is a
+     * shutdown hook -- so this, like go/cmd/bench's -workers, is ground neither
+     * implementation has taken. It is here so the Go side's scaling is compared
+     * against something rather than against nothing.
+     */
+    static long runPass(List<String> files, int workers) throws Exception {
+        if (workers <= 1) {
+            long chars = 0;
+            for (int i = 0; i < files.size(); i++) {
+                if (i % 200 == 0) {
+                    System.err.print("\r  " + i + "/" + files.size());
+                }
+                chars += scoreOne(files.get(i));
             }
-            chars += scoreOne(files.get(i));
+            System.err.print("\r                        \r");
+            return chars;
         }
+
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(workers);
+        java.util.concurrent.atomic.AtomicLong chars = new java.util.concurrent.atomic.AtomicLong();
+        for (String path : files) {
+            pool.submit(() -> chars.addAndGet(scoreOne(path)));
+        }
+        pool.shutdown();
+        pool.awaitTermination(1, java.util.concurrent.TimeUnit.HOURS);
         System.err.print("\r                        \r");
-        return chars;
+        return chars.get();
     }
 
     /** Repeats a document until the accumulated time is worth dividing. */
@@ -109,6 +130,7 @@ public class JavaBench {
         List<String> files = new ArrayList<>(Files.readAllLines(Paths.get(args[0])));
         files.removeIf(String::isBlank);
         int passes = args.length > 1 ? Integer.parseInt(args[1]) : 3;
+        int workers = args.length > 3 ? Integer.parseInt(args[3]) : 1;
         String timingsPath = args.length > 2 && !args[2].equals("throughput-only") ? args[2] : null;
         // Symmetric with go/cmd/bench's -throughput-only: the per-document phase
         // repeats every file and is not wanted when what is being measured is
@@ -117,7 +139,7 @@ public class JavaBench {
 
         System.err.println("bench: " + files.size() + " files, " + passes + " passes");
         System.err.println("warmup ...");
-        runPass(files);
+        runPass(files, workers);
 
         // ---- phase 1: throughput, and the peak heap while it runs
         resetPeaks();
@@ -126,7 +148,7 @@ public class JavaBench {
         long chars = 0;
         for (int pass = 1; pass <= passes; pass++) {
             long started = System.nanoTime();
-            chars = runPass(files);
+            chars = runPass(files, workers);
             long elapsed = System.nanoTime() - started;
             if (elapsed < bestTotal) {
                 bestTotal = elapsed;
