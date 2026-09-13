@@ -29,6 +29,98 @@ implementations fully process. Timing a file one of them gives up on would score
 is what it is because **the ten slowest documents are 79% of the port's time**
 (PDFBox's ten slowest are 40% of its own).
 
+It is also only true of wall clock on a machine with cores to spare. Three other
+measurements point the other way, and each has its own section below:
+
+| | port | PDFBox | |
+| --- | ---: | ---: | --- |
+| CPU time for the same work | 90.3 s | 56.5 s | 1.6×, not 6.4× |
+| cores used | 1.10 | 2.86 | |
+| cold start, one document | 71.6 ms | 649.0 ms | **9.1× the other way** |
+| minimum shipped | 15.55 MB | 49.0 MB | **3.2× the other way** |
+
+There is no single number for "is the port slower than PDFBox". It is slower per
+document on a fast machine, cheaper per document in CPU, an order of magnitude
+quicker to start, and a third of the size.
+
+## CPU, which is where the headline changes shape
+
+Wall clock is not what a container is billed for. The same run, measured as
+process CPU time:
+
+| | port | PDFBox |
+| --- | ---: | ---: |
+| wall | 82.3 s | 19.7 s |
+| user CPU | 85.9 s | 51.2 s |
+| kernel CPU | 4.4 s | 5.3 s |
+| **total CPU** | **90.3 s** | **56.5 s** |
+| **cores used (CPU ÷ wall)** | **1.10** | **2.86** |
+
+(One warmup pass plus one timed pass, both sides, so the wall figures are about
+twice the per-pass numbers above.)
+
+**PDFBox is 4.2× faster in wall clock and uses 1.6× less CPU.** The rest of its
+advantage is bought with cores: the JIT compiler threads and the parallel
+collector put it at 2.86 cores where the port sits at 1.10 — essentially one.
+
+Which number matters depends entirely on the deployment. On an idle machine with
+cores to spare, wall clock is the answer and PDFBox wins by 4.2×. Under a
+one-core quota, the CPU column is the answer and the gap is 1.6×. Neither is the
+"real" one.
+
+It also means the port has headroom PDFBox has already spent: nothing here
+processes documents concurrently, and documents are independent.
+
+## Starting up
+
+Process launch to one small document extracted, ten runs, best and mean:
+
+| | port | PDFBox |
+| --- | ---: | ---: |
+| best | **71.6 ms** | 649.0 ms |
+| mean | 82.7 ms | 681.1 ms |
+
+**9.1× the other way.** There is no JVM to start, no classes to load and nothing
+to JIT. For a command-line tool or a per-request process this reverses the
+throughput result completely: PDFBox needs about 640 ms of startup before it is
+faster at anything, which is roughly two thousand median documents' worth.
+
+The warmup is visible in the passes, too. PDFBox's three timed passes ran 6,677
+→ 5,919 → 5,778 ms as the JIT settled; the port's were 38,571 → 38,418 → 38,431,
+flat from the first.
+
+## What has to be shipped
+
+| | port | PDFBox |
+| --- | ---: | ---: |
+| the library | — | 1.75 MB of classes |
+| its resources | — | 4.45 MB (glyph lists, AFMs, CMaps) |
+| log4j-api | — | 0.34 MB |
+| Bouncy Castle, if signing or public-key encryption | — | 11.74 MB |
+| a runtime | included | 42.5 MB jlink minimum, 302 MB for this JDK |
+| **binary, stripped** | **15.55 MB** | — |
+| binary, unstripped | 20.48 MB | — |
+| **total, minimum** | **15.55 MB** | **49.0 MB** |
+
+One file against a tree, and 3.2× smaller at the minimum — more against a full
+JDK. The port's number is also the whole story: no runtime to install, no
+classpath, no version to match.
+
+## Memory, as the operating system sees it
+
+Peak resident set for the same run, which is the number a container limit is
+compared against:
+
+| | peak RSS |
+| --- | ---: |
+| port | 854 MB |
+| PDFBox, `-Xmx4g` | 740 MB |
+| PDFBox, `-Xmx256m` | 399 MB |
+
+RSS is above the heap figures below because it includes what neither heap
+accounts for — the JVM's metaspace, code cache and thread stacks, the Go
+runtime's own arenas.
+
 ## Three ways to measure this that do not work
 
 Each of these was tried first and produced a confident wrong answer.

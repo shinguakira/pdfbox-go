@@ -15,130 +15,145 @@
   limitations under the License.
 --->
 
-[![codeql java](https://github.com/apache/pdfbox/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/apache/pdfbox/actions/workflows/codeql-analysis.yml/badge.svg)
- 
-Apache PDFBox
+pdfbox-go
 ===================================================
 
-The [Apache PDFBox](https://pdfbox.apache.org/) library is an open source Java tool for working with PDF 
-documents. This project allows creation of new PDF documents, manipulation 
-of existing documents and the ability to extract content from documents.
-PDFBox also includes several command line utilities. PDFBox is published
-under the Apache License, Version 2.0.
+A Go port of [Apache PDFBox](https://pdfbox.apache.org/), living beside the Java
+it was ported from.
 
-PDFBox is a project of the [Apache Software Foundation](https://www.apache.org/).
+Every line of Go here is newly written. None of it is generated, translated by a
+tool, or bridged to a JVM at runtime. What is *not* rewritten is the design: the
+algorithms, the control flow, the field-by-field state and the format quirks are
+carried across from the Java, with the original open alongside. A port is close
+to 100% new source and close to 0% new design.
 
-Binary Downloads
+**Pure Go, and no cgo.** No wrapped C library, no bundled WebAssembly, no
+subprocess. `go build` is the whole build.
+
+Status
+------
+
+Reading, writing, merging, form handling, text extraction and rendering are in.
+Per-package progress, including what is deliberately absent and why, is in
+[`go/migration/STATUS.md`](go/migration/STATUS.md).
+
+The port is checked against the Java rather than against a reading of ISO 32000.
+Where PDFBox contradicts the specification, PDFBox wins: the behaviour is usually
+deliberate and encodes a real-world producer quirk.
+
+How closely it matches
+----------------------
+
+PDFBox itself is the oracle, and it is run rather than consulted.
+[`scripts/run-oracle.ps1`](go/migration/scripts/run-oracle.ps1) compiles the Java
+in this repository and puts it over the same documents, and
+`go run ./cmd/corpus -oracle` reports every disagreement.
+
+Over **3,646 documents** — PDFBox's own regression files, veraPDF's ISO clause
+tests, qpdf's damaged files, the SafeDocs parser traps:
+
+```
+open    both 3600, neither 46, behind 0, ahead 0
+pages   0 disagree
+text    both 3597, neither 3, behind 0, ahead 0
+chars   3596 the same length, 1 not
+
+1 of 3646 files disagree (0.03%)
+```
+
+There is no document in that corpus PDFBox reads and this port does not.
+[`go/migration/TESTDATA.md`](go/migration/TESTDATA.md) has the corpus, how to
+fetch it, and the one remaining disagreement.
+
+Speed and memory
 ----------------
 
-You can download binary versions for releases currently under development or older
-releases from our [Download Page](https://pdfbox.apache.org/download.cgi).
+Measured by running both. There is no single number:
 
-Build
------
+| | this port | PDFBox | |
+| --- | ---: | ---: | --- |
+| 3,597 documents, wall clock | 36.8 s | 5.8 s | 6.4× slower |
+| the median document | 0.330 ms | 0.389 ms | **faster** |
+| CPU time for the same work | 90.3 s | 56.5 s | 1.6× more |
+| cores used | 1.10 | 2.86 | |
+| cold start, one document | **71.6 ms** | 649.0 ms | **9.1× faster** |
+| peak heap, default settings | 795 MB | 638 MB | 1.24× |
+| minimum to ship | **15.6 MB** | 49.0 MB | **3.2× smaller** |
 
-You need Java 11 (or higher) and [Maven 3](https://maven.apache.org/) to
-build PDFBox. The recommended build command is:
+2,300 of the 3,597 documents are faster here; ten documents are 79% of the total
+time, and most of that is `compress/flate` against PDFBox's native zlib — the
+price of the pure-Go rule. The full analysis, including three ways of measuring
+this that produce confident wrong answers, is in
+[`go/migration/BENCHMARK.md`](go/migration/BENCHMARK.md).
 
-    mvn clean install
+Building
+--------
 
-The default build will compile the Java sources and package the binary
-classes into jar packages. See the Maven documentation for all the
-other available build options.
+Go 1.26 or later. No JDK, no Maven.
 
-Contribute
-----------
+```bash
+cd go
+go build ./...
+```
 
-There are various ways to help us improve PDFBox. 
+Before any change is considered done:
 
-- look at the [Issue Tracker](https://issues.apache.org/jira/browse/PDFBOX) to help us fix bugs.
-- answer questions on our [Users Mailing List](https://pdfbox.apache.org/mailinglists.html "Subscribe to Mailing List").
-- help us enhance the [Examples](https://svn.apache.org/repos/asf/pdfbox/trunk/examples/)
-- help us to enhance the [PDFBox Documentation](https://gitbox.apache.org/repos/asf/pdfbox-docs)
-or on [GitHub](https://github.com/apache/pdfbox-docs). 
+```bash
+cd go && gofmt -l . && go vet ./... && go test ./...
+```
 
-Support
+The command-line tool is `go/cmd/pdfbox`, a port of PDFBox's own:
+
+```bash
+cd go && go run ./cmd/pdfbox export:text -i document.pdf
+```
+
+Layout
+------
+
+| Path | What |
+| --- | --- |
+| `go/` | The port. A separate Go module; Maven does not see it |
+| `go/pdfbox`, `go/fontbox`, `go/xmpbox`, `go/pdfio`, `go/tools` | The ported modules |
+| `go/cmd/pdfbox` | The command-line tool |
+| `go/cmd/corpus`, `go/cmd/bench` | Migration tooling: corpus scoring and benchmarking. Not ports |
+| `go/migration/` | The plan, the conventions, the status, the findings. No Go source |
+| `pdfbox/`, `fontbox/`, `xmpbox/`, `io/`, `tools/`, … | The Java, frozen |
+
+The Java tree
+-------------
+
+**It is a one-time snapshot and it is read-only.** It is the reference the port
+is checked against, and a reference that gets edited stops being one. Nothing
+under the Maven module directories is modified, for any reason — including to
+fix a bug found while reading it. A bug faithfully carried can be found later by
+diffing against the Java; a bug silently corrected during the port cannot.
+
+Java bugs found while porting are recorded in
+[`go/migration/JAVA-BUGS.md`](go/migration/JAVA-BUGS.md) — 87 entries so far,
+each saying what the Java does, what correct would be, where the Go carries it,
+and how sure the author was. One branch, `track/java-bug-fixes`, then corrected
+61 of them in the Go on purpose; every one of those says so at the site.
+
+**This repository has no relationship with Apache PDFBox going forward.** No pull
+requests are opened against `apache/pdfbox`, nothing is pulled or merged from it,
+and none of the findings here are reported upstream. That is a deliberate
+decision, not an oversight — see
+[`go/migration/BRANCHING.md`](go/migration/BRANCHING.md).
+
+Where to start reading
+----------------------
+
+| File | For |
+| --- | --- |
+| [`go/migration/README.md`](go/migration/README.md) | What the port is, and how it is done |
+| [`go/migration/STATUS.md`](go/migration/STATUS.md) | What is finished, what is not, and why |
+| [`go/migration/conventions/java-to-go.md`](go/migration/conventions/java-to-go.md) | How Java constructs are translated. Read before porting anything |
+| [`go/migration/conventions/tdd.md`](go/migration/conventions/tdd.md) | The rule the port runs on: the Java test is ported before the Go exists |
+| [`AGENTS.md`](AGENTS.md) | The rules, for automated agents and humans alike |
+
+Licence
 -------
 
-**Please follow the guidelines at our [Support Page](https://pdfbox.apache.org/support.html).**
-
-If you have questions about how to use PDFBox do ask on the
-[Users Mailing List](/mailinglists.html "Subscribe to Mailing List").
-This will get you help from the entire community.
-
-The PDFBox examples and the test code in the sources will also provide additional information.
-
-And there are additional resources available on sites such as
-[Stack Overflow](https://stackoverflow.com/search?q=pdfbox "Stack Overflow").
-
-If you are sure you have found a bug the please report the issue in our 
-[Issue Tracker](https://issues.apache.org/jira/browse/PDFBOX). 
-
-Known Limitations and Problems
-------------------------------
-
-See the [Issue Tracker](https://issues.apache.org/jira/browse/PDFBOX) for
-the full list of known issues and requested features. Some of the more
-common issues are:
-
-1. You get text like "G38G43G36G51G5" instead of what you expect when you are
-   extracting text. This is because the characters are a meaningless internal
-   encoding that point to glyphs that are embedded in the PDF document. The
-   only way to access the text is to use OCR. This may be a future
-   enhancement.
-
-2. You get an error message like `java.io.IOException: Can't handle font width`
-   this MIGHT be due to the fact that you don't have the
-   **org/apache/pdfbox/resources** directory in your classpath. The easiest
-   solution is to include the **apache-pdfbox-x.x.x.jar** in your classpath.
-
-3. You get text that has the correct characters, but in the wrong
-   order.  This mght be because you have not enabled sorting.  The text
-   in PDF files is stored in chunks and the chunks do not need to be stored 
-   in the order that they are displayed on a page.  By default, PDFBox does 
-   not sort the text.
-
-License (see also [LICENSE.txt](https://github.com/apache/pdfbox/blob/trunk/LICENSE.txt))
-------------------------------
-
-Collective work: Copyright 2015 The Apache Software Foundation.
-
-Licensed to the Apache Software Foundation (ASF) under one or more
-contributor license agreements.  See the NOTICE file distributed with
-this work for additional information regarding copyright ownership.
-The ASF licenses this file to You under the Apache License, Version 2.0
-(the "License"); you may not use this file except in compliance with
-the License.  You may obtain a copy of the License at
-
-     https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-Export control
---------------
-
-This distribution includes cryptographic software.  The country in  which
-you currently reside may have restrictions on the import,  possession, use,
-and/or re-export to another country, of encryption software.  BEFORE using
-any encryption software, please  check your country's laws, regulations and
-policies concerning the import, possession, or use, and re-export of
-encryption software, to  see if this is permitted.  See
-<https://www.wassenaar.org/> for more information.
-
-The U.S. Government Department of Commerce, Bureau of Industry and
-Security (BIS), has classified this software as Export Commodity Control
-Number (ECCN) 5D002.C.1, which includes information security software using
-or performing cryptographic functions with asymmetric algorithms.  The form
-and manner of this Apache Software Foundation distribution makes it eligible
-for export under the License Exception ENC Technology Software Unrestricted
-(TSU) exception (see the BIS Export Administration Regulations, Section
-740.13) for both object code and source code.
-
-The following provides more details on the included cryptographic software:
-
-**Apache PDFBox uses the Java Cryptography Architecture (JCA) and the
-Bouncy Castle libraries for handling encryption in PDF documents.**
+Apache License 2.0, as PDFBox is. See [`LICENSE.txt`](LICENSE.txt) and
+[`NOTICE.txt`](NOTICE.txt).

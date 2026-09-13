@@ -109,7 +109,11 @@ public class JavaBench {
         List<String> files = new ArrayList<>(Files.readAllLines(Paths.get(args[0])));
         files.removeIf(String::isBlank);
         int passes = args.length > 1 ? Integer.parseInt(args[1]) : 3;
-        String timingsPath = args.length > 2 ? args[2] : null;
+        String timingsPath = args.length > 2 && !args[2].equals("throughput-only") ? args[2] : null;
+        // Symmetric with go/cmd/bench's -throughput-only: the per-document phase
+        // repeats every file and is not wanted when what is being measured is
+        // the CPU one pass costs.
+        boolean throughputOnly = args.length > 2 && args[2].equals("throughput-only");
 
         System.err.println("bench: " + files.size() + " files, " + passes + " passes");
         System.err.println("warmup ...");
@@ -132,8 +136,12 @@ public class JavaBench {
         long peakHeap = peakHeapBytes();
 
         // ---- phase 2: per document, repeated until measurable
-        System.err.println("per-document phase ...");
         long[] perDoc = new long[files.size()];
+        if (throughputOnly) {
+            report(files, bestTotal, chars, peakHeap, perDoc);
+            return;
+        }
+        System.err.println("per-document phase ...");
         for (int i = 0; i < files.size(); i++) {
             if (i % 200 == 0) {
                 System.err.print("\r  " + i + "/" + files.size());
