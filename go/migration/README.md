@@ -42,6 +42,7 @@ Three things this is not:
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
 | [`TESTDATA.md`](TESTDATA.md) | What the port is checked against: the 168 documents in the repository, the 78 the Java build downloads and nothing here ever fetched, the third-party suites worth adding, and how to score a corpus |
 | [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted: iText 6,897, pdfium 301, PoDoFo 102, qpdf's unfetched 76. PDFBox alone is the oracle; every project is fair game as input |
+| [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run: 6.4× on the total and faster at the median, where the time actually goes, and the two defects benchmarking found |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
@@ -50,6 +51,7 @@ Three things this is not:
 | [`scripts/fetch-corpus.ps1`](scripts/fetch-corpus.ps1) | Fetches the third-party PDF suites the port is scored against, into `go/testdata/corpus/` |
 | [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) | Compiles the Java tree with `javac` and runs PDFBox over a corpus, so `cmd/corpus -oracle` can say where the port and the Java disagree. No Maven needed |
 | [`oracle/JavaCorpus.java`](oracle/JavaCorpus.java) | The driver that script runs. The only `.java` file this repository owns; it sits outside the Maven module directories and compiles against them |
+| [`oracle/JavaBench.java`](oracle/JavaBench.java) | The Java half of the speed and memory comparison; `go/cmd/bench` is the other |
 
 ## Porting a package
 
