@@ -1,172 +1,169 @@
 # Test data candidates
 
-Projects worth mining for test input and for the knowledge around it, written
-down before any of them is acted on.
+Where else there are PDFs worth reading, counted rather than guessed at.
 
-This is a survey, not a decision. Nothing here has been fetched, measured or
-licence-checked by the port; [`TESTDATA.md`](TESTDATA.md) is the file that
-records what actually is in use and what it scored. When one of these moves from
-candidate to corpus, it gets a row there and a suite in
-[`scripts/fetch-corpus.ps1`](scripts/fetch-corpus.ps1), and its entry here should
-say so.
+## The split this file runs on
 
-**Two of the five are AGPL.** iText and MuPDF both are. Studying how a problem
-was solved and copying the code that solves it are different acts, and only the
-first is available here. Test *data* and test *approach* travel; source does not.
+**PDFBox alone is the oracle.** The question "what is the right answer for this
+document" has one source and it is the Java in this repository, run by
+[`scripts/run-oracle.ps1`](scripts/run-oracle.ps1). No other implementation gets
+a vote: iText, QPDF, PoDoFo, MuPDF and PDFium disagree with PDFBox in places, and
+where they do, PDFBox is right *by definition* — this is a port of PDFBox and
+matching it is the whole job.
 
----
+**Everything is fair game as test data.** A PDF is an input. What another project
+believed about it decides nothing, and a file written to break qpdf's lexer
+breaks a lexer. The value in these repositories is that somebody already went and
+found the documents that hurt, and named them after the thing they hurt.
 
-## 1. PDFBox itself
+So: harvest the files from all of them, take the answers from none of them.
 
-The most important source, and not mainly for its code.
+That also settles the licensing, which is the same policy
+[`TESTDATA.md`](TESTDATA.md) already runs on and needs saying again here because
+two of these are AGPL: **nothing fetched is committed, modified or
+redistributed.** It is downloaded into a gitignored directory, read as input, and
+that is all. Test *data* and test *approach* travel; source does not.
 
-The issues and the JIRA history, the tests, and the recorded reasons for past
-fixes carry more than the source does. PDF is not a format where handling
-well-formed files is enough: broken xref tables, strange encodings, embedded
-fonts, missing `ToUnicode`, malformed object streams — there is a great deal of
-it in the wild, and each fix in PDFBox's history is a record of one real file
-that broke something.
+## What is actually there
 
-PDFBox says as much itself: `examples` and the test code are named as additional
-sources of information, and known text-extraction problems are recorded there.
+Counted 2026-09-13 against each repository's default branch.
 
-**Status here:** already the backbone. The 179 committed test documents, the 78
-the poms download, and the JIRA reproducers behind them are what
-[`TESTDATA.md`](TESTDATA.md) tiers 0 and 1 are made of. What is *not* yet mined
-is the issue history as a source in its own right — the reasons, rather than the
-files.
+| Source | PDFs | Where | Licence | State |
+| --- | ---: | --- | --- | --- |
+| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched |
+| [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | not fetched |
+| [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest` 641, and 76 more | Apache-2.0 | **639 fetched**, 76 not |
+| [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |
+| [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | not fetched |
+| [mupdf](https://github.com/ArtifexSoftware/mupdf) | **0** | — see below | AGPL-3.0 | n/a |
+| PDFBox | 179 committed + 78 declared | this repository | Apache-2.0 | in use, tiers 0 and 1 |
 
-## 2. iText, Java and .NET
+Two of those numbers are worth stopping on.
 
-Worth looking at, and for a reason that is not "it is another PDF library".
+**MuPDF carries no PDFs at all.** Its repository has zero `.pdf` files; the test
+suite is Artifex's separate `tests.git`, which is served from
+<https://cgit.ghostscript.com/cgi-bin/cgit.cgi/tests.git/> and reachable. So
+"read MuPDF for its test data" means going somewhere else than the obvious
+place, and reading MuPDF's *source* is a different activity with an AGPL
+attached.
 
-iText has maintained **the same library in Java and in C# for years**. The Java
-side still carries `sharpen` configuration — the Java-to-C# conversion machinery
-is in the source tree — and `itext-java` and `itext-dotnet` exist as separate
-repositories with deliberately aligned APIs.
+**iText is an order of magnitude larger than everything else combined.** Nearly
+seven thousand PDFs in each of the two repositories. They are the same library in
+two languages, so the two sets largely mirror each other — the 63-file difference
+suggests near-mirroring rather than two independent corpora, which means fetching
+one is most of the value and fetching both is worth doing only to find where they
+diverge.
 
-So a file-by-file comparison is available:
+## What each is good for
 
-```
-iText, Java              iText, .NET
-  PdfReader.java    ⟷      PdfReader.cs
-```
+### PDFBox
 
-and what falls out of it is a catalogue of where porting a PDF library across
-languages actually hurts:
+Already the backbone: tiers 0 and 1 of [`TESTDATA.md`](TESTDATA.md) are its
+committed test resources and the 78 files its poms download, and every one of the
+latter is the reduced reproducer of a numbered issue.
 
-```
-InputStream       →  Stream
-IOException       →  IOException
-byte / unsigned   →  ?
-Closeable         →  IDisposable
-Java collections  →  .NET collections
-charset handling  →  Encoding
-crypto provider   →  .NET / BouncyCastle
-```
+The part **not** mined is the history rather than the files — the JIRA entries,
+and the recorded reason each fix exists. PDF is not a format where handling
+well-formed files is enough (broken xref tables, strange encodings, embedded
+fonts, missing `ToUnicode`, malformed object streams), and PDFBox's own
+documentation points at `examples` and the test code as additional sources,
+including for known text-extraction problems.
 
-**Licence:** AGPL / commercial. Research the design and the solutions; do not
-copy the code.
+### iText, both halves
 
-**Note for this repository:** the comparison above is Java→C#. This port is
-Java→Go, so the mapping differs in its particulars — Go has no `IDisposable`, no
-checked exceptions, and `byte` is already unsigned — but the *list of places that
-hurt* transfers almost unchanged, and it is the list that is valuable.
-[`conventions/prior-art.md`](conventions/prior-art.md) covers PdfPig and the
-IKVM .NET build for the same reason; iText belongs beside them.
+The biggest haul on the page by a wide margin, and organised by what the file
+exercises: `layout` 2,342, `kernel` 1,779, `svg` 1,446, `forms` 682, `sign` 386.
+`kernel` and `forms` map almost directly onto this port's `cos`/`pdfparser` and
+`pdmodel/interactive/form`.
 
-## 3. QPDF
+There is a second thing here that is not test data and is worth writing down
+while it is in view: iText has maintained the same library in Java and in C# for
+years, the Java tree still carries `sharpen` configuration, and the two
+repositories keep their APIs deliberately aligned. Diffing `PdfReader.java`
+against `PdfReader.cs` is a ready-made catalogue of where porting a PDF library
+across languages hurts — `InputStream`→`Stream`, `Closeable`→`IDisposable`,
+collections, charsets, the crypto provider, and the unsigned-byte problem. That
+catalogue was written for Java→C#; this port is Java→Go, so the particulars
+differ and the *list of painful places* does not.
+[`conventions/prior-art.md`](conventions/prior-art.md) is where that belongs if
+it is ever pursued.
 
-A strong source for getting the low layer right and keeping it hard to break.
+### QPDF
 
-What to read:
+Already tier 2, and it earned its place: qpdf's files found four of the twelve
+disagreements the oracle run turned up. What it is strong at is exactly the low
+layer — lexer and parser, indirect objects, xref tables and streams, object
+streams, incremental update, encryption, damaged-PDF recovery.
 
-- lexer and parser
-- indirect objects
-- xref table and xref stream
-- object streams
-- incremental update
-- encryption
-- damaged PDF recovery
+Two things are still on the table:
 
-Its tests are unusually practical — some rasterise the PDF and compare the
-image. It is in OSS-Fuzz, and malformed PDFs that fuzzing finds are folded back
-into the regression tests.
+- **76 PDFs not being fetched.** The suite takes `qpdf/qtest` and leaves
+  `examples/qtest` (49), `compare-for-test/qtest` (21) and `libtests/qtest` (6).
+- **The test model, of which one line is missing here.** qpdf rasterises some
+  PDFs and compares the image; it is in OSS-Fuzz, and malformed PDFs that fuzzing
+  finds are folded back into the regression tests. This port has the first three
+  lines and not the fourth:
 
-That operating model is worth taking wholesale:
+  ```
+  unit tests over well-formed PDFs        ✓
+  PDFBox's existing regression PDFs       ✓
+  qpdf-style malformed PDF tests          ✓
+  fuzzing, folded back into tests         ✗
+  ```
 
-```
-unit tests over well-formed PDFs
-        +
-PDFBox's existing regression PDFs
-        +
-QPDF-style malformed PDF tests
-        +
-fuzzing
-```
+### PoDoFo
 
-**Status here:** the corpus already carries qpdf's 639 test files
-([`TESTDATA.md`](TESTDATA.md) tier 2), and they found four of the twelve
-disagreements with PDFBox. What is *not* taken yet is the fourth line — nothing
-in this port fuzzes, and nothing folds a fuzz finding back into a test.
-
-## 4. PoDoFo
-
-Unglamorous, and a genuine treasure house of test data.
-
-There is a dedicated `podofo-resources` repository, laid out by the thing being
-broken:
-
-```
-Corrupted/
-Fonts/
-FontsTTC/
-FontsType1/
-ParserTests/
-PDFUA-Reference/
-XMP/
-```
-
-with real cases in it:
+The smallest set and possibly the best-aimed. `podofo-resources` is a separate
+repository, and its 102 PDFs are named after the thing they break:
 
 ```
-invalid xref            encrypted strings
-malformed annotation    AES
-invalid image length    CID fonts
-signatures              font width
+RC4V2-40 / 56 / 80 / 96 / 128        every RC4 key length
+AESV2-128, AESV3R6-256               and each with a *_KeyLengthNNNViolation twin
+TestXRefRecovery1 / 2                xref recovery
+TestFixInvalidCrossReferenceTable    a broken table that is meant to be repaired
+TestImageInvalidLength               an image whose declared length is a lie
+TestMalformedAnnotationAction        a malformed annotation
+TestEncryptedStringsEscaped 1 / 2    encrypted strings needing escape
+TextExtraction1 / 2 / 5, AllRotations, PredefinedCmap
+YCCK-jpeg, YCbCr-jpeg, inline-image  colour and inline images
+blank-rotated-90 / 270, blank-with-offset-start
 ```
 
-Useful for exactly one question: can this implementation eat the PDFs that exist
-in the world.
+plus `Corrupted/`, `ParserTests/` (7), `TechDocs/` (28, mostly XMP),
+`PDFUA-Reference/`, `PQC/` (2, post-quantum signatures), and `Fonts/`,
+`FontsTTC/`, `FontsType1/`, `Std14Fonts/`, `Charmaps/` for fonts.
 
-**Status here:** not fetched. The most obvious next addition to
-`fetch-corpus.ps1` of anything on this page — it is organised the way the other
-tier-2 suites are, one directory per failure mode.
+A file per failure mode, which is the shape the tier-2 suites already have. **The
+cheapest addition to `fetch-corpus.ps1` of anything here.**
 
-## 5. MuPDF and PDFium
+### PDFium
 
-Lower priority.
+301 files in `testing/resources`, BSD-licensed, and the pixel tests come with
+expected `.png` output beside them. Lower priority for a reason that is about
+shape rather than quality: pdfium is a renderer, so its corpus leans where a
+renderer leans.
 
-The parser knowledge is very deep, but both are built as renderers and viewers,
-which puts them at a distance from a PDFBox port. MuPDF is worth opening when
-stuck on the content stream interpreter, colour spaces, fonts or graphics state;
-it remains a large, mostly portable C implementation.
+### MuPDF
 
-**Licence:** MuPDF is AGPL. Same rule as iText — read, do not lift.
+Lowest priority, and the entry is mostly a correction: no PDFs in the repository,
+AGPL on the source, and a test suite that lives at Artifex's `tests.git`. Worth
+opening when the content stream interpreter, a colour space, a font or the
+graphics state is the thing that disagrees — and read, not lifted.
 
-**Note for this repository:** both are already ruled out as *dependencies* by the
-pure-Go rule (go-fitz wraps MuPDF through cgo, go-pdfium ships a wasm blob).
-Nothing changes about that. This entry is about reading them, and about their
-test corpora.
+Both MuPDF and pdfium are already ruled out as *dependencies* by the pure-Go rule
+(go-fitz wraps MuPDF through cgo; go-pdfium ships a wasm blob). Nothing here
+changes that; this is about reading their files.
 
----
+## Order to take them in
 
-## Where each would land
+1. **PoDoFo** — 102 files, one per failure mode, a few lines in
+   `fetch-corpus.ps1`. Best ratio on the page.
+2. **qpdf's remaining 76** — the suite is already there; it is a path change.
+3. **pdfium** — 301, BSD, and brings expected images with it.
+4. **iText** — 6,897, and the reason it is fourth rather than first is that it is
+   larger than everything above put together and wants its own decision about how
+   much of it to carry.
+5. **MuPDF via `tests.git`** — only when a renderer question needs it.
 
-| Candidate | As test data | As knowledge | Next step |
-| --- | --- | --- | --- |
-| PDFBox | tiers 0 and 1, in use | the issue history, unmined | mine the reasons, not just the files |
-| iText | — | Java↔C# diff, unmined | read `PdfReader` on both sides, write down the mapping |
-| QPDF | tier 2, in use | the four-layer test model | add fuzzing; fold findings back |
-| PoDoFo | **not fetched** | — | add a suite to `fetch-corpus.ps1` |
-| MuPDF / PDFium | not fetched | renderer internals | open when the raster disagrees |
+Each one that lands gets a row in [`TESTDATA.md`](TESTDATA.md) with what it
+scored, and its line here should then say so.
