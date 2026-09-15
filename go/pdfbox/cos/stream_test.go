@@ -16,11 +16,6 @@ import (
 // This is an external test package because it needs both cos and filter, and
 // filter imports cos. That is the same package cycle Stream itself has to work
 // around; see the StreamCodec doc in stream.go.
-//
-// testCompressedStream2Encode and testCompressedStream2Decode chain ASCII85
-// with Flate. The ASCII85 filter is not ported, so those two are not ported
-// either; the two-filter chaining they exercise is covered by
-// TestStreamTwoFilterChain below using Flate twice.
 
 const streamTestInput = "This is a test string to be used as input for TestCOSStream"
 
@@ -128,22 +123,42 @@ func TestStreamCompressedDecode(t *testing.T) {
 	validateDecoded(t, s, input)
 }
 
-// TestStreamTwoFilterChain covers a stream whose /Filter is an array, which the
-// Java testCompressedStream2 tests do with ASCII85 over Flate. Flate twice
-// exercises the same chaining and ordering.
-func TestStreamTwoFilterChain(t *testing.T) {
+// TestCompressedStream2Encode is testCompressedStream2Encode: a stream written
+// through [/ASCII85Decode /FlateDecode] holds the input deflated and then
+// ASCII85-encoded, because a writer applies the array in reverse.
+//
+// Until 2026-09-15 this was TestStreamTwoFilterChain, written when ASCII85 was
+// not ported, over [/FlateDecode /FlateDecode] instead, and it expected the
+// data to come back whole. PDFBox does not do that: decoding reduces a repeated
+// filter to one, and the stream comes back deflated once. See
+// TestRepeatedFilterIsWrittenEveryTime.
+func TestCompressedStream2Encode(t *testing.T) {
 	input := []byte(streamTestInput)
+	want := encodeData(t, encodeData(t, input, cos.FlateDecode), cos.ASCII85Decode)
 
-	filters := cos.NewArrayOf([]cos.Base{cos.FlateDecode, cos.FlateDecode})
-	s := createStream(t, input, filters)
+	filters := cos.NewArrayOf([]cos.Base{cos.ASCII85Decode, cos.FlateDecode})
+	validateEncoded(t, createStream(t, input, filters), want)
+}
 
-	// A reader applies the filters in array order, so a writer applies them in
-	// reverse; the stored bytes are the input encoded twice.
-	want := encodeData(t, encodeData(t, input, cos.FlateDecode), cos.FlateDecode)
-	validateEncoded(t, s, want)
+// TestCompressedStream2Decode is testCompressedStream2Decode: the same bytes
+// stored raw under the same array decode back to the input.
+func TestCompressedStream2Decode(t *testing.T) {
+	input := []byte(streamTestInput)
+	encoded := encodeData(t, encodeData(t, input, cos.FlateDecode), cos.ASCII85Decode)
 
-	// and it decodes back to the original
-	validateDecoded(t, createStream(t, input, filters), input)
+	s := newTestStream()
+	s.SetItem(cos.Filter, cos.NewArrayOf([]cos.Base{cos.ASCII85Decode, cos.FlateDecode}))
+	w, err := s.CreateRawWriter()
+	if err != nil {
+		t.Fatalf("CreateRawWriter: %v", err)
+	}
+	if _, err := w.Write(encoded); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	validateDecoded(t, s, input)
 }
 
 func TestStreamDoubleClose(t *testing.T) {

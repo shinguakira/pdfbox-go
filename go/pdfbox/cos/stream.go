@@ -209,13 +209,36 @@ func (s *Stream) CreateReader() (io.Reader, error) {
 // decode runs raw through each codec in turn, each into a buffer of its own,
 // and answers the last buffer rewound to its start.
 //
-// Port of the loop in the static Filter.decode, which COSInputStream.create and
-// createView both go through. Java sizes each buffer's chunks from what it
-// knows of the input: four times its length when that is under a kilobyte,
-// which covers most content streams, and the default 4 KB otherwise. The first
-// input's length is the stream's /Length, and each after that is the buffer the
-// previous filter wrote.
+// Port of the static Filter.decode, which COSInputStream.create, createView and
+// PDStream.createInputStream(List<String>) all go through.
+//
+// It first reduces a list that names a filter more than once to the first of
+// each, which is how PDFBox repairs such a stream rather than decoding it into
+// rubbish. Java compares the FilterFactory instances, which a name and its
+// abbreviation share; the codecs are comparable values that are equal exactly
+// then. The index each codec is then decoded with is its place in the reduced
+// list, and that is the index /DecodeParms is read at.
+//
+// Java sizes each buffer's chunks from what it knows of the input: four times
+// its length when that is under a kilobyte, which covers most content streams,
+// and the default 4 KB otherwise. The first input's length is the stream's
+// /Length, and each after that is the buffer the previous filter wrote.
 func (s *Stream) decode(raw io.Reader, codecs []StreamCodec) (*pdfio.ReadWriteBuffer, error) {
+	if len(codecs) > 1 {
+		seen := make(map[StreamCodec]bool, len(codecs))
+		reduced := make([]StreamCodec, 0, len(codecs))
+		for _, c := range codecs {
+			if !seen[c] {
+				seen[c] = true
+				reduced = append(reduced, c)
+			}
+		}
+		if len(reduced) != len(codecs) {
+			codecs = reduced
+			slog.Warn("cos: removed duplicated filter entries")
+		}
+	}
+
 	length := s.GetLongDefault(Length, pdfio.DefaultChunkSize4KB)
 	current := raw
 	var decoded *pdfio.ReadWriteBuffer
@@ -565,27 +588,9 @@ func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
 	}
 	codecs = codecs[:count]
 
-	// Java's PDStream.createInputStream(List<String>) hands its filters to the
-	// static Filter.decode, which reduces a repeated filter to one before it
-	// applies any: a stream whose /Filter array names the same filter twice is
-	// a malformed one PDFBox repairs rather than refuses. Decoding both entries
-	// gives back over-decoded rubbish.
-	//
-	// createInputStream() with no stop filters does *not* do this -- it chains
-	// the filters one for one through COSInputStream -- so the reduction is
-	// here and not in codecList.
-	if len(codecs) > 1 {
-		seen := make(map[StreamCodec]bool, len(codecs))
-		reduced := make([]StreamCodec, 0, len(codecs))
-		for _, c := range codecs {
-			if !seen[c] {
-				seen[c] = true
-				reduced = append(reduced, c)
-			}
-		}
-		codecs = reduced
-	}
-
+	// Java's PDStream.createInputStream(List<String>) hands the filters before
+	// the stop to the static Filter.decode, as createInputStream and createView
+	// hand it all of them; decode reduces a repeated filter for all three.
 	decoded, err := s.decode(raw, codecs)
 	if err != nil {
 		return nil, err
