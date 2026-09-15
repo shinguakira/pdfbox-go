@@ -8,7 +8,8 @@
 // all, and did that change since the last run".
 //
 // What it produces is a table: one row per file, one column per stage, each cell
-// ok or the first thing that went wrong. The table is then read two ways.
+// ok or the first thing that went wrong, and a last column holding a digest of
+// the text. The table is then read two ways.
 //
 // -baseline compares it against an earlier run of itself, which makes it a
 // regression check: a file that used to open and no longer does is a defect the
@@ -21,13 +22,18 @@
 // migration/scripts/run-oracle.ps1 produces that table; it needs a JDK and no
 // Maven. Exit status is non-zero when the port is behind the Java.
 //
-// -passwords names a table of encrypted files and the passwords their source
-// project opens them with, one "<path ending>\t<password>" per line.
-// fetch-corpus.ps1 writes one for a suite that publishes them, and
-// run-oracle.ps1 -Passwords hands the same table to PDFBox, so both sides open
-// the same files the same way. A file without a password that refuses to open
-// is counted as encrypted and left out of the rates; a file the table gives a
-// password to that still refuses is a failure.
+// -passwords names a table of the ways a source project opens its encrypted
+// files, and may be given more than once. Each line is one way of opening one
+// file: "<path ending>\t<password>", or "<path ending>\t<password>\t<certificate>\t<private key>"
+// for a file encrypted for the holder of a certificate, the two files named
+// relative to the table's directory. fetch-corpus.ps1 writes one for a suite
+// that publishes them, and run-oracle.ps1 -Passwords hands the same tables to
+// PDFBox, so both sides open the same files the same ways. A file is opened once
+// for every line that names it, and scored once for each; where there is more
+// than one, each row's file is followed by the rest of its line in brackets, the
+// fields joined by " | ". A file no line names that refuses a password is
+// counted as encrypted and left out of the rates; a file opened as a line says
+// that still refuses is a failure.
 //
 // Usage:
 //
@@ -39,7 +45,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -59,23 +68,43 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/text"
 )
 
-// result is one file's row. Each stage holds "ok", "-" for a stage that was
-// not reached or not asked for, or a short description of what went wrong.
+// result is one file's row, or one of its rows where a passwords table opens it
+// more than once. Each stage holds "ok", "-" for a stage that was not reached or
+// not asked for, or a short description of what went wrong.
 type result struct {
 	path   string
+	label  string // "" or " [<the rest of the passwords line>]"
 	open   string
 	pages  int
 	text   string
 	chars  int
 	render string
+	digest string // the first 8 bytes of the SHA-256 of the text, in hex, or "-"
 }
 
 // header names the columns, and is also what -baseline parses.
-const header = "file\topen\tpages\ttext\tchars\trender"
+const header = "file\topen\tpages\ttext\tchars\trender\tdigest"
 
 func (r result) String() string {
-	return fmt.Sprintf("%s\t%s\t%d\t%s\t%d\t%s",
-		r.path, r.open, r.pages, r.text, r.chars, r.render)
+	return fmt.Sprintf("%s%s\t%s\t%d\t%s\t%d\t%s\t%s",
+		r.path, r.label, r.open, r.pages, r.text, r.chars, r.render, r.digest)
+}
+
+// digest is what the digest column holds for a text: the first eight bytes of
+// the SHA-256 of its UTF-8, in hex. JavaCorpus writes the same of the String
+// PDFBox extracts, so two texts of the same length that differ anywhere show
+// as two digests.
+func digest(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:8])
+}
+
+// job is one way of opening one file: with no password, or as one line of the
+// passwords tables says.
+type job struct {
+	path  string
+	open  int    // index into openings, or -1
+	label string // what tells this job's row from the file's other rows
 }
 
 func main() {
@@ -89,23 +118,24 @@ func main() {
 		quiet    = flag.Bool("q", false, "summary only")
 		isolate  = flag.Bool("isolate", true, "score each file in its own process, so one that takes the runtime down does not end the run")
 		one      = flag.Bool("one", false, "score exactly one file and print its row; how -isolate re-enters this program")
+		openLine = flag.Int("open", -1, "with -one, open the file as the line of this index in the passwords tables says, counting from 0 across them in order")
 	)
-	flag.StringVar(&passwordsPath, "passwords", "", "a table of <path ending>\\t<password> for encrypted documents whose passwords their source publishes; each such file is opened with its password")
+	flag.Func("passwords", "a table of the ways a source project opens its encrypted documents: <path ending>\\t<password>, or <path ending>\\t<password>\\t<certificate>\\t<private key>; may be given more than once, and each file is opened once for every line naming it", func(table string) error {
+		passwordsPaths = append(passwordsPaths, table)
+		return loadPasswords(table)
+	})
 	flag.Parse()
-
-	if passwordsPath != "" {
-		if err := loadPasswords(passwordsPath); err != nil {
-			fmt.Fprintln(os.Stderr, "corpus:", err)
-			os.Exit(1)
-		}
-	}
 
 	if *one {
 		if flag.NArg() != 1 {
 			fmt.Fprintln(os.Stderr, "corpus: -one takes exactly one file")
 			os.Exit(2)
 		}
-		fmt.Println(scoreNow(flag.Arg(0), *render, float32(*dpi)))
+		if *openLine < -1 || *openLine >= len(openings) {
+			fmt.Fprintln(os.Stderr, "corpus: -open names no line of the passwords tables")
+			os.Exit(2)
+		}
+		fmt.Println(scoreNow(jobFor(flag.Arg(0), *openLine), *render, float32(*dpi)))
 		return
 	}
 
@@ -132,18 +162,19 @@ func main() {
 			fmt.Fprintln(os.Stderr, "corpus: -isolate needs this program's own path:", err)
 			os.Exit(1)
 		}
-		scorer = func(path string, withRender bool, dpi float32, timeout time.Duration) result {
-			return scoreIsolated(exe, path, withRender, dpi, timeout)
+		scorer = func(j job, withRender bool, dpi float32, timeout time.Duration) result {
+			return scoreIsolated(exe, j, withRender, dpi, timeout)
 		}
 	}
 
-	results := make([]result, 0, len(files))
+	jobs := jobsFor(files)
+	results := make([]result, 0, len(jobs))
 	started := time.Now()
-	for i, path := range files {
+	for i, j := range jobs {
 		if !*quiet {
-			fmt.Fprintf(os.Stderr, "\r%d/%d %-60.60s", i+1, len(files), filepath.Base(path))
+			fmt.Fprintf(os.Stderr, "\r%d/%d %-60.60s", i+1, len(jobs), filepath.Base(j.path))
 		}
-		results = append(results, scorer(path, *render, float32(*dpi), *timeout))
+		results = append(results, scorer(j, *render, float32(*dpi), *timeout))
 	}
 	if !*quiet {
 		fmt.Fprintf(os.Stderr, "\r%-72s\r", "")
@@ -221,15 +252,15 @@ func collect(roots []string) ([]string, error) {
 // three thousand files is a couple of minutes, and it is the default because
 // every corpus worth pointing this at is a corpus of files chosen to break
 // parsers.
-func scoreIsolated(exe, path string, withRender bool, dpi float32, timeout time.Duration) result {
+func scoreIsolated(exe string, j job, withRender bool, dpi float32, timeout time.Duration) result {
 	args := []string{"-one"}
 	if withRender {
 		args = append(args, "-render", "-dpi", fmt.Sprint(dpi))
 	}
-	if passwordsPath != "" {
-		args = append(args, "-passwords", passwordsPath)
+	for _, table := range passwordsPaths {
+		args = append(args, "-passwords", table)
 	}
-	args = append(args, path)
+	args = append(args, "-open", fmt.Sprint(j.open), j.path)
 
 	ctx := context.Background()
 	if timeout > 0 {
@@ -245,22 +276,22 @@ func scoreIsolated(exe, path string, withRender bool, dpi float32, timeout time.
 	err := cmd.Run()
 
 	if row := strings.TrimSpace(stdout.String()); row != "" {
-		if fields := strings.Split(row, "\t"); len(fields) == 6 {
+		if fields := strings.Split(row, "\t"); len(fields) == 7 {
 			pages := 0
 			chars := 0
 			fmt.Sscan(fields[2], &pages)
 			fmt.Sscan(fields[4], &chars)
 			return result{
-				path: path, open: fields[1], pages: pages,
-				text: fields[3], chars: chars, render: fields[5],
+				path: j.path, label: j.label, open: fields[1], pages: pages,
+				text: fields[3], chars: chars, render: fields[5], digest: fields[6],
 			}
 		}
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return result{path: path, open: "timeout", text: "-", render: "-"}
+		return result{path: j.path, label: j.label, open: "timeout", text: "-", render: "-", digest: "-"}
 	}
-	return result{path: path, open: crashReason(stderr.String(), err), text: "-", render: "-"}
+	return result{path: j.path, label: j.label, open: crashReason(stderr.String(), err), text: "-", render: "-", digest: "-"}
 }
 
 // crashReason picks the one line of a dead child's output worth a column.
@@ -285,9 +316,9 @@ func crashReason(stderr string, err error) string {
 // goroutine is not stopped, because Go has no way to; a file that hangs leaks
 // one for the rest of the run. That is why -isolate is the default and this is
 // the fast path for a corpus already known to be survivable.
-func score(path string, withRender bool, dpi float32, timeout time.Duration) result {
+func score(j job, withRender bool, dpi float32, timeout time.Duration) result {
 	done := make(chan result, 1)
-	go func() { done <- scoreNow(path, withRender, dpi) }()
+	go func() { done <- scoreNow(j, withRender, dpi) }()
 
 	if timeout <= 0 {
 		return <-done
@@ -296,41 +327,38 @@ func score(path string, withRender bool, dpi float32, timeout time.Duration) res
 	case r := <-done:
 		return r
 	case <-time.After(timeout):
-		return result{path: path, open: "timeout", text: "-", render: "-"}
+		return result{path: j.path, label: j.label, open: "timeout", text: "-", render: "-", digest: "-"}
 	}
 }
 
-func scoreNow(path string, withRender bool, dpi float32) (r result) {
-	r = result{path: path, open: "ok", text: "-", render: "-"}
+func scoreNow(j job, withRender bool, dpi float32) (r result) {
+	r = result{path: j.path, label: j.label, open: "ok", text: "-", render: "-", digest: "-"}
+	// The stage in flight, which is the column a panic is written to. Opening
+	// runs to the page count, because that is where JavaCorpus's outer try
+	// ends: an unchecked exception from Loader.loadPDF or getNumberOfPages is an
+	// open failure there, and a panic from the same calls is one here.
+	stage := &r.open
 	defer func() {
 		if p := recover(); p != nil {
 			// A panic is the finding, so it carries its message: Java reaches
 			// most of these as a checked IOException, and which panic it is
 			// says whether the port has a nil where Java has a null check.
-			why := short(fmt.Errorf("panic: %v", p))
-			if r.open != "ok" {
-				return
-			}
-			// whichever stage was in flight
-			switch {
-			case r.text == "-":
-				r.text = why
-			case r.render == "-":
-				r.render = why
+			*stage = short(fmt.Errorf("panic: %v", p))
+			if stage == &r.open {
+				r.pages = 0
 			}
 		}
 	}()
 
-	document, err := openDocument(path)
+	document, err := openDocument(j)
 	if err != nil {
 		r.open = short(err)
-		if _, given := passwordFor(path); !given && strings.Contains(r.open, "password is incorrect") {
+		if j.open < 0 && strings.Contains(r.open, "password is incorrect") {
 			// Not a failure of anything. The corpora carry encrypted documents
-			// whose passwords live in the tests that read them; a file with no
-			// password in the -passwords table is counted apart from the rest
-			// so the open rate is not quietly wrong. A file the table does give
-			// a password for, and whose password is refused, keeps its error:
-			// that is a failure.
+			// whose passwords live in the tests that read them; a file no line
+			// of the -passwords tables names is counted apart from the rest so
+			// the open rate is not quietly wrong. A file opened as a line says,
+			// and refused, keeps its error: that is a failure.
 			r.open = "encrypted"
 		}
 		return r
@@ -339,6 +367,7 @@ func scoreNow(path string, withRender bool, dpi float32) (r result) {
 
 	r.pages = document.NumberOfPages()
 
+	stage = &r.text
 	stripper := text.NewPDFTextStripper()
 	var builder strings.Builder
 	stripper.SetOutput(&builder)
@@ -347,9 +376,11 @@ func scoreNow(path string, withRender bool, dpi float32) (r result) {
 	} else {
 		r.text = "ok"
 		r.chars = len([]rune(builder.String()))
+		r.digest = digest(builder.String())
 	}
 
 	if withRender {
+		stage = &r.render
 		if r.pages == 0 {
 			r.render = "no pages"
 		} else if _, err := raster.RenderPageWithDPI(document, 0, dpi,
@@ -420,8 +451,17 @@ func summarise(results []result, elapsed time.Duration, withRender bool) {
 
 	// An encrypted file the tool has no password for is neither a pass nor a
 	// failure, so it leaves the denominator rather than joining the numerator.
+	// The rates are over rows, which are files unless a passwords table opens
+	// some of them more than one way.
 	n := len(results) - encrypted
-	fmt.Fprintf(os.Stderr, "\n%d files in %s", len(results), elapsed.Round(time.Millisecond))
+	files := map[string]bool{}
+	for _, r := range results {
+		files[r.path] = true
+	}
+	fmt.Fprintf(os.Stderr, "\n%d files in %s", len(files), elapsed.Round(time.Millisecond))
+	if len(files) != len(results) {
+		fmt.Fprintf(os.Stderr, ", opened %d ways", len(results))
+	}
 	if encrypted > 0 {
 		fmt.Fprintf(os.Stderr, ", %d of them encrypted and skipped", encrypted)
 	}
@@ -491,7 +531,7 @@ func compare(path string, results []result) (int, error) {
 	regressed, improved, added := 0, 0, 0
 	var lines []string
 	for _, now := range results {
-		before, known := was[now.path]
+		before, known := was[now.path+now.label]
 		if !known {
 			added++
 			continue
@@ -511,10 +551,10 @@ func compare(path string, results []result) (int, error) {
 			case stage.from == stage.to:
 			case stage.from == "ok":
 				regressed++
-				lines = append(lines, fmt.Sprintf("  WORSE  %-6s %s: ok -> %s", stage.name, now.path, stage.to))
+				lines = append(lines, fmt.Sprintf("  WORSE  %-6s %s%s: ok -> %s", stage.name, now.path, now.label, stage.to))
 			case stage.to == "ok":
 				improved++
-				lines = append(lines, fmt.Sprintf("  BETTER %-6s %s: %s -> ok", stage.name, now.path, stage.from))
+				lines = append(lines, fmt.Sprintf("  BETTER %-6s %s%s: %s -> ok", stage.name, now.path, now.label, stage.from))
 			}
 		}
 	}
@@ -553,12 +593,13 @@ func rootRelative(p string) string {
 // just as loudly and is not a success: this is a port, and being more permissive
 // than the thing being reproduced is a difference like any other.
 //
-// The character counts are compared for length only, which is worth saying
-// plainly: two documents of the same length are not two identical documents.
-// Length catches a stage that silently produced nothing, a glyph that came out
-// as two characters, a page that was not walked. It does not catch a wrong
-// character. Run the oracle with -Crlf once to see why even this much needs
-// the separators forced equal.
+// The text is compared twice. Its length catches a stage that silently produced
+// nothing, a glyph that came out as two characters, a page that was not walked.
+// Where the lengths agree and both tables carry a digest of the text, the
+// digests are compared too, which catches the wrong character and the right
+// characters in the wrong order; a table JavaCorpus wrote before it wrote
+// digests is compared on length alone. Run the oracle with -Crlf once to see why
+// either needs the separators forced equal.
 func compareOracle(path string, results []result) (int, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -568,6 +609,7 @@ func compareOracle(path string, results []result) (int, error) {
 	type javaRow struct {
 		open, text   string
 		pages, chars int
+		digest       string // "" in a table written before JavaCorpus wrote one
 	}
 	java := map[string]javaRow{}
 	for i, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
@@ -581,6 +623,9 @@ func compareOracle(path string, results []result) (int, error) {
 		row := javaRow{open: fields[1], text: fields[3]}
 		fmt.Sscan(fields[2], &row.pages)
 		fmt.Sscan(fields[4], &row.chars)
+		if len(fields) > 5 {
+			row.digest = fields[5]
+		}
 		java[filepath.ToSlash(fields[0])] = row
 	}
 
@@ -590,6 +635,7 @@ func compareOracle(path string, results []result) (int, error) {
 		pageDiff                                     int
 		textBoth, textNeither, textBehind, textAhead int
 		charsSame, charsDiff                         int
+		contentSame, contentDiff                     int
 		notInOracle                                  int
 		lines                                        []string
 	)
@@ -599,6 +645,7 @@ func compareOracle(path string, results []result) (int, error) {
 	// document. This counts the files, which is what the summary line says it
 	// is reporting.
 	disagreed := map[string]bool{}
+	files := map[string]bool{}
 
 	note := func(path, format string, args ...any) {
 		disagreed[path] = true
@@ -606,12 +653,14 @@ func compareOracle(path string, results []result) (int, error) {
 	}
 
 	for _, now := range results {
-		them, known := java[rootRelative(now.path)]
+		them, known := java[rootRelative(now.path)+now.label]
 		if !known {
 			notInOracle++
 			continue
 		}
 		compared++
+		files[now.path] = true
+		name := now.path + now.label
 
 		goOpened, javaOpened := now.open == "ok", them.open == "ok"
 		switch {
@@ -621,10 +670,10 @@ func compareOracle(path string, results []result) (int, error) {
 			openNeither++
 		case javaOpened:
 			openBehind++
-			note(now.path, "  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", now.path, now.open, them.pages)
+			note(now.path, "  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", name, now.open, them.pages)
 		default:
 			openAhead++
-			note(now.path, "  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", now.path, now.pages, them.open)
+			note(now.path, "  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", name, now.pages, them.open)
 		}
 		if !goOpened || !javaOpened {
 			continue
@@ -632,7 +681,7 @@ func compareOracle(path string, results []result) (int, error) {
 
 		if now.pages != them.pages {
 			pageDiff++
-			note(now.path, "  PAGES  %s: go %d, java %d", now.path, now.pages, them.pages)
+			note(now.path, "  PAGES  %s: go %d, java %d", name, now.pages, them.pages)
 		}
 
 		goText, javaText := now.text == "ok", them.text == "ok"
@@ -641,23 +690,36 @@ func compareOracle(path string, results []result) (int, error) {
 			textBoth++
 			if now.chars == them.chars {
 				charsSame++
+				// The same length says nothing about the characters. Where
+				// both tables carry a digest of the text, compare those too.
+				if them.digest != "" && now.digest != "" {
+					if now.digest == them.digest {
+						contentSame++
+					} else {
+						contentDiff++
+						note(now.path, "  DIGEST %s: %d chars on both sides, not the same ones", name, now.chars)
+					}
+				}
 			} else {
 				charsDiff++
-				note(now.path, "  CHARS  %s: go %d, java %d", now.path, now.chars, them.chars)
+				note(now.path, "  CHARS  %s: go %d, java %d", name, now.chars, them.chars)
 			}
 		case !goText && !javaText:
 			textNeither++
 		case javaText:
 			textBehind++
-			note(now.path, "  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", now.path, now.text, them.chars)
+			note(now.path, "  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", name, now.text, them.chars)
 		default:
 			textAhead++
-			note(now.path, "  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", now.path, now.chars, them.text)
+			note(now.path, "  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", name, now.chars, them.text)
 		}
 	}
 
 	out := os.Stderr
-	fmt.Fprintf(out, "\nagainst PDFBox (%s): %d files compared", path, compared)
+	fmt.Fprintf(out, "\nagainst PDFBox (%s): %d files compared", path, len(files))
+	if compared != len(files) {
+		fmt.Fprintf(out, " in %d rows, the passwords tables opening some more than one way", compared)
+	}
 	if notInOracle > 0 {
 		fmt.Fprintf(out, ", %d not in the oracle's table", notInOracle)
 	}
@@ -667,12 +729,15 @@ func compareOracle(path string, results []result) (int, error) {
 	fmt.Fprintf(out, "  text    both %d, neither %d, behind %d, ahead %d\n",
 		textBoth, textNeither, textBehind, textAhead)
 	fmt.Fprintf(out, "  chars   %d the same length, %d not\n", charsSame, charsDiff)
+	if contentSame+contentDiff > 0 {
+		fmt.Fprintf(out, "  digest  %d of the same length the same text, %d not\n", contentSame, contentDiff)
+	}
 
 	// Files, not mismatches: a document whose page count and character count both
 	// differ is one file that disagrees, and summing the counters above would
 	// call it two.
-	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", len(disagreed), compared,
-		percent(len(disagreed), compared))
+	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", len(disagreed), len(files),
+		percent(len(disagreed), len(files)))
 
 	sort.Strings(lines)
 	for _, line := range lines {
@@ -681,51 +746,106 @@ func compareOracle(path string, results []result) (int, error) {
 	return openBehind + textBehind, nil
 }
 
-// passwordsPath is the -passwords table, handed on to each child process.
-var passwordsPath string
+// passwordsPaths are the -passwords tables, in the order given, handed on to
+// each child process so that its -open indexes the same lines.
+var passwordsPaths []string
 
-// passwords are the rows of that table: a path ending and the password for the
-// file whose path ends that way.
-var passwords [][2]string
+// opening is one line of a passwords table: one way of opening one file.
+type opening struct {
+	ending      string // the path ending, slash separated
+	password    string
+	certificate string // "" for a password line; else resolved against the table's directory
+	key         string
+	label       string // the line after its path ending, its fields joined by " | "
+}
 
-// loadPasswords reads a table of <path ending>\t<password>, one file per line.
-// A path ending matches a file whose slash-separated path is that ending or
-// ends with "/" and that ending, so "pdfjs/issue3371.pdf" names the same file
-// here and in the PDFBox driver, which is handed paths from the repository
-// root. Blank lines and lines starting with # are ignored.
-func loadPasswords(path string) error {
-	content, err := os.ReadFile(path)
+// openings are the lines of every -passwords table, in the order read.
+var openings []opening
+
+// loadPasswords reads a passwords table. Each line is a path ending and a
+// password, or a path ending, a password, a certificate and a private key, tab
+// separated. A path ending matches a file whose slash-separated path is that
+// ending or ends with "/" and that ending, so "pdfjs/issue3371.pdf" names the
+// same file here and in the PDFBox driver, which is handed paths from the
+// repository root. Blank lines and lines starting with # are ignored.
+func loadPasswords(table string) error {
+	content, err := os.ReadFile(table)
 	if err != nil {
 		return err
 	}
+	dir := filepath.Dir(table)
 	for _, line := range strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
 		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		ending, password, ok := strings.Cut(line, "\t")
-		if !ok {
-			return fmt.Errorf("%s: a line with no tab: %q", path, line)
+		fields := strings.Split(line, "\t")
+		o := opening{ending: filepath.ToSlash(fields[0]), label: strings.Join(fields[1:], " | ")}
+		switch {
+		case o.ending != "" && len(fields) == 2:
+			o.password = fields[1]
+		case o.ending != "" && len(fields) == 4:
+			o.password = fields[1]
+			o.certificate = filepath.Join(dir, filepath.FromSlash(fields[2]))
+			o.key = filepath.Join(dir, filepath.FromSlash(fields[3]))
+		default:
+			return fmt.Errorf("%s: a line that is neither a path ending and a password nor a path ending, a password, a certificate and a key: %q", table, line)
 		}
-		passwords = append(passwords, [2]string{filepath.ToSlash(ending), password})
+		openings = append(openings, o)
 	}
 	return nil
 }
 
-// passwordFor answers the password the table gives a file, if it gives one.
-func passwordFor(path string) (string, bool) {
+// openingsFor answers the indexes of the lines that name a file, in table order.
+func openingsFor(path string) []int {
 	slashed := filepath.ToSlash(path)
-	for _, row := range passwords {
-		if slashed == row[0] || strings.HasSuffix(slashed, "/"+row[0]) {
-			return row[1], true
+	var lines []int
+	for i, o := range openings {
+		if slashed == o.ending || strings.HasSuffix(slashed, "/"+o.ending) {
+			lines = append(lines, i)
 		}
 	}
-	return "", false
+	return lines
 }
 
-// openDocument opens a file, with its password where the table has one.
-func openDocument(path string) (*pdmodel.PDDocument, error) {
-	if password, ok := passwordFor(path); ok {
-		return pdfbox.LoadPDFWithPassword(path, password)
+// jobsFor answers the ways the files are opened: once with no password for a
+// file no line names, and once for every line that names one.
+func jobsFor(files []string) []job {
+	var jobs []job
+	for _, path := range files {
+		lines := openingsFor(path)
+		if len(lines) == 0 {
+			jobs = append(jobs, job{path: path, open: -1})
+			continue
+		}
+		for _, line := range lines {
+			jobs = append(jobs, jobFor(path, line))
+		}
 	}
-	return pdfbox.LoadPDF(path)
+	return jobs
+}
+
+// jobFor answers the job of opening a file as one line says, labelled the way
+// JavaCorpus labels it: only when the tables open the file more than one way.
+func jobFor(path string, line int) job {
+	j := job{path: path, open: line}
+	if line >= 0 && len(openingsFor(path)) > 1 {
+		j.label = " [" + openings[line].label + "]"
+	}
+	return j
+}
+
+// openDocument opens a file as its job says.
+func openDocument(j job) (*pdmodel.PDDocument, error) {
+	if j.open < 0 {
+		return pdfbox.LoadPDF(j.path)
+	}
+	o := openings[j.open]
+	if o.certificate == "" {
+		return pdfbox.LoadPDFWithPassword(j.path, o.password)
+	}
+	store, err := keyStoreFor(o)
+	if err != nil {
+		return nil, err
+	}
+	return pdfbox.LoadPDFWithKeyStore(j.path, o.password, bytes.NewReader(store), "")
 }

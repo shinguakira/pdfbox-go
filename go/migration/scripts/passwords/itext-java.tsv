@@ -1,0 +1,414 @@
+# The ways iText's tests open the encrypted PDFs of itext-java, one line for each
+# way of opening one file, read from the test classes named above each group.
+# fetch-corpus.ps1 writes these lines to _passwords.tsv with the suite's name in
+# front of each file, and fetches the certificates and keys they name.
+#
+# A password line gives a password the test class holds that PDFBox opens the
+# file with, as the user or the owner; every such password is given, and an
+# empty one besides where the file also opens with none. The exceptions are the
+# files of revision 7, which PDFBox refuses before it looks at a password: their
+# lines give the passwords the tests use. A certificate line gives, relative to
+# the suite, the certificate and private key the test decrypts with, and the
+# passphrase of the key, empty for a key that is not encrypted.
+
+# forms/src/test/java/com/itextpdf/forms/PdfEncryptionTest.java
+forms/src/test/resources/com/itextpdf/forms/PdfEncryptionTest/cmp_encryptAes256Pdf2PermissionsTest01.pdf	Hello
+forms/src/test/resources/com/itextpdf/forms/PdfEncryptionTest/cmp_encryptAes256Pdf2PermissionsTest01.pdf	World
+forms/src/test/resources/com/itextpdf/forms/PdfEncryptionTest/cmp_encryptAes256Pdf2PermissionsTest02.pdf	Hello
+forms/src/test/resources/com/itextpdf/forms/PdfEncryptionTest/cmp_encryptAes256Pdf2PermissionsTest02.pdf	World
+forms/src/test/resources/com/itextpdf/forms/PdfEncryptionTest/encryptedDocumentWithFormFields.pdf	12345
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/EncryptionInApprovedModeTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/EncryptionInApprovedModeTest/checkMD5LogMessageWhileReadingPdf.pdf	
+kernel/src/test/resources/com/itextpdf/kernel/crypto/EncryptionInApprovedModeTest/checkMD5LogMessageWhileReadingPdf.pdf	World
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/PdfDecryptingTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withCertificate/aes256EcdsaP256.pdf		kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withECDSA_P256.crt	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withECDSA_P256.key
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withCertificate/aes256Rsa.pdf		kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.crt	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/aes128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/aes128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/aes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/aes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/standard128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/standard128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/standard40.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/adobe/withPassword/standard40.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withCertificate/aes256Rsa.pdf		kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.crt	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/aes128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/aes128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/aes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/aes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/aes256Pdf2.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/aes256Pdf2.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/standard128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/standard128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/standard40.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_regular/withPassword/standard40.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/aes128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/aes128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/aes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/aes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/aes256Pdf2.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/aes256Pdf2.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/standard128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/standard128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/standard40.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/dotnet_with_fips/withPassword/standard40.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withCertificate/aes256Rsa.pdf		kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.crt	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/aes128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/aes128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/aes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/aes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/aes256Pdf2.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/aes256Pdf2.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/standard128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/standard128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/standard40.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_regular/withPassword/standard40.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withCertificate/aes256Rsa.pdf		kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.crt	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/aes128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/aes128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/aes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/aes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/aes256Pdf2.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/aes256Pdf2.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/standard128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/standard128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/standard40.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfDecryptingTest/java_with_fips/withPassword/standard40.pdf	owner
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/PdfEncryptingTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithCertificateAes256Rsa.pdf		kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/certs/SHA256withRSA.crt	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordAes128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordAes128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordAes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordAes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordAes256Pdf2.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordAes256Pdf2.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordStandard128.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordStandard128.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordStandard40.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptingTest/cmp_encryptWithPasswordStandard40.pdf	owner
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateAes128.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateAes128NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateAes256.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateAes256NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateStandard128.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateStandard128NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateStandard40.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_appended_encryptWithCertificateStandard40NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateAes128.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateAes128NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateAes256.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateAes256NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateStandard128.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateStandard128NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateStandard40.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/cmp_encryptWithCertificateStandard40NoCompression.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/encryptedWithCertificateAes128.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/encryptedWithCertificateWithDefaultKeyLength.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/PdfEncryptionManuallyPortedTest/test.pem
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/UnencryptedWrapperTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/UnencryptedWrapperTest/cmp_standardEncryptedDocument.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/UnencryptedWrapperTest/cmp_standardEncryptedDocument.pdf	World
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/AdobeAes256.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/AdobeAes256.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptAes256FullCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptAes256FullCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptAes256Pdf2NotEncryptMetadata.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptAes256Pdf2NotEncryptMetadata.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptAes256Pdf2NotEncryptMetadata02.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptAes256Pdf2NotEncryptMetadata02.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes128.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes128.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes128NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes128NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes128Pdf2.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes128Pdf2.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes256.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes256.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes256NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes256NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes256Pdf2.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordAes256Pdf2.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard128.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard128.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard128NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard128NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard40.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard40.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard40NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_appended_encryptWithPasswordStandard40NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256EncryptedStampingUpdate.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256EncryptedStampingUpdate.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256FullCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256FullCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256Pdf2NotEncryptMetadata.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256Pdf2NotEncryptMetadata.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256Pdf2NotEncryptMetadata02.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256Pdf2NotEncryptMetadata02.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256Pdf2Permissions.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptAes256Pdf2Permissions.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128NoMetadataCompression.pdf	superowner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128NoMetadataCompression.pdf	superuser
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128Pdf2.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes128Pdf2.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes256.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes256.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes256NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes256NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes256Pdf2.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordAes256Pdf2.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard128.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard128.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard128NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard128NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard40.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard40.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard40NoCompression.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_encryptWithPasswordStandard40NoCompression.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_stampAndUpdateVersionNewAes256.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/cmp_stampAndUpdateVersionNewAes256.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithCertificateAes128.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/test.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordAes256.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordAes256.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordAes256_modifiedPermissions.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordAes256_modifiedPermissions.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordStandard40.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordStandard40.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordWithDefaultKeyLength.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPasswordWithDefaultKeyLength.pdf	owner
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPlainMetadata.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/encryptedWithPlainMetadata.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/noUserPassword.pdf	
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfEncryptionTest/noUserPassword.pdf	World
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_encryptAes256EncryptedStampingPreserve.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_encryptAes256EncryptedStampingPreserve.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_preserveEncryptionWithShortId.pdf	
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_preserveEncryptionWithShortId.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_stampAndUpdateVersionPreserveAes256.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_stampAndUpdateVersionPreserveAes256.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_stampAndUpdateVersionPreserveStandard40.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/cmp_stampAndUpdateVersionPreserveStandard40.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithPasswordAes256.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithPasswordAes256.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithPasswordStandard40.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithPasswordStandard40.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithPlainMetadata.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithPlainMetadata.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithShortId.pdf	
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/PdfPreserveEncryptionTest/encryptedWithShortId.pdf	World
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic01.pdf	الرحيم
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic02.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic02.pdf	ال,ر11حيم
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic03.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic03.pdf	لـه
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic04.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic04.pdf	لا
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic04.pdf	ﻻ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic05.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic05.pdf	لا
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_arabic05.pdf	ﻻ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_devanagari01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_devanagari01.pdf	शांति    देवनागरी
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_devanagari02.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_devanagari02.pdf	की प्राचीनतम
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_emoji01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_emoji01.pdf	♻
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_gurmukhi01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_gurmukhi01.pdf	ਗ੍ਰੰਥ ਸਾਹਿਬ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_khmer01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_khmer01.pdf	ញ្ចូ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization01.pdf	ো
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization01.pdf	ো
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization02.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization02.pdf	ギガ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization02.pdf	㌐
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization02.pdf	ギガ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization03.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization03.pdf	ギガ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization03.pdf	㌐
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization03.pdf	ギガ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization04.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization04.pdf	각
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization04.pdf	각
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization05.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization05.pdf	陋
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nfkcNormalization05.pdf	陋
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nonAsciiSpace01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nonAsciiSpace01.pdf	      ​
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_nonAsciiSpace01.pdf	       
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example01.pdf	IX
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example01.pdf	I­X
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example01.pdf	Ⅸ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example02.pdf	user
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example02.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example03.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example03.pdf	ª
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example03.pdf	a
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example04.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example04.pdf	IX
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example04.pdf	I­X
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_rfc4013Example04.pdf	Ⅸ
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_tamil01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_tamil01.pdf	இலக்கிய நடை கூட மக்களால்
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_thai01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_thai01.pdf	ประเทศไทย
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_unicodeBom01.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_unicodeBom01.pdf	abc
+kernel/src/test/resources/com/itextpdf/kernel/crypto/pdfencryption/UnicodeBasedPasswordEncryptionTest/cmp_unicodePassword_unicodeBom01.pdf	﻿ab﻿c
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/externalFile.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/decrypter.cert.pem	kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/signerkey.pem
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/invalidCryptFilter.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/test.cer	kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/test.pem
+
+# kernel/src/test/java/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest.java
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/cmp_encryptedSimpleDocument.pdf	secret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/cmp_encryptedSimpleDocument.pdf	supersecret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocument.pdf	secret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocument.pdf	supersecret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocumentTamperedCiphertext.pdf	secret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocumentTamperedCiphertext.pdf	supersecret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocumentTamperedIv.pdf	secret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocumentTamperedIv.pdf	supersecret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocumentTamperedMac.pdf	secret
+kernel/src/test/resources/com/itextpdf/kernel/crypto/securityhandler/StandardHandlerUsingAesGcmTest/encryptedDocumentTamperedMac.pdf	supersecret
+
+# kernel/src/test/java/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest.java
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_addMacOnAppendModeTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_addMacOnPreserveEncryptionFor17DocTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_addMacOnPreserveEncryptionTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_addMacOnPreserveEncryptionWhileDowngradingTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_addMacOnPreservePublicKeyEncryptionTest.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/certs/SHA256withRSA.cer	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_addMacWithDisableMacPropertyTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_macEncryptionWithAesGsmTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_noMacProtectionTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacPublicKeyEncryptionTest.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/certs/SHA256withRSA.cer	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacStandardEncryptionTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacWithAllHashAlgorithmsTest1.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacWithAllHashAlgorithmsTest2.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacWithAllHashAlgorithmsTest3.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacWithAllHashAlgorithmsTest4.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacWithAllHashAlgorithmsTest5.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/cmp_standaloneMacWithAllHashAlgorithmsTest6.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/noMacProtectionDocument.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/noMacProtectionDocument_1_7.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/noMacProtectionPublicKeyEncryptionDocument.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/certs/SHA256withRSA.cer	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorCreationTest/certs/SHA256withRSA.key
+
+# kernel/src/test/java/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest.java
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/cmp_appendModeTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/cmp_disableMacInAppendModeTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/cmp_disableMacTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/cmp_macShouldNotBePreservedWithEncryptionTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/cmp_preserveEncryptionTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/cmp_writerPropertiesTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/invalidMacProtectedDocument.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/invalidPublicKeyMacProtectedDocument.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/certs/SHA256withRSA.cer	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/certs/SHA256withRSA.key
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/macProtectedDocument.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/macProtectedDocumentPdf1_7.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/macProtectionStrippedTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/noSaltTest.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/signedMacProtectedDocWithoutAttribute.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/signedMacProtectedDocument.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/thirdPartyMacProtectedDocument.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/thirdPartyMacProtectedDocumentTampered.pdf	123
+kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/thirdPartyPublicKeyMacProtectedDocument.pdf	testpassphrase	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/certs/certForEncryption.crt	kernel/src/test/resources/com/itextpdf/kernel/mac/MacIntegrityProtectorReadingAndRewritingTest/certs/keyForEncryption.pem
+
+# kernel/src/test/java/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest.java
+kernel/src/test/resources/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest/cmp_noReaderAesEncryptionAddFileAttachment.pdf	password
+kernel/src/test/resources/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest/cmp_noReaderStandardEncryptionAddAnnotation.pdf	password
+kernel/src/test/resources/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest/cmp_noReaderStandardEncryptionAddFileAttachment.pdf	password
+kernel/src/test/resources/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest/cmp_readerWithoutEncryptionWriterStandardEncryption.pdf	password
+kernel/src/test/resources/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest/pdfWithFileAttachmentAnnotations.pdf	password
+kernel/src/test/resources/com/itextpdf/kernel/pdf/EncryptedEmbeddedStreamsHandlerTest/pdfWithFileAttachments.pdf	password
+
+# kernel/src/test/java/com/itextpdf/kernel/pdf/PdfDocumentTest.java
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfDocumentTest/source.pdf	123
+
+# kernel/src/test/java/com/itextpdf/kernel/pdf/PdfReaderTest.java
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfReaderTest/simpleDocWithPassword.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfReaderTest/unencryptedMetadataAes256.pdf	userpass
+
+# kernel/src/test/java/com/itextpdf/kernel/pdf/PdfStreamTest.java
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfStreamTest/cmp_cryptFilterTest.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfStreamTest/cmp_cryptFilterTest.pdf	World
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfStreamTest/cryptFilterTest.pdf	Hello
+kernel/src/test/resources/com/itextpdf/kernel/pdf/PdfStreamTest/cryptFilterTest.pdf	World
+
+# pdfua/src/test/java/com/itextpdf/pdfua/checkers/PdfUAEncryptionTest.java
+pdfua/src/test/resources/com/itextpdf/pdfua/PdfUAEncryptionTest/cmp_encryptWithPassword.pdf	user
+pdfua/src/test/resources/com/itextpdf/pdfua/PdfUAEncryptionTest/cmp_encryptWithPassword.pdf	owner
+
+# sign/src/test/java/com/itextpdf/signatures/mac/ReadSignedMacProtectedDocumentTest.java
+sign/src/test/resources/com/itextpdf/signatures/mac/ReadSignedMacProtectedDocumentTest/cmp_updateSignedMacProtectedDocumentTest.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/ReadSignedMacProtectedDocumentTest/signedMacProtectedInvalidDoc.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/ReadSignedMacProtectedDocumentTest/thirdPartyMacProtectedAndSignedDocument.pdf	123
+
+# sign/src/test/java/com/itextpdf/signatures/mac/SignedDocumentWithMacTest.java
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocInAppendModeTest_signDetached.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocInAppendModeTest_signExternalContainerBlank.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocInAppendModeTest_signExternalContainerReal.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocInAppendModeTest_timestamping.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocTest_signDetached.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocTest_signExternalContainerBlank.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocTest_signExternalContainerReal.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocTest_timestamping.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocWithSHA3_384Test_signDetached.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocWithSHA3_384Test_signExternalContainerBlank.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocWithSHA3_384Test_signExternalContainerReal.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacProtectedDocWithSHA3_384Test_timestamping.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacPublicEncryptionDocTest_signDetached.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.cer	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.key
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacPublicEncryptionDocTest_signExternalContainerBlank.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.cer	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.key
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacPublicEncryptionDocTest_signExternalContainerReal.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.cer	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.key
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signMacPublicEncryptionDocTest_timestamping.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.cer	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.key
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDoc17Test_signDetached.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDoc17Test_signExternalContainerBlank.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDoc17Test_signExternalContainerReal.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDoc17Test_timestamping.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocInAppendModeTest_signDetached.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocInAppendModeTest_signExternalContainerBlank.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocInAppendModeTest_signExternalContainerReal.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocInAppendModeTest_timestamping.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocTest_signDetached.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocTest_signExternalContainerBlank.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocTest_signExternalContainerReal.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/cmp_signNotMacProtectedDocTest_timestamping.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/macEncryptedDoc.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/macEncryptedDocSHA3_384.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/macEncryptedWithPublicHandlerDoc.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.cer	sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/certs/SHA256withRSA.key
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/noMacProtectionDocument.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/SignedDocumentWithMacTest/noMacProtectionDocument_1_7.pdf	123
+
+# sign/src/test/java/com/itextpdf/signatures/mac/TwoStepSigningWithMacTest.java
+sign/src/test/resources/com/itextpdf/signatures/mac/TwoStepSigningWithMacTest/cmp_signDeferredWithDocumentTest.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/TwoStepSigningWithMacTest/cmp_signDeferredWithReaderTest.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/TwoStepSigningWithMacTest/cmp_twoPhaseSignerWithDocumentTest.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/TwoStepSigningWithMacTest/cmp_twoPhaseSignerWithReaderTest.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/mac/TwoStepSigningWithMacTest/macEncryptedDoc.pdf	123
+
+# sign/src/test/java/com/itextpdf/signatures/sign/EncryptedSigningTest.java
+sign/src/test/resources/com/itextpdf/signatures/sign/EncryptedSigningTest/cmp_signCertificateSecurityPdf.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/certs/signCertRsa01.pem	sign/src/test/resources/com/itextpdf/signatures/certs/signCertRsa01.pem
+sign/src/test/resources/com/itextpdf/signatures/sign/EncryptedSigningTest/cmp_signedEncrypted.pdf	Hello
+sign/src/test/resources/com/itextpdf/signatures/sign/EncryptedSigningTest/cmp_signedEncrypted.pdf	World
+sign/src/test/resources/com/itextpdf/signatures/sign/EncryptedSigningTest/encrypted.pdf	Hello
+sign/src/test/resources/com/itextpdf/signatures/sign/EncryptedSigningTest/encrypted.pdf	World
+sign/src/test/resources/com/itextpdf/signatures/sign/EncryptedSigningTest/signCertificateSecurityPdf.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/certs/signCertRsa01.pem	sign/src/test/resources/com/itextpdf/signatures/certs/signCertRsa01.pem
+
+# sign/src/test/java/com/itextpdf/signatures/validation/SignatureValidatorIntegrationTest.java
+sign/src/test/resources/com/itextpdf/signatures/validation/SignatureValidatorIntegrationTest/encryptedDoc.pdf	123
+sign/src/test/resources/com/itextpdf/signatures/validation/SignatureValidatorIntegrationTest/encryptedPublicKeyDocTest.pdf	testpassphrase	sign/src/test/resources/com/itextpdf/signatures/validation/SignatureValidatorIntegrationTest/certs/SHA256withRSA.cer	sign/src/test/resources/com/itextpdf/signatures/validation/SignatureValidatorIntegrationTest/certs/SHA256withRSA.key
