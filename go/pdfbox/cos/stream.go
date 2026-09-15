@@ -199,20 +199,47 @@ func (s *Stream) CreateReader() (io.Reader, error) {
 		return raw, nil
 	}
 
-	// Java chains decoder streams; the port decodes into a buffer per filter,
-	// which is simpler and matches how the filters are written.
+	decoded, err := s.decode(raw, codecs)
+	if err != nil {
+		return nil, err
+	}
+	return pdfio.NewReader(decoded), nil
+}
+
+// decode runs raw through each codec in turn, each into a buffer of its own,
+// and answers the last buffer rewound to its start.
+//
+// Port of the loop in the static Filter.decode, which COSInputStream.create and
+// createView both go through. Java sizes each buffer's chunks from what it
+// knows of the input: four times its length when that is under a kilobyte,
+// which covers most content streams, and the default 4 KB otherwise. The first
+// input's length is the stream's /Length, and each after that is the buffer the
+// previous filter wrote.
+func (s *Stream) decode(raw io.Reader, codecs []StreamCodec) (*pdfio.ReadWriteBuffer, error) {
+	length := s.GetLongDefault(Length, pdfio.DefaultChunkSize4KB)
 	current := raw
+	var decoded *pdfio.ReadWriteBuffer
 	for i, codec := range codecs {
-		decoded := pdfio.NewReadWriteBuffer()
+		if i > 0 {
+			var err error
+			if length, err = decoded.Length(); err != nil {
+				return nil, err
+			}
+			current = pdfio.NewReader(decoded)
+		}
+		chunkSize := pdfio.DefaultChunkSize4KB
+		if length > 0 && length < pdfio.DefaultChunkSize4KB/4 {
+			chunkSize = int(length) * 4
+		}
+		decoded = pdfio.NewReadWriteBufferSize(chunkSize)
 		if err := codec.Decode(decoded, current, &s.Dictionary, i); err != nil {
 			return nil, fmt.Errorf("cos: decoding filter %d: %w", i, err)
 		}
 		if err := pdfio.SeekTo(decoded, 0); err != nil {
 			return nil, err
 		}
-		current = pdfio.NewReader(decoded)
 	}
-	return current, nil
+	return decoded, nil
 }
 
 // CreateRawWriter returns a writer that stores bytes as given, without encoding
@@ -498,11 +525,18 @@ func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
 		}
 		return pdfio.NewReadBufferFromReader(raw)
 	}
-	decoded, err := s.CreateReader()
+	// Java answers the buffer Filter.decode wrote into, rewound, and does not
+	// copy it. The port used to read it into a second buffer, which held every
+	// decoded byte of every viewed stream twice.
+	raw, err := s.CreateRawReader()
 	if err != nil {
 		return nil, err
 	}
-	return pdfio.NewReadBufferFromReader(decoded)
+	decoded, err := s.decode(raw, codecs)
+	if err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }
 
 // CreateReaderStopping returns a reader over the stream data, applying only the
@@ -551,20 +585,12 @@ func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
 		}
 		codecs = reduced
 	}
-	count = len(codecs)
 
-	current := raw
-	for i := 0; i < count; i++ {
-		decoded := pdfio.NewReadWriteBuffer()
-		if err := codecs[i].Decode(decoded, current, &s.Dictionary, i); err != nil {
-			return nil, fmt.Errorf("cos: decoding filter %d: %w", i, err)
-		}
-		if err := pdfio.SeekTo(decoded, 0); err != nil {
-			return nil, err
-		}
-		current = pdfio.NewReader(decoded)
+	decoded, err := s.decode(raw, codecs)
+	if err != nil {
+		return nil, err
 	}
-	return current, nil
+	return pdfio.NewReader(decoded), nil
 }
 
 // ToTextString returns the content of the stream as text, and the empty string

@@ -494,3 +494,70 @@ func TestFlateDecoderReaderCloseKeepsASourceFailure(t *testing.T) {
 		t.Error("Close = nil, want the failure reported -- no Read absorbed anything here")
 	}
 }
+
+// TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt pins the one risk
+// in handing a decompressor back when its data ends rather than on Close: the
+// finished stream must not reach the decompressor again once another stream
+// has taken it.
+//
+// The first reader is read to its end, which pools its decompressor; the second
+// is opened afterwards, and with nothing else in the pool it gets that one. The
+// first is then read and closed again, between the second's reads, and must
+// answer the end of its data and a quiet close without touching what the
+// second is inflating.
+func TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt(t *testing.T) {
+	compress := func(plain []byte) []byte {
+		var deflated bytes.Buffer
+		zw := zlib.NewWriter(&deflated)
+		if _, err := zw.Write(plain); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		return deflated.Bytes()
+	}
+	firstPlain := bytes.Repeat([]byte("BT /F1 12 Tf (first) Tj ET\n"), 50)
+	secondPlain := bytes.Repeat([]byte("q 1 0 0 1 72 720 cm /Im0 Do Q second\n"), 400)
+
+	first, err := NewFlateDecoderReader(bytes.NewReader(compress(firstPlain)))
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+	got, err := io.ReadAll(first)
+	if err != nil || !bytes.Equal(got, firstPlain) {
+		t.Fatalf("first stream: %d bytes, %v; want %d bytes, no error", len(got), err, len(firstPlain))
+	}
+
+	second, err := NewFlateDecoderReader(bytes.NewReader(compress(secondPlain)))
+	if err != nil {
+		t.Fatalf("NewFlateDecoderReader: %v", err)
+	}
+	var secondGot bytes.Buffer
+	chunk := make([]byte, 1000)
+	for {
+		n, err := second.Read(chunk)
+		secondGot.Write(chunk[:n])
+
+		// the finished stream, poked while the second one is mid-read
+		if m, ferr := first.Read(make([]byte, 16)); m != 0 || ferr != io.EOF {
+			t.Fatalf("the finished stream read %d bytes, %v; want 0, io.EOF", m, ferr)
+		}
+		if cerr := first.Close(); cerr != nil {
+			t.Fatalf("closing the finished stream = %v, want nil", cerr)
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("second stream: %v", err)
+		}
+	}
+	if !bytes.Equal(secondGot.Bytes(), secondPlain) {
+		t.Errorf("second stream: %d bytes, not the %d that went in", secondGot.Len(), len(secondPlain))
+	}
+	if err := second.Close(); err != nil {
+		t.Errorf("closing the second stream = %v, want nil", err)
+	}
+}
