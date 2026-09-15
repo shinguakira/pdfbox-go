@@ -15,9 +15,11 @@
     copied, because that is all PDFBox needs to find its glyph lists, AFMs and
     predefined CMaps.
 
-    The Java tree is not touched. The only .java file this repository owns is
-    migration/oracle/JavaCorpus.java, which sits outside the Maven module
-    directories and compiles against them.
+    The Java tree is not touched. The only .java files this repository owns are
+    the two in migration/oracle: JavaCorpus.java, the driver this script runs,
+    and JavaBench.java, the Java half of migration/BENCHMARK.md. Both sit
+    outside the Maven module directories and compile against them, and both
+    are compiled here.
 
     The output is a TSV with the same columns cmd/corpus emits. Feed the two to
 
@@ -142,10 +144,22 @@ if ($Rebuild -or -not (Test-Path -LiteralPath $driver)) {
     Write-Host "compiling $count Java files"
     & javac -nowarn -encoding UTF-8 -d $classes -cp $classpath "@$sourceList"
     if ($LASTEXITCODE -ne 0) { throw "javac exited $LASTEXITCODE" }
+}
 
-    & javac -nowarn -encoding UTF-8 -d $classes -cp $classpath `
-        (Join-Path $RepoRoot 'go/migration/oracle/JavaCorpus.java')
-    if ($LASTEXITCODE -ne 0) { throw "javac exited $LASTEXITCODE on the driver" }
+# The two drivers are small and they change, so each is compiled whenever its
+# class is missing or older than its source -- not only when the tree is. A
+# driver compiled once and never again would go on running the old code after
+# an edit, with nothing to say so.
+foreach ($name in 'JavaCorpus', 'JavaBench') {
+    $source = Join-Path $RepoRoot "go/migration/oracle/$name.java"
+    $class = Join-Path $classes "$name.class"
+    $stale = $Rebuild -or -not (Test-Path -LiteralPath $class) -or
+        ((Get-Item -LiteralPath $source).LastWriteTimeUtc -gt (Get-Item -LiteralPath $class).LastWriteTimeUtc)
+    if ($stale) {
+        Write-Host "compiling $name"
+        & javac -nowarn -encoding UTF-8 -d $classes -cp $classpath $source
+        if ($LASTEXITCODE -ne 0) { throw "javac exited $LASTEXITCODE on $name" }
+    }
 }
 
 # --------------------------------------------------------------------- the list

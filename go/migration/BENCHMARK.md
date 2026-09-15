@@ -21,7 +21,7 @@ implementations fully process. Timing a file one of them gives up on would score
 | per document, median | 0.330 ms | 0.389 ms | **port faster** |
 | per document, p90 | 2.38 ms | 1.53 ms | 1.6× |
 | per document, p99 | 30.6 ms | 12.0 ms | 2.6× |
-| peak live heap, default settings | 794.9 MB | 638.4 MB | 1.24× |
+| peak live heap, default settings | 794.9 MB | 593.6 MB | 1.34× |
 | heap the OS was asked for | 803.8 MB | — | |
 
 **"6.4× slower" is true of the total and false of almost every document.**
@@ -112,7 +112,7 @@ no number of workers gets below one document. The tail is the problem, and the
 tail is `compress/flate`.
 
 The memory cost is not symmetric, though: the port's peak went 729 MB → 1,605 MB
-across those runs, PDFBox's 593 MB → 847 MB. Workers are cheaper for PDFBox than
+across those runs, PDFBox's 611 MB → 760 MB. Workers are cheaper for PDFBox than
 for the port.
 
 ## Starting up
@@ -165,7 +165,7 @@ RSS is above the heap figures below because it includes what neither heap
 accounts for — the JVM's metaspace, code cache and thread stacks, the Go
 runtime's own arenas.
 
-## Three ways to measure this that do not work
+## Four ways to measure this that do not work
 
 Each of these was tried first and produced a confident wrong answer.
 
@@ -178,11 +178,21 @@ matters more than using each language's best clock.
 
 **Go's `HeapSys`.** The first memory figure was 2,727 MB, which is the arena the
 runtime has taken from the OS and does not give back. It is not comparable to a
-JVM heap. Both sides now report peak *live* heap: sampled `HeapAlloc` on one
-side, `MemoryPoolMXBean.getPeakUsage()` on the other.
+JVM heap. Both sides now report the peak heap in use, sampled every millisecond:
+`HeapAlloc` on one side, `MemoryMXBean.getHeapMemoryUsage()` on the other.
+
+**Adding up the JVM's pool peaks.** The Java side's first memory figure was the
+sum of `MemoryPoolMXBean.getPeakUsage()` over the heap pools. Each pool reaches
+its peak at its own moment — the young generation just before a collection, the
+old one somewhere else — so the sum describes a heap that never existed, and it
+is never smaller than the real peak. Review caught it. Every PDFBox heap figure
+on this page was measured again on 2026-09-15 by sampling the whole heap, the
+way the Go side samples its own: the default run went from 638.4 MB to
+593.6 MB, and the capped runs under "Memory" fell by between 7% and 29%. The
+times beside those figures are from the first runs.
 
 **Comparing two default configurations.** Both runtimes use what they are given.
-PDFBox peaks at 569 MB under `-Xmx4g` and at 133 MB under `-Xmx96m`, extracting
+PDFBox peaks at 513 MB under `-Xmx4g` and at 94 MB under `-Xmx96m`, extracting
 identical text either way. A default-vs-default number compares two GC
 settings, not two implementations. See "Memory" below for the number that means
 something.
@@ -223,7 +233,7 @@ over 20×              10
 Two defects, both found by this benchmark, both verified against the oracle
 afterwards (`0 of N files disagree`).
 
-### The 32-bit multiply, in `filter`
+### The predictor's row, in `filter`
 
 `qpdf/issue-1688a.pdf` is **531 bytes** and took **435 ms**, against PDFBox's
 0.3 ms — 1,449×. 83% of it was the runtime zeroing memory. The file declares:
@@ -232,18 +242,33 @@ afterwards (`0 of N files disagree`).
 /DecodeParms << /Predictor 2 /Colors 536870913 /Columns 1 /BitsPerComponent 8 >>
 ```
 
-`536870913 * 8` is 4,294,967,304. Java's `int` is 32 bits, so it wraps to 8 and
-the row is one byte. Go's `int` is 64 bits, so the row was 536,870,913 bytes and
-`decodePredictor` allocated two of them — **a gigabyte of zeroed memory from a
-531-byte file**, and a different answer from the reference.
+The port worked the row out as 536,870,913 bytes, and `decodePredictor`
+allocated two of them — **a gigabyte of zeroed memory from a 531-byte file**.
+
+**The first fix had the right symptom and the wrong cause.** It saw that
+`536870913 * 8` wraps to 8 in Java's 32-bit `int`, made the port's arithmetic
+wrap the same way, and wrote down that PDFBox's row is one byte. It is not.
+`Predictor.wrapPredictor` reads `/Colors` through `Math.min(..., 32)` before the
+row length is worked out, so PDFBox's row for this file is 32 bytes. The wrap
+took the time to 0.71 ms and still gave a different answer from the reference:
+over 40 bytes of data, one-byte rows and 40 bytes out, where PDFBox has 32-byte
+rows and 64 bytes out. Review caught it.
+
+What is there now is the clamp, where Java has it, and Java's 32-bit arithmetic
+all through the predictor — `/BitsPerComponent` and `/Columns` are not clamped
+and can still wrap. Matching PDFBox's output case by case turned up the rest: the
+last row completed with zeros, a row's algorithm byte read as a signed Java
+byte, and a predictor of 0 or below passing the data through whatever the other
+parameters say. `TestPredictorAnswersWhatPDFBoxAnswers` holds PDFBox's own
+output for each case; JAVA-BUGS 88 is the one case where PDFBox has no answer.
 
 `conventions/java-to-go.md` already said which width to use: *"Java int is
 32-bit: use int32 where the width is load-bearing (format fields,
-overflow-sensitive arithmetic)"*. This was that case and the port had `int`.
+overflow-sensitive arithmetic)"*. The width was load-bearing, and it was not the
+whole of it.
 
-**435 ms → 0.71 ms.** PDFBox's own `SECURITY.md` puts disproportionate resource
-consumption from small attacker-controlled inputs in scope, so this was not only
-a speed defect.
+PDFBox's own `SECURITY.md` puts disproportionate resource consumption from small
+attacker-controlled inputs in scope, so this was not only a speed defect.
 
 ### The GPOS table, in `fontbox/ttf`
 
@@ -255,7 +280,7 @@ parse on every font load.
 
 Not a slower version of the same work: **work PDFBox does not do**, on a path
 that never uses it. Extracting text from `PDFBOX-5927.pdf`, a one-megabyte
-document, the port held 464 MB against PDFBox's 68.8 MB, and 52 MB of that was
+document, the port held 464 MB against PDFBox's 59.4 MB, and 52 MB of that was
 `readPairSet` — kerning pairs, parsed while extracting text. The only caller of
 `GPOS()` in the tree is the shaper, and `table()` already reads on demand.
 
@@ -285,7 +310,7 @@ inflates *wrongly* — only that it inflates in Go.
 pre-sizes its two maps to 250, and so does Java — `new HashMap<>(250)` — so the
 port is faithful here. 15,422 of them were live at the peak, which is worth
 understanding, but `PDResources.GetFont`'s cache is the same shape as Java's and
-PDFBox needs 284 MB for the same document. A 1.7× gap, the smallest of the
+PDFBox needs 283 MB for the same document. A 1.7× gap, the smallest of the
 three, and proving anything needs instrumentation rather than a profile.
 
 ## Memory
@@ -296,16 +321,16 @@ heaviest documents, which are 92% of the time and 86% of the peak:
 
 | cap | PDFBox | | port | |
 | --- | ---: | --- | ---: | --- |
-| 4 GB / none | 3,977 ms | peak 569 MB | 33,461 ms | peak 473 MB |
-| 512 MB | 3,565 ms | peak 406 MB | 33,461 ms | peak 473 MB |
-| 256 MB | 3,918 ms | peak 274 MB | 64,833 ms | peak 366 MB |
-| 128 MB | 4,056 ms | peak 176 MB | 104,682 ms | peak 368 MB |
-| 96 MB | 4,481 ms | peak 133 MB | — | |
-| 64 MB | 5,323 ms | | — | |
-| 48 MB | 8,468 ms | | — | |
+| 4 GB / none | 3,977 ms | peak 513 MB | 33,461 ms | peak 473 MB |
+| 512 MB | 3,565 ms | peak 379 MB | 33,461 ms | peak 473 MB |
+| 256 MB | 3,918 ms | peak 228 MB | 64,833 ms | peak 366 MB |
+| 128 MB | 4,056 ms | peak 127 MB | 104,682 ms | peak 368 MB |
+| 96 MB | 4,481 ms | peak 94 MB | — | |
+| 64 MB | 5,323 ms | peak 63 MB | — | |
+| 48 MB | 8,468 ms | peak 48 MB | — | |
 | 32 MB | **fails** — output truncated | | — | |
 
-**PDFBox completes in 48 MB.** Its 569 MB under a 4 GB heap is appetite, not
+**PDFBox completes in 48 MB.** Its 513 MB under a 4 GB heap is appetite, not
 need.
 
 **The port does not go below about 366 MB.** `GOMEMLIMIT` is a soft limit, so it
@@ -313,7 +338,7 @@ does not fail — it collects harder and harder, and 128 MB costs 3× the time
 while still peaking at 368 MB. Something holds that much live and the collector
 cannot help. Output stayed correct at every level on both sides.
 
-So the honest memory statement is: **1.24× on defaults, about 7× on the floor.**
+So the honest memory statement is: **1.34× on defaults, about 7× on the floor.**
 The floor is the one that would matter in a container.
 
 ## Reproducing

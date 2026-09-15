@@ -281,7 +281,7 @@ func TestGPOSKerningAgreesWithTheKernTable(t *testing.T) {
 // then read the whole table on every font load.
 //
 // That is not free. Benchmarking PDFBOX-5927.pdf -- a one-megabyte document --
-// against PDFBox found the port holding 464MB where PDFBox held 68.8MB, and the
+// against PDFBox found the port holding 464MB where PDFBox held 59.4MB, and the
 // heap profile put 52MB of it in readPairSet: GPOS kerning pairs, parsed while
 // extracting text, which never asks for them. The only caller of GPOS() in the
 // tree is pdfbox/glyphlayout, and table() already reads on demand.

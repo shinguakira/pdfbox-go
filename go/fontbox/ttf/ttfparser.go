@@ -142,7 +142,7 @@ func (p *Parser) parseTables(font *TrueTypeFont) error {
 		// The port added the case for track/pdfbox-layout's shaper, and reading
 		// it here made every font load pay for a table only the shaper wants:
 		// 52MB of kerning pairs while extracting text from a one-megabyte
-		// document, measured against PDFBox's 68.8MB for the whole file. The
+		// document, measured against PDFBox's 59.4MB for the whole file. The
 		// only caller of GPOS() is the shaper and table() reads on demand, so
 		// skipping it here matches what Java does rather than how Java is
 		// written. See TestGPOSIsNotReadUntilAsked.

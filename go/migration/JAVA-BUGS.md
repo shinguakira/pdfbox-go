@@ -57,7 +57,8 @@ the commit messages and the comments in the Go all use it.
 ## How they group
 
 Written once all 86 were in, and extended as later entries arrive — 87 was found
-by the corpus of [`TESTDATA.md`](TESTDATA.md), after the fix branch had closed.
+by the corpus of [`TESTDATA.md`](TESTDATA.md), after the fix branch had closed,
+and 88 while matching the predictor to PDFBox's own output.
 The numbered list below is in the order the defects were found, which is the
 order the port went in, and that order says nothing about what any of them takes
 to reach or how much it costs. This is the second index.
@@ -69,7 +70,7 @@ once.
 
 | | Group | Entries | | What reproducing one takes |
 | --- | --- | --- | ---: | --- |
-| A | parser and filters | 6, 8, 9, 10, 14, 23, 27, 29, 30, 32, 63 | 11 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream |
+| A | parser and filters | 6, 8, 9, 10, 14, 23, 27, 29, 30, 32, 63, 88 | 12 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream, a TIFF predictor with no columns |
 | B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86, 87 | 8 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
 | C | fonts | 12, 13, 16, 17, 18, 19, 20, 21, 74 | 9 | **a font file, not a PDF.** A CID-keyed CFF with a sheared FontMatrix in both DICTs, a `uniXXXX` name with no cmap, a scan of the system fonts |
 | D | XMP | 56, 57 | 2 | a malformed XMP packet, which a PDF can carry |
@@ -80,7 +81,7 @@ once.
 | I | a Java test | 4, 46, 78, 81 | 4 | nothing. The library is right and the test is not |
 | J | tools and diagnostics | 75, 76, 77 | 3 | run the command |
 
-So **20 of 86 are reachable by handing PDFBox a file** — A, B and D — and 29 if
+So **22 of 88 are reachable by handing PDFBox a file** — A, B and D — and 31 if
 a font counts. The rest need an API call, a race, or cannot be reached at all.
 
 ### By the shape of the mistake
@@ -96,12 +97,13 @@ Not a partition: an entry can be two shapes at once, and 28 is.
 | bits and integers: `%` for `&`, a truncation to 32, a sign extension, a floor called a ceiling | 1, 16, 19, 20, 28, 74, 85 | 7 |
 | a branch that cannot be taken | 22, 28, 36, 37, 42, 80, 84, 86 | 8 |
 | a guard the class already carries, not applied on every path that needs it | 87 | 1 |
+| a guard that stops one short: `< 0` where nothing at zero can work | 88 | 1 |
 
 Five of the first six shapes repeat across files that have nothing to do with
 each other, which is the argument that they are mistakes rather than decisions:
 the same `-1` accumulation is written out three times, in three packages, by
-three people. The seventh has one entry and may stay that way; it is here because
-the shape is worth naming, not because it recurs yet.
+three people. The last two have one entry each and may stay that way; they are
+here because the shapes are worth naming, not because they recur yet.
 
 ### Two things the grouping shows
 
@@ -4840,3 +4842,84 @@ That is why `go/cmd/corpus` scores each file in a child process by default — s
 **Confidence** certain, on both halves. The absent guard is in the quoted source
 and the present one is quoted from the class that uses it; the Go behaviour is
 measured, not read.
+
+---
+
+## 88. `PredictorOutputStream` never returns when a TIFF predictor's row length is zero
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/Predictor.java`,
+`PredictorOutputStream`: its constructor and `write(byte[], int, int)`.
+
+The constructor refuses a negative row length, and nothing else:
+
+```java
+this.rowLength = calculateRowLength(colors, bitsPerComponent, columns);
+if (rowLength < 0)
+{
+    throw new IOException("Calculated row length is negative: " + rowLength);
+}
+```
+
+`write` then fills rows like this:
+
+```java
+while (currentOffset < maxOffset)
+{
+    if (predictorPerRow && currentRowData == 0 && !predictorRead)
+    {
+        // PNG predictor; each row starts with predictor type (0, 1, 2, 3, 4)
+        predictor = bytes[currentOffset] + 10;
+        currentOffset++;
+        predictorRead = true;
+    }
+    else
+    {
+        int toRead = Math.min(rowLength - currentRowData, maxOffset - currentOffset);
+        System.arraycopy(bytes, currentOffset, currentRow, currentRowData, toRead);
+        currentRowData += toRead;
+        currentOffset += toRead;
+
+        if (currentRowData == currentRow.length)
+        {
+            decodeAndWriteRow();
+        }
+    }
+}
+```
+
+**What it does** With a row length of zero, `toRead` is always 0, so
+`currentOffset` never moves and the loop condition never changes. The empty row
+counts as full on every pass: the loop decodes it, writes nothing, flips the
+buffers and goes round again. A PNG predictor gets out, because its branch takes
+a byte for the next row's algorithm each time round. Predictor 2, the TIFF one,
+has no such branch, and the call never returns.
+
+A zero row length takes nothing unusual. `/Columns 0` is enough, and so is any
+`/Colors`, `/BitsPerComponent` and `/Columns` whose 32-bit product comes to
+between -14 and 0, since `(product + 7) / 8` truncates towards zero. Measured with `FlateFilter.decode` compiled from this tree:
+`/DecodeParms << /Predictor 2 /Columns 0 >>` over three bytes had given no answer
+after five seconds, where the same parameters over an empty stream answered at
+once, with nothing.
+
+**What correct would be** refusing a zero row length where the negative one is
+refused, or taking no data from a stream whose rows can hold none.
+
+**Where the Go carries it** — **not carried.** `decodePredictor` in
+`go/pdfbox/filter/predictor.go` refused any row length that was not positive
+from the time it was written, together with any `/Colors`, `/BitsPerComponent`
+or `/Columns` that was not. That also refused input PDFBox decodes — a zero PNG
+row length, two negative parameters whose product is a row — which came to light
+when the predictor was matched to PDFBox's output for a review of
+`track/testdata-sources`.
+
+It now refuses the one case PDFBox cannot finish, and nothing else. A TIFF
+predictor with a zero row length and at least one byte to decode answers
+`errZeroRowLength`. An empty stream answers nothing, as PDFBox does, and a PNG
+predictor takes every byte for a row's algorithm and writes nothing, as PDFBox
+does. Tested by `TestZeroTIFFRowLengthIsRefused` in
+`go/pdfbox/filter/javabug88_test.go`; the cases PDFBox does answer are in
+`TestPredictorAnswersWhatPDFBoxAnswers`, with PDFBox's output as the expected
+values.
+
+**Confidence** certain. The loop is quoted, and the hang was run rather than
+read.

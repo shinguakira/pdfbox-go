@@ -26,10 +26,18 @@
 //
 // # Memory
 //
-// Peak *live* heap, sampled while the work runs. Not HeapSys, which is the arena
-// the runtime has taken from the OS and never gives back, and not the heap left
-// at the end, which is near zero because the documents are closed. The Java side
-// reads the same quantity out of the memory pools' peak usage.
+// Peak heap in use, sampled every millisecond while the timed passes run, with
+// one sample before the first pass and one after the last. Not HeapSys, which
+// is the arena the runtime has taken from the OS and never gives back, and not
+// the heap left at the end, which is near zero because the documents are
+// closed. The Java side samples the whole heap the same way.
+//
+// # Failures
+//
+// Every file in the list is meant to be one both implementations handle. A file
+// that does not load, does not extract or panics would otherwise be timed as a
+// very fast document and pull every figure down with it, so a failure is
+// counted, reported as failed, named on stderr, and makes the command exit 1.
 //
 // Usage:
 //
@@ -69,7 +77,7 @@ func main() {
 	)
 	flag.Parse()
 
-	if *list == "" {
+	if *list == "" || *passes < 1 {
 		fmt.Fprintln(os.Stderr, "usage: bench -list files.txt [-passes N] [-o timings.tsv]")
 		flag.PrintDefaults()
 		os.Exit(2)
@@ -80,30 +88,37 @@ func main() {
 		fmt.Fprintln(os.Stderr, "bench:", err)
 		os.Exit(1)
 	}
+	if len(files) == 0 {
+		// Nothing to time, and every figure below would divide by it.
+		fmt.Fprintln(os.Stderr, "bench:", *list, "holds no files")
+		os.Exit(2)
+	}
 	fmt.Fprintf(os.Stderr, "bench: %d files, %d passes\n", len(files), *passes)
+
+	failed := newFailures()
 
 	// Not timed. The JVM on the other side needs it for the JIT, running one
 	// here keeps the two harnesses the same shape, and it warms the page cache
 	// so neither side is timed against a cold disk.
 	fmt.Fprintln(os.Stderr, "warmup ...")
-	runPass(files, *workers)
+	runPass(files, *workers, failed)
 
 	// ---- phase 1: throughput, and the peak heap while it runs
 
-	stopSampling, peak := sampleHeap()
+	stopSampling := sampleHeap()
 
 	bestTotal := time.Duration(1<<63 - 1)
 	var chars int64
 	for pass := 1; pass <= *passes; pass++ {
 		started := time.Now()
-		chars = runPass(files, *workers)
+		chars = runPass(files, *workers, failed)
 		elapsed := time.Since(started)
 		if elapsed < bestTotal {
 			bestTotal = elapsed
 		}
 		fmt.Fprintf(os.Stderr, "pass %d: %s\n", pass, elapsed.Round(time.Millisecond))
 	}
-	stopSampling()
+	peak := stopSampling()
 
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
@@ -113,10 +128,10 @@ func main() {
 	var perDoc []time.Duration
 	if !*skipPer {
 		fmt.Fprintln(os.Stderr, "per-document phase ...")
-		perDoc = measurePerDocument(files)
+		perDoc = measurePerDocument(files, failed)
 	}
 
-	report(files, bestTotal, chars, peak.Load(), mem.TotalAlloc, mem.HeapSys, perDoc)
+	report(files, bestTotal, chars, failed.count(), peak, mem.TotalAlloc, mem.HeapSys, perDoc)
 
 	if *out != "" && perDoc != nil {
 		if err := writeTimings(*out, files, perDoc); err != nil {
@@ -124,36 +139,90 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	if n := failed.count(); n > 0 {
+		for _, path := range failed.paths() {
+			fmt.Fprintln(os.Stderr, "bench: failed:", path)
+		}
+		fmt.Fprintf(os.Stderr, "bench: %d of %d files failed, and the figures above count them as documents\n",
+			n, len(files))
+		os.Exit(1)
+	}
 }
 
-// sampleHeap watches the live heap while the work runs and remembers the
-// highest it saw. Returns a stop function and the peak in bytes.
-func sampleHeap() (func(), *atomic.Uint64) {
-	peak := &atomic.Uint64{}
+// sampleHeap watches the heap in use while the work runs. It samples once
+// straight away and then every millisecond; the function it returns stops the
+// sampling, waits for it to end, takes a last sample and answers the highest
+// value seen.
+//
+// The samples at either end are what stop a run shorter than a tick from
+// reporting zero, and a peak in the last millisecond from being missed.
+func sampleHeap() (stop func() uint64) {
+	var peak uint64
+	sample := func() {
+		var mem runtime.MemStats
+		runtime.ReadMemStats(&mem)
+		peak = max(peak, mem.HeapAlloc)
+	}
+
+	sample()
 	done := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
+		defer close(finished)
 		ticker := time.NewTicker(time.Millisecond)
 		defer ticker.Stop()
-		var mem runtime.MemStats
 		for {
 			select {
 			case <-done:
 				return
 			case <-ticker.C:
-				runtime.ReadMemStats(&mem)
-				if mem.HeapAlloc > peak.Load() {
-					peak.Store(mem.HeapAlloc)
-				}
+				sample()
 			}
 		}
 	}()
-	var stopped bool
-	return func() {
-		if !stopped {
-			stopped = true
+
+	var once sync.Once
+	return func() uint64 {
+		once.Do(func() {
 			close(done)
-		}
-	}, peak
+			<-finished
+			sample()
+		})
+		return peak
+	}
+}
+
+// failures remembers which files did not come through scoreOne, across every
+// pass and every worker.
+type failures struct {
+	mu    sync.Mutex
+	files map[string]bool
+}
+
+func newFailures() *failures { return &failures{files: map[string]bool{}} }
+
+func (f *failures) add(path string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files[path] = true
+}
+
+func (f *failures) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.files)
+}
+
+func (f *failures) paths() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	paths := make([]string, 0, len(f.files))
+	for path := range f.files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 // runPass walks every file once, with the given number in flight at a time.
@@ -167,14 +236,18 @@ func sampleHeap() (func(), *atomic.Uint64) {
 // So -workers is not catching up with something Java does. It is ground neither
 // has taken, on work that is embarrassingly parallel: documents do not know
 // about each other, and each gets its own PDDocument and its own stripper.
-func runPass(files []string, workers int) int64 {
+func runPass(files []string, workers int, failed *failures) int64 {
 	if workers <= 1 {
 		var chars int64
 		for i, path := range files {
 			if i%200 == 0 {
 				fmt.Fprintf(os.Stderr, "\r  %d/%d", i, len(files))
 			}
-			chars += scoreOne(path)
+			n, ok := scoreOne(path)
+			if !ok {
+				failed.add(path)
+			}
+			chars += n
 		}
 		fmt.Fprintf(os.Stderr, "\r%-24s\r", "")
 		return chars
@@ -188,7 +261,11 @@ func runPass(files []string, workers int) int64 {
 		go func() {
 			defer wg.Done()
 			for path := range queue {
-				chars.Add(scoreOne(path))
+				n, ok := scoreOne(path)
+				if !ok {
+					failed.add(path)
+				}
+				chars.Add(n)
 			}
 		}()
 	}
@@ -206,7 +283,7 @@ func runPass(files []string, workers int) int64 {
 
 // measurePerDocument repeats each document until the accumulated time is worth
 // dividing, which is the only way to see past a 7µs clock.
-func measurePerDocument(files []string) []time.Duration {
+func measurePerDocument(files []string, failed *failures) []time.Duration {
 	each := make([]time.Duration, len(files))
 	for i, path := range files {
 		if i%200 == 0 {
@@ -216,9 +293,12 @@ func measurePerDocument(files []string) []time.Duration {
 		reps := 0
 		for elapsed < perDocTarget && reps < perDocMaxReps {
 			started := time.Now()
-			scoreOne(path)
+			_, ok := scoreOne(path)
 			elapsed += time.Since(started)
 			reps++
+			if !ok {
+				failed.add(path)
+			}
 		}
 		each[i] = elapsed / time.Duration(reps)
 	}
@@ -226,15 +306,20 @@ func measurePerDocument(files []string) []time.Duration {
 	return each
 }
 
-// scoreOne is the unit of work: open, count pages, extract text. Every file in
-// the list is one both implementations handle, so a failure here would be a
-// change worth noticing rather than an expected outcome.
-func scoreOne(path string) int64 {
-	defer func() { _ = recover() }()
+// scoreOne is the unit of work: open, count pages, extract text. It answers
+// the characters extracted and whether the document came through at all. A
+// load error, an extraction error and a panic are each a document that did
+// not, and are told apart from a document with no text in it.
+func scoreOne(path string) (chars int64, ok bool) {
+	defer func() {
+		if recover() != nil {
+			chars, ok = 0, false
+		}
+	}()
 
 	document, err := pdfbox.LoadPDF(path)
 	if err != nil {
-		return 0
+		return 0, false
 	}
 	defer document.Close()
 
@@ -244,9 +329,9 @@ func scoreOne(path string) int64 {
 	var builder strings.Builder
 	stripper.SetOutput(&builder)
 	if err := stripper.ProcessPages(document.Pages()); err != nil {
-		return 0
+		return 0, false
 	}
-	return int64(len([]rune(builder.String())))
+	return int64(len([]rune(builder.String()))), true
 }
 
 func readList(path string) ([]string, error) {
@@ -266,11 +351,12 @@ func readList(path string) ([]string, error) {
 	return files, scanner.Err()
 }
 
-func report(files []string, total time.Duration, chars int64,
+func report(files []string, total time.Duration, chars int64, failed int,
 	peakHeap, totalAlloc, heapSys uint64, perDoc []time.Duration) {
 
 	fmt.Println("implementation\tgo")
 	fmt.Printf("files\t%d\n", len(files))
+	fmt.Printf("failed\t%d\n", failed)
 	fmt.Printf("chars\t%d\n", chars)
 	fmt.Printf("total_ms\t%.1f\n", float64(total)/1e6)
 	fmt.Printf("docs_per_sec\t%.1f\n", float64(len(files))/total.Seconds())
@@ -299,18 +385,26 @@ func report(files []string, total time.Duration, chars int64,
 	fmt.Printf("perdoc_max_ms\t%.4f\n", float64(sorted[len(sorted)-1])/1e6)
 }
 
-func writeTimings(path string, files []string, perDoc []time.Duration) error {
+// writeTimings writes one line per document. A failed write is reported, not
+// left in a buffer that a deferred flush would have thrown away with its error:
+// a truncated timings file that looks complete is worse than none.
+func writeTimings(path string, files []string, perDoc []time.Duration) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	w := bufio.NewWriter(f)
-	defer w.Flush()
 	fmt.Fprintln(w, "file\tms")
 	for i, name := range files {
 		fmt.Fprintf(w, "%s\t%.4f\n", name, float64(perDoc[i])/1e6)
 	}
-	return nil
+	// bufio.Writer keeps the first error it meets and Flush returns it, so this
+	// one check covers every line above.
+	return w.Flush()
 }

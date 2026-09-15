@@ -46,8 +46,14 @@ How closely it matches
 
 PDFBox itself is the oracle, and it is run rather than consulted.
 [`scripts/run-oracle.ps1`](go/migration/scripts/run-oracle.ps1) compiles the Java
-in this repository and puts it over the same documents, and
-`go run ./cmd/corpus -oracle` reports every disagreement.
+in this repository and puts it over the same documents, and `cmd/corpus -oracle`
+reports every disagreement:
+
+```bash
+pwsh go/migration/scripts/run-oracle.ps1
+cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
+    ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
+```
 
 Over **3,646 documents** — PDFBox's own regression files, veraPDF's ISO clause
 tests, qpdf's damaged files, the SafeDocs parser traps:
@@ -77,12 +83,12 @@ Measured by running both. There is no single number:
 | CPU time for the same work | 90.3 s | 56.5 s | 1.6× more |
 | cores used | 1.10 | 2.86 | |
 | cold start, one document | **71.6 ms** | 649.0 ms | **9.1× faster** |
-| peak heap, default settings | 795 MB | 638 MB | 1.24× |
+| peak heap, default settings | 795 MB | 594 MB | 1.34× |
 | minimum to ship | **15.6 MB** | 49.0 MB | **3.2× smaller** |
 
 2,300 of the 3,597 documents are faster here; ten documents are 79% of the total
 time, and most of that is `compress/flate` against PDFBox's native zlib — the
-price of the pure-Go rule. The full analysis, including three ways of measuring
+price of the pure-Go rule. The full analysis, including four ways of measuring
 this that produce confident wrong answers, is in
 [`go/migration/BENCHMARK.md`](go/migration/BENCHMARK.md).
 
@@ -130,7 +136,7 @@ fix a bug found while reading it. A bug faithfully carried can be found later by
 diffing against the Java; a bug silently corrected during the port cannot.
 
 Java bugs found while porting are recorded in
-[`go/migration/JAVA-BUGS.md`](go/migration/JAVA-BUGS.md) — 87 entries so far,
+[`go/migration/JAVA-BUGS.md`](go/migration/JAVA-BUGS.md) — 88 entries so far,
 each saying what the Java does, what correct would be, where the Go carries it,
 and how sure the author was. One branch, `track/java-bug-fixes`, then corrected
 61 of them in the Go on purpose; every one of those says so at the site.

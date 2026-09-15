@@ -32,7 +32,7 @@ Counted 2026-09-13 against each repository's default branch.
 | --- | ---: | --- | --- | --- |
 | [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched |
 | [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | not fetched |
-| [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest` 641, and 76 more | Apache-2.0 | **639 fetched**, 76 not |
+| [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest/qpdf` 639, `qpdf/qtest/storage` 2, and 76 more | Apache-2.0 | **639 fetched**, 78 not |
 | [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |
 | [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | not fetched |
 | [mupdf](https://github.com/ArtifexSoftware/mupdf) | **0** | — see below | AGPL-3.0 | n/a |
@@ -97,8 +97,12 @@ streams, incremental update, encryption, damaged-PDF recovery.
 
 Two things are still on the table:
 
-- **76 PDFs not being fetched.** The suite takes `qpdf/qtest` and leaves
-  `examples/qtest` (49), `compare-for-test/qtest` (21) and `libtests/qtest` (6).
+- **78 PDFs not being fetched.** The suite takes `qpdf/qtest/qpdf` and leaves
+  the two beside it in `qpdf/qtest/storage`, `examples/qtest` (49),
+  `compare-for-test/qtest` (21) and `libtests/qtest` (6). Recounted 2026-09-15
+  from the repository tree: 639 + 2 + 49 + 21 + 6 = 717. The first count missed
+  the two in `qpdf/qtest/storage`, so its fetched and not fetched added up to
+  715.
 - **The test model, of which one line is missing here.** qpdf rasterises some
   PDFs and compares the image; it is in OSS-Fuzz, and malformed PDFs that fuzzing
   finds are folded back into the regression tests. This port has the first three
@@ -158,7 +162,7 @@ changes that; this is about reading their files.
 
 1. **PoDoFo** — 102 files, one per failure mode, a few lines in
    `fetch-corpus.ps1`. Best ratio on the page.
-2. **qpdf's remaining 76** — the suite is already there; it is a path change.
+2. **qpdf's remaining 78** — the suite is already there; it is a path change.
 3. **pdfium** — 301, BSD, and brings expected images with it.
 4. **iText** — 6,897, and the reason it is fourth rather than first is that it is
    larger than everything above put together and wants its own decision about how
