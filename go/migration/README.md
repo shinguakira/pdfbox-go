@@ -43,6 +43,7 @@ Three things this is not:
 | [`TESTDATA.md`](TESTDATA.md) | What the port is checked against: the 168 documents in the repository, the 78 the Java build downloads and nothing here ever fetched, the third-party suites worth adding, and how to score a corpus |
 | [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted: iText 6,897, pdfium 301, PoDoFo 102, qpdf's unfetched 78. PDFBox alone is the oracle; every project is fair game as input |
 | [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run: 6.4× on the total and faster at the median, where the time actually goes, and the two defects benchmarking found |
+| [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) | What could be done about the slow tail without leaving pure Go, in order, with what each step needs decided first. The plan as written, then what prototyping it on `track/performance` bought — the heaviest documents 6× faster — and where the plan was wrong |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |

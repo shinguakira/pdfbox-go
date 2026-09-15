@@ -352,13 +352,26 @@ java -Xss8m -Xmx4g -cp <classpath> JavaBench files.txt 3 java-timings.tsv
 `files.txt` should hold documents both implementations handle; `corpus -oracle`
 is what establishes that.
 
-## Leads, in the order they look worth taking
+## Leads
 
-1. **What holds 366 MB.** It sets the floor, and the floor is the worst number
-   on this page.
-2. **`bufio.ReadByte` at 7.8%** of the 112× document. Reading the predictor a
-   byte at a time through an interface call is not free, and unlike inflate it
-   is the port's own code.
-3. **The 15,422 encodings**, if the floor turns out to be there.
-4. **Inflate**, only if someone is willing to revisit the pure-Go rule. Nothing
-   else on this page is worth that.
+Moved into [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md), which profiles the 40
+heaviest documents rather than one, and corrected there. What the list here got
+wrong:
+
+- It put `bufio.ReadByte` down to the predictor being read a byte at a time, and
+  said "unlike inflate it is the port's own code". Profiled across the 40 rather
+  than the one document the list used, 89% of those calls are made inside
+  `compress/flate` — `huffSym` pulling its input one byte at a time. They are
+  inflate.
+- It said inflate was worth touching "only if someone is willing to revisit the
+  pure-Go rule". Part of it is not: the port creates a new decompressor for
+  every stream, and inflates into a buffer of its own before copying the result
+  out, which Java's `FlateFilter` does not do. Those two are 32% of what the 40
+  documents allocate, and the standard library alone removes both. The decoding
+  itself is what stays, and replacing that is a question of adding a pure-Go
+  dependency, not of the pure-Go rule.
+
+Every number on this page is from before any of the plan was carried out.
+Carrying it out found the floor's cause and most of the tail's, and neither was
+inflate: see "Where the plan was wrong" in
+[`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md).
