@@ -831,6 +831,33 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | — | `predictorpath_test.go`, `javabug88_test.go` | no Java test reaches the predictor the way a PDF does, through FlateDecode and LZWDecode; these take PDFBox's own output for each case as the expected value |
 | `TestFilters` | `flate_test.go` | the round-trip generator is ported; `testPDFBOX4517` needs a loader, `testPDFBOX1977` needs LZW, `testRLE` needs RunLength |
 
+### Deviations — `filter`
+
+Each commented at the point it occurs. Recorded on `track/performance`; see
+[`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) for why.
+
+- **Decompressors are pooled.** Java makes a new `Inflater` for every stream,
+  and `FlateFilterDecoderStream.close` ends it. `flate.go` keeps
+  `compress/flate` decompressors in a pool and resets one for each stream, in
+  `Flate.Decode` and in the reader `NewFlateDecoderReader` returns. That reader
+  hands its decompressor back when its data ends rather than on `Close`,
+  because the stream engine, like Java's, never closes a content stream it has
+  parsed; a `Close` after that answers nil, which is what it answered before.
+  Allocation and lifetime only: nothing a caller reads changes. Pinned by
+  `TestFlateDecodeReusesOneDecompressor` and
+  `TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt`, which run
+  against a pool that cannot drop what it is given.
+- **Unpredicted data is copied through a pooled 32 KB buffer** in
+  `decodePredictor`, where Java's `transferTo` allocates one for each call.
+  Allocation only.
+- **`Flate.Decode` ends the data at every error, a failing source included.**
+  `FlateFilterDecoderStream` catches `DataFormatException` alone, so an
+  `IOException` from the source comes out of `FlateFilter.decode`. The port's
+  `Decode` logged every error and carried on before the pool as well; the
+  reader that does it now, `endAtDamage`, says so, and changing it is a
+  behaviour change for a branch of its own. `NewFlateDecoderReader` already
+  lets a source's failure out, as Java does.
+
 ## Slice 1 — `pdfbox/pdfparser`
 
 8 of 18 files ported. This is the package `AGENTS.md` flags as historically

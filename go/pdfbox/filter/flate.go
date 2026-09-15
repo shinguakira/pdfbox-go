@@ -98,8 +98,15 @@ func (e *endAtDamage) Read(p []byte) (int, error) {
 // Decode needs one per stream. Reset keeps the window, the code tables and the
 // input buffer, so one taken from here starts again for nothing. Java makes a
 // new Inflater per stream, whose memory is native rather than heap; the pool
-// changes nothing a caller can see.
-var inflaters sync.Pool
+// changes nothing a caller can see. A deviation all the same, recorded in
+// migration/STATUS.md under filter.
+//
+// It is a sync.Pool behind an interface only so that a test can put a pool in
+// its place that never drops what it is given, and see exactly what went back.
+var inflaters interface {
+	Get() any
+	Put(any)
+} = &sync.Pool{}
 
 func acquireInflater(r io.Reader) io.ReadCloser {
 	if pooled, ok := inflaters.Get().(io.ReadCloser); ok {

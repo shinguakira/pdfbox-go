@@ -495,44 +495,110 @@ func TestFlateDecoderReaderCloseKeepsASourceFailure(t *testing.T) {
 	}
 }
 
+// stackPool stands in for the decompressor pool in a test. A sync.Pool may drop
+// what it is given whenever it likes, so a test through one cannot tell reuse
+// from a fresh allocation; this one keeps everything, in order.
+type stackPool struct{ items []any }
+
+func (s *stackPool) Get() any {
+	if len(s.items) == 0 {
+		return nil
+	}
+	last := s.items[len(s.items)-1]
+	s.items = s.items[:len(s.items)-1]
+	return last
+}
+
+func (s *stackPool) Put(x any) { s.items = append(s.items, x) }
+
+// withStackPool puts a stackPool in place of the decompressor pool for the
+// length of a test.
+func withStackPool(t *testing.T) *stackPool {
+	t.Helper()
+	saved := inflaters
+	pool := &stackPool{}
+	inflaters = pool
+	t.Cleanup(func() { inflaters = saved })
+	return pool
+}
+
+func zlibCompress(t *testing.T, plain []byte) []byte {
+	t.Helper()
+	var deflated bytes.Buffer
+	zw := zlib.NewWriter(&deflated)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return deflated.Bytes()
+}
+
+// TestFlateDecodeReusesOneDecompressor pins that Decode hands its decompressor
+// back, and that the next stream is inflated by that same one, correctly.
+func TestFlateDecodeReusesOneDecompressor(t *testing.T) {
+	pool := withStackPool(t)
+
+	decode := func(plain []byte) {
+		t.Helper()
+		var out bytes.Buffer
+		if _, err := (Flate{}).Decode(&out, bytes.NewReader(zlibCompress(t, plain)), cos.NewDictionary(), 0); err != nil {
+			t.Fatalf("Decode: %v", err)
+		}
+		if !bytes.Equal(out.Bytes(), plain) {
+			t.Fatalf("decoded %d bytes, not the %d that went in", out.Len(), len(plain))
+		}
+	}
+
+	decode(bytes.Repeat([]byte("first stream "), 500))
+	if len(pool.items) != 1 {
+		t.Fatalf("after one stream the pool holds %d decompressors, want 1", len(pool.items))
+	}
+	used := pool.items[0]
+
+	decode(bytes.Repeat([]byte("a second, different stream "), 900))
+	if len(pool.items) != 1 || pool.items[0] != used {
+		t.Fatalf("after a second stream the pool holds %d decompressors, want the same 1 back", len(pool.items))
+	}
+}
+
 // TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt pins the one risk
 // in handing a decompressor back when its data ends rather than on Close: the
-// finished stream must not reach the decompressor again once another stream
-// has taken it.
+// finished stream must not reach it again once another stream has taken it.
 //
-// The first reader is read to its end, which pools its decompressor; the second
-// is opened afterwards, and with nothing else in the pool it gets that one. The
-// first is then read and closed again, between the second's reads, and must
-// answer the end of its data and a quiet close without touching what the
-// second is inflating.
+// The first reader is read to its end, which hands its decompressor back. The
+// second takes that same decompressor. The first is then read and closed again
+// between the second's reads, and must answer the end of its data and a quiet
+// close, without touching what the second is inflating and without handing the
+// decompressor back a second time.
 func TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt(t *testing.T) {
-	compress := func(plain []byte) []byte {
-		var deflated bytes.Buffer
-		zw := zlib.NewWriter(&deflated)
-		if _, err := zw.Write(plain); err != nil {
-			t.Fatalf("Write: %v", err)
-		}
-		if err := zw.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
-		return deflated.Bytes()
-	}
+	pool := withStackPool(t)
 	firstPlain := bytes.Repeat([]byte("BT /F1 12 Tf (first) Tj ET\n"), 50)
 	secondPlain := bytes.Repeat([]byte("q 1 0 0 1 72 720 cm /Im0 Do Q second\n"), 400)
 
-	first, err := NewFlateDecoderReader(bytes.NewReader(compress(firstPlain)))
+	first, err := NewFlateDecoderReader(bytes.NewReader(zlibCompress(t, firstPlain)))
 	if err != nil {
 		t.Fatalf("NewFlateDecoderReader: %v", err)
 	}
+	decompressor := first.(*flateDecoderStream).inflated
+
 	got, err := io.ReadAll(first)
 	if err != nil || !bytes.Equal(got, firstPlain) {
 		t.Fatalf("first stream: %d bytes, %v; want %d bytes, no error", len(got), err, len(firstPlain))
 	}
+	if len(pool.items) != 1 || pool.items[0] != any(decompressor) {
+		t.Fatalf("at the end of its data the first stream left %d decompressors in the pool, want its own", len(pool.items))
+	}
 
-	second, err := NewFlateDecoderReader(bytes.NewReader(compress(secondPlain)))
+	second, err := NewFlateDecoderReader(bytes.NewReader(zlibCompress(t, secondPlain)))
 	if err != nil {
 		t.Fatalf("NewFlateDecoderReader: %v", err)
 	}
+	if second.(*flateDecoderStream).inflated != decompressor || len(pool.items) != 0 {
+		t.Fatal("the second stream did not take the decompressor the first handed back")
+	}
+
 	var secondGot bytes.Buffer
 	chunk := make([]byte, 1000)
 	for {
@@ -545,6 +611,9 @@ func TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt(t *testing.T) {
 		}
 		if cerr := first.Close(); cerr != nil {
 			t.Fatalf("closing the finished stream = %v, want nil", cerr)
+		}
+		if err == nil && len(pool.items) != 0 {
+			t.Fatal("the finished stream handed its decompressor back again while the second was using it")
 		}
 
 		if err == io.EOF {
@@ -559,5 +628,8 @@ func TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt(t *testing.T) {
 	}
 	if err := second.Close(); err != nil {
 		t.Errorf("closing the second stream = %v, want nil", err)
+	}
+	if len(pool.items) != 1 || pool.items[0] != any(decompressor) {
+		t.Errorf("after both streams the pool holds %d decompressors, want the one, once", len(pool.items))
 	}
 }
