@@ -829,6 +829,16 @@ by character and not read off the Java;
 held the bug, `TestHandleDirectionReversesUTF16Units` in `feedback_test.go`, is
 gone with it.
 
+**Seen in the pdf.js corpus** on `track/testdata-sources`, 2026-09-15, as one of
+the two files there whose text is a different length from PDFBox's:
+`bug1175962.pdf`, 117 characters from the Go and 126 from PDFBox. Its runs are
+Old Hungarian, U+10C80–U+10CFF, right to left, where every letter shares the
+high half U+D803. PDFBox's reversed run starts with an unpaired low half and
+ends with an unpaired high half, and each high half in between pairs with the
+next letter's low half — so a 16-letter line comes out as 15 letters, each
+shifted to its neighbour, between two replacement characters. The Go line is
+the 16 letters reversed. The difference is this fix, and it is expected.
+
 **Confidence** high. The same method reads the code point for the mirroring
 test and appends the code unit, one line apart.
 
@@ -1567,6 +1577,21 @@ the whitespace without a word. Tested by `TestASCIIHexTreatsABadDigitAsZero` in
 in `fromsource_test.go` that held 63 and 0xF4 now hold 0x40 and 0x04, with the
 Java's values in the comment.
 
+**Seen in the pdf.js corpus** on `track/testdata-sources`, 2026-09-15, as the
+other of its two files whose text is a different length from PDFBox's:
+`poppler-90-0-fuzzed.pdf`, 1,197 characters from the Go and 1,402 from PDFBox.
+Page 10's content stream is `/Filter [/AHx]`, and 597 of its 2,418 decoded bytes
+come from pairs with a bad digit in them. PDFBox's -1 turns those into bytes
+such as `0xEF`, `0x2F` and `0xF3`; its content parser reads the run as an
+operator and then, from the `0x2F`, a name, and goes on to the text after it.
+Read as zero, the same pairs are `0x00`, `0x30` and `0x03`: no name starts, a
+`0x10` a few bytes on is read as an operator that trims to nothing, and
+`PDFStreamParser` — both sides, the same bytes, the same 37 tokens — ends the
+page there. So the Go extracts the first two glyphs of page 10 and PDFBox
+another 193. Recorded so the difference is not mistaken for a parser defect;
+whether the fix stays, given this, is open in
+[`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md).
+
 **Confidence** high. The port's test was written expecting 64 and measured 63.
 
 ## 31. `SampledImageReader.from8bit` writes a region to the wrong rows
@@ -1689,6 +1714,12 @@ truncated stream now decodes to a prefix of the original and stops. Tested by
 `TestASCII85WholeStreamIsUnchanged` beside it for the end that is not
 truncation. `TestASCII85DamageTolerance` in `fromsource_test.go`, which
 asserted the repeat, now asserts the prefix.
+
+**Seen in the pdf.js corpus** on `track/testdata-sources`, 2026-09-15:
+page 15 of `poppler-90-0-fuzzed.pdf` is `/Filter [/ASCII85Decode]` and ends part
+way through a group. PDFBox decodes it to 23,548 bytes and the Go to 23,544, the
+same bytes up to there; PDFBox's last four, `74 26 fe 11`, are the group before
+them again. The page has no text, so the corpus comparison does not see it.
 
 **Confidence** high. Measured: the port decoded 680 bytes from a stream whose
 first 676 are the original, and the last four repeat bytes 672 to 675.

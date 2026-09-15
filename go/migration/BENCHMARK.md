@@ -1,6 +1,16 @@
 # Speed and memory, against PDFBox
 
-Measured 2026-09-13 by running both, on the same documents, on one machine.
+Measured 2026-09-15 by running both, on the same documents, on one machine: an
+Intel Core i7-8700, 6 cores and 12 threads, 48 GB, Windows 10; Go 1.26.1;
+OpenJDK 17.0.19 with its default G1 collector and, unless a row says otherwise,
+`-Xmx4g -Xss8m`. Every run also recorded how much CPU the rest of the machine
+used while it ran: between 0.3 and 1.3 cores of the twelve, with the exceptions
+named where they occur.
+
+This page was first written on 2026-09-13, before
+[`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) was carried out, and everything
+measured on it was measured again on 2026-09-15, after. Where a section records
+what was found on the first date, it says so and keeps that date's numbers.
 
 `go/cmd/bench` and `migration/oracle/JavaBench.java` print the same numbers in
 the same shape; [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) builds the
@@ -8,69 +18,92 @@ Java side. The unit of work is one document's worth of real use — open the fil
 count the pages, extract the text — because the question is what a caller pays
 for a document, not how fast a function is.
 
-**The set is 3,597 documents, 226.8 MB**: every file in the corpus that *both*
-implementations fully process. Timing a file one of them gives up on would score
-"fast" for "stopped early".
+**The set is 3,597 documents, 226.8 MB**: every file of the 2026-09-13 corpus
+that *both* implementations fully process, the same list both times, so the two
+dates compare. Timing a file one of them gives up on would score "fast" for
+"stopped early". It does not include pdf.js's files, which arrived later. Both
+sides extract 1,834,959 characters from it; on 2026-09-13 the port extracted one
+more, the `PDFBOX-3951` defect [`TESTDATA.md`](TESTDATA.md) records.
 
 ## Headline
 
 | | port | PDFBox | |
 | --- | ---: | ---: | --- |
-| total, 3,597 documents | 36,805 ms | 5,779 ms | 6.4× |
-| documents per second | 97.7 | 622.4 | |
-| per document, median | 0.330 ms | 0.389 ms | **port faster** |
-| per document, p90 | 2.38 ms | 1.53 ms | 1.6× |
-| per document, p99 | 30.6 ms | 12.0 ms | 2.6× |
-| peak live heap, default settings | 794.9 MB | 593.6 MB | 1.34× |
-| heap the OS was asked for | 803.8 MB | — | |
+| total, 3,597 documents, best of three passes | 8,234 ms | 5,625 ms | 1.46× |
+| documents per second | 436.8 | 639.5 | |
+| per document, median | 0.333 ms | 0.394 ms | **port faster** |
+| per document, p90 | 2.00 ms | 1.50 ms | 1.33× |
+| per document, p99 | 12.0 ms | 12.0 ms | the same |
+| slowest document | 847 ms | 534 ms | 1.6×, and it is the same document |
+| peak live heap | **249.7 MB** | 590.4 MB | **2.4× the other way** |
+| heap the OS was asked for | 263.8 MB | — | |
 
-**"6.4× slower" is true of the total and false of almost every document.**
-2,300 of the 3,597 are faster in the port, and the median is faster. The total
-is what it is because **the ten slowest documents are 79% of the port's time**
-(PDFBox's ten slowest are 40% of its own).
+**2,410 of the 3,597 documents are faster in the port**, and the median is
+faster. The ten slowest documents are 44.5% of the port's time and 39.5% of
+PDFBox's, and none of them takes the port twice what it takes PDFBox: the most is
+1.83×, `qpdf/inline-images-ii-some.pdf`, 140.0 ms against 76.5.
 
-It is also only true of wall clock on a machine with cores to spare. Three other
-measurements point the other way, and each has its own section below:
+It is also only true of one worker on a machine with cores to spare. Everything
+else measured points the other way:
 
 | | port | PDFBox | |
 | --- | ---: | ---: | --- |
-| CPU time for the same work | 90.3 s | 56.5 s | 1.6×, not 6.4× |
-| cores used | 1.10 | 2.86 | |
-| cold start, one document | 71.6 ms | 649.0 ms | **9.1× the other way** |
-| minimum shipped | 15.55 MB | 49.0 MB | **3.2× the other way** |
+| CPU time, a warmup and one pass | **17.1 s** | 48.8 s | **2.9× the other way** |
+| cores used | 1.11 | 2.93 | |
+| four workers | **2,669 ms** | 3,202 ms | **1.2× the other way** |
+| cold start, one document | **59 ms** | 615 ms | **10.4× the other way** |
+| peak resident set | **288 MB** | 724 MB | **2.5× the other way** |
+| minimum shipped | **15.56 MB** | 49.0 MB | **3.1× the other way** |
 
-There is no single number for "is the port slower than PDFBox". It is slower per
-document on a fast machine, cheaper per document in CPU, an order of magnitude
-quicker to start, and a third of the size.
+### Since 2026-09-13
+
+| | port, 09-13 | port, 09-15 | PDFBox, 09-13 | PDFBox, 09-15 |
+| --- | ---: | ---: | ---: | ---: |
+| total | 36,805 ms | **8,234 ms** | 5,779 ms | 5,625 ms |
+| per document, p90 | 2.38 ms | **2.00 ms** | 1.53 ms | 1.50 ms |
+| per document, p99 | 30.6 ms | **12.0 ms** | 12.0 ms | 12.0 ms |
+| ten slowest, share of the total | 79% | **44.5%** | 40% | 39.5% |
+| CPU time | 90.3 s | **17.1 s** | 56.5 s | 48.8 s |
+| peak live heap | 794.9 MB | **249.7 MB** | 593.6 MB | 590.4 MB |
+| peak resident set | 854 MB | **288 MB** | 740 MB | 724 MB |
+
+The port got 4.5× faster, used 5.3× less CPU and held 3.2× less heap. PDFBox
+moved within the noise, which is what it should do: its code did not change,
+only the machine's state around it. What changed the port is in
+[`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md), "What happened when it was carried
+out": above all the page tree, which handed out pages without the document's
+resource cache, so every font lookup built its font again.
 
 ## CPU, which is where the headline changes shape
 
-Wall clock is not what a container is billed for. The same run, measured as
-process CPU time:
+Wall clock is not what a container is billed for. One warmup pass and one timed
+pass, both sides, as process CPU time; the median of three rounds, run in turn:
 
 | | port | PDFBox |
 | --- | ---: | ---: |
-| wall | 82.3 s | 19.7 s |
-| user CPU | 85.9 s | 51.2 s |
-| kernel CPU | 4.4 s | 5.3 s |
-| **total CPU** | **90.3 s** | **56.5 s** |
-| **cores used (CPU ÷ wall)** | **1.10** | **2.86** |
+| wall, the whole process | 15.4 s | 16.7 s |
+| user CPU | 15.3 s | 44.7 s |
+| kernel CPU | 1.9 s | 4.2 s |
+| **total CPU** | **17.1 s** | **48.8 s** |
+| **cores used (CPU ÷ wall)** | **1.11** | **2.93** |
 
-(One warmup pass plus one timed pass, both sides, so the wall figures are about
-twice the per-pass numbers above.)
-
-**PDFBox is 4.2× faster in wall clock and uses 1.6× less CPU.** The rest of its
-advantage is bought with cores: the JIT compiler threads and the parallel
-collector put it at 2.86 cores where the port sits at 1.10 — essentially one.
+**PDFBox's best pass is 1.46× faster, and it spends 2.9× the CPU to get there.**
+Over the whole process — the warmup pass the JIT is still compiling through, and
+the timed one — the port finishes first. The rest of PDFBox's advantage is bought
+with cores: the JIT compiler threads put it at 2.93 cores where the port sits at
+1.11.
 
 Which number matters depends entirely on the deployment. On an idle machine with
-cores to spare, wall clock is the answer and PDFBox wins by 4.2×. Under a
-one-core quota, the CPU column is the answer and the gap is 1.6×. Neither is the
-"real" one.
+cores to spare and a process that lives long enough to warm up, the best pass is
+the answer and PDFBox is faster by 1.46×. Where CPU is what is counted — a
+one-core quota, a bill per CPU-second — the CPU column is the answer, and the
+port needs 2.9× less. Neither was measured under an actual quota; both are read
+off the table above. For a process that handles a few documents and exits, see
+"Starting up".
 
 ### Where those cores go, and whether the port is missing something
 
-The obvious reading of 2.86 against 1.10 is that PDFBox parallelises something
+The obvious reading of 2.93 against 1.11 is that PDFBox parallelises something
 the port does not. It does not.
 
 **PDFBox processes documents on one thread.** Its whole source has a single
@@ -78,59 +111,66 @@ the port does not. It does not.
 directories. No `ExecutorService`, no `parallelStream`, no `ForkJoinPool`. The
 port has no goroutines in its ported packages either. On this they are equal.
 
-The cores are the JIT, and constraining the JVM says so:
+The cores are the JIT, and constraining the JVM says so. The median of three
+rounds each:
 
 | | wall | CPU | cores |
 | --- | ---: | ---: | ---: |
-| default | 18.9 s | 50.9 s | 2.69 |
-| `-XX:+UseSerialGC` | 18.5 s | 49.8 s | 2.68 |
-| serial GC, one compiler thread | 25.6 s | 43.7 s | 1.71 |
+| default | 16.7 s | 48.8 s | 2.93 |
+| `-XX:+UseSerialGC` | 16.1 s | 45.1 s | 2.81 |
+| serial GC, one compiler thread | 21.9 s | 39.1 s | 1.78 |
 
-Serialising the collector changes nothing, so it is not GC. Restricting the
-compiler to one thread drops it to 1.71 cores — and costs 35% of the wall clock.
-So the extra cores are not overhead being wasted: PDFBox is buying speed with
-them, by compiling on other cores while its one application thread runs.
+"One compiler thread" is `-XX:+UseSerialGC -XX:-TieredCompilation
+-XX:CICompilerCount=1`. Serialising the collector changes little, so it is not
+GC. Restricting the compiler to one thread drops PDFBox to 1.78 cores — and costs
+31% of the wall clock. The extra cores are not overhead being wasted: PDFBox is
+buying speed with them, by compiling on other cores while its one application
+thread runs.
 
-**And no, the port is not leaving a win on the table that PDFBox has taken.**
-Both were given a worker pool over the same corpus — `-workers` here,
-`ExecutorService` there — and they scale the same:
+**And the port is not leaving a win on the table that PDFBox has taken.** Both
+were given a worker pool over the same list — `-workers` here, `ExecutorService`
+there:
 
 | workers | port | PDFBox | port ÷ PDFBox |
 | ---: | ---: | ---: | ---: |
-| 1 | 38,299 ms | 6,625 ms | 5.8× |
-| 4 | 18,806 ms | 3,533 ms | 5.3× |
-| 12 | 17,504 ms | 2,958 ms | 5.9× |
-| **speedup** | **2.19×** | **2.24×** | |
+| 1 | 8,308 ms | 6,100 ms | 1.36× |
+| 4 | **2,669 ms** | 3,202 ms | **0.83×** |
+| 12 | **2,368 ms** | 2,654 ms | **0.89×** |
+| **speedup** | **3.51×** | **2.30×** | |
 
-The output was identical at every worker count on both sides, which is also the
-answer to whether the port has shared mutable state getting in the way: it does
-not.
+**With four workers or more, the port is the faster of the two.** The output was
+identical at every worker count on both sides — 1,834,959 characters — which is
+also the answer to whether the port has shared mutable state getting in the way:
+it does not. On 2026-09-13 the port scaled 2.19× and PDFBox 2.24×, and both hit
+the same ceiling, because ten documents were 79% of the port's time and no number
+of workers gets below the slowest one. Now the tail is gone, and the cores say
+the rest: PDFBox's one worker already uses 2.93, four use 6.57 and twelve 8.61,
+where the port's go from 1.09 to 3.97 and 6.27.
 
-Parallelism helps both and closes nothing, because both hit the same ceiling.
-Ten documents are 79% of the port's time and the slowest is 10.5 s on its own —
-no number of workers gets below one document. The tail is the problem, and the
-tail is `compress/flate`.
-
-The memory cost is not symmetric, though: the port's peak went 729 MB → 1,605 MB
-across those runs, PDFBox's 611 MB → 760 MB. Workers are cheaper for PDFBox than
-for the port.
+Workers cost the port less memory than they cost PDFBox, too: the port's peak
+live heap went 246 MB → 294 MB → 415 MB across those runs, PDFBox's 575 MB →
+593 MB → 761 MB. On 2026-09-13 it was the other way round, 729 MB → 1,605 MB
+against 611 MB → 760 MB.
 
 ## Starting up
 
-Process launch to one small document extracted, ten runs, best and mean:
+Process launch to exit, as the operating system timed it, for one small document
+— `safedocs-targeted/Dual-startxref.pdf`, 17 characters — extracted twice, a
+warmup and a pass. Ten runs, best and mean:
 
 | | port | PDFBox |
 | --- | ---: | ---: |
-| best | **71.6 ms** | 649.0 ms |
-| mean | 82.7 ms | 681.1 ms |
+| best | **59 ms** | 615 ms |
+| mean | 62.7 ms | 648.6 ms |
 
-**9.1× the other way.** There is no JVM to start, no classes to load and nothing
+**10.4× the other way.** There is no JVM to start, no classes to load and nothing
 to JIT. For a command-line tool or a per-request process this reverses the
-throughput result completely: PDFBox needs about 640 ms of startup before it is
-faster at anything, which is roughly two thousand median documents' worth.
+throughput result completely: PDFBox takes about 590 ms longer than the port to
+start, extract this document twice and exit, which is roughly 1,800 median
+documents' worth of the port's time.
 
-The warmup is visible in the passes, too. PDFBox's three timed passes ran 6,677
-→ 5,919 → 5,778 ms as the JIT settled; the port's were 38,571 → 38,418 → 38,431,
+The warmup is visible in the passes, too. PDFBox's three timed passes ran 6,309 →
+5,733 → 5,625 ms as the JIT settled; the port's were 8,309 → 8,352 → 8,234 ms,
 flat from the first.
 
 ## What has to be shipped
@@ -142,32 +182,36 @@ flat from the first.
 | log4j-api | — | 0.34 MB |
 | Bouncy Castle, if signing or public-key encryption | — | 11.74 MB |
 | a runtime | included | 42.5 MB jlink minimum, 302 MB for this JDK |
-| **binary, stripped** | **15.55 MB** | — |
-| binary, unstripped | 20.48 MB | — |
-| **total, minimum** | **15.55 MB** | **49.0 MB** |
+| **binary, stripped** | **15.56 MB** | — |
+| binary, unstripped | 20.50 MB | — |
+| **total, minimum** | **15.56 MB** | **49.0 MB** |
 
-One file against a tree, and 3.2× smaller at the minimum — more against a full
-JDK. The port's number is also the whole story: no runtime to install, no
-classpath, no version to match.
+The binary is `go/cmd/pdfbox`, built with and without `-ldflags "-s -w"`; the
+Java column was measured on 2026-09-13 and nothing in it has changed since. One
+file against a tree, and 3.1× smaller at the minimum — more against a full JDK.
+The port's number is also the whole story: no runtime to install, no classpath,
+no version to match.
 
 ## Memory, as the operating system sees it
 
-Peak resident set for the same run, which is the number a container limit is
-compared against:
+Peak resident set for the CPU runs above, the median of three, which is the
+number a container limit is compared against:
 
-| | peak RSS |
-| --- | ---: |
-| port | 854 MB |
-| PDFBox, `-Xmx4g` | 740 MB |
-| PDFBox, `-Xmx256m` | 399 MB |
+| | peak RSS | 2026-09-13 |
+| --- | ---: | ---: |
+| port | **288 MB** | 854 MB |
+| PDFBox, `-Xmx4g` | 724 MB | 740 MB |
+| PDFBox, `-Xmx256m` | 399 MB | 399 MB |
 
-RSS is above the heap figures below because it includes what neither heap
-accounts for — the JVM's metaspace, code cache and thread stacks, the Go
-runtime's own arenas.
+RSS is above the heap figures because it includes what neither heap accounts for
+— the JVM's metaspace, code cache and thread stacks, the Go runtime's own arenas.
+The port's resident set is now below PDFBox's even with PDFBox's heap capped at
+256 MB.
 
 ## Four ways to measure this that do not work
 
-Each of these was tried first and produced a confident wrong answer.
+Each of these was tried first, on 2026-09-13, and produced a confident wrong
+answer. The numbers in this section are that date's.
 
 **Timing a small document once.** `time.Now()` on this machine resolves about
 7µs, and 2,516 of the 3,597 files are veraPDF clause tests a few hundred bytes
@@ -185,53 +229,66 @@ JVM heap. Both sides now report the peak heap in use, sampled every millisecond:
 sum of `MemoryPoolMXBean.getPeakUsage()` over the heap pools. Each pool reaches
 its peak at its own moment — the young generation just before a collection, the
 old one somewhere else — so the sum describes a heap that never existed, and it
-is never smaller than the real peak. Review caught it. Every PDFBox heap figure
-on this page was measured again on 2026-09-15 by sampling the whole heap, the
-way the Go side samples its own: the default run went from 638.4 MB to
-593.6 MB, and the capped runs under "Memory" fell by between 7% and 29%. The
-times beside those figures are from the first runs.
+is never smaller than the real peak. Review caught it: the default run went from
+638.4 MB to 593.6 MB when the whole heap was sampled instead.
 
 **Comparing two default configurations.** Both runtimes use what they are given.
-PDFBox peaks at 513 MB under `-Xmx4g` and at 94 MB under `-Xmx96m`, extracting
-identical text either way. A default-vs-default number compares two GC
-settings, not two implementations. See "Memory" below for the number that means
-something.
+PDFBox peaked at 513 MB under `-Xmx4g` and at 94 MB under `-Xmx96m` on the 40
+documents of "Memory" below, extracting identical text either way. A
+default-vs-default number compares two GC settings, not two implementations. See
+"Memory" for the number that means something.
 
 And one presentational error worth naming, because it flattered the port:
-comparing the two `max` columns. Those are *different documents* — the port's
-slowest is not PDFBox's slowest — and dividing them gave "20×" where the same
-document is **112×**.
+comparing the two `max` columns. Those were *different documents* — on
+2026-09-13 the port's slowest was not PDFBox's slowest — and dividing them gave
+"20×" where the same document was **112×**.
 
 ## Where the time actually goes
 
-The same document, both sides, slowest first:
+The same document, both sides, slowest in the port first:
 
 | document | port | PDFBox | |
 | --- | ---: | ---: | ---: |
-| `PDFBOX-4423-000746.pdf` | 10,485 ms | 95.3 ms | **112×** |
-| `PDFBOX-4418-000671.pdf` | 6,760 ms | 180.4 ms | 37× |
-| `PDFBOX-3964-c687766d…pdf` | 3,137 ms | 131.5 ms | 24× |
-| `PDFBOX-3947-670064.pdf` | 1,484 ms | 395.3 ms | 3.8× |
-| `PDFBOX-3949-MKFYUG…pdf` | 1,337 ms | 541.8 ms | 2.5× |
+| `PDFBOX-3949-MKFYUG…pdf` | 847.1 ms | 533.9 ms | 1.6× |
+| `PDFBOX-3947-670064.pdf` | 503.1 ms | 367.5 ms | 1.4× |
+| Isartor PDFA-1b 6.1.12 `t01-fail-a` | 441.7 ms | 260.7 ms | 1.7× |
+| `PDFBOX-3785-202097.pdf` | 319.8 ms | 252.3 ms | 1.3× |
+| `PDFBOX-3951-FIHUZ…pdf` | 251.3 ms | 149.7 ms | 1.7× |
 
-The last row is PDFBox's own worst document. Where PDFBox struggles, the port
-struggles similarly; the gap only opens on documents that are hard for the port
-specifically.
+**The port's slowest documents are now PDFBox's slowest documents**, the top four
+in the same order, and the port takes between 1.3× and 1.7× as long on each. The
+three that led this table on 2026-09-13 fell out of it:
 
-By ratio rather than by time, over the files above 0.05 ms:
+| document | port, 09-13 | port, 09-15 | PDFBox, 09-15 |
+| --- | ---: | ---: | ---: |
+| `PDFBOX-4423-000746.pdf` | 10,485 ms | 103.8 ms | 97.7 ms |
+| `PDFBOX-4418-000671.pdf` | 6,760 ms | 209.9 ms | 184.6 ms |
+| `PDFBOX-3964-c687766d…pdf` | 3,137 ms | 128.6 ms | 124.6 ms |
+
+By ratio rather than by time, over the 3,597 documents, every one of which takes
+more than 0.05 ms on both sides:
 
 ```
-port faster (<1×)   2300
-1–2×                1114
-2–5×                 153
-5–20×                 20
-over 20×              10
+                      09-15   09-13
+port faster (<1×)      2410    2300
+1–2×                   1115    1114
+2–5×                     68     153
+5–20×                     3      20
+over 20×                  1      10
 ```
+
+The four documents still above 5× are small veraPDF files, where a few
+milliseconds make a large ratio: `PDF_A-1b 6.1.3 File trailer t01-fail-a` 7.58 ms
+against 0.34 ms, `t02-fail-a` 3.50 against 0.31, `TWG A004-pdfa1-pass-a` 4.00
+against 0.41, and `PDF_A-2b 6.6.2.3.1 t15-fail-q` 2.00 against 0.34. Why is not
+yet known.
 
 ## What was fixed
 
-Two defects, both found by this benchmark, both verified against the oracle
-afterwards (`0 of N files disagree`).
+Before the performance plan, on 2026-09-13: two defects, both found by this
+benchmark, both verified against the oracle afterwards (`0 of N files
+disagree`). The numbers in this section are that date's. What the plan fixed
+after them is in [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md).
 
 ### The predictor's row, in `filter`
 
@@ -297,49 +354,61 @@ corpus:
 Memory is where it paid; the throughput barely moved, because those documents
 were under a second of thirty-eight.
 
-## What was not fixed, and why
+## What was not fixed on 2026-09-13, and what became of it
 
-**`compress/flate`.** The 112× document is inflate-bound: 26% of its time in
-`huffSym`, another 10% in `huffmanBlock`, 8% in `huffmanDecoder.init`. PDFBox's
-`Inflater` is native zlib through the JVM; Go's `compress/flate` is pure Go.
-This is the price of the pure-Go rule, not a defect, and it is most of the
-remaining gap on the heavy documents. Nothing in the corpus suggests the port
-inflates *wrongly* — only that it inflates in Go.
+The page said two things were not worth fixing. Carrying out the plan showed
+that neither diagnosis held.
 
-**`encoding.newEncodingBase`, 58.75 MB on `PDFBOX-4418-000671.pdf`.** The port
-pre-sizes its two maps to 250, and so does Java — `new HashMap<>(250)` — so the
-port is faithful here. 15,422 of them were live at the peak, which is worth
-understanding, but `PDResources.GetFont`'s cache is the same shape as Java's and
-PDFBox needs 283 MB for the same document. A 1.7× gap, the smallest of the
-three, and proving anything needs instrumentation rather than a profile.
+**`compress/flate`** was named as most of the remaining gap on the heavy
+documents: the 112× document spent 26% of its time in `huffSym`, and Go's inflate
+is pure Go where PDFBox's is native zlib. Inflate was not the cause. In the
+plan's profile, 97% of the inflating was inflating font files, for fonts
+built again on every lookup because the page tree handed out pages without the
+resource cache; `PERFORMANCE-PLAN.md`, "Where the plan was wrong", has the
+measurements. With that fixed, and the same `compress/flate` doing the inflating,
+that document, `PDFBOX-4423-000746.pdf`, takes 103.8 ms against PDFBox's 97.7.
+
+**`encoding.newEncodingBase`, 58.75 MB on `PDFBOX-4418-000671.pdf`,** was put down
+as a faithful 250-entry pre-size with 15,422 encodings live at the peak. After
+the same fix it is out of the sixty largest allocators, and that document takes
+209.9 ms against PDFBox's 184.6.
 
 ## Memory
 
 Defaults compare settings. The number that compares implementations is how far
-each can be squeezed while still producing identical output. Measured on the 40
-heaviest documents, which are 92% of the time and 86% of the peak:
+each can be squeezed while still producing identical output. Measured on the
+same 40 documents as on 2026-09-13, which were then the heaviest: they are now
+61.5% of the port's per-document time and 55.5% of PDFBox's. PDFBox's heap is
+capped with `-Xmx`; Go has no hard cap, so the port's is `GOMEMLIMIT`, a soft
+limit.
 
 | cap | PDFBox | | port | |
 | --- | ---: | --- | ---: | --- |
-| 4 GB / none | 3,977 ms | peak 513 MB | 33,461 ms | peak 473 MB |
-| 512 MB | 3,565 ms | peak 379 MB | 33,461 ms | peak 473 MB |
-| 256 MB | 3,918 ms | peak 228 MB | 64,833 ms | peak 366 MB |
-| 128 MB | 4,056 ms | peak 127 MB | 104,682 ms | peak 368 MB |
-| 96 MB | 4,481 ms | peak 94 MB | — | |
-| 64 MB | 5,323 ms | peak 63 MB | — | |
-| 48 MB | 8,468 ms | peak 48 MB | — | |
+| 4 GB / none | 3,349 ms | peak 500 MB | 5,150 ms | peak 143 MB |
+| 512 MB | 3,515 ms | peak 377 MB | 5,624 ms | peak 133 MB |
+| 256 MB | 3,714 ms | peak 229 MB | 5,319 ms | peak 138 MB |
+| 128 MB | 3,904 ms | peak 120 MB | 4,958 ms | peak 109 MB |
+| 96 MB | 4,278 ms | peak 94 MB | 5,004 ms | peak 79 MB |
+| 64 MB | 5,134 ms | peak 63 MB | 6,828 ms | peak 79 MB |
+| 48 MB | 8,425 ms | peak 48 MB | 16,695 ms | peak 76 MB |
 | 32 MB | **fails** — output truncated | | — | |
 
-**PDFBox completes in 48 MB.** Its 513 MB under a 4 GB heap is appetite, not
-need.
+All 40 documents come out at 1,610,612 characters on both sides at every level
+but PDFBox's 32 MB, where it exits with 567,779. The port's 96, 64 and 48 MB rows
+are from a second run: during the first, the rest of the machine took 2.5 cores
+and the port's times were 3–19% longer.
 
-**The port does not go below about 366 MB.** `GOMEMLIMIT` is a soft limit, so it
-does not fail — it collects harder and harder, and 128 MB costs 3× the time
-while still peaking at 368 MB. Something holds that much live and the collector
-cannot help. Output stayed correct at every level on both sides.
+**PDFBox still completes in 48 MB.** Its 500 MB under a 4 GB heap is appetite,
+not need.
 
-So the honest memory statement is: **1.34× on defaults, about 7× on the floor.**
-The floor is the one that would matter in a container.
+**The port's floor is now about 76 MB**, where on 2026-09-13 it did not go below
+366 MB. Down to 96 MB its time does not move; at 64 MB the collector works on
+2.6 cores and the pass takes 1.3× as long; at 48 MB it takes 3.2× and 5 cores,
+still correct.
+
+So the honest memory statement is: **the port holds 2.4× less at defaults, and
+needs about 1.6× more at the floor** — 76 MB against 48. On 2026-09-13 those were
+1.34× more and about 7× more.
 
 ## Reproducing
 
@@ -350,13 +419,16 @@ java -Xss8m -Xmx4g -cp <classpath> JavaBench files.txt 3 java-timings.tsv
 ```
 
 `files.txt` should hold documents both implementations handle; `corpus -oracle`
-is what establishes that.
+is what establishes that. The other tables are the same two drivers with
+`-passes 1 -throughput-only` and `1 throughput-only`, `-workers N` and a fourth
+argument `N`, `GOMEMLIMIT` and `-Xmx`, each run as its own process so that its
+CPU time and peak resident set are its own.
 
 ## Leads
 
 Moved into [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md), which profiles the 40
 heaviest documents rather than one, and corrected there. What the list here got
-wrong:
+wrong, on 2026-09-13:
 
 - It put `bufio.ReadByte` down to the predictor being read a byte at a time, and
   said "unlike inflate it is the port's own code". Profiled across the 40 rather
@@ -364,14 +436,10 @@ wrong:
   `compress/flate` — `huffSym` pulling its input one byte at a time. They are
   inflate.
 - It said inflate was worth touching "only if someone is willing to revisit the
-  pure-Go rule". Part of it is not: the port creates a new decompressor for
-  every stream, and inflates into a buffer of its own before copying the result
-  out, which Java's `FlateFilter` does not do. Those two are 32% of what the 40
-  documents allocate, and the standard library alone removes both. The decoding
-  itself is what stays, and replacing that is a question of adding a pure-Go
-  dependency, not of the pure-Go rule.
+  pure-Go rule". Part of it is not: the port created a new decompressor for
+  every stream, and inflated into a buffer of its own before copying the result
+  out, which Java's `FlateFilter` does not do. The standard library alone
+  removed both.
 
-Every number on this page is from before any of the plan was carried out.
-Carrying it out found the floor's cause and most of the tail's, and neither was
-inflate: see "Where the plan was wrong" in
-[`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md).
+What is left to look at, from the 2026-09-15 numbers: the four small veraPDF
+files above 5×, and the floor, 76 MB against PDFBox's 48.

@@ -285,6 +285,11 @@ Against PDFBox, on those numbers: the total went from 6.4× PDFBox's time to
 about 1.7× (10.0 s against 5.8 s), and the peak heap on defaults from above
 PDFBox's (795 MB against 594 MB) to below it (about 250 MB).
 
+Measured again on 2026-09-15 with the rest of the machine at about one core of
+twelve, for [`BENCHMARK.md`](BENCHMARK.md): 8,234 ms against PDFBox's 5,625 ms
+on all 3,597, 1.46×, and a peak heap of 249.7 MB against 590.4 MB. That page has
+the rest.
+
 ### How the output was checked
 
 Besides the four checks under "How each step is checked", a throwaway harness

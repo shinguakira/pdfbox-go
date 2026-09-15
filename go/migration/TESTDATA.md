@@ -17,7 +17,7 @@ in a test.
 | --- | --- | ---: | --- | --- |
 | 0 | In the repository already | 168 PDFs | `*/src/test/resources/` | yes |
 | 1 | What the Java build downloads | 74 of 78 | `*/target/{pdfs,fonts,imgs}` | no — `.gitignore` |
-| 2 | Targeted third-party suites | 3,589 PDFs | `go/testdata/corpus/` | no — `.gitignore` |
+| 2 | Targeted third-party suites | 5,032 PDFs | `go/testdata/corpus/` | no — `.gitignore` |
 | 3 | Bulk, for scoring not asserting | millions | not fetched | no |
 
 Nothing below tier 0 is ever committed. These are other projects' documents
@@ -114,7 +114,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
 | [`safedocs-targeted`](https://github.com/pdf-association/safedocs) | 11 | Apache-2.0 | Hand-coded by the DARPA SafeDocs programme to break parsers on purpose: dual `startxref`, Type 3 inside Type 3, a page with no `/Contents`, a font inside a shading pattern, UTF-16LE strings. Small, and it earns its place — see below |
 | [`pdf20examples`](https://github.com/pdf-association/pdf20examples) | 7 | see archive | PDF 2.0 features one per file: UTF-8 strings, page-level output intents, black point compensation, 2.0 reached by incremental save, a non-zero start offset |
 | [`text-rendering-tests`](https://github.com/unicode-org/text-rendering-tests) | 0 | OFL fonts | No PDFs — test fonts with expected glyph ids and positions per string. This is the only **shaping ground truth independent of PDFBox**, and `go/pdfbox/glyphlayout` is the one part of the port written from a specification rather than ported, so it is the one part with no Java to check against |
-| [`pdfjs`](https://github.com/mozilla/pdf.js/tree/master/test/pdfs) | 982, `-Suite pdfjs` | Apache-2.0 | Reduced reproducers from another reader's tracker. Not ground truth — pdf.js's expectations are pdf.js's — but 982 committed files that broke a real implementation, which is what makes them worth opening. A further 459 are `.link` stubs pdf.js fetches on demand and this does not. Crash input, not assertions |
+| [`pdfjs`](https://github.com/mozilla/pdf.js/tree/master/test/pdfs) | 1,443, `-Suite pdfjs` | Apache-2.0 | Reduced reproducers from another reader's tracker. Not ground truth — pdf.js's expectations are pdf.js's — but files that broke a real implementation, which is what makes them worth opening. 982 are committed in `test/pdfs`. 459 are `.link` stubs holding a URL, which pdf.js downloads when its tests run; the script downloads them too and keeps each only with the md5 `test/test_manifest.json` records, so a file that cannot be had fails the run, and `_links.tsv` says where each came from. 2 are committed outside `test/pdfs` and land under `_repo/`. The passwords its tests open 12 of them with are written to `_passwords.tsv`. **Not on disk:** `test/pdfs/sig_corpus`, eight signed PDFs pdf.js neither commits nor downloads, which its `generate.py` builds from a mozilla-central checkout. Crash input, not assertions |
 
 ## What the first run found
 
@@ -326,7 +326,7 @@ PDFBox. Eleven are fixed; the twelfth is a character and is described below.
 | `verapdf` PDF_A-1b 6.1.12 `t03-fail-c` | timeout; 65,540 chars on one page | **quadratic lookup** |
 | `verapdf` TWG `A005-pdfa1-fail-c` | timeout; the same shape | quadratic lookup |
 | `verapdf` Isartor PDFA-1b 6.1.12 `t01-fail-a` | timeout; 10,000 pages | **quadratic xref copy** |
-| `pdfbox/target/pdfs/PDFBOX-3951-FIHUZ…` | 126,331 chars against 126,330 | font metrics — **open** |
+| `pdfbox/target/pdfs/PDFBOX-3951-FIHUZ…` | 126,331 chars against 126,330 | font metrics — **open**; closed 2026-09-15 as a Type 0 displacement defect, below |
 
 #### Five were one walk
 
@@ -407,6 +407,16 @@ Left open deliberately. It is recorded here with the measurements so the next
 person starts where this stopped, and it is one character out of 126,330 in one
 document out of 3,646.
 
+**Closed on 2026-09-15**, by the defect the pdf.js corpus found — see
+[pdf.js against the Java](#pdfjs-against-the-java-2026-09-15). Two things in
+the paragraphs above were wrong. The 790 is not a standard-14 width:
+`GHLILD+SymbolMT` is a Type 0 font over a non-embedded CIDFontType2, 790 is
+the glyph's entry in its `/W`, and PDFBox advances by it; 600.09766 is the
+substitute font's own width, which the port advanced by instead. And the code is
+148 on both sides — measured again with every `TextPosition` dumped, the port's
+carries 148 as well. With the displacement fixed the document's text is
+identical to PDFBox's, all 126,330 characters.
+
 
 ### What this does and does not establish
 
@@ -417,6 +427,173 @@ catch is a wrong character in the right place. The ported Java tests are what
 covers that, because their assertions are the Java's own values — this is the
 layer underneath them, and its job is to say that nothing is wrong at a scale
 those tests cannot reach.
+
+## pdf.js against the Java, 2026-09-15
+
+Every PDF pdf.js tests with, fetched and put through both sides:
+
+```bash
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
+pwsh go/migration/scripts/run-oracle.ps1 -List <the 1,443 paths> -Out go/testdata/oracle/java-pdfjs.tsv `
+    -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
+cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
+    -oracle testdata/oracle/java-pdfjs.tsv ./testdata/corpus/pdfjs
+```
+
+**What is there.** 1,443 PDFs: the 982 committed in `test/pdfs`, the 459 its
+`.link` stubs name — 176 of the stubs an archive.org capture and the rest the
+file's own address, every file downloaded and matched against the md5 in
+`test/test_manifest.json` — and the two committed elsewhere in the repository,
+`web/compressed.tracemonkey-pldi-09.pdf` and `examples/learning/helloworld.pdf`.
+**Not there:** `test/pdfs/sig_corpus`. Its eight PDFs are ignored by pdf.js's own
+`.gitignore` and appear in no manifest; they exist only once its `generate.py`
+has been run against a built mozilla-central checkout, for testing Firefox's
+signature panel by hand. Fetching them means generating them, which is open in
+the task file.
+
+**Passwords.** Twelve of the files are encrypted. pdf.js's manifest gives seven
+of their passwords and its tests the other five — `api_spec.js` for `pr6531_1`,
+`pr6531_2`, `auth-event-ef-open` and `encrypted-attachment`, `viewer_spec.mjs`
+for `print_protection` — and `fetch-corpus.ps1` writes all twelve to
+`_passwords.tsv`, which both drivers are handed. Ten do not open without one;
+the other two, `issue15893_reduced` and `pr6531_2`, open without one on both
+sides and are opened with theirs because that is what pdf.js does. With the
+passwords, all twelve open on both sides and agree.
+
+### Fourteen disagreements, and a defect behind twelve of them
+
+The first run, before any fix:
+
+```
+  open    both 1436, neither 7, behind 0, ahead 0
+  pages   0 disagree
+  text    both 1434, neither 2, behind 0, ahead 0
+  chars   1420 the same length, 14 not
+```
+
+Nothing PDFBox opens failed to open here, and no page count disagreed; all
+fourteen were the length of the text. Dumping every `TextPosition` from both
+sides put twelve of them on one field: from the first glyph, the **width**
+differed and nothing else did — same x, same y, same height, same space width.
+
+| File | Go | PDFBox | Cause |
+| --- | ---: | ---: | --- |
+| `JBIG2Globals.pdf` | 8,662 | 8,475 | Type 0 displacement |
+| `P020121130574743273239.pdf` | 14,723 | 14,667 | Type 0 displacement |
+| `bug1749563.pdf` | 1,974 | 2,082 | Type 0 displacement |
+| `bug951051.pdf` | 72,487 | 72,488 | Type 0 displacement |
+| `issue15139.pdf` | 89 | 88 | Type 0 displacement |
+| `issue15292.pdf` | 1,114 | 1,227 | Type 0 displacement |
+| `issue1687.pdf` | 52 | 51 | Type 0 displacement |
+| `issue1721.pdf` | 2,034,906 | 2,036,568 | Type 0 displacement |
+| `issue18801.pdf` | 14,354 | 14,355 | Type 0 displacement |
+| `issue7074_reduced.pdf` | 17 | 19 | Type 0 displacement |
+| `issue9367.pdf` | 2,125 | 2,134 | Type 0 displacement |
+| `mupdf-707147.pdf` | 81 | 78 | Type 0 displacement |
+| `bug1175962.pdf` | 117 | 126 | JAVA-BUGS 15, fixed in the Go on purpose |
+| `poppler-90-0-fuzzed.pdf` | 1,197 | 1,402 | JAVA-BUGS 30, fixed in the Go on purpose |
+
+#### Type 0 glyphs advanced by the font program instead of `/W`
+
+`PDFont.getDisplacement` is `new Vector(getWidth(code) / 1000, 0)`, and in Java
+that `getWidth` is a virtual call: for a Type 0 font it reaches
+`PDType0Font.getWidth`, which is the descendant's `/W`, then `/DW`, then 1000.
+The port's `pdFont.Displacement` called `pdFont.Width` directly — Go embedding
+does not dispatch — and that is the simple-font lookup, which finds no `/Widths`
+in a Type 0 dictionary and falls through to the font program's advance. So every
+glyph of every Type 0 font was advanced by its font program, embedded or
+substituted, rather than by the widths the PDF gives.
+
+`issue1687.pdf` shows the effect in one word. Its Arial Black is a CIDFontType2
+with no `/W`, so PDFBox makes every glyph the default 1000 wide and the port made
+it the font's 777.8. The stripper drops a glyph that repeats the one before it
+within a third of its width. The two `l`s of "Ellis" are placed 4.264 apart; a
+third of PDFBox's width is 4.267 and a third of the port's was 3.319, so PDFBox
+extracts "Elis" and the port kept both. The other eleven are the same widths
+reaching word breaks and duplicates: `issue15292.pdf` came out as
+"A newstraightforwardandtransparentfeestructure", `bug1749563.pdf` lost
+letters inside words.
+
+It is not only text. The renderer advances by the same displacement, so Type 0
+text was drawn at the font program's spacing too.
+`TestLigaturesAndKerningRenderIdent` and `TestBidiRenderIdent` count the pixels
+that differ between the port's page and the AWT reference, and both counts moved
+— 2151 to 2160 and 2433 to 2440 — only inside the lines their `knownDeviations`
+already list, where the two files draw different glyphs and so hold different
+`/W` entries. Everywhere else both pages are unchanged, and the supplementary
+plane page is still exact.
+
+The fix is `f.self.Width(code)` in `pdfont.go`, the dispatch every other shared
+method there already used. `TestType0DisplacementIsTheDescendantWidth` in
+`pdfbox/pdmodel/font/corpusdefects_test.go` pins four dictionaries — no `/W` or
+`/DW`, each alone, both — with PDFBox's own answers. **The same fix closed
+`PDFBOX-3951`**, the last disagreement left in the 3,646 files above.
+
+Two further things came out of reading around it. `LegacyPDFStreamEngine`'s
+vertical branch scales a glyph's width by 1000 / `unitsPerEm` for a TrueType
+program; the port had the `PDTrueTypeFont` half and had left the `PDType0Font`
+half for a later slice that never brought it. It is ported, and
+`TestVerticalGlyphWidthIsScaledByTheCIDFontsEm` pins it with PDFBox's values;
+no file in either corpus reaches it. And the shape of the defect — a shared
+method calling, on its own receiver, a method a type embedding it overrides —
+was searched for across the whole Go tree, with a scratch program over the
+syntax trees. Twenty-one calls have that shape, in six places:
+
+| Where | Calls | What it comes to |
+| --- | ---: | --- |
+| `cos.Dictionary`, through `UpdateState` | 7 | nothing: a `Stream`'s constructor creates the state with the stream as its owner, so the dictionary's methods reach the stream's state |
+| `ttf.Parser.parseAndClose`, through `ParseStream` | 1 | nothing: `OTFParser`'s overrides of `newFont` and `readTable` travel as fields its constructor sets |
+| `function.pdFunctionBase`, through `rangeValues` | 3 | nothing for two — the identity function overrides `NumberOfOutputParameters`, and only types 2 and 3 clip to range. **The third was a difference, fixed 2026-09-15:** `RangeForOutput` on an identity function returns a range over no array in PDFBox, which fails only when it is read; the port panicked on the call. `TestIdentityRangeForOutputHasNoArray` |
+| `ttf.TrueTypeFont.GetPath`, through `Glyph` | 1 | **a difference, fixed 2026-09-15.** An OpenType font with CFF2 outlines and no CFF, which neither side supports: PDFBox reaches `OpenTypeFont.getGlyph` and throws "OTF fonts do not have a glyf table", and the port dereferenced a nil table. It now panics with PDFBox's message. `TestOpenTypeWithoutCFFRefusesAGlyphTable` |
+| `form.PDButton`, through `ExportValues`, `OnValues` and `Value` | 7 | **a difference, fixed 2026-09-15.** `SetValue`, `SetValueIndex` and `SetDefaultValue` on a `PDPushButton` checked against `PDButton`'s own values, where Java reaches the push button's empty ones and refuses every value but `Off`. `PDButton` now asks through the field's `self`. `TestPushButtonSettersCheckAgainstThePushButton` |
+| `text.PDFTextStripper`, through `ProcessPage` and `WritePage` | 2 | **a difference, fixed 2026-09-15.** A `PDFTextStripperByArea` driven through `WriteText` wrote the page to the writer, where Java's `writeText` reaches the by-area `writePage` and fills the regions. `ExtractRegions`, the way the class is meant to be used, was right. `TestStripperByAreaWriteTextReachesItsWritePage` |
+
+All four differences are fixed, each test-first with PDFBox's own answers; the
+task file has the details.
+
+#### The two that are left are fixes, not defects
+
+`bug1175962.pdf` and `poppler-90-0-fuzzed.pdf` differ because
+`track/java-bug-fixes` made the Go differ from the Java on purpose.
+[`JAVA-BUGS.md`](JAVA-BUGS.md) 15 and 30 now say what each file shows: a
+right-to-left run outside the basic plane that PDFBox splits into unpaired
+halves, and an ASCIIHex content stream whose bad digits PDFBox turns into bytes
+its parser reads past, where the Go's zeros end the page.
+
+After both fixes:
+
+```
+  open    both 1436, neither 7, behind 0, ahead 0
+  pages   0 disagree
+  text    both 1434, neither 2, behind 0, ahead 0
+  chars   1432 the same length, 2 not
+
+  2 of 1443 files disagree (0.14%)
+```
+
+The seven that neither side opens are four `Missing root object specification in
+trailer` and three `Page tree root must be a dictionary`, with the same message
+from both; the two that neither extracts text from are `issue12823.pdf`, a
+Type 0 font with no descendant, and `issue15604.pdf`, a number written `-.`.
+
+And everything together — the 3,646 files above, pdf.js's 1,443, and
+`PDFBOX-4131-0.pdf`, which the 2026-09-12 PDFBox table was missing — with
+`run-oracle.ps1`'s default list and the passwords table on both sides:
+
+```
+5090 files, 27 of them encrypted and skipped
+  open    both 5037, neither 53, behind 0, ahead 0
+  pages   0 disagree
+  text    both 5032, neither 5, behind 0, ahead 0
+  chars   5030 the same length, 2 not
+
+  2 of 5090 files disagree (0.04%)
+```
+
+The 27 encrypted files are the earlier corpus's — 24 of qpdf's, one of
+cabinet-of-horrors' and two PDFBox downloads — whose passwords are in qpdf's
+test scripts and PDFBox's Java tests, and not yet in a table. Until they are,
+both sides are only compared on refusing them.
 
 ## Scoring a corpus
 
@@ -444,6 +621,13 @@ can hold the line. A file that used to fail and now opens is a slice landing.
 belt-and-braces: `recover` cannot catch a Go stack overflow, and a goroutine that
 will not return cannot be stopped from outside, so without it one file ends the
 run. `-isolate=false` is faster on a corpus already known to be survivable.
+
+`-passwords` takes a table of encrypted files and their passwords, one
+`<path ending>`, tab, `<password>` per line, in UTF-8. `fetch-corpus.ps1` writes
+one as `_passwords.tsv` for a suite whose project publishes them — so far pdf.js
+— and `run-oracle.ps1 -Passwords` gives PDFBox the same table. A file with no
+password that will not open is reported `encrypted` and left out of the rates; a
+file the table has a password for keeps its error if it still will not open.
 
 Note what this does **not** do: it does not compare against the Java. Running
 PDFBox over three thousand files is not cheap either, and the comparison that

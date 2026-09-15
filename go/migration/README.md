@@ -42,7 +42,7 @@ Three things this is not:
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
 | [`TESTDATA.md`](TESTDATA.md) | What the port is checked against: the 168 documents in the repository, the 78 the Java build downloads and nothing here ever fetched, the third-party suites worth adding, and how to score a corpus |
 | [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted: iText 6,897, pdfium 301, PoDoFo 102, qpdf's unfetched 78. PDFBox alone is the oracle; every project is fair game as input |
-| [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run: 6.4× on the total and faster at the median, where the time actually goes, and the two defects benchmarking found |
+| [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run, measured again after the performance work: 1.46× on the total with one worker, faster with four, at the median, in CPU and at start-up; where the time goes, and the two defects benchmarking found |
 | [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) | What could be done about the slow tail without leaving pure Go, in order, with what each step needs decided first. The plan as written, then what prototyping it on `track/performance` bought — the heaviest documents 6× faster — and where the plan was wrong |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
@@ -118,8 +118,9 @@ over a list of documents, and writes the table `go/cmd/corpus` writes.
 non-zero when the port is behind.
 
 ```bash
-pwsh go/migration/scripts/run-oracle.ps1
-cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
+pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
+cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
+    -oracle testdata/oracle/java-corpus.tsv \
     ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
 ```
 

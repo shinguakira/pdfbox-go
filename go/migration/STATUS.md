@@ -62,6 +62,21 @@ It compiles `io`, `fontbox` and `pdfbox` out of the tree with `javac` — no Mav
 — runs PDFBox over the same list, and writes the same table, which
 `corpus -oracle` then joins.
 
+**Measured again 2026-09-15 over 5,090 files, pdf.js's 1,443 among them. 2 of
+5,090 disagree, and both are Java bugs the Go fixes on purpose — JAVA-BUGS 15
+and 30.** pdf.js's files found one port defect behind twelve of their fourteen
+first disagreements, and behind the one character below: a Type 0 glyph was
+advanced by its font program's width instead of its `/W`, because
+`pdFont.Displacement` called its own `Width` where Java's call is virtual. See
+[`TESTDATA.md`](TESTDATA.md), "pdf.js against the Java".
+
+```
+  open    both 5037, neither 53, behind 0, ahead 0
+  pages   0 disagree
+  text    both 5032, neither 5, behind 0, ahead 0
+  chars   5030 the same length, 2 not
+```
+
 **Measured 2026-09-12 over 3,646 files. The first run found twelve
 disagreements; every one of them was the port's and eleven are fixed. What is
 left is one character in one document — 1 of 3,646, 0.03%.**
@@ -817,9 +832,9 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | Java source | Go source | Status |
 | --- | --- | --- |
 | `Filter.java` | `filter.go` | done — minus the `DecodeOptions` overload, which carries image subsampling |
-| `FilterFactory.java` | `filter.go`, `provider.go` | done — as `ByName` plus a `Provider` type rather than a singleton |
+| `FilterFactory.java` | `filter.go`, `provider.go` | done — as `ByName` plus a `Provider` type rather than a singleton. Until 2026-09-15 `ByName` also answered `/Identity`, which `FilterFactory` refuses with "Invalid filter"; it refuses it now, and nothing depended on it |
 | `Predictor.java` | `predictor.go` | done — matched to PDFBox's output on 2026-09-15: `/Colors` clamped to 32 as `wrapPredictor` does, Java's 32-bit arithmetic throughout, the short last row completed with zeros. JAVA-BUGS 88 is not carried |
-| `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done |
+| `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done — a source that fails, in the header or after it, fails `Decode` and the reader with its own error since 2026-09-15; see the deviations below |
 | `IdentityFilter.java` | `filter.go` | done |
 | `DecodeResult.java` | `filter.go` | partial — the JPX colour space and soft mask fields arrive with that filter |
 | `DecodeOptions.java` | `decodeoptions.go` | done in slice 6 |
@@ -850,13 +865,17 @@ Each commented at the point it occurs. Recorded on `track/performance`; see
 - **Unpredicted data is copied through a pooled 32 KB buffer** in
   `decodePredictor`, where Java's `transferTo` allocates one for each call.
   Allocation only.
-- **`Flate.Decode` ends the data at every error, a failing source included.**
+- **`Flate.Decode` ended the data at every error, a failing source included —
+  no longer, since 2026-09-15 on `track/testdata-sources`.**
   `FlateFilterDecoderStream` catches `DataFormatException` alone, so an
-  `IOException` from the source comes out of `FlateFilter.decode`. The port's
-  `Decode` logged every error and carried on before the pool as well; the
-  reader that does it now, `endAtDamage`, says so, and changing it is a
-  behaviour change for a branch of its own. `NewFlateDecoderReader` already
-  lets a source's failure out, as Java does.
+  `IOException` from the source comes out of `FlateFilter.decode`, and so does
+  one from the two header bytes its constructor reads. The port's `Decode`
+  logged every error and carried on, and both it and `NewFlateDecoderReader`
+  took a header they could not read, for any reason, as a stream with nothing
+  in it. `endAtDamage` now ends the data at damage only, and a source that
+  fails, in the header or after it, fails with its own error on both paths; a
+  source that merely ends still ends the data. `TestFlateLetsAFailingSourceOut`
+  holds PDFBox's answers.
 
 ## Slice 1 — `pdfbox/pdfparser`
 
@@ -1527,6 +1546,14 @@ fails without its fix.
   reimplements `processPage` — Go embedding does not dispatch — and had left it
   out. A stripper used twice, which `extractRegions` documents as supported,
   reported nothing the second time.
+  **Since 2026-09-15 there is no reimplementation:** the base `ProcessPage`
+  writes the page through a hook the by-area stripper installs its `WritePage`
+  in, and `charactersByArticle` is a pointer to the lists rather than a slice,
+  so that the base clearing and extending a region's lists in place reaches the
+  region, as Java's shared `ArrayList` does. A by-area stripper driven through
+  `WriteText` was writing the whole page to the writer; it now fills the regions
+  and writes nothing there, as PDFBox does.
+  `TestStripperByAreaWriteTextReachesItsWritePage`.
 - **`GetTextOfPages` did not reset the engine.** Java's `writeText` calls
   `resetEngine` first, which puts `currentPageNo` back to 1 and empties the
   per-page state, and applies the extra formatting where it was asked for. The
@@ -2482,6 +2509,17 @@ PDFBox repairs. The port decoded both. The reduction is in
 `Stream.CreateReaderStopping` and not in `codecList`, because
 `createInputStream()` with no stop filters does not do it: it chains the filters
 one for one through `COSInputStream`.
+
+**That last sentence was wrong, corrected 2026-09-15 on
+`track/testdata-sources`.** In this Java tree `COSInputStream.create` and
+`createView` both go through `Filter.decode` too, so all three decode a repeated
+filter once, and `/DecodeParms` is read at each filter's place in the reduced
+list. The reduction moved into `Stream.decode`, which all three reach.
+`TestRepeatedFilterIsDecodedOnceOnEveryPath` holds PDFBox's answers from all
+three paths; the writer still encodes through every entry, which
+`TestRepeatedFilterIsWrittenEveryTime` pins. `TestStreamTwoFilterChain`, which
+expected `[/FlateDecode /FlateDecode]` to come back whole, was not a port of
+anything and is replaced by the two Java tests it stood in for.
 
 **`Raster.SetPixel` half wrote a pixel.** Handed fewer values than the raster
 has bands it stopped at the shorter of the two, leaving the remaining bands

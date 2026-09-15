@@ -50,46 +50,53 @@ in this repository and puts it over the same documents, and `cmd/corpus -oracle`
 reports every disagreement:
 
 ```bash
-pwsh go/migration/scripts/run-oracle.ps1
-cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
+pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
+cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
+    -oracle testdata/oracle/java-corpus.tsv \
     ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
 ```
 
-Over **3,646 documents** — PDFBox's own regression files, veraPDF's ISO clause
-tests, qpdf's damaged files, the SafeDocs parser traps:
+Over **5,090 documents** — PDFBox's own regression files, veraPDF's ISO clause
+tests, qpdf's damaged files, the SafeDocs parser traps, and every PDF pdf.js
+tests with:
 
 ```
-open    both 3600, neither 46, behind 0, ahead 0
+open    both 5037, neither 53, behind 0, ahead 0
 pages   0 disagree
-text    both 3597, neither 3, behind 0, ahead 0
-chars   3596 the same length, 1 not
+text    both 5032, neither 5, behind 0, ahead 0
+chars   5030 the same length, 2 not
 
-1 of 3646 files disagree (0.03%)
+2 of 5090 files disagree (0.04%)
 ```
 
-There is no document in that corpus PDFBox reads and this port does not.
+There is no document in that corpus PDFBox reads and this port does not. The two
+that disagree are two bugs in the Java that this port fixes on purpose.
 [`go/migration/TESTDATA.md`](go/migration/TESTDATA.md) has the corpus, how to
-fetch it, and the one remaining disagreement.
+fetch it, and both of them.
 
 Speed and memory
 ----------------
 
-Measured by running both. There is no single number:
+Measured by running both, on 2026-09-15. There is no single number:
 
 | | this port | PDFBox | |
 | --- | ---: | ---: | --- |
-| 3,597 documents, wall clock | 36.8 s | 5.8 s | 6.4× slower |
-| the median document | 0.330 ms | 0.389 ms | **faster** |
-| CPU time for the same work | 90.3 s | 56.5 s | 1.6× more |
-| cores used | 1.10 | 2.86 | |
-| cold start, one document | **71.6 ms** | 649.0 ms | **9.1× faster** |
-| peak heap, default settings | 795 MB | 594 MB | 1.34× |
-| minimum to ship | **15.6 MB** | 49.0 MB | **3.2× smaller** |
+| 3,597 documents, one worker, best pass | 8.2 s | 5.6 s | 1.46× slower |
+| the same, four workers | **2.7 s** | 3.2 s | **1.2× faster** |
+| the median document | 0.333 ms | 0.394 ms | **faster** |
+| CPU time, a warmup and one pass | **17.1 s** | 48.8 s | **2.9× less** |
+| cores used | 1.11 | 2.93 | |
+| cold start, one document | **59 ms** | 615 ms | **10.4× faster** |
+| peak heap, PDFBox at `-Xmx4g` | **250 MB** | 590 MB | **2.4× smaller** |
+| lowest peak heap that still extracts the 40 heaviest documents unchanged | 76 MB | 48 MB | 1.6× more |
+| minimum to ship | **15.6 MB** | 49.0 MB | **3.1× smaller** |
 
-2,300 of the 3,597 documents are faster here; ten documents are 79% of the total
-time, and most of that is `compress/flate` against PDFBox's native zlib — the
-price of the pure-Go rule. The full analysis, including four ways of measuring
-this that produce confident wrong answers, is in
+2,410 of the 3,597 documents are faster here, and none of the ten slowest takes
+twice as long as in PDFBox. Before the performance work of 2026-09-15 the same
+table read 36.8 s against 5.8 s and ten documents were 79% of the time: the page
+tree handed out pages without the resource cache, so every font lookup built its
+font again. The full analysis, including four ways of measuring this that produce
+confident wrong answers, is in
 [`go/migration/BENCHMARK.md`](go/migration/BENCHMARK.md).
 
 Building
