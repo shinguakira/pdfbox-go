@@ -3,49 +3,49 @@ package text
 import (
 	"strings"
 
-	"golang.org/x/text/unicode/bidi"
+	"github.com/shinguakira/pdfbox-go/go/javatext/bidi"
 )
 
 // handleDirection puts a word into visual order, reversing each right to left
 // run and swapping its mirrored characters.
 //
-// Port of org.apache.pdfbox.text.PDFTextStripper.handleDirection, which uses
-// java.text.Bidi; the port uses golang.org/x/text/unicode/bidi, which resolves
-// the same algorithm.
+// Port of org.apache.pdfbox.text.PDFTextStripper.handleDirection, on
+// go/javatext/bidi, the port of the java.text.Bidi the Java asks. It used to
+// ask golang.org/x/text/unicode/bidi, which answers the runs of a word in
+// logical order and not their levels, so a word with runs at more than two
+// levels -- a number inside a right-to-left line -- came out with its runs in
+// the wrong order; iText's kernel/parser/BidiTextExtractionTest/in02.pdf read
+// from the middle of each line. See TestHandleDirectionPutsRunsInVisualOrder.
 func handleDirection(word string) string {
-	var p bidi.Paragraph
-	if _, err := p.SetString(word); err != nil {
-		return word
-	}
-	order, err := p.Order()
-	if err != nil {
-		return word
-	}
-
-	// A word with no runs at all has to be answered before anything asks the
-	// paragraph its direction, and this is the port's problem rather than
-	// Java's. x/text resolves a word that is only paragraph separators -- the
-	// empty string, or one made solely of Unicode bidi class B: U+000A, U+000D,
-	// U+001C, U+001D, U+001E, U+0085 -- to zero runs, and its
-	// Ordering.Direction indexes the first of them, so asking panics with an
-	// index out of range. java.text.Bidi has no such edge: the paragraph is not
-	// mixed and its base level is DIRECTION_LEFT_TO_RIGHT, so Java takes the
-	// arm below and returns the word untouched. Nothing to reorder means the
-	// word is already in visual order, which is the same answer.
-	if order.NumRuns() == 0 {
-		return word
-	}
+	paragraph := bidi.NewParagraph(word, bidi.DirectionDefaultLeftToRight)
 
 	// if there is pure LTR text no need to process further
-	if order.NumRuns() <= 1 && p.Direction() == bidi.LeftToRight {
+	if !paragraph.IsMixed() && paragraph.BaseLevel() == bidi.DirectionLeftToRight {
 		return word
 	}
 
+	// collect individual bidi information
+	runCount := paragraph.RunCount()
+	levels := make([]int, runCount)
+	runs := make([]int, runCount)
+	for i := 0; i < runCount; i++ {
+		levels[i] = paragraph.RunLevel(i)
+		runs[i] = i
+	}
+
+	// reorder individual parts based on their levels
+	bidi.ReorderVisually(levels, runs)
+
+	// collect the parts based on the direction within the run
 	var result strings.Builder
-	for i := 0; i < order.NumRuns(); i++ {
-		run := order.Run(i)
-		runText := run.String()
-		if run.Direction() == bidi.RightToLeft {
+	for i := 0; i < runCount; i++ {
+		index := runs[i]
+		start := paragraph.RunStart(index)
+		end := paragraph.RunLimit(index)
+
+		level := levels[index]
+
+		if level&1 != 0 {
 			// Java walks the run backwards with charAt, a UTF-16 code unit at a
 			// time, so the two halves of a character outside the basic plane
 			// come out in the wrong order, no longer pair, and the character is
@@ -53,7 +53,12 @@ func handleDirection(word string) string {
 			// visual ordering means and what StringBuilder.reverse -- the same
 			// class's other reversal, in TextPosition.getVisuallyOrderedUnicode
 			// -- does. See migration/JAVA-BUGS.md 15.
-			characters := []rune(runText)
+			//
+			// Java mirrors a character that Character.isMirrored says is
+			// mirrored and MIRRORING_CHAR_MAP has; every character the map
+			// holds, from BidiMirroring 8.0.0, is mirrored in the Unicode the
+			// running JDK carries, so the map alone answers the same.
+			characters := []rune(paragraph.Text(start, end))
 			for j := len(characters) - 1; j >= 0; j-- {
 				character := characters[j]
 				if mirrored, ok := mirroringCharMap[character]; ok {
@@ -62,7 +67,7 @@ func handleDirection(word string) string {
 				result.WriteRune(character)
 			}
 		} else {
-			result.WriteString(runText)
+			result.WriteString(paragraph.Text(start, end))
 		}
 	}
 	return result.String()

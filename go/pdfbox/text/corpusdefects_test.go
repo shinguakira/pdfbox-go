@@ -19,10 +19,12 @@ import (
 // Java's handleDirection hands the word to java.text.Bidi, for which none of
 // these inputs is special: the paragraph is not mixed and its base level is
 // DIRECTION_LEFT_TO_RIGHT, so the first arm returns the word untouched. The
-// port uses golang.org/x/text/unicode/bidi instead -- the JDK class has no
+// port used golang.org/x/text/unicode/bidi instead -- the JDK class has no
 // counterpart in the standard library -- and that one resolves a word made only
 // of paragraph separators to zero runs, then indexes the first of them when
-// asked the direction. Asking panics with an index out of range.
+// asked the direction. Asking panicked with an index out of range. The port now
+// asks go/javatext/bidi, as TestHandleDirectionPutsRunsInVisualOrder records,
+// and this stays as the check that these words still come back untouched.
 //
 // Three files of the corpus reach it through normalizeWord, two of them from
 // the set the Java build downloads and therefore in front of the Java's own
