@@ -818,7 +818,7 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | --- | --- | --- |
 | `Filter.java` | `filter.go` | done — minus the `DecodeOptions` overload, which carries image subsampling |
 | `FilterFactory.java` | `filter.go`, `provider.go` | done — as `ByName` plus a `Provider` type rather than a singleton |
-| `Predictor.java` | `predictor.go` | done |
+| `Predictor.java` | `predictor.go` | done — matched to PDFBox's output on 2026-09-15: `/Colors` clamped to 32 as `wrapPredictor` does, Java's 32-bit arithmetic throughout, the short last row completed with zeros. JAVA-BUGS 88 is not carried |
 | `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done |
 | `IdentityFilter.java` | `filter.go` | done |
 | `DecodeResult.java` | `filter.go` | partial — the JPX colour space and soft mask fields arrive with that filter |
@@ -828,6 +828,7 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | Java test | Go test | Notes |
 | --- | --- | --- |
 | `PredictorTest` | `predictor_test.go` | complete |
+| — | `predictorpath_test.go`, `javabug88_test.go` | no Java test reaches the predictor the way a PDF does, through FlateDecode and LZWDecode; these take PDFBox's own output for each case as the expected value |
 | `TestFilters` | `flate_test.go` | the round-trip generator is ported; `testPDFBOX4517` needs a loader, `testPDFBOX1977` needs LZW, `testRLE` needs RunLength |
 
 ## Slice 1 — `pdfbox/pdfparser`

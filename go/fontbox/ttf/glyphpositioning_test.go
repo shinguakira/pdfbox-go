@@ -269,3 +269,45 @@ func TestGPOSKerningAgreesWithTheKernTable(t *testing.T) {
 		})
 	}
 }
+
+// TestGPOSIsNotReadUntilAsked pins that parsing a font does not parse its GPOS
+// table, which is the one table the port reads and PDFBox does not.
+//
+// TTFParser.readTable in the Java has a case for every table fontbox knows, and
+// GPOS is not among them -- GSUB is, GPOS is not, because PDFBox has no glyph
+// positioning reader at all. An unknown tag there falls through to a plain
+// TTFTable whose read does nothing, so parseTables costs Java nothing for GPOS.
+// The port added the case, for track/pdfbox-layout's shaper, and parseTables
+// then read the whole table on every font load.
+//
+// That is not free. Benchmarking PDFBOX-5927.pdf -- a one-megabyte document --
+// against PDFBox found the port holding 464MB where PDFBox held 59.4MB, and the
+// heap profile put 52MB of it in readPairSet: GPOS kerning pairs, parsed while
+// extracting text, which never asks for them. The only caller of GPOS() in the
+// tree is pdfbox/glyphlayout, and table() already reads on demand.
+//
+// So the table is left alone until something wants it. This is a deviation from
+// parseTables' shape and a match for its effect: Java does no GPOS work here
+// either.
+func TestGPOSIsNotReadUntilAsked(t *testing.T) {
+	font := openFontFile(t, "DejaVuSans.ttf")
+
+	table, ok := font.tables[GlyphPositioningTag]
+	if !ok {
+		t.Skip("DejaVuSans.ttf has no GPOS table")
+	}
+	if table.base().Initialized() {
+		t.Error("GPOS was read while parsing the font; it should wait until it is asked for")
+	}
+
+	gpos, err := font.GPOS()
+	if err != nil {
+		t.Fatalf("GPOS: %v", err)
+	}
+	if gpos == nil {
+		t.Fatal("GPOS returned nil for a font that has the table")
+	}
+	if !table.base().Initialized() {
+		t.Error("asking for GPOS did not read it")
+	}
+}

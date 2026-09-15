@@ -41,6 +41,8 @@ Three things this is not:
 | [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then fixed 61 of the 84 in the Go, and every entry says which it is |
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
 | [`TESTDATA.md`](TESTDATA.md) | What the port is checked against: the 168 documents in the repository, the 78 the Java build downloads and nothing here ever fetched, the third-party suites worth adding, and how to score a corpus |
+| [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted: iText 6,897, pdfium 301, PoDoFo 102, qpdf's unfetched 78. PDFBox alone is the oracle; every project is fair game as input |
+| [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run: 6.4× on the total and faster at the median, where the time actually goes, and the two defects benchmarking found |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
@@ -48,7 +50,8 @@ Three things this is not:
 | [`scripts/fetch-testdata.ps1`](scripts/fetch-testdata.ps1) | Fetches the 78 test files the Java build declares, into the `target/` directories the Java build puts them in. See [`TESTDATA.md`](TESTDATA.md) |
 | [`scripts/fetch-corpus.ps1`](scripts/fetch-corpus.ps1) | Fetches the third-party PDF suites the port is scored against, into `go/testdata/corpus/` |
 | [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) | Compiles the Java tree with `javac` and runs PDFBox over a corpus, so `cmd/corpus -oracle` can say where the port and the Java disagree. No Maven needed |
-| [`oracle/JavaCorpus.java`](oracle/JavaCorpus.java) | The driver that script runs. The only `.java` file this repository owns; it sits outside the Maven module directories and compiles against them |
+| [`oracle/JavaCorpus.java`](oracle/JavaCorpus.java) | The driver that script runs. One of the two `.java` files this repository owns, with `JavaBench.java`; both sit outside the Maven module directories, compile against them, and are compiled by that script |
+| [`oracle/JavaBench.java`](oracle/JavaBench.java) | The Java half of the speed and memory comparison; `go/cmd/bench` is the other |
 
 ## Porting a package
 
@@ -115,7 +118,8 @@ non-zero when the port is behind.
 
 ```bash
 pwsh go/migration/scripts/run-oracle.ps1
-cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv ./testdata/corpus
+cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
+    ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
 ```
 
 The first run of it is in [`TESTDATA.md`](TESTDATA.md): twelve files out of
