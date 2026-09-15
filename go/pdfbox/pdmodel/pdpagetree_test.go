@@ -100,6 +100,49 @@ func TestPDPageTreeGetAndWalk(t *testing.T) {
 	}
 }
 
+// TestPDPageTreeAllHandsOutTheResourceCache pins that a page from the walk reads
+// its resources through the tree's cache, as a page fetched by index does, so
+// two pages sharing a font object share the font.
+//
+// Java's PageIterator.next() builds each page with document.getResourceCache(),
+// exactly as get(int) does. The port's walk built them with no cache at all, so
+// every page read its fonts afresh. Text extraction walks the tree, and
+// PDFBOX-4423-000746.pdf made 139 fonts out of 8 font objects that way, which
+// was most of the ten seconds it took.
+func TestPDPageTreeAllHandsOutTheResourceCache(t *testing.T) {
+	font := cos.NewDictionary()
+	font.SetItem(cos.Type, cos.Font)
+	font.SetItem(cos.Subtype, cos.Type1)
+	font.SetItem(cos.BaseFont, cos.GetPDFName("Helvetica"))
+	fonts := cos.NewDictionary()
+	fonts.SetItem(cos.GetPDFName("F1"), cos.NewObject(font))
+	resources := cos.NewDictionary()
+	resources.SetItem(cos.Font, fonts)
+
+	first, second := pageNode(0), pageNode(1)
+	first.SetItem(cos.Resources, resources)
+	second.SetItem(cos.Resources, resources)
+
+	cache := NewDefaultResourceCache()
+	tree := NewPDPageTreeOfCache(pagesNode(first, second), cache)
+
+	var read []any
+	for page := range tree.All {
+		if page.resourceCache != ResourceCache(cache) {
+			t.Fatalf("page %d from the walk holds cache %v, want the tree's",
+				page.StructParents(), page.resourceCache)
+		}
+		f, err := page.Resources().GetFont(cos.GetPDFName("F1"))
+		if err != nil || f == nil {
+			t.Fatalf("page %d: GetFont = %v, %v", page.StructParents(), f, err)
+		}
+		read = append(read, f)
+	}
+	if len(read) != 2 || read[0] != read[1] {
+		t.Errorf("the two pages read two fonts from one font object, want one shared")
+	}
+}
+
 // TestPDPageTreeAllStopsEarly pins that the walk can be broken out of, which is
 // what makes it a range-over-func rather than a slice.
 func TestPDPageTreeAllStopsEarly(t *testing.T) {

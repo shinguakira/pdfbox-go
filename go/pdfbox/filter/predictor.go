@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 )
@@ -43,6 +44,12 @@ var (
 	// whose row length is zero, over a stream that is not empty. JAVA-BUGS 88.
 	errZeroRowLength = errors.New("filter: predictor row length is zero")
 )
+
+// copyBuffers holds the buffers decodePredictor copies unpredicted data through.
+var copyBuffers = sync.Pool{New: func() any {
+	buffer := make([]byte, 32*1024)
+	return &buffer
+}}
 
 // decodePredictorRow undoes the prediction on one row, in place.
 //
@@ -293,7 +300,13 @@ func readPredictorParams(decodeParams cos.ReadOnlyDictionary) predictorParams {
 //     row's algorithm and writes nothing. A TIFF predictor is JAVA-BUGS 88.
 func decodePredictor(w io.Writer, r io.Reader, params predictorParams) error {
 	if params.predictor <= 1 {
-		_, err := io.Copy(w, r)
+		// io.Copy would allocate 32 KB for each stream whose source has no
+		// WriteTo and whose destination has no ReadFrom, which is a flate
+		// stream going into a ReadWriteBuffer. A source that has WriteTo still
+		// uses it; the buffer is only taken when io.Copy would have made one.
+		buffer := copyBuffers.Get().(*[]byte)
+		defer copyBuffers.Put(buffer)
+		_, err := io.CopyBuffer(w, r, *buffer)
 		return err
 	}
 

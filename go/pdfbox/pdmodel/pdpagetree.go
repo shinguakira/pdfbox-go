@@ -161,7 +161,10 @@ func (t *PDPageTree) All(yield func(*PDPage) bool) {
 
 	for _, next := range queue {
 		sanitizeType(next)
-		if !yield(NewPDPageOf(next)) {
+		// PageIterator.next() hands each page the document's resource cache,
+		// as get(int) does. Without it every page read its fonts afresh; see
+		// TestPDPageTreeAllHandsOutTheResourceCache.
+		if !yield(NewPDPageOfCache(next, t.resourceCache)) {
 			return
 		}
 	}
