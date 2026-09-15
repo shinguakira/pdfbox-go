@@ -21,12 +21,21 @@
 // migration/scripts/run-oracle.ps1 produces that table; it needs a JDK and no
 // Maven. Exit status is non-zero when the port is behind the Java.
 //
+// -passwords names a table of encrypted files and the passwords their source
+// project opens them with, one "<path ending>\t<password>" per line.
+// fetch-corpus.ps1 writes one for a suite that publishes them, and
+// run-oracle.ps1 -Passwords hands the same table to PDFBox, so both sides open
+// the same files the same way. A file without a password that refuses to open
+// is counted as encrypted and left out of the rates; a file the table gives a
+// password to that still refuses is a failure.
+//
 // Usage:
 //
 //	go run ./cmd/corpus testdata/corpus/verapdf > verapdf.tsv
 //	go run ./cmd/corpus -render testdata/corpus/safedocs-targeted
 //	go run ./cmd/corpus -baseline verapdf.tsv testdata/corpus/verapdf
 //	go run ./cmd/corpus -oracle ../go/testdata/oracle/java-corpus.tsv testdata/corpus
+//	go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv testdata/corpus/pdfjs
 package main
 
 import (
@@ -44,6 +53,7 @@ import (
 	"time"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering/raster"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/text"
@@ -80,7 +90,15 @@ func main() {
 		isolate  = flag.Bool("isolate", true, "score each file in its own process, so one that takes the runtime down does not end the run")
 		one      = flag.Bool("one", false, "score exactly one file and print its row; how -isolate re-enters this program")
 	)
+	flag.StringVar(&passwordsPath, "passwords", "", "a table of <path ending>\\t<password> for encrypted documents whose passwords their source publishes; each such file is opened with its password")
 	flag.Parse()
+
+	if passwordsPath != "" {
+		if err := loadPasswords(passwordsPath); err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+	}
 
 	if *one {
 		if flag.NArg() != 1 {
@@ -208,6 +226,9 @@ func scoreIsolated(exe, path string, withRender bool, dpi float32, timeout time.
 	if withRender {
 		args = append(args, "-render", "-dpi", fmt.Sprint(dpi))
 	}
+	if passwordsPath != "" {
+		args = append(args, "-passwords", passwordsPath)
+	}
 	args = append(args, path)
 
 	ctx := context.Background()
@@ -300,14 +321,16 @@ func scoreNow(path string, withRender bool, dpi float32) (r result) {
 		}
 	}()
 
-	document, err := pdfbox.LoadPDF(path)
+	document, err := openDocument(path)
 	if err != nil {
 		r.open = short(err)
-		if strings.Contains(r.open, "password is incorrect") {
+		if _, given := passwordFor(path); !given && strings.Contains(r.open, "password is incorrect") {
 			// Not a failure of anything. The corpora carry encrypted documents
-			// whose passwords live in the Java test that reads them, and this
-			// tool has no way to know one. Counted apart from the rest so the
-			// open rate is not quietly wrong.
+			// whose passwords live in the tests that read them; a file with no
+			// password in the -passwords table is counted apart from the rest
+			// so the open rate is not quietly wrong. A file the table does give
+			// a password for, and whose password is refused, keeps its error:
+			// that is a failure.
 			r.open = "encrypted"
 		}
 		return r
@@ -656,4 +679,53 @@ func compareOracle(path string, results []result) (int, error) {
 		fmt.Fprintln(out, line)
 	}
 	return openBehind + textBehind, nil
+}
+
+// passwordsPath is the -passwords table, handed on to each child process.
+var passwordsPath string
+
+// passwords are the rows of that table: a path ending and the password for the
+// file whose path ends that way.
+var passwords [][2]string
+
+// loadPasswords reads a table of <path ending>\t<password>, one file per line.
+// A path ending matches a file whose slash-separated path is that ending or
+// ends with "/" and that ending, so "pdfjs/issue3371.pdf" names the same file
+// here and in the PDFBox driver, which is handed paths from the repository
+// root. Blank lines and lines starting with # are ignored.
+func loadPasswords(path string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		ending, password, ok := strings.Cut(line, "\t")
+		if !ok {
+			return fmt.Errorf("%s: a line with no tab: %q", path, line)
+		}
+		passwords = append(passwords, [2]string{filepath.ToSlash(ending), password})
+	}
+	return nil
+}
+
+// passwordFor answers the password the table gives a file, if it gives one.
+func passwordFor(path string) (string, bool) {
+	slashed := filepath.ToSlash(path)
+	for _, row := range passwords {
+		if slashed == row[0] || strings.HasSuffix(slashed, "/"+row[0]) {
+			return row[1], true
+		}
+	}
+	return "", false
+}
+
+// openDocument opens a file, with its password where the table has one.
+func openDocument(path string) (*pdmodel.PDDocument, error) {
+	if password, ok := passwordFor(path); ok {
+		return pdfbox.LoadPDFWithPassword(path, password)
+	}
+	return pdfbox.LoadPDF(path)
 }
