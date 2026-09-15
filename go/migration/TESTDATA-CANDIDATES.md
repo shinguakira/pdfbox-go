@@ -30,8 +30,8 @@ Counted 2026-09-13 against each repository's default branch.
 
 | Source | PDFs | Where | Licence | State |
 | --- | ---: | --- | --- | --- |
-| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched |
-| [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | not fetched |
+| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | **all fetched** 2026-09-16, with the passwords and keys its tests open 229 of them with |
+| [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | **all fetched** 2026-09-16, the same for 235 |
 | [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest/qpdf` 639, `qpdf/qtest/storage` 2, and 76 more | Apache-2.0 | **639 fetched**, 78 not |
 | [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |
 | [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | not fetched |
@@ -87,6 +87,24 @@ catalogue was written for Java→C#; this port is Java→Go, so the particulars
 differ and the *list of painful places* does not.
 [`conventions/prior-art.md`](conventions/prior-art.md) is where that belongs if
 it is ever pursued.
+
+**The rest of iText's organisation, not fetched.** `itext-java` and
+`itext-dotnet` are iText Core; the other 45 public repositories of
+[github.com/itext](https://github.com/itext) are its add-ons, samples and
+tools, and were counted on 2026-09-16 from each default branch's tree. They are
+not fetched, and nothing on `track/testdata-itext` scored them:
+
+| Repository | PDFs | What they are |
+| --- | ---: | --- |
+| `itext-pdfhtml-java`, `itext-pdfhtml-dotnet` | 7,630, 7,649 | pdfHTML's tests: HTML and CSS in, PDF out, nearly all `cmp_` files iText wrote |
+| `itext-publications-samples-dotnet`, `-examples-java` | 1,013, 762 | the published examples' expected output |
+| `itextpdf`, `itextsharp` | 854, 849 | iText 5, the previous generation, with its own test resources |
+| `i5js-sandbox` (archived) | 515 | iText 5 examples |
+| `itext-publications-book-java`, `-highlevel-java`, `-jumpstart-java`, `-signatures-java`, `-signing-examples-java` | 331, 112, 48, 173, 7 | the books' examples |
+| `itext-pdfsweep-java`, `itext-pdfsweep-dotnet` | 252, 254 | redaction inputs and results |
+| `itext-pdfocr-java`, `itext-pdfocr-dotnet` | 169, 196 | OCR output |
+| 16 more with any PDFs — `i5ns-book` 18, `i5js-book` 12, `itext-2022-customer-event` 11, `rups` 10, `itext-android-ui` 8, `pdfcop` 7, `itext-python-example` 7, `GIDS2026` 5, `ndi-demo` 4, `i5js-tutorial` 4, `i5ns-tutorial` 4, `i7js-zugferd` 3, `pdfdeserializer` 3, `AndroidPdfViewer` 1, `pdfchain` 1, `wtpdf-demo` 1 | 99 | |
+| the other 13 | 0 | |
 
 ### QPDF
 
@@ -166,7 +184,9 @@ changes that; this is about reading their files.
 3. **pdfium** — 301, BSD, and brings expected images with it.
 4. **iText** — 6,897, and the reason it is fourth rather than first is that it is
    larger than everything above put together and wants its own decision about how
-   much of it to carry.
+   much of it to carry. **Taken 2026-09-16, all of it and both languages, on
+   `track/testdata-itext`**; [`TESTDATA.md`](TESTDATA.md), "iText against the
+   Java", has what it scored.
 5. **MuPDF via `tests.git`** — only when a renderer question needs it.
 
 Each one that lands gets a row in [`TESTDATA.md`](TESTDATA.md) with what it

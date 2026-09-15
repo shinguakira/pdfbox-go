@@ -62,6 +62,24 @@ It compiles `io`, `fontbox` and `pdfbox` out of the tree with `javac` — no Mav
 — runs PDFBox over the same list, and writes the same table, which
 `corpus -oracle` then joins.
 
+**Measured again 2026-09-16 over 18,947 files, iText's 13,857 among them, and
+with the text compared by digest as well as by length. 2 of 18,947 disagree, the
+same two.** iText's files, opened with the passwords and certificates their tests
+use, found two port defects and a third in the pdf.js files once the digest went
+over them: mixed-direction text written in logical order, RSAES-OAEP certificate
+recipients refused, and a text position reversed by its script rather than its
+direction. All three are fixed. They also found JAVA-BUGS 89, carried. See
+[`TESTDATA.md`](TESTDATA.md), "iText against the Java".
+
+```
+18947 files, opened 19201 ways
+  open    both 19094, neither 107, behind 0, ahead 0
+  pages   0 disagree
+  text    both 19085, neither 9, behind 0, ahead 0
+  chars   19083 the same length, 2 not
+  digest  19083 of the same length the same text, 0 not
+```
+
 **Measured again 2026-09-15 over 5,090 files, pdf.js's 1,443 among them. 2 of
 5,090 disagree, and both are Java bugs the Go fixes on purpose — JAVA-BUGS 15
 and 30.** pdf.js's files found one port defect behind twelve of their fourteen
@@ -118,7 +136,13 @@ standard library, and `golang.org/x/text/unicode/bidi` resolves a word made only
 of paragraph separators to zero runs, then indexes the first of them when asked
 the direction. Java returns such a word untouched. `direction.go` now answers
 before asking, and `pdfbox/text/corpusdefects_test.go` pins the empty string and
-all six code points of Unicode bidi class B.
+all six code points of Unicode bidi class B. **The substitution was wrong in a
+second way, found 2026-09-16 by iText's files:** `x/text` answers a word's runs
+in logical order, and a word with a number inside right-to-left text came out
+with its runs in that order rather than the visual one `Bidi.reorderVisually`
+gives. `direction.go` now asks `go/javatext/bidi`, the port of `java.text.Bidi`
+that `AbstractGlyphLayoutProcessor` already used, and
+`TestHandleDirectionPutsRunsInVisualOrder` holds PDFBox's own answers.
 
 **The gap it looked like it corroborated, and did not.** Eighteen
 `qpdf/issue-*.pdf` files come back `Missing root object specification in trailer`
@@ -1429,6 +1453,19 @@ Two deliberate departures:
 normalisation and the bidi reordering the stripper needs and the Go standard
 library does not carry.
 
+**Two stand-ins for the JDK's Unicode support were wrong, found 2026-09-16 by
+the digest of the text on `track/testdata-itext`.** `handleDirection` wrote a
+word's runs in the logical order `x/text` answers them in, where Java reorders
+them visually; it now asks `go/javatext/bidi`. And
+`TextPosition.VisuallyOrderedUnicode` asked whether a code point belongs to a
+right-to-left script, where Java asks `Character.getDirectionality` for R or AL;
+it now asks the bidi class `x/text` holds, for an assigned code point. That
+leaves one deliberate difference, measured over every code point against JDK 17:
+the 58 right-to-left characters Unicode 14 added, Arabic Extended-B and Old
+Uyghur among them, are right to left here and undefined in a JDK of Unicode 13,
+as `IsDiacritic`'s Go categories are Unicode 15's.
+`pdfbox/text/corpusbidi_test.go` holds PDFBox's answers for both.
+
 ### The loader — slice 1's unfinished half, ported here
 
 `PLAN.md` slice 1 is "open a document" and lists `pdfbox/pdfparser` at 18 files.
@@ -1985,7 +2022,11 @@ file says so at the top:
 
 - **`cms.go`** reads a CMS enveloped-data blob: the key transport recipients,
   their identifiers, and the content once the RSA key has unwrapped it. Only
-  reading; the encrypting half would need an encoder.
+  reading; the encrypting half would need an encoder. **It unwrapped with PKCS#1
+  v1.5 alone until 2026-09-16**, and BouncyCastle also unwraps RSAES-OAEP, with
+  the hash, mask and label its parameters give; four of iText's test PDFs wrap
+  their key that way and did not open. `TestOAEPRecipientUnwraps`; see
+  [`TESTDATA.md`](TESTDATA.md), "iText against the Java".
 - **`pkcs12.go`** reads a PKCS#12 keystore — the RFC 7292 SHA-1 derivation, the
   MAC, 3DES for the shrouded key bags and 40-bit RC2 for the certificate bags,
   which is what the checked-in keystores use.

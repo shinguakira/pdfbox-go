@@ -54,7 +54,7 @@ test.
 | PoDoFo `podofo-resources` | 102 | not in `fetch-corpus.ps1` yet | one file per failure mode: every RC4 and AES key length, xref recovery, broken tables |
 | qpdf, the rest | 78 | a change to the qpdf suite's subtree | `qpdf/qtest/storage` 2, `examples/qtest` 49, `compare-for-test/qtest` 21, `libtests/qtest` 6 |
 | PDFium `testing/resources` | 301 | not in the script | renderer input, with the expected PNGs beside it |
-| iText, Java and .NET | 6,897 and 6,960 | not in the script | the largest set by far; AGPL, and wants a decision on how much to carry |
+| iText, Java and .NET | 6,897 and 6,960 | fetched 2026-09-16 on `track/testdata-itext` | the largest set by far; AGPL. See [`track-testdata-itext.md`](track-testdata-itext.md) |
 | MuPDF `tests.git` | not counted | a separate repository | renderer questions only |
 | SafeDocs issue-tracker corpus, batch 1 | 1.8 GB | tier 3 | every PDF attached to a PDFBOX issue; may contain malicious files |
 
@@ -82,7 +82,9 @@ Over all 5,090 files on disk outside the repository:
 pages it has, whether its text extracts, and **how many characters** that text
 has. It does not compare which characters they are, nor rendering, forms,
 annotations, saving, or image extraction. A wrong character in the right place,
-or a wrong pixel, passes.
+or a wrong pixel, passes. (That was the comparison of 2026-09-15. Since
+2026-09-16, on `track/testdata-itext`, it compares a digest of the text as well;
+rendering, forms, annotations, saving and images are still not compared.)
 
 ### Found and fixed on this branch
 
@@ -208,11 +210,16 @@ disagree, the same two.
 - [x] **T3.** Fetch pdf.js's test PDFs and score them. Done 2026-09-15: 1,443 on
   disk, all compared; the eight of U7 are not on disk.
 - [ ] **T4.** Fetch PDFium's 301.
-- [ ] **T5.** Decide how much of iText's 6,897 to carry, then fetch it.
+- [x] **T5.** Decide how much of iText's 6,897 to carry, then fetch it. Done
+  2026-09-16 on `track/testdata-itext`, which the user had made from this branch
+  for it: all of it, the Java repository's 6,897 and the .NET one's 6,960. See
+  [`track-testdata-itext.md`](track-testdata-itext.md).
 - [ ] **T6. Compare text content, not only its length.** A hash of each
   document's text, and of each page's to find where two differ, from both
   `JavaCorpus` and `cmd/corpus`. This is the change most likely to find defects
-  the current comparison cannot see.
+  the current comparison cannot see. **Half done 2026-09-16 on
+  `track/testdata-itext`:** both tables carry a digest of each document's text,
+  and `-oracle` compares it. Per page is not done.
 - [ ] **T7.** Compare rendering with PDFBox, page by page.
 - [ ] **T8.** MuPDF's `tests.git`, when a renderer question needs it.
 - [ ] **T9.** Fuzzing, with what it finds folded back into tests — the one line of

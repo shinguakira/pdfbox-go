@@ -34,6 +34,7 @@ change it to suit one branch — change the copy.
 | `track/raster` | [`track-raster.md`](track-raster.md) | open — the last port, see its A0 |
 | `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | open — **after `track/raster`**; not a port |
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
+| `track/testdata-itext` | [`track-testdata-itext.md`](track-testdata-itext.md) | open — from `track/testdata-sources` on 2026-09-16; iText's PDFs against PDFBox, and the text compared by digest |
 
 **Every slice and every earlier track is merged.** Two branches are open:
 `track/raster`, which is the last of the port, and `track/java-bug-fixes`,

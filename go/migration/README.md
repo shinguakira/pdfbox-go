@@ -118,8 +118,10 @@ over a list of documents, and writes the table `go/cmd/corpus` writes.
 non-zero when the port is behind.
 
 ```bash
-pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
+pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv,go/testdata/corpus/itext-java/_passwords.tsv,go/testdata/corpus/itext-dotnet/_passwords.tsv
 cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
+    -passwords testdata/corpus/itext-java/_passwords.tsv \
+    -passwords testdata/corpus/itext-dotnet/_passwords.tsv \
     -oracle testdata/oracle/java-corpus.tsv \
     ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
 ```
