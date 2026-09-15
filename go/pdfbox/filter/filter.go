@@ -92,8 +92,11 @@ func decodeParamsFor(dictionary *cos.Dictionary, index int) *cos.Dictionary {
 // comparing two references to the one instance.
 //
 // Java throws IOException("Invalid filter: " + name) for a name it does not
-// know. /Identity is not in Java's map either -- it is reached through
-// CryptFilter -- but slice 1 put it here and the parser depends on it.
+// know. /Identity is one of them: the identity filter is reached through
+// CryptFilter, not by name. Slice 1 put it in this switch with a note that the
+// parser depended on it; nothing did, and until 2026-09-15 a stream whose
+// /Filter was /Identity decoded here where PDFBox refuses it. See
+// TestByNameCoversEveryFilter.
 func ByName(name *cos.Name) (Filter, error) {
 	switch name {
 	case cos.FlateDecode, cos.Fl:
@@ -116,8 +119,6 @@ func ByName(name *cos.Name) (Filter, error) {
 		return JPX{}, nil
 	case cos.JBIG2Decode:
 		return JBIG2{}, nil
-	case cos.Identity:
-		return Identity{}, nil
 	}
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedFilter, name.Name())
 }

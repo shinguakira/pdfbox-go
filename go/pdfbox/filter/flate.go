@@ -42,9 +42,8 @@ func (Flate) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary, index 
 
 	// Skip the two zlib header bytes, as FlateFilterDecoderStream does. A
 	// stream too short to have them has nothing to inflate.
-	var header [2]byte
-	if _, err := io.ReadFull(r, header[:]); err != nil {
-		return result, nil
+	if err := skipZlibHeader(r); err != nil {
+		return result, err
 	}
 
 	// plainReader hides a ReadByte the source may have, so compress/flate reads
@@ -58,17 +57,31 @@ func (Flate) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary, index 
 	return result, nil
 }
 
-// endAtDamage hands on what inflates and ends the data at the first error,
-// which it logs. FlateFilterDecoderStream catches the DataFormatException, logs
-// it and returns whatever inflated -- its comment reads "don't throw an
-// exception, use the already read data or an empty stream" -- so a damaged PDF
-// stays readable up to the damage: the predictor sees the bytes before it, and
-// then the end of the data.
+// skipZlibHeader reads past the two bytes FlateFilterDecoderStream's
+// constructor reads with two bare in.read() calls. A source that ends first
+// answers -1 to them and leaves nothing to inflate, which is not an error; a
+// source that fails throws out of the constructor, and so does its error here.
+func skipZlibHeader(r io.Reader) error {
+	var header [2]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil &&
+		!errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return err
+	}
+	return nil
+}
+
+// endAtDamage hands on what inflates and ends the data at damage, which it
+// logs. FlateFilterDecoderStream catches the DataFormatException, logs it and
+// returns whatever inflated -- its comment reads "don't throw an exception, use
+// the already read data or an empty stream" -- so a damaged PDF stays readable
+// up to the damage: the predictor sees the bytes before it, and then the end of
+// the data.
 //
-// Every error ends the data, a failing source included. That is what Decode did
-// when it buffered the inflated bytes first and ran the predictor over whatever
-// the buffer held, and it is kept exactly. Java lets a source's IOException out;
-// that difference is older than this reader.
+// Only damage. fetch reads the source outside its try block, so an IOException
+// from the source comes out of decode, and a source that fails here fails
+// Decode with its own error. Until 2026-09-15 every error ended the data, which
+// is what Decode did when it buffered the inflated bytes first; see
+// TestFlateLetsAFailingSourceOut.
 type endAtDamage struct {
 	inflated io.Reader
 	ended    bool
@@ -80,8 +93,12 @@ func (e *endAtDamage) Read(p []byte) (int, error) {
 	}
 	n, err := e.inflated.Read(p)
 	if err != nil {
+		if !errors.Is(err, io.EOF) && !isDeflateDamage(err) {
+			// the source itself failed; Java lets this one out
+			return n, err
+		}
 		e.ended = true
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			slog.Warn("filter: premature end of flate stream", "err", err)
 		}
 		if n > 0 {
@@ -183,6 +200,10 @@ func NewFlateDecoderReader(r io.Reader) (io.ReadCloser, error) {
 	// skip zlib header
 	var header [2]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			// the source failed, which throws out of Java's constructor
+			return nil, err
+		}
 		// A stream too short to have a header has nothing to inflate; Java's
 		// two bare in.read() calls answer -1 and carry on to inflate nothing.
 		return io.NopCloser(bytes.NewReader(nil)), nil
