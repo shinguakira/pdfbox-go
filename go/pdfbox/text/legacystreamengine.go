@@ -3,6 +3,7 @@ package text
 import (
 	"math"
 
+	"github.com/shinguakira/pdfbox-go/go/fontbox/ttf"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator/markedcontent"
 	statepr "github.com/shinguakira/pdfbox-go/go/pdfbox/contentstream/operator/state"
@@ -127,19 +128,24 @@ func (e *LegacyPDFStreamEngine) ShowGlyph(textRenderingMatrix *util.Matrix, f fo
 		}
 		displacementX = width / 1000
 		// there may be an additional scaling factor for true type fonts
-		if ttfFont, ok := f.(*font.PDTrueTypeFont); ok {
-			if ttf := ttfFont.TrueTypeFont(); ttf != nil {
-				unitsPerEm, err := ttf.UnitsPerEm()
-				if err != nil {
-					return err
-				}
-				if unitsPerEm != 1000 {
-					displacementX *= 1000 / float32(unitsPerEm)
-				}
+		var trueType *ttf.TrueTypeFont
+		switch typed := f.(type) {
+		case *font.PDTrueTypeFont:
+			trueType = typed.TrueTypeFont()
+		case *font.PDType0Font:
+			if cidFont, ok := typed.DescendantFont().(*font.PDCIDFontType2); ok {
+				trueType = cidFont.TrueTypeFont()
 			}
 		}
-		// the Type 0 branch Java also has needs the CID fonts, which a later
-		// slice brings
+		if trueType != nil {
+			unitsPerEm, err := trueType.UnitsPerEm()
+			if err != nil {
+				return err
+			}
+			if unitsPerEm != 1000 {
+				displacementX *= 1000 / float32(unitsPerEm)
+			}
+		}
 	}
 
 	//

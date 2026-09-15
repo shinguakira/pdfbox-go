@@ -42,16 +42,28 @@ const awtReferencePDFs = "../../../pdfbox-layout-awt/src/test/resources/pdf/"
 // GlyphLayoutLigaturesAndKerningTest.testLigaturesAndKerning's
 // checkRenderIdent.
 //
-// The 2151 pixels are the FiraCode ligature deviations of reference_test.go's
-// knownDeviations: AWT substitutes them and this port does not, so the first
-// two lines of the page carry different glyphs.
+// The 2160 pixels are the lines reference_test.go's knownDeviations lists, where
+// the two files carry different glyphs: the two FiraCode lines, objects 0 and 1,
+// in rows 3-13 and 23-33; Thai, object 6, rows 121-134; and the two Bengali
+// objects, 7 and 8, rows 144-159 and 174-180. No pixel outside them differs.
+//
+// It was 2151 until Type 0 glyphs were advanced by their /W widths, as PDFBox
+// advances them, rather than by the font program's: see
+// TestType0DisplacementIsTheDescendantWidth. The two files hold different /W
+// entries on the Bengali line, so the glyphs after the first difference moved
+// by different fractions of a pixel -- 17 pixels came to differ and 8 stopped,
+// all in rows 148-157.
 func TestLigaturesAndKerningRenderIdent(t *testing.T) {
-	checkRenderIdent(t, "GlyphLayoutLigaturesAndKerning.pdf", ligaturesAndKerningPage, 2151)
+	checkRenderIdent(t, "GlyphLayoutLigaturesAndKerning.pdf", ligaturesAndKerningPage, 2160)
 }
 
 // TestBidiRenderIdent is GlyphLayoutBidiTest.testBidi's.
+//
+// The 2440 pixels are the two Arabic lines of knownDeviations, rows 2-17 and
+// 26-40. It was 2433 until the /W change above: on the second line 12 pixels
+// came to differ and 5 stopped, all in rows 28-36.
 func TestBidiRenderIdent(t *testing.T) {
-	checkRenderIdent(t, "GlyphLayoutBidi.pdf", bidiPage, 2433)
+	checkRenderIdent(t, "GlyphLayoutBidi.pdf", bidiPage, 2440)
 }
 
 // TestSupplementaryPlaneRenderIdent is GlyphLayoutSMPTest's, and it is exact.
