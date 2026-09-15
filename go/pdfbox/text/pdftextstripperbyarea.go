@@ -16,7 +16,7 @@ type PDFTextStripperByArea struct {
 
 	regions             []string
 	regionArea          map[string]*geom.Rectangle2D
-	regionCharacterList map[string][][]*TextPosition
+	regionCharacterList map[string]*articleLists
 	regionText          map[string]*strings.Builder
 }
 
@@ -25,7 +25,7 @@ func NewPDFTextStripperByArea() *PDFTextStripperByArea {
 	s := &PDFTextStripperByArea{
 		PDFTextStripper:     NewPDFTextStripper(),
 		regionArea:          map[string]*geom.Rectangle2D{},
-		regionCharacterList: map[string][][]*TextPosition{},
+		regionCharacterList: map[string]*articleLists{},
 		regionText:          map[string]*strings.Builder{},
 	}
 	s.PDFTextStripper.SetShouldSeparateByBeads(false)
@@ -33,6 +33,9 @@ func NewPDFTextStripperByArea() *PDFTextStripperByArea {
 	// setting cannot be turned back on; the port keeps that below.
 	s.SetOverrides(s)
 	s.SetProcessTextPosition(s.ProcessTextPosition)
+	// Java's processPage calls writePage virtually, which this type
+	// overrides; see TestStripperByAreaWriteTextReachesItsWritePage.
+	s.PDFTextStripper.writePage = s.WritePage
 	return s
 }
 
@@ -78,7 +81,7 @@ func (s *PDFTextStripperByArea) ExtractRegions(page *pdmodel.PDPage) error {
 		s.SetStartPage(s.CurrentPageNo())
 		s.SetEndPage(s.CurrentPageNo())
 		// reset the stored text for the region so this class can be reused.
-		s.regionCharacterList[regionName] = [][]*TextPosition{nil}
+		s.regionCharacterList[regionName] = &articleLists{lists: [][]*TextPosition{nil}}
 		s.regionText[regionName] = &strings.Builder{}
 	}
 	return s.ProcessPage(page)
@@ -92,7 +95,6 @@ func (s *PDFTextStripperByArea) ProcessTextPosition(text *TextPosition) error {
 			if err := s.PDFTextStripper.ProcessTextPosition(text); err != nil {
 				return err
 			}
-			s.regionCharacterList[key] = s.charactersByArticle
 		}
 	}
 	return nil
@@ -108,29 +110,4 @@ func (s *PDFTextStripperByArea) WritePage() error {
 		}
 	}
 	return nil
-}
-
-// ProcessPage walks one page, writing out the text of each region.
-//
-// Java gets here through the superclass, which calls the overridden writePage;
-// Go embedding does not dispatch, so the port repeats the two lines that differ.
-func (s *PDFTextStripperByArea) ProcessPage(page *pdmodel.PDPage) error {
-	if s.CurrentPageNo() < s.StartPageNo() || s.CurrentPageNo() > s.EndPageNo() {
-		return nil
-	}
-	if err := s.StartPage(page); err != nil {
-		return err
-	}
-	// Java's processPage clears this before walking the page. Without it the
-	// duplicate suppression still holds the previous extraction, and a stripper
-	// used twice -- which extractRegions says it may be -- reports nothing the
-	// second time.
-	s.clearCharacterListMapping()
-	if err := s.LegacyPDFStreamEngine.ProcessPage(page); err != nil {
-		return err
-	}
-	if err := s.WritePage(); err != nil {
-		return err
-	}
-	return s.EndPage(page)
 }
