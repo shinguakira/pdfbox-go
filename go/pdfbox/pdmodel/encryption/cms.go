@@ -16,6 +16,14 @@ import (
 var (
 	oidEnvelopedData    = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 3}
 	oidRSAEncryption    = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
+	oidRSAESOAEP        = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 7}
+	oidMGF1             = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 8}
+	oidPSpecified       = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 9}
+	oidSHA1             = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	oidSHA224           = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 4}
+	oidSHA256           = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	oidSHA384           = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	oidSHA512           = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
 	oidDESEDE3CBC       = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 7}
 	oidAES128CBC        = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 2}
 	oidAES192CBC        = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 22}
@@ -74,19 +82,25 @@ type keyTransRecipientInfo struct {
 // Stands for org.bouncycastle.cms.RecipientInformation, of which PDFBox uses
 // the recipient identifier and the content it unwraps.
 type cmsRecipient struct {
-	issuer            []byte
-	serialNumber      *big.Int
-	subjectKeyID      []byte
-	encryptedKey      []byte
-	keyEncryptionAlgo asn1.ObjectIdentifier
-	envelope          *cmsEnvelopedData
+	issuer        []byte
+	serialNumber  *big.Int
+	subjectKeyID  []byte
+	encryptedKey  []byte
+	keyEncryption algorithmIdentifier
+	envelope      *cmsEnvelopedData
 }
 
 // cmsEnvelopedData is a parsed CMS enveloped-data blob.
 //
 // Stands for org.bouncycastle.cms.CMSEnvelopedData. Only the key transport
-// recipient kind is read, which is the only kind a PDF /Recipients entry
-// carries.
+// recipient kind is read. It is the kind PDFBox writes and the kind an RSA
+// certificate gets, but not the only kind a /Recipients entry carries: Acrobat
+// encrypts for an elliptic curve certificate with a key agreement recipient, as
+// in iText's kernel/crypto/PdfDecryptingTest/adobe/withCertificate/aes256EcdsaP256.pdf.
+// BouncyCastle reads that recipient and matches it to the certificate, and PDFBox
+// then fails with a ClassCastException, handing it the key transport unwrapper.
+// Here it is skipped, and the handler answers that no recipient matches. Both
+// refuse the document; the messages differ.
 type cmsEnvelopedData struct {
 	recipients                 []*cmsRecipient
 	contentEncryptionAlgorithm algorithmIdentifier
@@ -123,9 +137,9 @@ func newCMSEnvelopedData(der []byte) (*cmsEnvelopedData, error) {
 			return nil, fmt.Errorf("encryption: reading a CMS recipient: %w", err)
 		}
 		recipient := &cmsRecipient{
-			encryptedKey:      ktri.EncryptedKey,
-			keyEncryptionAlgo: ktri.KeyEncryptionAlgorithm.Algorithm,
-			envelope:          data,
+			encryptedKey:  ktri.EncryptedKey,
+			keyEncryption: ktri.KeyEncryptionAlgorithm,
+			envelope:      data,
 		}
 		if ktri.RID.Class == asn1.ClassContextSpecific && ktri.RID.Tag == 0 {
 			recipient.subjectKeyID = ktri.RID.Bytes
@@ -161,21 +175,113 @@ func (r *cmsRecipient) matches(issuerDER []byte, serialNumber *big.Int,
 // content unwraps the content encryption key with the given private key and
 // decrypts the enveloped content, which is BouncyCastle's
 // RecipientInformation.getContent(new JceKeyTransEnvelopedRecipient(key)).
+//
+// BouncyCastle unwraps with the algorithm the recipient names, and the two a
+// key transport recipient names are RSA with PKCS#1 v1.5 padding, which is what
+// PDFBox writes, and RSAES-OAEP, which is what other writers use -- iText among
+// them. OAEP carries its hash, its mask generation hash and its label in the
+// algorithm's parameters, and BouncyCastle hands those to the cipher as they
+// are, defaults included.
 func (r *cmsRecipient) content(privateKey crypto.PrivateKey) ([]byte, error) {
-	if !r.keyEncryptionAlgo.Equal(oidRSAEncryption) {
+	var options crypto.DecrypterOpts
+	switch algorithm := r.keyEncryption.Algorithm; {
+	case algorithm.Equal(oidRSAEncryption):
+	case algorithm.Equal(oidRSAESOAEP):
+		oaep, err := rsaesOAEPOptions(r.keyEncryption.Parameters)
+		if err != nil {
+			return nil, err
+		}
+		options = oaep
+	default:
 		return nil, fmt.Errorf("encryption: key encryption algorithm %v is not supported",
-			r.keyEncryptionAlgo)
+			algorithm)
 	}
 	rsaKey, ok := privateKey.(*rsa.PrivateKey)
 	if !ok {
 		return nil, errors.New("encryption: the private key is not an RSA key")
 	}
-	contentKey, err := rsa.DecryptPKCS1v15(nil, rsaKey, r.encryptedKey)
+	var contentKey []byte
+	var err error
+	if options == nil {
+		contentKey, err = rsa.DecryptPKCS1v15(nil, rsaKey, r.encryptedKey)
+	} else {
+		contentKey, err = rsaKey.Decrypt(nil, r.encryptedKey, options)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("encryption: unwrapping the content key: %w", err)
 	}
 	return decryptCMSContent(r.envelope.contentEncryptionAlgorithm, contentKey,
 		r.envelope.encryptedContent)
+}
+
+// rsaesOAEPParams is RFC 8017's RSAES-OAEP-params. Every field has a default,
+// SHA-1 for both hashes and an empty label, and a DER writer leaves a default
+// out.
+type rsaesOAEPParams struct {
+	HashAlgorithm    algorithmIdentifier `asn1:"optional,explicit,tag:0"`
+	MaskGenAlgorithm algorithmIdentifier `asn1:"optional,explicit,tag:1"`
+	PSourceAlgorithm algorithmIdentifier `asn1:"optional,explicit,tag:2"`
+}
+
+// rsaesOAEPOptions reads RSAES-OAEP-params into the options Go's RSA decrypts
+// with.
+func rsaesOAEPOptions(parameters asn1.RawValue) (*rsa.OAEPOptions, error) {
+	var params rsaesOAEPParams
+	if len(parameters.FullBytes) > 0 && parameters.Tag != asn1.TagNull {
+		if _, err := asn1.Unmarshal(parameters.FullBytes, &params); err != nil {
+			return nil, fmt.Errorf("encryption: reading the RSAES-OAEP parameters: %w", err)
+		}
+	}
+	options := &rsa.OAEPOptions{Hash: crypto.SHA1, MGFHash: crypto.SHA1}
+	if len(params.HashAlgorithm.Algorithm) > 0 {
+		hash, err := oaepHash(params.HashAlgorithm.Algorithm)
+		if err != nil {
+			return nil, err
+		}
+		options.Hash = hash
+	}
+	if len(params.MaskGenAlgorithm.Algorithm) > 0 {
+		if !params.MaskGenAlgorithm.Algorithm.Equal(oidMGF1) {
+			return nil, fmt.Errorf("encryption: OAEP mask generation function %v is not supported",
+				params.MaskGenAlgorithm.Algorithm)
+		}
+		var mgfHash algorithmIdentifier
+		if _, err := asn1.Unmarshal(params.MaskGenAlgorithm.Parameters.FullBytes, &mgfHash); err != nil {
+			return nil, fmt.Errorf("encryption: reading the OAEP mask generation hash: %w", err)
+		}
+		hash, err := oaepHash(mgfHash.Algorithm)
+		if err != nil {
+			return nil, err
+		}
+		options.MGFHash = hash
+	}
+	if len(params.PSourceAlgorithm.Algorithm) > 0 {
+		if !params.PSourceAlgorithm.Algorithm.Equal(oidPSpecified) {
+			return nil, fmt.Errorf("encryption: OAEP label source %v is not supported",
+				params.PSourceAlgorithm.Algorithm)
+		}
+		if _, err := asn1.Unmarshal(params.PSourceAlgorithm.Parameters.FullBytes, &options.Label); err != nil {
+			return nil, fmt.Errorf("encryption: reading the OAEP label: %w", err)
+		}
+	}
+	return options, nil
+}
+
+// oaepHash answers the hash an OAEP parameter names.
+func oaepHash(algorithm asn1.ObjectIdentifier) (crypto.Hash, error) {
+	switch {
+	case algorithm.Equal(oidSHA1):
+		return crypto.SHA1, nil
+	case algorithm.Equal(oidSHA224):
+		return crypto.SHA224, nil
+	case algorithm.Equal(oidSHA256):
+		return crypto.SHA256, nil
+	case algorithm.Equal(oidSHA384):
+		return crypto.SHA384, nil
+	case algorithm.Equal(oidSHA512):
+		return crypto.SHA512, nil
+	}
+	return 0, fmt.Errorf("encryption: OAEP hash %v is not supported", algorithm)
 }
 
 // decryptCMSContent decrypts the enveloped content with the named algorithm.

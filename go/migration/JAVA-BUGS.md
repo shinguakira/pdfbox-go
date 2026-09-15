@@ -4954,3 +4954,67 @@ values.
 
 **Confidence** certain. The loop is quoted, and the hang was run rather than
 read.
+
+## 89. `PublicKeySecurityHandler` copies a 256-bit key out of a 160-bit digest for an encryption version it does not implement
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeySecurityHandler.java`,
+`prepareForDecryption`.
+
+The key length comes from the default crypt filter's `/Length`, or the encryption
+dictionary's, and the digest from the version:
+
+```java
+int encryptionVersion = encryption.getVersion();
+if (encryptionVersion == 4 || encryptionVersion == 5)
+{
+    ...
+    if (encryptionVersion == 4)
+    {
+        mdResult = MessageDigests.getSHA1().digest(sha1Input);
+    }
+    else
+    {
+        mdResult = MessageDigests.getSHA256().digest(sha1Input);
+    }
+    ...
+}
+else
+{
+    mdResult = MessageDigests.getSHA1().digest(sha1Input);
+}
+
+// we have the encryption key ...
+setEncryptionKey(new byte[getKeyLength() / 8]);
+System.arraycopy(mdResult, 0, getEncryptionKey(), 0, getKeyLength() / 8);
+```
+
+**What it does** A version other than 4 or 5 gets a 20-byte SHA-1 digest,
+whatever key length was asked for. Where that is more than 160 bits, the copy
+reads past the digest and `ArrayIndexOutOfBoundsException` comes out of
+`Loader.loadPDF` — an unchecked exception, where every other refusal of an
+encryption dictionary is an `IOException`.
+
+ISO/TS 32003 adds `/V 6` with the `AESV4` crypt filter method, AES-256 in GCM
+mode, and iText writes it for certificate encryption. Four of its test PDFs are
+such documents: `kernel/crypto/securityhandler/PubSecHandlerUsingAesGcmTest/externalFile.pdf`
+and `invalidCryptFilter.pdf`, in `itext-java` and in `itext-dotnet`, each `/V 6`,
+`/CFM /AESV4`, `/Length 256`. Opened with the certificate and key iText's test
+decrypts them with, PDFBox answers `ArrayIndexOutOfBoundsException: arraycopy:
+last source index 32 out of bounds for byte[20]` at line 288.
+
+**What correct would be** refusing a version the handler does not implement
+with an `IOException` before deriving a key, the way `StandardSecurityHandler`
+answers "Unknown Encryption Revision" for a revision it does not know.
+
+**Where the Go carries it** `go/pdfbox/pdmodel/encryption/publickeysecurityhandler.go`,
+`PrepareForDecryption`: `copy(h.EncryptionKey(), mdResult[:h.KeyLength()/8])`
+panics on the same four files with "slice bounds out of range [:32] with
+capacity 20". `cmd/corpus` writes that panic to the open column, as JavaCorpus
+writes the exception, so the corpus comparison reports neither side opening
+them. Pinned by `TestVersion6CertificateEncryptionReadsPastTheDigest` in
+`go/pdfbox/pdmodel/encryption/javabug89_test.go`, on `TestPublicKeyEncryption`'s
+own `AESkeylength256.pdf` with its `/V 5` written `/V 6`, which PDFBox refuses
+with the same exception at the same line.
+
+**Confidence** certain. Both sides were run on the four files, and on the
+rewritten PDFBox test file.
