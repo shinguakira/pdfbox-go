@@ -508,17 +508,23 @@ func (f *TrueTypeFont) unicodeCmapImpl(isStrict bool) (*CmapSubtable, error) {
 
 // GetPath returns the outline of the named glyph.
 func (f *TrueTypeFont) GetPath(name string) (*geom.Path2D, error) {
+	return f.getPath(name, f.Glyph)
+}
+
+// getPath is GetPath asking glyphTable for the table, which is Java's virtual
+// getGlyph: OpenTypeFont overrides it, and passes its own.
+func (f *TrueTypeFont) getPath(name string, glyphTable func() (*GlyphTable, error)) (*geom.Path2D, error) {
 	gid, err := f.NameToGID(name)
 	if err != nil {
 		return nil, err
 	}
 
 	// some glyphs have no outlines (e.g. space, table, newline)
-	glyphTable, err := f.Glyph()
+	table, err := glyphTable()
 	if err != nil {
 		return nil, err
 	}
-	glyph, err := glyphTable.GetGlyph(gid)
+	glyph, err := table.GetGlyph(gid)
 	if err != nil {
 		return nil, err
 	}

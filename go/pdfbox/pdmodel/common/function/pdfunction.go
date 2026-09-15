@@ -210,8 +210,10 @@ func (b *pdFunctionBase) SetDomainValues(domainValues *cos.Array) {
 // rangeValues returns the /Range array.
 //
 // PDFunctionTypeIdentity overrides it to return null; Go has no dynamic
-// dispatch on an embedded method, so the only caller that depends on that
-// override -- NumberOfOutputParameters -- is written out on the override too.
+// dispatch on an embedded method, so the callers that depend on that override
+// -- NumberOfOutputParameters and RangeForOutput -- are written out on the
+// override too. clipToRangeAll is the third caller, and only types 2 and 3
+// reach it.
 func (b *pdFunctionBase) rangeValues() *cos.Array {
 	if b.rangeArray == nil {
 		b.rangeArray = b.COSDictionary().GetCOSArray(cos.Range)
@@ -296,11 +298,18 @@ func (f *PDFunctionTypeIdentity) Eval(input []float32) ([]float32, error) {
 // rangeValues returns nil, which is Java's override.
 func (f *PDFunctionTypeIdentity) rangeValues() *cos.Array { return nil }
 
+// RangeForOutput returns a range over no array. Java's base method reads
+// getRangeValues, which this type answers with null; the port's base method would
+// read the identity function's dictionary, which it does not have.
+func (f *PDFunctionTypeIdentity) RangeForOutput(n int) *common.PDRange {
+	return common.NewPDRangeOfIndex(f.rangeValues(), n)
+}
+
 // NumberOfOutputParameters is 0, because rangeValues is null.
 //
 // Java reaches the override through dynamic dispatch from the base class; Go
-// has no such dispatch on an embedded method, so the one caller that depends on
-// it is written out here.
+// has no such dispatch on an embedded method, so the callers that depend on it
+// are written out here, this one and RangeForOutput.
 func (f *PDFunctionTypeIdentity) NumberOfOutputParameters() int { return 0 }
 
 // String is Java's toString.

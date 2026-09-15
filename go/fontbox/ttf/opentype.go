@@ -111,7 +111,9 @@ func (f *OpenTypeFont) Glyph() (*GlyphTable, error) {
 // GetPath returns the outline of the named glyph, in glyph space.
 func (f *OpenTypeFont) GetPath(name string) (*geom.Path2D, error) {
 	if !f.hasPostScriptTag || !f.IsSupportedOTF() {
-		return f.TrueTypeFont.GetPath(name)
+		// super.getPath, whose getGlyph is this type's, which refuses a
+		// PostScript font rather than answering no table
+		return f.TrueTypeFont.getPath(name, f.Glyph)
 	}
 	gid, err := f.NameToGID(name)
 	if err != nil {
