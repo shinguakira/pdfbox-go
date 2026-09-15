@@ -1028,7 +1028,7 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | done — the font and font descriptor members here, the rest arriving with their types up to slice 9. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package, so the five kinds it cannot name are asked of the cache by shape from `pdmodel` instead |
 | `DefaultResourceCache.java` | `resourcecache.go` | done in slice 9 — all eight kinds, each with the stable-cache bookkeeping, which the port writes once as a generic map rather than eight times. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
 | `PDPage.java` | `pdpage.go` | partial here — boxes, rotation, resources, contents. The `PDStream` methods came with slice 7 and everything else with slice 8; only `removePageResourceFromCache` is still absent |
-| `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
+| `PDPageTree.java` | `pdpagetree.go` | done — the reading constructor takes the `PDDocument`, as Java's does, and asks it for the `ResourceCache` each time a page is handed out, by index or by the walk |
 | `MissingResourceException.java` | `errors.go` | done |
 | `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started here — slice 3 for the document and its information, slice 8 for the catalogue |
 
@@ -1038,6 +1038,80 @@ needs `FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`,
 neither of which was ported then. `track/scratchfile` ported both and wired the
 fast path back in, so `ContentsForStreamParsing` now branches the way Java does
 -- including onto the predictor bug the fast path carries, JAVA-BUGS 63.
+
+### `PDPageTree` and the resource cache — two port defects, fixed on `track/performance`
+
+Java hands a page its resource cache at the moment the page is handed out:
+`PDPageTree.get(int)` and the iterator's `next()` each ask
+`document.getResourceCache()` there and then. The port got that wrong twice.
+
+1. **The walk handed out pages with no cache at all.** `All` built each page
+   with `NewPDPageOf`, where `Get` passed the tree's cache. Text extraction
+   walks the tree, so every font lookup built its font again; that was most of
+   the time the heaviest documents took — see
+   [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md). Fixed first.
+2. **The tree kept the cache it was made with.** `NewPDPageTreeOfCache` took
+   `document.ResourceCache()` once, when the tree was built, and `Get` — and,
+   after the first fix, `All` — handed that out for as long as the tree lived.
+   A cache set on the document afterwards reached only trees taken afterwards.
+   Found by review of the first fix. The tree now keeps the document, as Java's
+   does, through `NewPDPageTreeOfDocument`.
+
+Neither changes the text extracted or a page rendered. What they change is which
+cache a page reads its fonts, colour spaces and images through, and so what is
+built again and what memory can be let go.
+
+**What happens, run rather than read.** The same steps, on one page tree taken
+before any change, in PDFBox compiled from this tree and in the Go version at
+three points: before `track/performance`, after the first fix, and now. On
+`PDFBOX-4423-000746.pdf`, 33 pages and 8 font objects; A is the document's
+cache when the tree was taken, B the one set in its place.
+
+| step | PDFBox | before | after fix 1 | now |
+| --- | --- | --- | --- | --- |
+| walk, page 1 | A | none | A | A |
+| cache set to B; walk, page 2 | B | none | A | B |
+| cache set to B; `Get(0)` on the same tree | B | A | A | B |
+| cache set to B; `Get(0)` on a tree taken now | B | B | B | B |
+| cache set to nil; walk, page 3 | none | none | A | none |
+| cache set to nil; `Get(0)` on the same tree | none | A | A | none |
+| caching off, one font object read on every page | a font per read | a font per read | **one font for every read** | a font per read |
+| caching on again, the same tree | one font for every read | **a font per read** | one font for every read | one font for every read |
+| cache replaced, every font read again through the same tree: fonts left over from the first read | 0 of 8 | walk 0 of 139; by index **8 of 8** | **8 of 8** | 0 of 8 |
+
+`PDFBOX-4418-000671.pdf`, 19 pages and 8 font objects, answered every row the
+same way. So in the Go version before this, replacing or switching off the
+cache did nothing to a tree already in hand: the tree went on reading the old
+cache, and the fonts it had put there came back out. Now each row answers what
+PDFBox answers.
+
+**Memory.** The heap after forced collections, with the tree still held, before
+and after the document's cache is replaced by a new one:
+
+| | before, by index | after fix 1 | now |
+| --- | ---: | ---: | ---: |
+| `PDFBOX-4423-000746.pdf` | 10.4 → 10.4 MB | 10.4 → 10.4 MB | 10.4 → 9.5 MB |
+| `PDFBOX-4418-000671.pdf` | 7.4 → 7.4 MB | 7.4 → 7.4 MB | 7.4 → 7.0 MB |
+
+The fonts in these two documents are small, so the numbers say that the replaced
+cache is let go at all, not how much that is worth. PDFBox is not in this table:
+its cache holds each entry through a `SoftReference`, so what it keeps depends
+on the collector's pressure rather than on reachability.
+
+**Who could have seen defect 2.** Only a caller that replaces or switches off a
+document's cache with `SetResourceCache` while it holds a `PDPageTree`, or pages
+taken from one. `PDDocument.Pages()` builds a new tree on every call, so taking
+the tree again after the change always got the new cache. Nothing in this
+repository calls `SetResourceCache` outside the test for this, so no tool here —
+text extraction, rendering, the benchmark — behaved differently because of it,
+and the measurements taken before and after the fix are the same within their
+noise. Defect 1, by contrast, touched every text extraction, for time and memory.
+
+Pinned by `TestPDPageTreeAllHandsOutTheResourceCache` and
+`TestPDPageTreeAsksTheDocumentForTheCacheAsItHandsOutPages`, each of which fails
+on the code before its fix. The Go side of the run above is
+`go/testdata/oracle/cacheprobe`, which git ignores; the PDFBox side was a
+throwaway program doing the same steps against the javac-compiled tree.
 
 ### `pdfbox/pdmodel/graphics`
 

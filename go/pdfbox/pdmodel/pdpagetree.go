@@ -12,17 +12,15 @@ import (
 // document in an efficient manner.
 //
 // Port of org.apache.pdfbox.pdmodel.PDPageTree.
-//
-// Java's reading constructor also takes the PDDocument, only so that a page can
-// be handed the document's ResourceCache. Neither is ported yet, so neither is
-// the parameter. See migration/STATUS.md.
 type PDPageTree struct {
 	root *cos.Dictionary
 
-	// resourceCache is what each page of the tree reads its resources through.
-	// Java takes a PDDocument in the reading constructor, which is only there to
-	// reach this.
-	resourceCache ResourceCache
+	// resourceCache answers the cache a page reads its resources through, and
+	// is asked each time a page is handed out. Java's reading constructor keeps
+	// the PDDocument for this alone, and get(int) and the iterator's next() each
+	// ask it for getResourceCache() then, so a cache set on the document after
+	// the tree was made is the one its pages get. Nil for a tree with no cache.
+	resourceCache func() ResourceCache
 
 	// pageSet collects the nodes a search has been through, so that a tree
 	// pointing back at itself is caught instead of overflowing the stack.
@@ -42,16 +40,43 @@ func NewPDPageTree() *PDPageTree {
 
 // NewPDPageTreeOf returns the page tree under the given root, for reading.
 func NewPDPageTreeOf(root *cos.Dictionary) *PDPageTree {
-	return NewPDPageTreeOfCache(root, nil)
+	return newPDPageTree(root, nil)
+}
+
+// NewPDPageTreeOfDocument returns the page tree under the given root, whose
+// pages read their resources through the document's cache as it stands when
+// each page is handed out.
+//
+// Port of PDPageTree(COSDictionary, PDDocument). A nil document is Java's
+// optional one: pages get no cache.
+func NewPDPageTreeOfDocument(root *cos.Dictionary, document *PDDocument) *PDPageTree {
+	if document == nil {
+		return newPDPageTree(root, nil)
+	}
+	return newPDPageTree(root, document.ResourceCache)
 }
 
 // NewPDPageTreeOfCache returns the page tree under the given root, whose pages
-// read their resources through the given cache.
+// read their resources through the given cache, whatever becomes of the
+// document's. Java has no such constructor; a tree read from a document takes
+// NewPDPageTreeOfDocument.
 func NewPDPageTreeOfCache(root *cos.Dictionary, cache ResourceCache) *PDPageTree {
+	return newPDPageTree(root, func() ResourceCache { return cache })
+}
+
+// cache answers the cache a page handed out now reads its resources through.
+func (t *PDPageTree) cache() ResourceCache {
+	if t.resourceCache == nil {
+		return nil
+	}
+	return t.resourceCache()
+}
+
+func newPDPageTree(root *cos.Dictionary, resourceCache func() ResourceCache) *PDPageTree {
 	if root == nil {
 		panic("pdmodel: page tree root cannot be null")
 	}
-	tree := &PDPageTree{resourceCache: cache, pageSet: map[*cos.Dictionary]bool{}}
+	tree := &PDPageTree{resourceCache: resourceCache, pageSet: map[*cos.Dictionary]bool{}}
 	// repair bad PDFs which contain a Page dict instead of a page tree, see PDFBOX-3154
 	if cos.Page == root.GetCOSName(cos.Type) {
 		kids := cos.NewArray()
@@ -164,7 +189,7 @@ func (t *PDPageTree) All(yield func(*PDPage) bool) {
 		// PageIterator.next() hands each page the document's resource cache,
 		// as get(int) does. Without it every page read its fonts afresh; see
 		// TestPDPageTreeAllHandsOutTheResourceCache.
-		if !yield(NewPDPageOfCache(next, t.resourceCache)) {
+		if !yield(NewPDPageOfCache(next, t.cache())) {
 			return
 		}
 	}
@@ -178,7 +203,7 @@ func (t *PDPageTree) All(yield func(*PDPage) bool) {
 func (t *PDPageTree) Get(index int) *PDPage {
 	dict := t.get(index+1, t.root, 0)
 	sanitizeType(dict)
-	return NewPDPageOfCache(dict, t.resourceCache)
+	return NewPDPageOfCache(dict, t.cache())
 }
 
 // sanitizeType fills in a missing type and rejects one that is not Page.

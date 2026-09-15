@@ -297,7 +297,7 @@ func (c *PDDocumentCatalog) Pages() *PDPageTree {
 	if pages == nil {
 		return NewPDPageTree()
 	}
-	return NewPDPageTreeOfCache(pages, c.document.ResourceCache())
+	return NewPDPageTreeOfDocument(pages, c.document)
 }
 
 // Version returns the version of the PDF specification the catalogue claims.
