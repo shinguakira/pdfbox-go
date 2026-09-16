@@ -256,8 +256,7 @@ func (s *PDFTextStripper) ProcessPage(page *pdmodel.PDPage) error {
 	if err := s.EndPage(page); err != nil {
 		return err
 	}
-	// Java calls page.removePageResourceFromCache() here; the port's PDPage has
-	// no resource cache yet. See migration/STATUS.md.
+	page.RemovePageResourceFromCache()
 	return nil
 }
 
