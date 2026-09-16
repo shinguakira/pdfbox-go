@@ -284,12 +284,13 @@ purge and has not been measured again; that is T10.
   2026-09-16 on `track/testdata-itext`, which the user had made from this branch
   for it: all of it, the Java repository's 6,897 and the .NET one's 6,960. See
   [`track-testdata-itext.md`](track-testdata-itext.md).
-- [ ] **T6. Compare text content, not only its length.** A hash of each
-  document's text, and of each page's to find where two differ, from both
-  `JavaCorpus` and `cmd/corpus`. This is the change most likely to find defects
-  the current comparison cannot see. **Half done 2026-09-16 on
-  `track/testdata-itext`:** both tables carry a digest of each document's text,
-  and `-oracle` compares it. Per page is not done.
+- [x] **T6. Compare text content, not only its length.** Done 2026-09-16 on
+  `track/testdata-itext`, which merged here. Both tables carry a digest of each
+  document's text and `-oracle` compares it where the lengths agree; per page it
+  is a mode of its own, `corpus -pages` and `run-oracle.ps1 -Pages` written by
+  both drivers and joined by `corpus -comparepages`, which names the page two
+  extractions differ on. Over 39,997 texts of the same length, none differs in
+  its characters.
 - [ ] **T7.** Compare rendering with PDFBox, page by page.
 - [ ] **T8.** MuPDF's `tests.git`, when a renderer question needs it.
 - [ ] **T9.** Fuzzing, with what it finds folded back into tests — the one line of
