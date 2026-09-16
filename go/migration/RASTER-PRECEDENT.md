@@ -63,7 +63,7 @@ fixed. The migration guidance names four alternatives: **SkiaSharp** (native),
 ## Go
 
 The same shape, measured for A0 and written up in
-[`STATUS.md`](STATUS.md) under "Track `raster` — A0, what draws":
+[`STATUS.md`](STATUS.md) under "Track `raster` — what draws":
 
 | | fill | stroke: width, cap, join, dash | arbitrary clip | PDF's 16 blend modes | groups, soft masks |
 | --- | :-: | :-: | :-: | :-: | :-: |

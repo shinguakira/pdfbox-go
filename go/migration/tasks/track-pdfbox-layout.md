@@ -250,8 +250,7 @@ And for this branch in particular:
 
 - [x] E4. Report back
   - What was changed, what was not, and why for each
-  - In STATUS.md under "The feedback on the backend, and what it found", and
-    in the reply to the user.
+  - In STATUS.md under "Track `pdfbox-layout`", and in the reply to the user.
 
 ---
 
