@@ -27,7 +27,11 @@ already-merged slices left behind, against Go that already exists.
 
 ## How each unit of work runs
 
-The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), with one difference this branch
+turns on: the implementation is already there, so **phase B is "judge each
+failure, then fix"** rather than porting the implementation. A test that fails
+here is a defect in the port, in the new test, or the Java's own behaviour, and
+which it is has to be decided before anything is changed.
 
 ## Scope
 

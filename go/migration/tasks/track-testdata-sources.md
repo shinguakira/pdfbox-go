@@ -276,7 +276,9 @@ purge and has not been measured again; that is T10.
 - [x] **T3.** Fetch pdf.js's test PDFs and score them. Done 2026-09-15: 1,443 on
   disk, all compared; the eight of U7 are not on disk.
 - [ ] **T4.** Fetch PDFium's 301.
-- [ ] **T5.** Decide how much of iText's 6,897 to carry, then fetch it.
+- [ ] **T5.** Decide how much of iText's 6,897 to carry, then fetch it. Being
+  taken on `track/testdata-itext`, a branch from this one; nothing of it is on
+  this branch.
 - [ ] **T6. Compare text content, not only its length.** A hash of each
   document's text, and of each page's to find where two differ, from both
   `JavaCorpus` and `cmd/corpus`. This is the change most likely to find defects

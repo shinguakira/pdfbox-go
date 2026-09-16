@@ -128,18 +128,27 @@ the tree with `javac` — no Maven, and it fetches the four compile-scope jars t
 poms name — and runs PDFBox over the same file list, writing the same table.
 `corpus -oracle` joins the two.
 
+**Both sides take the passwords table**, and the run below is the one "Where it
+stands" reports. Leaving `-Passwords` and `-passwords` out is a different run: 12
+of pdf.js's files are encrypted and their passwords are in that table, so without
+it 39 files are skipped as encrypted rather than 27, and those 12 are compared
+only on being refused.
+
 ```bash
-pwsh go/migration/scripts/run-oracle.ps1
-cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
+pwsh go/migration/scripts/fetch-corpus.ps1
+pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
+cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
+    -oracle testdata/oracle/java-corpus.tsv \
     ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
 ```
 
-pdf.js is fetched and compared with the passwords its own tests use, on both
-sides:
+One suite on its own is the same two commands with a list and a table of its
+own; `-List` takes a file of paths, one per line, which `corpus` writes with
+`-o` or a shell produces:
 
 ```bash
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
-pwsh go/migration/scripts/run-oracle.ps1 -List <the 1,443 paths> -Out go/testdata/oracle/java-pdfjs.tsv `
+pwsh go/migration/scripts/run-oracle.ps1 -List pdfjs-paths.txt -Out go/testdata/oracle/java-pdfjs.tsv `
     -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
 cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
     -oracle testdata/oracle/java-pdfjs.tsv ./testdata/corpus/pdfjs

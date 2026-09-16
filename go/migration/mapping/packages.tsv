@@ -9,8 +9,8 @@
 #   - org.apache.pdfbox.<x> flattens to pdfbox/<x>
 #   - a package whose last segment collides with a standard library package is
 #     renamed; the only such rename so far is io -> pdfio
-#   - a package keeps its Java name; nothing is shortened on the way across
-#     segment their Java names carry
+#   - a package keeps its Java name; nothing is shortened on the way across,
+#     so documentinterchange and documentnavigation keep those segments
 #
 # java_package	go_package
 

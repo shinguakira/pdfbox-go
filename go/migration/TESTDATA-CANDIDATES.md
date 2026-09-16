@@ -30,7 +30,7 @@ checked 2026-09-16. PDFBox's own are tiers 0 and 1 of
 
 | Source | PDFs | Where | Licence | State |
 | --- | ---: | --- | --- | --- |
-| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched on this branch -- `track/testdata-itext` is where it is being taken |
+| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched here; the decision and the fetch are T5 of [`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md), taken on the branch that file names |
 | [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | the same |
 | [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest/qpdf` 639, `qpdf/qtest/storage` 2, and 76 more | Apache-2.0 | **639 fetched**, 78 not |
 | [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |

@@ -372,9 +372,12 @@ var ErrByteRangeChanged = errors.New(
 // rather than about the caller.
 func SaveIncrementalForExternalSigning(document *pdmodel.PDDocument,
 	output io.Writer) (*digitalsignature.SigningSupport, error) {
-	// Java calls subsetDesignatedFonts() first. That method is unexported here,
-	// and the save paths in pdmodel call it; nothing in this package adds to
-	// the set it walks, so there is nothing to subset on this path.
+	// Java calls subsetDesignatedFonts() first, and so does this: a caller may
+	// have written content with a font it asked to be subset, and the increment
+	// the signer is handed has to carry the subset rather than the whole font.
+	if err := document.SubsetDesignatedFonts(); err != nil {
+		return nil, err
+	}
 	if document.PDFSource() == nil {
 		return nil, ErrNotLoadedFromAFile
 	}

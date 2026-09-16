@@ -111,9 +111,13 @@ upstream."
 - **Do not report Go/Java behavioural differences as security findings** without
   first checking `STATUS.md` — the intentional ones are recorded there.
 - **Never invent a branch, and never commit to `migration-base` directly.**
-  Branch work happens on the `slice/*` or `track/*` branch the plan names, in the
-  five phases [go/migration/tasks/TEMPLATE.md](go/migration/tasks/TEMPLATE.md)
-  sets out, and `go/migration/PLAN.md` is not edited to make room for new work.
+  Branch work happens on a `slice/*` or `track/*` branch that
+  [go/migration/tasks/README.md](go/migration/tasks/README.md) lists, and
+  `go/migration/PLAN.md` is not edited to make room for new work. A branch that
+  ports Java runs in the five phases
+  [go/migration/tasks/TEMPLATE.md](go/migration/tasks/TEMPLATE.md) sets out; a
+  branch that ports nothing -- the test-data tracks, the Java-bug fixes -- runs
+  the way its own task file says, and that file is the instruction.
 - **Do not stop while work remains. Only the user stops the migration.** When
   working a `slice/*` or `track/*` branch, port every file in that branch's
   scope. Do not pause partway to report progress as if it were a result, do not
