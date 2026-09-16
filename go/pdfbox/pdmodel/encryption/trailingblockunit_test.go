@@ -4,7 +4,9 @@ package encryption
 // differ on it.
 
 import (
+	"bytes"
 	"crypto/aes"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -54,6 +56,64 @@ func TestAES128RefusesATrailingPartialBlock(t *testing.T) {
 				t.Errorf("a block-aligned input was refused with tolerate=%v: %v",
 					tolerate, err)
 			}
+		}
+	}
+}
+
+// TestAESPathsAnswerShortInputAsPDFBoxDoes runs both AES paths over the inputs
+// either side of the initialization vector, with an all-zero key, and wants
+// what PDFBox's encryptDataAESother and encryptDataAES256 answered for the same
+// bytes, called through reflection on the running PDFBox.
+//
+// The row that failed is the stream of the vector alone. Java's doFinal on no
+// data decrypts to nothing: PKCS5Padding.unpad answers 0 for an empty buffer.
+// The port answered "no data to decrypt", which AES-128 turns into an error, so
+// the object holding the stream could not be read at all. pdf.js's ichiji.pdf
+// has two such form XObjects, 16 bytes each; PDFBox reads them as empty forms,
+// and the port read them as null.
+func TestAESPathsAnswerShortInputAsPDFBoxDoes(t *testing.T) {
+	h := &securityHandlerBase{encryptionKey: make([]byte, 32)}
+	aes128 := func(input []byte) ([]byte, error) {
+		var out bytes.Buffer
+		err := h.encryptDataAESother(make([]byte, 16), bytes.NewReader(input), &out, true)
+		return out.Bytes(), err
+	}
+	aes256 := func(input []byte) ([]byte, error) {
+		var out bytes.Buffer
+		err := h.encryptDataAES256(bytes.NewReader(input), &out, true)
+		return out.Bytes(), err
+	}
+	for _, c := range []struct {
+		path    string
+		decrypt func([]byte) ([]byte, error)
+		length  int
+		want    string // the output in hex, where PDFBox answered output
+		wantErr string // part of the message, where PDFBox threw
+	}{
+		{"AES-128", aes128, 0, "", ""},
+		{"AES-256", aes256, 0, "", ""},
+		{"AES-128", aes128, 5, "", "AES initialization vector not fully read: only 5 bytes read instead of 16"},
+		{"AES-256", aes256, 5, "", "AES initialization vector not fully read: only 5 bytes read instead of 16"},
+		{"AES-128", aes128, 16, "", ""},
+		{"AES-256", aes256, 16, "", ""},
+		{"AES-128", aes128, 16 + 5, "", "not a multiple of the block size"},
+		{"AES-256", aes256, 16 + 5, "", ""},
+		{"AES-128", aes128, 32, "", "not properly padded"},
+		{"AES-256", aes256, 32, "", ""},
+		{"AES-128", aes128, 48, "", "not properly padded"},
+		{"AES-256", aes256, 48, "67671ce1fa91ddeb0f8fbbb366b531b4", ""},
+	} {
+		got, err := c.decrypt(make([]byte, c.length))
+		switch {
+		case c.wantErr != "":
+			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("%s, %d bytes in: answered %x, %v; PDFBox throws %q",
+					c.path, c.length, got, err, c.wantErr)
+			}
+		case err != nil:
+			t.Errorf("%s, %d bytes in: %v; PDFBox answers %d bytes", c.path, c.length, err, len(c.want)/2)
+		case hex.EncodeToString(got) != c.want:
+			t.Errorf("%s, %d bytes in: answered %x, PDFBox answers %s", c.path, c.length, got, c.want)
 		}
 	}
 }

@@ -341,7 +341,11 @@ func aesCBC(key, iv, data []byte, decrypt bool,
 	}
 	if decrypt {
 		if len(data) == 0 {
-			return nil, &badPaddingError{reason: "no data to decrypt"}
+			// Java's doFinal with nothing to decrypt answers nothing, as
+			// PKCS5Padding.unpad takes an empty buffer for a padded one: a
+			// stream of the initialization vector alone is an empty stream on
+			// both paths, and not an error on the AES-128 one.
+			return []byte{}, nil
 		}
 		if remainder := len(data) % aes.BlockSize; remainder != 0 {
 			if !tolerateShort {
