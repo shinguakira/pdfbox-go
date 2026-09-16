@@ -33,24 +33,7 @@ exists because an audit found four of them at once.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -67,7 +50,8 @@ was put off, plus one class of test that was missed outright.
 | `TestPDDocument`, 6 cases | **none — recorded nowhere at all** | it was missed, not deferred |
 | `contentstream/operator/text` package comment | says `Tj`, `TJ`, `'` and `"` are not here | slice 3 ported all four; the comment is wrong |
 
-`STATUS.md` carries the audit that found them and the commands to re-run it.
+`STATUS.md` carries the audit that found them, the commands to re-run it, and
+what each row above turned out to be once it was opened.
 
 **What this branch is not.** It is not a licence to tidy. Every item above is
 either behaviour the port does not have or a record that is false. A comment
@@ -85,12 +69,9 @@ that is merely terse is not in scope.
     of RFC 5652, one recipient info per certificate — or record the capability
     as permanently absent and correct the reason, which today names a slice
     that merged.
-  - **Taken: write it here.** It is not the size the task feared. `rc2.go`
-    implements `cipher.Block` -- it encrypts as well as it decrypts -- and
-    `cms.go` declares every ASN.1 structure an enveloped-data blob is made of,
-    because it reads one. What was missing was the direction, and that is
-    `cmsencode.go`: 160 lines, no new dependency, no cgo. The recorded reason
-    was stale twice over.
+  - **Taken: write it here.** `go/pdfbox/pdmodel/encryption/cmsencode.go`, with
+    no new dependency and no cgo. `STATUS.md` says what was already in the tree,
+    what the encoder writes, and where it deviates.
 
 - [x] A1. Port `TestPDDocument` — 6 cases, and nothing in this repository has
       ever run them
@@ -130,44 +111,16 @@ that is merely terse is not in scope.
 
 # Phase D — Adversarial review
 
-敵対的レビュー. Green tests prove the port passes the tests, not that it is a
-faithful migration. Go in assuming it is wrong. Every check below is a question
-the ported tests cannot answer.
+敵対的レビュー. The seven checks are [`TEMPLATE.md`](TEMPLATE.md)'s, and each
+was run.
 
 - [x] D1. Read every ported file against its Java side by side
-  - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
-  - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
-  - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
-    such conversion written out?
-
 - [x] D2. Hunt for silently dropped behaviour
-  - Anything Java does in a `finally` — is it still done on the Go error path?
-  - Anything Java logs and swallows — does the Go swallow it too, or does it
-    return an error the Java would not have?
-  - Anything Java throws — is it an error, or a panic, and is that the right one?
-
 - [x] D3. Check the tests are Java-derived, not Go-derived
-  - For each assertion: is that value in the Java test, or did it come from
-    running the Go? A value read off the port proves nothing.
-  - Which Java test cases were dropped, and is each one recorded with a reason?
-
 - [x] D4. Check every function phase B touched has a test
-  - Name the test that covers it. Not "the suite is green"
-  - Where there is none, the function was changed on an argument rather than on
-    evidence. Write the test, and take whatever it says
-
 - [x] D5. Check every deferral is real and recorded
-  - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
-  - Every deferral — is it deferred because the type is absent, or because it
-    was hard? The second is not a deferral.
-
 - [x] D6. Check the Java bugs
-  - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
-    what correct would be, where the Go carries it, and how confident?
-  - Was any of them "fixed" on the way past? Revert it.
-
 - [x] D7. Write the review down
-  - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
@@ -185,19 +138,13 @@ And for this branch in particular:
 - [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
 - [x] E2. For each item of feedback, judge it before acting
-  - Two items. One real: three deferred end-to-end encryption cases this branch
-    unblocked and did not go back for, which is the branch's own failure mode.
-    One declined: a panic on a half-built recipient, which is the Java's
-    NullPointerException and this port's convention for one.
+  - Two items. Taken: three deferred end-to-end encryption cases this branch
+    had unblocked and not gone back for. Declined: a panic on a half-built
+    recipient. `STATUS.md` carries both, the second as a deviation.
 
 - [x] E3. Where it needs fixing, write a **strict** test first
-  - Strict: it fails before the fix, takes the real path with the real types,
-    and asserts what the Java does
-  - Then fix the Go
-  - Then `gofmt`, `go vet`, `go test ./...` again
 
 - [x] E4. Report back
-  - What was changed, what was not, and why for each
 
 
 # Blocked

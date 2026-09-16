@@ -46,8 +46,8 @@ layer. Those are properties of *shipping someone else's runtime alongside your
 own*, and they apply to any wrap-instead-of-port approach regardless of how the
 wrapping is done.
 
-That question does have live Go-shaped answers, and someone will eventually
-raise one of them rather than face 186k lines:
+Someone will eventually raise a Go-shaped version of it rather than face the
+Java line count in [`../mapping/inventory.tsv`](../mapping/inventory.tsv):
 
 - cgo into a real JVM over JNI
 - GraalVM `native-image` compiling PDFBox to a shared library behind a C ABI,
@@ -57,15 +57,13 @@ raise one of them rather than face 186k lines:
 None of these are transpilation, and none should be dismissed by analogy — they
 are legitimate engineering options with different trade-offs, and this research
 did not establish whether anyone has made one work for PDFBox specifically. What
-the IKVM history supplies is the failure mode to check each of them against:
-does it need a build nobody runs, does it pin a toolchain version, does it
-couple binaries, and who maintains the bridge in five years? The .NET attempt
-answered those badly on all four counts and did not survive them.
-
-The reason this port is hand-written Go is narrower than "wrapping is wrong":
-a cgo or WASM binding cannot be read, debugged, or fixed by a Go developer
-holding a broken PDF, and every one of the four questions above lands on us
-rather than upstream.
+the IKVM history supplies is the failure mode to check each against: does it need
+a build nobody runs, does it pin a toolchain version, does it couple binaries,
+and who maintains the bridge in five years? The .NET attempt answered badly on
+all four and did not survive them, and every one of the four lands on us rather
+than upstream. The narrower reason this port is hand-written Go is that a cgo or
+WASM binding cannot be read, debugged or fixed by a Go developer holding a broken
+PDF.
 
 ## PdfPig, a hand-written C# port — the route that worked
 
@@ -118,8 +116,6 @@ Four things this tells us that no prose document would have:
 4. **Every step carried tests.** *"with tests"* appears in commit after commit,
    during a period when the thing under test was being replaced underneath.
 
-### What it kept from PDFBox, and what it dropped
-
 ### It abandoned PDFBox's package layout entirely
 
 PdfPig organises by functional domain rather than mirroring the Java tree:
@@ -138,62 +134,30 @@ Three things stand out:
 
 ### Where this port disagrees, and why
 
-**The port currently mirrors the Java package tree; PdfPig did not.** PdfPig's
-choice is the more ergonomic one for the target language, and the mirrored
-layout has a real cost — `pdmodel/interchange/logicalstructure` is not a package
-path anyone would pick from scratch.
+**This port mirrors the Java package tree; PdfPig did not.** PdfPig's choice is
+the more ergonomic one for the target language, and the mirrored layout has a
+real cost — `pdmodel/documentinterchange/logicalstructure` is not a package path
+anyone would pick from scratch.
 
-The argument originally made here for mirroring anyway was that PDFBox is not a
-finished artifact: `3.0` and `2.0` are both maintained, security fixes land in
-both, and a mirrored layout can absorb one by finding the single place it
-belongs.
+The argument for mirroring anyway is that a mirrored layout can absorb an
+upstream fix by finding the single place it belongs. That argument assumes this
+repository tracks Apache PDFBox. It does not, and never will — the
+Java here is a frozen snapshot with no upstream relationship, per the scope rule
+in [`../BRANCHING.md`](../BRANCHING.md) — so the benefit the layout was chosen
+for is not available, and the cost of reading it is.
 
-**That argument does not apply to this project.** It assumed this repository
-tracks Apache PDFBox, and it does not — see below.
+**The git history sharpens it: PdfPig's divergence was not a day-one decision.**
+They mirrored first and diverged over ten weeks, once they had something working
+to diverge from. That is a materially different claim than "they chose a
+different layout", and it is the one the evidence supports.
 
-**The argument for mirroring that this document previously made does not apply
-to this project.** It ran: mirror the Java layout so an upstream fix can be
-located and absorbed. That assumed this repository tracks Apache PDFBox. It does
-not, and never will — the Java here is a frozen snapshot and there is no
-upstream relationship. See the scope rule in [`../BRANCHING.md`](../BRANCHING.md).
-
-With that gone, PdfPig's choice is the better-supported one for this project:
-there is no ongoing benefit to a Java-shaped package tree, and there is an
-ongoing cost to reading it.
-
-**The git history sharpens it further: PdfPig's divergence was not a day-one
-decision.** They mirrored first and diverged over ten weeks, once they had
-something working to diverge from. That is a materially different claim than
-"they chose a different layout", and it is the one the evidence supports.
-
-So the open question for `slice/1` is between the last two of these:
-
-- ~~**Mirror and keep it.**~~ The justification was upstream tracking. Dead.
-- **Mirror as scaffolding, expect to replace it.** What PdfPig actually did.
-  Gets a parser working fast, at the cost of writing the object model twice.
-- **Design the Go object model up front.** Skips the rewrite, but commits to a
-  design before anything has parsed a real PDF.
-
-`COSBase` is where this bites hardest: an abstract class with a visitor over a
-mutable, reference-identity object graph. Go has neither inheritance nor a
-natural visitor, so the awkwardness PdfPig felt in C# will be worse here.
-
-Note that this question is about the **object model**, not about the algorithms.
-Everything PdfPig kept — the parsers, the font handling, the format quirks — is
-kept here too, whichever way the model goes.
-
-*Caveat:* this research did not establish whether PdfPig still tracks upstream
-PDFBox or has permanently diverged — their documentation does not say, and the
-question was not answerable from public sources.
-
-### Independent confirmation on rendering
-
-PdfPig skipping Java2D rendering is the second data point saying that phase 6 of
-[`../PLAN.md`](../PLAN.md) is the genuinely hard part, and that a useful PDF
-library can exist without it. Text extraction, parsing and document manipulation
-carried a project to 21 million downloads with no renderer. If phase 6 needs to
-be cut or deferred indefinitely, there is precedent that the result is still
-worth having.
+`COSBase` is where it bites hardest: an abstract class with a visitor over a
+mutable, reference-identity object graph, and Go has neither inheritance nor a
+natural visitor. The port kept the mirrored layout and took the object model
+head on — `cos.Base` is an interface and the shared state lives in an embedded
+struct, which `go/pdfbox/cos/doc.go` records. The algorithms were never the
+question: everything PdfPig kept — the parsers, the font handling, the format
+quirks — is kept here too.
 
 ## PdfBox-Android — the closest precedent to phase 6
 
@@ -249,22 +213,21 @@ Points that bear directly on our plan:
 - **`pdfbox-io` is new in 3.0.** The IO classes were extracted into their own
   Maven module, moving from scratch files to `java.nio` with memory-mapped and
   buffered file access. Phase 0 therefore ported the *newest* architecture in the
-  codebase, not legacy — and `RandomAccessRead` / `RandomAccessStreamCache` are
-  deliberate recent design, which is why they were worth following closely.
-- **The scratch-file machinery deferred in phase 0 is current, not legacy.**
-  `MemoryUsageSetting` and the memory-mapped reader belong to this same redesign.
+  codebase, not legacy — and `RandomAccessRead`, `RandomAccessStreamCache`,
+  `MemoryUsageSetting` and the memory-mapped reader are all deliberate recent
+  design, which is why they were worth following closely.
 - **Loading moved to a `Loader` class.** All load methods were removed from
-  `PDDocument`. This maps cleanly onto Go: package-level `pdfbox.Open(path)`
-  rather than constructors, and we should adopt the 3.0 shape rather than the
-  2.0 one.
+  `PDDocument`, which is why the port's entry points are the package-level
+  `pdfbox.LoadPDF` and its variants rather than a constructor.
 - **Standard 14 fonts moved from static instances to a `Standard14Fonts.FontName`
-  enum.** Port the enum form.
+  enum.**
 - **Unstable areas named by the project:** reader/writer infrastructure, font
   instantiation, colour operation signatures, the CLI, and incremental parsing.
 
-**Rule this adds:** port against `trunk` / 3.0 API shapes, and never port a
-member that 3.0 deprecated or removed. Check the migration guide before porting
-any class it names.
+**Rule this adds**, and it is stated once in
+[`java-to-go.md`](java-to-go.md), "Which Java to port against": port against the
+3.0 shapes, never a member 3.0 deprecated or removed. The evidence for it is
+above.
 
 ## Sources
 

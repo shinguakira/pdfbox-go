@@ -2,8 +2,10 @@
 
 Slice 8 — forms, annotations, interactive features.
 
-**Branch: `slice/8-<name>`** — from and back to `migration-base`.
-Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 6 and 7.
+**Branch: `slice/8-forms-annotations`** — from and back to `migration-base`.
+Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 6 and 7. Merged.
+What it delivered is in `migration/STATUS.md`, "Slice 8 — forms, annotations,
+interactive features".
 
 ## Rules — do not break these
 
@@ -25,24 +27,7 @@ Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 6 and 7.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -72,10 +57,7 @@ Take one subpackage at a time. For each: port its Java tests first, then its
 implementation, then move on. Do not open all eight at once.
 
 - [x] A1. `interactive/form` — port its Java tests
-  - PDFieldTreeTest, PDAcroFormGenerateAppearancesTest and PDAcroFormFromAnnotsTest
-    download their PDFs from the issue tracker, so none of the three is ported
 - [x] A2. `interactive/annotation` — port its Java tests
-  - the two rendering comparisons of AppearanceGenerationTest wait for slice 9
 - [x] A3. `interactive/action` — port its Java tests
 - [x] A4. `interactive/documentnavigation` — port its Java tests
 - [x] A5. `interactive/pagenavigation` — port its Java tests
@@ -86,6 +68,10 @@ implementation, then move on. Do not open all eight at once.
 - [x] A8. `documentinterchange` — port its Java tests
 - [x] A9. `pdmodel/common` — port `COSArrayListTest`, which slice 2 could not
       port because it needs annotations
+
+Which test classes of these packages are not ported, which cases of the rest
+are left out, and why for each, are in `migration/STATUS.md`, "Which Java tests
+are ported, and which are not".
 
 ---
 
@@ -100,13 +86,12 @@ implementation, then move on. Do not open all eight at once.
     and `setContents` since slice 2
 - [x] B2. `interactive/form` — AcroForms and the field hierarchy
 - [x] B3. `interactive/annotation` — annotations and their appearance handlers
-  - the squiggly handler draws with a tiling pattern, which waits for slice 9
+  - the squiggly handler draws with a tiling pattern and was left out here;
+    `track/raster` ported it
 - [x] B4. `interactive/action`
 - [x] B5. `interactive/documentnavigation`, `interactive/pagenavigation`
 - [x] B6. `interactive/digitalsignature`
 - [x] B7. `interactive/measurement`, `interactive/viewerpreferences`
-  - both subpackages are done: the five viewer preference enums, and the
-    measure, number format, rectlinear measure and viewport dictionaries
 - [x] B8. `documentinterchange` — logical structure, marked content, tagged PDF,
       prepress
 - [x] B9. `pdmodel/graphics/optionalcontent` — 3 files, and `PDPropertyList`
@@ -224,9 +209,5 @@ And for this branch in particular:
       extends `PDAbstractContentStream` --- all three in top-level `pdmodel`,
       and none of them named in any slice's scope table. They are ported here
       because this is the slice that needs them; `AppearanceGeneratorHelper`
-      cannot exist without them.
-
-      `PDAbstractContentStream` reaches `PDFormXObject`, `PDShading` and
-      `PDPattern`, which are slice 9's. Those methods are the ones left out,
-      named where they occur and in `migration/STATUS.md`; the text, colour,
-      path and image methods appearance generation uses are all here.
+      cannot exist without them. Which of their methods were left for slice 9
+      is in `migration/STATUS.md`, "Top-level `pdmodel`".

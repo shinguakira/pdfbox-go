@@ -21,10 +21,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/digitalsignature"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/form"
 
@@ -213,5 +216,108 @@ func TestExternalSigningSignsTheSameBytes(t *testing.T) {
 	}
 	if got := dictionaries[0].Contents(); !bytes.HasPrefix(got, sum[:]) {
 		t.Error("/Contents does not hold the signature that was written back")
+	}
+}
+
+// TestExternalSigningSubsetsTheFontsItWasToldTo pins the first line of
+// PDDocument.saveIncrementalForExternalSigning, `subsetDesignatedFonts()`.
+//
+// A caller may write content before signing, and PDAbstractContentStream.SetFont
+// records every font that answers WillBeSubset in the document's set. Java
+// subsets that set before it writes the increment the signer is handed; the port
+// wrote the increment with the whole font in it, because this function is in
+// this package and the method was unexported in pdmodel.
+//
+// What subsetting does to the file is add the six-character tag to the font's
+// name -- `ABCDEF+LiberationSans` -- so the reloaded name is the assertion.
+func TestExternalSigningSubsetsTheFontsItWasToldTo(t *testing.T) {
+	doc, err := pdfbox.LoadPDF(filepath.Join(catalogFixture, "test.unc.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doc.Close()
+
+	ttf, err := os.Open(filepath.Join("..", "..", "..", "..", "..", "pdfbox", "src", "main",
+		"resources", "org", "apache", "pdfbox", "resources", "ttf", "LiberationSans-Regular.ttf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ttf.Close()
+	embedded, err := font.LoadPDType0Font(doc, ttf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !embedded.WillBeSubset() {
+		t.Fatal("the font was loaded without subsetting; there would be nothing to test")
+	}
+
+	page := doc.Page(0)
+	content, err := pdmodel.NewPDPageContentStreamCompressed(doc, page, pdmodel.Append, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := content.BeginText(); err != nil {
+		t.Fatal(err)
+	}
+	if err := content.SetFont(embedded, 12); err != nil {
+		t.Fatal(err)
+	}
+	if err := content.NewLineAtOffset(75, 750); err != nil {
+		t.Fatal(err)
+	}
+	if err := content.ShowText("Apache PDFBox"); err != nil {
+		t.Fatal(err)
+	}
+	if err := content.EndText(); err != nil {
+		t.Fatal(err)
+	}
+	if err := content.Close(); err != nil {
+		t.Fatal(err)
+	}
+	page.Dictionary().SetNeedToBeUpdated(true)
+
+	signature := digitalsignature.NewPDSignature()
+	signature.SetFilter(cos.AdobePPKLite)
+	signature.SetSubFilter(cos.AdbePkcs7Detached)
+	if err := form.AddSignature(doc, signature, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	out := &bytes.Buffer{}
+	support, err := form.SaveIncrementalForExternalSigning(doc, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := support.Content(); err != nil {
+		t.Fatal(err)
+	}
+	if err := support.SetSignature(make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
+	if err := support.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	signed, err := pdfbox.LoadPDFBytes(out.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer signed.Close()
+	var liberation string
+	for _, name := range signed.Page(0).Resources().FontNames() {
+		reloaded, err := signed.Page(0).Resources().GetFont(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(reloaded.Name(), "LiberationSans") {
+			liberation = reloaded.Name()
+		}
+	}
+	if liberation == "" {
+		t.Fatal("the signed page does not carry the font that was written into it")
+	}
+	if !strings.Contains(liberation, "+") {
+		t.Errorf("the signed file carries %q, a font that was not subset; PDFBox subsets "+
+			"the designated fonts before it writes the increment", liberation)
 	}
 }

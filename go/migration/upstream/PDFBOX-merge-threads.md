@@ -1,8 +1,7 @@
 # PDFMergerUtility clones the destination's `/Threads`
 
-Draft of an issue and a patch for Apache PDFBox. **Not filed.** Written
-2026-09-11/12 on the repository owner's instruction; see [`README.md`](README.md)
-for why this directory exists at all.
+Draft of an issue and a patch for Apache PDFBox, written 2026-09-11/12; see
+[`README.md`](README.md) for why this directory exists and what its files are.
 
 This is [`JAVA-BUGS.md`](../JAVA-BUGS.md) entry **82**. That entry is the port's
 record and stays as it is; this file is the outward-facing version.
@@ -146,8 +145,6 @@ above is the measurement — page objects equal real pages.
 | `repo:apache/pdfbox srcThreads OR destThreads OR "article thread"` | `total_count 0` |
 | all open PRs | 7: #529, #528, #526, #521, #520, #495, #446. None related |
 
-Re-check before filing. This was a point in time.
-
 ---
 
 ## 4. Apache PDFBox conventions, from the tree and the tracker
@@ -161,8 +158,7 @@ Re-check before filing. This was a point in time.
   `TARGETTESTDIR = "target/test-output/merge/"`.
 - **Test resources** either checked in under `src/test/resources/input/merge/`,
   or downloaded by a `wget` execution in `pdfbox/pom.xml` from a JIRA
-  attachment. **Neither is needed here** — the test builds its documents in
-  memory.
+  attachment. **Neither is needed here.**
 - **Licence** ASF header on every file. A PR to `apache/*` is a contribution
   under Apache 2.0; no CLA is needed for a patch this size.
 - The queue is short and moving: 7 open PRs, 5 of them opened in the five weeks
@@ -334,14 +330,8 @@ the class already has.
     }
 ```
 
-**Run against both.** On trunk as it is:
-
-```
-expected: <[destination article, source article 1, source article 2]>
- but was: <[destination article, destination article]>
-```
-
-With the patch: `1 tests successful`.
+**Run against both.** On trunk it fails with the mismatch quoted in section 8;
+with the patch, `1 tests successful`.
 
 ---
 
@@ -387,9 +377,6 @@ and passes with the change. Its second assertion pins the orphaned pages.
 5. `mvn -pl pdfbox test -Dtest=PDFMergerUtilityTest`
 6. Commit as `PDFBOX-NNNN: use the source catalog's /Threads when merging`.
 7. Open the PR with section 8.
-
-Check whether the 3.0 branch carries the same line before naming affected
-versions.
 
 ---
 
@@ -448,6 +435,5 @@ calling `LauncherFactory.create().execute(...)` with
   filename, the commit message, the PR title and the PR body.
 - The 3.0 branch was not checked. This repository mirrors trunk only.
 - Whether to report anything else from `JAVA-BUGS.md` is a separate decision.
-  That file's "How they group" section is where to start: group B, the seven
-  that need a rasterizer, cannot fail upstream's build, because PDFBox has no
-  rendering test.
+  The "How they group" section of that file is where to start; it says which
+  group cannot fail the upstream build at all, and why.

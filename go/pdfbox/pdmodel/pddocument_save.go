@@ -118,7 +118,7 @@ func (d *PDDocument) SaveOfParameters(output io.Writer,
 	// object stream compression requires a cross reference stream.
 	d.document.SetIsXRefStream(compressParameters != nil &&
 		compressParameters != compress.NoCompression)
-	if err := d.subsetDesignatedFonts(); err != nil {
+	if err := d.SubsetDesignatedFonts(); err != nil {
 		return err
 	}
 
@@ -127,13 +127,19 @@ func (d *PDDocument) SaveOfParameters(output io.Writer,
 	return writer.Write(d)
 }
 
-// subsetDesignatedFonts subsets the fonts the document was told to subset.
+// SubsetDesignatedFonts subsets the fonts the document was told to subset.
 //
 // The set is filled by PDAbstractContentStream.SetFont, and only ever with a
 // font that answers WillBeSubset -- which, since track/font-embedding, is a
 // font loaded by PDType0Font.load with subsetting asked for. TestSubsetting in
 // go/pdfbox/increment_test.go is the case that fails when this is not run.
-func (d *PDDocument) subsetDesignatedFonts() error {
+//
+// Java keeps it private, and every one of its callers is a save method on
+// PDDocument. The port has one more caller: saveIncrementalForExternalSigning
+// reads the signature dictionaries through the form, so it is a function in
+// pdmodel/interactive/form, and it has to be able to make this call.
+// TestExternalSigningSubsetsTheFontsItWasToldTo is that path.
+func (d *PDDocument) SubsetDesignatedFonts() error {
 	// subset designated fonts
 	for _, f := range d.fontsToSubset {
 		if err := f.Subset(); err != nil {
@@ -152,7 +158,7 @@ func (d *PDDocument) subsetDesignatedFonts() error {
 //
 // Port of saveIncremental(OutputStream).
 func (d *PDDocument) SaveIncremental(output io.Writer) error {
-	if err := d.subsetDesignatedFonts(); err != nil {
+	if err := d.SubsetDesignatedFonts(); err != nil {
 		return err
 	}
 	if d.pdfSource == nil {
@@ -175,7 +181,7 @@ func (d *PDDocument) SaveIncremental(output io.Writer) error {
 // Port of saveIncremental(OutputStream, Set<COSDictionary>).
 func (d *PDDocument) SaveIncrementalOfObjects(output io.Writer,
 	objectsToWrite []*cos.Dictionary) error {
-	if err := d.subsetDesignatedFonts(); err != nil {
+	if err := d.SubsetDesignatedFonts(); err != nil {
 		return err
 	}
 	if d.pdfSource == nil {

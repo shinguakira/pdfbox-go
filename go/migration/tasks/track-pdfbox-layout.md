@@ -4,19 +4,16 @@ Track — `pdfbox-layout-*`. Glyph layout, one interface against two backends.
 
 **Branch: `track/pdfbox-layout`** — from and back to `migration-base`.
 
-The branch is settled; `BRANCHING.md` carries a row for it. What is **not**
-settled is A0, and that is a bigger decision than the branch was — see below.
+`BRANCHING.md` carries a row for the branch. Depends on `slice/4` — it needs
+fonts to shape, and that is merged. `PLAN.md` says it is worth reading before
+`slice/9` for its backend-interface shape.
 
-Depends on `slice/4` — it needs fonts to shape, and that is merged. `PLAN.md`
-says it is worth reading before `slice/9` for its backend-interface shape.
-
-**Take this one last, of the four open tracks.** The AWT backend is
-`java.awt.font.TextLayout` and the FOP backend is Apache FOP; Go has neither, so
-A0 is choosing a Go text shaper — a harfbuzz binding, `x/image/font/shaping`, or
-something written here. That choice is very likely to constrain, or be
-constrained by, whatever eventually implements `rendering.Backend`, which is the
-other undecided substitution in the project. Deciding the shaper alone, ahead of
-the rasteriser, risks doing both twice.
+**Take this one last, of the four open tracks.** A0 is the whole of it, and it
+is a bigger decision than the branch: the AWT backend is
+`java.awt.font.TextLayout` and the FOP backend is Apache FOP, Go has neither,
+and choosing for Go was expected to constrain, or be constrained by, whatever
+implements `rendering.Backend`. What A0 settled on is in `STATUS.md` under "The
+decision".
 
 ## Rules — do not break these
 
@@ -38,24 +35,7 @@ the rasteriser, risks doing both twice.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -73,10 +53,9 @@ Two of the main files are examples — `GlyphLayoutHelloWorldAWT` and
 `GlyphLayoutHelloWorldFOP`. `PLAN.md` puts `examples` out of scope; decide
 whether these two count, since they sit inside an in-scope module.
 
-**The AWT backend is `java.awt.font.TextLayout` and the FOP backend is Apache
-FOP.** Go has neither. This track is the clearest case in the project where a
-port means choosing a Go equivalent rather than transliterating, and that
-choice is the work — not the 7 files around it.
+This track is the clearest case in the project where a port means choosing a Go
+equivalent rather than transliterating, and that choice is the work — not the 7
+files around it.
 
 ---
 
@@ -85,12 +64,9 @@ choice is the work — not the 7 files around it.
 - [x] A0. **Decide what the Go backend is** before writing any test. The tests
       assert shaped glyph runs; without a shaper there is nothing to assert
       against.
-  - **Taken, and the answer is that it cannot be chosen yet.** Three
-    substitutions have to be decided together and two belong to other work:
-    a shaper for layoutGlyphVector, a rasteriser without which no test in this
-    module asserts anything about the shaping, and a source of UAX#9 embedding
-    levels, which golang.org/x/text/unicode/bidi does not expose. Measured
-    against the running Java; see the branch section of migration/STATUS.md.
+  - Taken, and measured against the running Java. `STATUS.md`, under "The
+    decision", carries the three substitutions it turned on and which of them
+    was work rather than a wall.
 - [x] A1. Port the shared cases both backends run
   - `GlyphLayoutBidiTest`, `GlyphLayoutDin91379Test`,
     `GlyphLayoutDin91379FormTest`, `GlyphLayoutLigaturesAndKerningTest`,
@@ -117,15 +93,12 @@ port has already paid for more than once.
   - `GlyphLayoutProcessor` and `GlyphLayoutFontLoader` in the core, whichever
     slice ported them, and the contract they define
 - [x] B2. One backend, chosen in A0
-  - `go/pdfbox/glyphlayout`, which is a substitution for both -- see STATUS.md.
-    Neither `*Awt` nor `*Fop` is ported by name: each is a shell around a
-    library Go has not got
+  - `go/pdfbox/glyphlayout`, a substitution for both. `STATUS.md`, under "What
+    was built", says why neither `*Awt` nor `*Fop` is ported by name
 - [x] B3. `FopStringTextFragment` and whatever the second backend needs, if a
       second backend is in scope at all
-  - It is not. `FopStringTextFragment` exists to hand a string to FOP, which
-    is the library that is absent; there is nothing behind it to port to. One
-    backend serves both, and the `Features` on it are what the two font
-    loaders configure
+  - It is not. One backend serves both, and the `Features` on it are what the
+    two font loaders configure
 
 ---
 
@@ -163,12 +136,10 @@ the ported tests cannot answer.
   - Does each test take the real path, with the real types? A test over a
     stand-in can pass while the path it stands for is broken.
   - Which Java test cases were dropped, and is each one recorded with a reason?
-  - The backend's numbers come from the reference PDFs, which are the AWT
-    backend's own output; the message of `testMissingGlyph` and the three
-    width relations come from the Java test source. Where a case asserts a
-    property rather than a number -- that a mark lands on its letter, that a
-    PostScript font is refused -- it says so, and where a number in a comment
-    was read off the port rather than off the Java, that is said too
+  - Where a number in a comment was read off the port rather than off the Java,
+    that is said too. Where each assertion's value comes from is in `STATUS.md`
+    under "How it is measured: the Java's own output" and "What the Java tests
+    could not be ported as"
 
 - [x] D4. Check every function phase B touched has a test
   - Name the test that covers it. Not "the suite is green" -- green says the
@@ -196,8 +167,8 @@ the ported tests cannot answer.
 
 - [x] D7. Write the review down
   - What was checked, what was found, what was fixed, what is still open
-  - The backend's pass is in STATUS.md under "The adversarial review of the
-    backend": three findings from reading the Java, three from reading the
+  - The backend's pass is in `STATUS.md` under "Defects found and fixed" in this
+    branch's chapter: findings from reading the Java, findings from reading the
     OpenType specification, and one the reference comparison caught with every
     test green
 
@@ -207,18 +178,16 @@ And for this branch in particular:
   - Whatever Go shaper was chosen, it is not `java.awt.font.TextLayout`.
     Record every case where it shapes differently, in `STATUS.md`, as a
     deviation. Do not let "the test passes" stand in for "it shapes the same".
-  - Five deviations, each measured against the AWT backend's own output and
-    pinned in the tests: a deviation that disappears fails the test as loudly
-    as one that appears.
+  - Each deviation is measured against the AWT backend's own output and pinned
+    in the tests, so a deviation that disappears fails the test as loudly as one
+    that appears. They are in `STATUS.md` under "Deviations, measured".
 
 - [x] D9. Check bidi and the supplementary plane against the Java output
   - `GlyphLayoutBidiTest` and `GlyphLayoutSMPTest` are the two that will expose
     a shaper difference first.
   - Done by comparing against the reference PDFs the Java tests render, which
-    are the AWT backend's own output. SMP agrees on all 7 text objects; bidi
-    agrees on the run order and differs on Arabic joining, which is recorded.
-    `GlyphLayoutDin91379Test` was added to the same comparison and agrees on
-    40 of 41.
+    are the AWT backend's own output. `STATUS.md`, under "How it is measured:
+    the Java's own output", carries what agrees and what does not.
 
 ---
 
@@ -227,14 +196,11 @@ And for this branch in particular:
 - [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
 - [x] E2. For each item of feedback, judge it before acting
-  - Eight items. Seven real: a surrogate pair split across bidi runs, a
-    `supportsFont` that accepted fonts whose glyph ids it cannot write, NULL
-    anchors read as anchors at the origin, a required feature never run, every
-    language system applied at once, every script alias applied at once, and a
-    damaged GPOS table reported as a missing one.
-  - One declined: writing an empty `[] TJ` at the end of a run is what the
-    Java does, unconditionally, and skipping it would be a deviation from the
-    reference. Recorded in STATUS.md with the Java it was checked against.
+  - Eight items. Seven were real defects, and are in `STATUS.md` under "Defects
+    found and fixed" with the rest of this branch's.
+  - One declined: writing an empty `[] TJ` at the end of a run is what the Java
+    does, unconditionally, and skipping it would be a deviation from the
+    reference. Recorded in `STATUS.md` with the Java it was checked against.
 
 - [x] E3. Where it needs fixing, write a **strict** test first
   - Strict: it fails before the fix, takes the real path with the real types,
@@ -250,8 +216,7 @@ And for this branch in particular:
 
 - [x] E4. Report back
   - What was changed, what was not, and why for each
-  - In STATUS.md under "The feedback on the backend, and what it found", and
-    in the reply to the user.
+  - In STATUS.md under "Track `pdfbox-layout`", and in the reply to the user.
 
 ---
 

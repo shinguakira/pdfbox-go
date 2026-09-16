@@ -1,9 +1,9 @@
 # Java to Go porting conventions
 
 These are the rules every ported package follows. They exist so that the port
-reads as one library rather than 81 independently translated packages, and so
-that a reviewer holding the Java file next to the Go file can tell at a glance
-whether a difference is deliberate.
+reads as one library rather than as many unrelated translations as there are
+packages, and so that a reviewer holding the Java file next to the Go file can
+tell at a glance whether a difference is deliberate.
 
 The governing principle: **idiomatic Go at the boundary, faithful algorithm
 inside.** Public API shapes get translated into Go idiom, because callers have
@@ -20,9 +20,7 @@ real-world PDF breakage that no rewrite would rediscover.
 | `org.apache.pdfbox.<x>` | `pdfbox/<x>` |
 | `org.apache.fontbox.<x>` | `fontbox/<x>` |
 | `org.apache.xmpbox.type` | `xmpbox/xmptype` — renamed, `type` is a keyword |
-| `pdmodel.documentinterchange.<x>` | `pdmodel/interchange/<x>` |
-| `pdmodel.interactive.documentnavigation.<x>` | `pdmodel/interactive/navigation/<x>` |
-| `COSDictionary`, `PDPage` | `cos.Dictionary`, `pdmodel.Page` — the package supplies the prefix |
+| `COSDictionary` | `cos.Dictionary` — the package supplies the prefix |
 | `getFoo()` / `setFoo(v)` | `Foo()` / `SetFoo(v)` |
 | `isFoo()` | `IsFoo()`, or a bare `Foo` field when it is plain state |
 | `FOO_BAR` constant | `FooBar` |
@@ -32,22 +30,25 @@ Add a row there before porting a package, so the inventory script can attribute
 its source.
 
 Drop the type-name prefix that the Java class carries when the Go package
-already says it: `cos.COSDictionary` stutters, `cos.Dictionary` does not.
+already says it: `cos.COSDictionary` stutters, `cos.Dictionary` does not. That
+is what `cos` does; `pdmodel` keeps Java's `PD`, so the type is
+`pdmodel.PDPage`.
 
 Keep the prefix only where dropping it would produce a name that reads as
 something else. `COSString` becomes `cos.StringObj`, not `cos.String`, because
-`cos.String(x)` reads as a conversion; likewise `COSFloat` becomes
-`cos.FloatObj`. Record any such exception in the package doc comment.
+`cos.String(x)` reads as a conversion. Record any such exception in the package
+doc comment, as `go/pdfbox/cos/doc.go` does for that one.
 
 ## Errors
 
 Java throws; Go returns. Every method that declares `throws IOException` gains
 an `error` result.
 
-- Fixed failure conditions become sentinel values in the package's `errors.go`,
-  compared with `errors.Is`. Java callers can only match on an exception
-  message, so this is strictly more usable — do not port the message strings as
-  the only distinguishing feature.
+- Fixed failure conditions become exported sentinel values compared with
+  `errors.Is`, declared beside the code that returns them, or collected into the
+  package's `errors.go` once there are several. Java callers can only match on an
+  exception message, so this is strictly more usable — do not port the message
+  strings as the only distinguishing feature.
 - Wrap with `%w` when adding context: `fmt.Errorf("parsing xref at %d: %w", off, err)`.
 - `IllegalArgumentException` from a constructor becomes an `error` from the
   `NewXxx` function, not a panic. Panic only where the Java code would have
@@ -149,9 +150,9 @@ in `strings` has all three:
 So: leading and interior empties are **kept**, every trailing empty is
 **dropped**, and where the separator never occurs the whole input comes back
 untrimmed. `pdmodel/fdf`'s `splitJavaFunc` writes all three out; `util.SplitOnSpace`
-is the same contract for `\s`. `track/test-backfill` hit this four times in
-three packages, and one of them made the port silently accept a coordinate list
-Java rejects.
+is the same contract for `\s`. `track/test-backfill` hit this in several packages
+at once, and one of them made the port silently accept a coordinate list Java
+rejects; [`../STATUS.md`](../STATUS.md) has each with the test that pins it.
 
 **`HashMap.put` keeps the key object it already has**, and updates only the
 value. Two keys that are `equals` but carry different extra state — as
@@ -186,24 +187,14 @@ Java has no unsigned types, so PDFBox masks constantly: `b & 0xff`, `x & 0xffff`
 
 ## Tests
 
-**The Java test is ported before the Go implementation exists.** The full rules,
-the reasoning, and the anti-pattern they defend against are in
-[`tdd.md`](tdd.md) — read it before porting anything.
+**The Java test is ported before the Go implementation exists**, and assertion
+values are copied verbatim from the Java rather than recomputed from the Go. The
+rules, the reasoning, the anti-pattern they defend against and how a ported test
+file is written are in [`tdd.md`](tdd.md) — read it before porting anything.
 
-The short version:
-
-- Port the Java test first. It will not compile. Make it compile, make it fail,
-  then port the implementation until it passes, then refactor to Go idiom.
-- **Copy assertion values verbatim from the Java.** Never recompute an expected
-  value from your own code — that tests your misunderstanding, not PDFBox.
-- One Go test file per Java test file, same order, header comment naming the
-  Java source. `testPositionSkip` becomes `TestReadBufferPositionSkip`.
-- JIRA regression tests keep their issue id and a comment saying what broke.
-  Those encode behaviour nobody could derive from the specification.
-- A Java test you do not port gets a comment saying so and why.
-- Fixtures go to `t.TempDir()`; real PDFs whose bytes matter go to `testdata/`.
-- Where the port deviates from Java deliberately, add a test the Java suite
-  lacks so the difference is pinned rather than implied.
+One of them belongs here too, because it is a translation rule: where the port
+deviates from Java deliberately, add a test the Java suite lacks, so the
+difference is pinned rather than implied. See "Recording deviations" below.
 
 ## Which Java to port against
 
@@ -215,18 +206,16 @@ of what changed and what went away — check it before porting any class it name
 Concretely, so far:
 
 - Loading moved out of `PDDocument` into a `Loader` class. Port the 3.0 shape:
-  a package-level `pdfbox.Open(path)`, not constructors on the document type.
+  package-level functions, not constructors on the document type. The port's are
+  `pdfbox.LoadPDF` and its variants, in `go/pdfbox/loader.go`.
 - Standard 14 fonts moved from static instances to a `Standard14Fonts.FontName`
   enum. Port the enum.
 - `org.apache.pdfbox.util.Charsets` was deleted. Do not port it.
 - The integer 0-255 colour overloads were removed. Port only the float API.
 
-The areas the project itself names as having changed most — reader/writer
-infrastructure, font instantiation, colour signatures, the CLI, incremental
-parsing — are the areas where the Java API churned most between 2.0 and 3.0.
-Follow the source in this repository, not any tutorial written against 2.0.
-
-More background in [`prior-art.md`](prior-art.md).
+Follow the source in this repository, not any tutorial written against 2.0. The
+guide, the areas the project itself names as unsettled, and what the whole of it
+implies for the port are in [`prior-art.md`](prior-art.md).
 
 ## Never change the Java
 
@@ -240,17 +229,11 @@ If the port appears to need a Java change, the port is wrong.
 ## Do not fix Java bugs
 
 **Port the behaviour as written, including behaviour that is plainly wrong.**
-
 This is a migration, not a bug hunt. A bug faithfully carried over stays
-findable by diffing against the Java. A bug silently corrected during the port
-does not, and it makes the Go behave differently from the reference it exists to
-reproduce — which is the one thing this project cannot afford, since the Java is
-the only specification for most of what PDFBox does.
-
-Real PDFs and real callers depend on quirks. An arithmetic slip that truncates a
-value, a comparison that ignores a field, a loop that adds a sentinel to a
-running total: those are observable behaviour, and something downstream may
-already match them.
+findable by diffing against the Java; a bug silently corrected during the port
+does not. Real PDFs and real callers depend on quirks — an arithmetic slip that
+truncates a value, a comparison that ignores a field — and something downstream
+may already match them.
 
 When something looks like a Java bug:
 
@@ -259,7 +242,8 @@ When something looks like a Java bug:
    behaviour would be.
 3. Add an entry to [`../JAVA-BUGS.md`](../JAVA-BUGS.md) — not fixing a bug is
    not the same as forgetting it, and the moment you are reading the Java
-   closely enough to notice is the only moment it is cheap to write down.
+   closely enough to notice is the only moment it is cheap to write down. That
+   file states what an entry has to say.
 4. Move on. Do not open the question in the code.
 
 The only thing to fix is a bug **introduced by the port itself** — something the
@@ -271,6 +255,13 @@ The same applies to ported tests. A Java test helper that does not check what it
 claims to check gets ported as it is; the ported tests then verify exactly what
 the Java tests verify, no more. Strengthening it silently would mean the Go
 suite and the Java suite no longer test the same thing.
+
+**One branch was released from this rule, and it is closed.** After the port was
+finished, `track/java-bug-fixes` went through `JAVA-BUGS.md` and corrected in the
+Go the entries worth correcting; each of those carries a **Fixed in the Go**
+paragraph there and a comment at the site. A divergence carrying such a comment
+is not a defect to revert. Nothing above is relaxed for any other branch: a newly
+found Java bug is still ported, commented and recorded.
 
 ## Recording deviations
 

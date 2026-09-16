@@ -27,42 +27,18 @@ already-merged slices left behind, against Go that already exists.
 
 ## How each unit of work runs
 
-The five phases, with **B reversed**. Everywhere else B is "port the
-implementation"; here the implementation is already merged, so B is "fix the Go
-the ported test found wrong". That is the whole point of the branch, and it is
-the one place where a failing test is *expected*.
-
-**A — port the test.** Copy the Java test case for case. Every assertion value
-comes from the Java file, never from running the Go. Do not look at the Go
-first: a test written after reading the port asserts what the port does, which
-is exactly the thing under suspicion here.
-
-**B — judge each failure, then fix.** A red test is one of three things and the
-three are handled differently:
-
-| The failure is | Do |
-| --- | --- |
-| a defect in the Go | fix the Go, keep the test as the Java wrote it |
-| the Java's own behaviour, faithfully reproduced | keep both, and record it in `JAVA-BUGS.md` with the reproduction |
-| the test needing something the port does not have (a corpus file, a network fetch, `java.awt`) | drop the case, and record which and why in `STATUS.md` |
-
-**Never** adjust an assertion to match the Go. If the two disagree, one of them
-is wrong and it is the branch's job to say which.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`.
-
-**D — adversarial review.** Green tests are not evidence. Read what each ported
-test actually exercises against what the Java one did.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), with one difference this branch
+turns on: the implementation is already there, so **phase B is "judge each
+failure, then fix"** rather than porting the implementation. A test that fails
+here is a defect in the port, in the new test, or the Java's own behaviour, and
+which it is has to be decided before anything is changed.
 
 ## Scope
 
 Sixteen Java test classes, 107 `@Test` methods, 2,557 lines. Every one of them
-sits in a package a merged slice claims as done, and none of them is mentioned
-anywhere in `STATUS.md` — they were not deferred with a reason, they were
-missed.
+sits in a package a merged slice claims as done, and when this branch opened
+none of them was mentioned anywhere in `STATUS.md` — they were not deferred
+with a reason, they were missed.
 
 | Java test | `@Test` | Package, done by |
 | --- | ---: | --- |
@@ -85,8 +61,8 @@ missed.
 
 **The parser is five of the sixteen and 47 of the 107.** `TestCOSParser` and
 `TestPDFParser` are the recovery suite — broken cross-reference tables,
-truncated objects, the PDFBOX-numbered regressions. Nothing in the port has run
-them.
+truncated objects, the PDFBOX-numbered regressions. Nothing in the port had run
+them before this branch.
 
 Three small implementation gaps ride along, because this branch is already in
 those files:
@@ -227,28 +203,17 @@ And for this branch in particular:
 
 # Known-stale rows in `STATUS.md`
 
-Found by the survey that produced this branch. Correct them in C5.
+Five rows found by the survey that produced this branch, and corrected in C5.
+All of them had the same cause: **a later slice closed a deferral and only wrote
+it down in its own section**, leaving the summary and the deferring slice's
+table saying the work was outstanding. The rows are in `STATUS.md` under "The
+891-class survey, and why it was replaced", and the corrected counts in its
+Summary table.
 
-All of them have the same cause: **a later slice closed a deferral and only
-wrote it down in its own section.** The summary and the deferring slice's tables
-were left saying the work was still outstanding.
-
-| Where | Says | Is |
-| --- | --- | --- |
-| Summary, phase 1 | `19 of 24`, the remaining 4 deferred to slice 7 | Slice 7 ported `COSIncrement`, `COSUpdateInfo` and `COSUpdateState`. 22 of 24 now; the two left are `COSInputStream` and `COSOutputStream`, both already recorded as deliberately not ported with a reason |
-| Summary, phase 2 | `in progress — filter has the slice 1 subset` | `filter` is 23 of 23, `pdfparser` 18 of 18, `pdfwriter` 7 of 7. Slice 6 finished the filters |
-| Slice 2 section, the `filter` table | `the other 15 filters \| — \| slice 6`, and `DecodeOptions.java \| — \| not started` | Both done. Slice 6's own section records them correctly, 1,200 lines further down the same file |
-
-**Checked and correct — do not "fix" these:**
-
-| Row | Verified |
-| --- | --- |
-| `pdmodel/font at 34 of 39`, five embedders left | Right. `TrueTypeEmbedder`, `PDTrueTypeFontEmbedder`, `PDCIDFontType2Embedder`, `Subsetter` and `ToUnicodeWriter` are all still unported; `PDType1FontEmbedder` is ported, in `pdfont.go` |
-| `4 of rendering ... are java.awt classes` | Right. `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` |
-
-The survey's first pass got both of those wrong, by matching a class name that
-appears in a Go comment saying the class is *not* ported. A name in the tree is
-not evidence of a port; a `Port of <FQN>` comment or a type is.
+Two more rows the survey declared verified have since moved. `pdmodel/font at
+34 of 39` was wrong when it was written — `ToUnicodeWriter` was already ported
+— and `track/font-embedding` took it to 39 of 39. `4 of rendering ... are
+java.awt classes` was right then; `track/raster` ported all four.
 
 ---
 

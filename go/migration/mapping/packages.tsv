@@ -9,8 +9,8 @@
 #   - org.apache.pdfbox.<x> flattens to pdfbox/<x>
 #   - a package whose last segment collides with a standard library package is
 #     renamed; the only such rename so far is io -> pdfio
-#   - documentinterchange and documentnavigation lose the redundant middle
-#     segment their Java names carry
+#   - a package keeps its Java name; nothing is shortened on the way across,
+#     so documentinterchange and documentnavigation keep those segments
 #
 # java_package	go_package
 
@@ -56,10 +56,10 @@ org.apache.pdfbox.pdmodel.common	pdfbox/pdmodel/common
 org.apache.pdfbox.pdmodel.common.filespecification	pdfbox/pdmodel/common/filespecification
 org.apache.pdfbox.pdmodel.common.function	pdfbox/pdmodel/common/function
 org.apache.pdfbox.pdmodel.common.function.type4	pdfbox/pdmodel/common/function/type4
-org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure	pdfbox/pdmodel/interchange/logicalstructure
-org.apache.pdfbox.pdmodel.documentinterchange.markedcontent	pdfbox/pdmodel/interchange/markedcontent
-org.apache.pdfbox.pdmodel.documentinterchange.prepress	pdfbox/pdmodel/interchange/prepress
-org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf	pdfbox/pdmodel/interchange/taggedpdf
+org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure	pdfbox/pdmodel/documentinterchange/logicalstructure
+org.apache.pdfbox.pdmodel.documentinterchange.markedcontent	pdfbox/pdmodel/documentinterchange/markedcontent
+org.apache.pdfbox.pdmodel.documentinterchange.prepress	pdfbox/pdmodel/documentinterchange/prepress
+org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf	pdfbox/pdmodel/documentinterchange/taggedpdf
 org.apache.pdfbox.pdmodel.encryption	pdfbox/pdmodel/encryption
 org.apache.pdfbox.pdmodel.fdf	pdfbox/pdmodel/fdf
 org.apache.pdfbox.pdmodel.fixup	pdfbox/pdmodel/fixup
@@ -81,8 +81,8 @@ org.apache.pdfbox.pdmodel.interactive.annotation	pdfbox/pdmodel/interactive/anno
 org.apache.pdfbox.pdmodel.interactive.annotation.handlers	pdfbox/pdmodel/interactive/annotation/handlers
 org.apache.pdfbox.pdmodel.interactive.digitalsignature	pdfbox/pdmodel/interactive/digitalsignature
 org.apache.pdfbox.pdmodel.interactive.digitalsignature.visible	pdfbox/pdmodel/interactive/digitalsignature/visible
-org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination	pdfbox/pdmodel/interactive/navigation/destination
-org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline	pdfbox/pdmodel/interactive/navigation/outline
+org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination	pdfbox/pdmodel/interactive/documentnavigation/destination
+org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline	pdfbox/pdmodel/interactive/documentnavigation/outline
 org.apache.pdfbox.pdmodel.interactive.form	pdfbox/pdmodel/interactive/form
 org.apache.pdfbox.pdmodel.interactive.measurement	pdfbox/pdmodel/interactive/measurement
 org.apache.pdfbox.pdmodel.interactive.pagenavigation	pdfbox/pdmodel/interactive/pagenavigation

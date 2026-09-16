@@ -18,16 +18,19 @@ the modules above them.
 | `pdfbox-layout-awt` | `pdfbox-layout-awt` | Glyph layout backend over `java.awt` — bidi, ligatures, kerning | 2 | 436 |
 | `pdfbox-layout-fop` | `pdfbox-layout-fop` | The same glyph layout, backed by Apache FOP | 3 | 541 |
 
-## Application modules — out of scope for the port
+## Application modules
 
-| Module | What it is |
-| --- | --- |
-| `tools` | Command line utilities (26 files). Uses picocli |
-| `debugger` | Swing GUI for inspecting PDFs (93 files) |
-| `examples` | Standalone usage examples (105 files), documentation for the Java API |
-| `benchmark` | JMH benchmarks |
-| `app`, `debugger-app` | **Packaging only** — zero Java files, they assemble standalone jars |
-| `parent` | Shared Maven configuration |
+| Module | What it is | In the port |
+| --- | --- | --- |
+| `tools` | Command line utilities (26 files). Uses picocli | **yes** — `go/tools` and the one binary `go/cmd/pdfbox`. See [`../STATUS.md`](../STATUS.md) for which commands |
+| `debugger` | Swing GUI for inspecting PDFs (93 files) | no |
+| `examples` | Standalone usage examples (105 files), documentation for the Java API | no |
+| `benchmark` | JMH benchmarks | no |
+| `app`, `debugger-app` | **Packaging only** — zero Java files, they assemble standalone jars | no |
+| `parent` | Shared Maven configuration | no |
+
+`tools` is the exception in this table: it is an application module, and it is
+in scope. [`../PLAN.md`](../PLAN.md) says what is out of scope and why.
 
 ## Dependency graph
 
@@ -63,19 +66,13 @@ shaping, which is deeply platform-dependent.
 
 This matters beyond the 5 files involved. PDFBox already solves
 "platform-dependent concern behind a swappable backend" in its own tree, and
-that is exactly the shape proposed for rendering in slice 9 of
-[`../PLAN.md`](../PLAN.md). When that slice needs a precedent for the interface
-boundary, this is the in-repo one — no need to reach for PdfBox-Android.
+that is the shape slice 9 of [`../PLAN.md`](../PLAN.md) took for rendering: it
+is the in-repo precedent for `rendering.Backend`, with no need to reach for
+PdfBox-Android.
 
 ## Consequence for the port
 
 The module graph is a **constraint**, not a schedule. It says what cannot be
-skipped: no fontbox without io, no pdfbox without fontbox at link time.
-
-It is a poor unit of *work*, though. `pdfbox` alone is 623 files and 136k lines
-— 73% of the whole project in a single bucket. "Port the pdfbox module" is not a
-milestone anyone can act on or measure. And porting module-at-a-time would mean
-finishing all 143 files of fontbox before a single PDF could be opened, since
-opening a PDF needs no fonts at all.
-
-See [`../PLAN.md`](../PLAN.md) for how the work is actually ordered.
+skipped: no fontbox without io, no pdfbox without fontbox at link time. It is a
+poor unit of *work*, and [`../PLAN.md`](../PLAN.md) has the argument and the
+capability slices the work was ordered by instead.

@@ -28,34 +28,18 @@ this depends on nothing that does not exist.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
-The files `STATUS.md` records as left of `pdmodel/font`, and the half of two
+The files `STATUS.md` recorded as left of `pdmodel/font`, and the half of two
 ported classes that was deferred with them.
 
-**`STATUS.md` says 34 of 39 with five left, and it is wrong: `ToUnicodeWriter`
-was ported by slice 7**, with its own test ported from `TestToUnicodeWriter`
-and JAVA-BUGS 33 recorded at the point of difference. It is 35 of 39 and four
-are left. Correct that row in C5.
+**The row said 34 of 39 with five left, and it was wrong: `ToUnicodeWriter` was
+ported by slice 7**, with its own test ported from `TestToUnicodeWriter` and
+JAVA-BUGS 33 recorded at the point of difference. Four are left, and C5
+corrects the row. Why the survey missed the class is in `STATUS.md` under "The
+891-class survey, and why it was replaced".
 
 | Java source | Lines | What it does |
 | --- | ---: | --- |
@@ -64,13 +48,11 @@ are left. Correct that row in C5.
 | `pdmodel/font/PDTrueTypeFontEmbedder.java` | 135 | the simple-font half, with its encoding |
 | `pdmodel/font/Subsetter.java` | 40 | the interface `addToSubset`/`subset` are declared on |
 
-And the embedding halves the read-side port left as holes, which are named in
-the Go already:
+And the embedding halves the read-side port left as holes, which the Go names
+already:
 
-- `PDType0Font` — `load`, `loadVertical`, `addToSubset`, `subset`. The Go says
-  so at `pdtype0font.go:23`, and **three of its methods panic today** rather
-  than answer: the comment at line 445 reads "so this always panics until the
-  embedding half arrives."
+- `PDType0Font` — `load`, `loadVertical`, `addToSubset`, `subset`. Three of its
+  methods panicked where the embedding half was missing rather than answering.
 - `PDTrueTypeFont.load` — the simple-font factory.
 
 **`fontbox`'s side is already done.** `TTFSubsetter` is ported at
@@ -79,13 +61,10 @@ on. This branch is the `pdmodel` layer over it.
 
 Java test: `pdmodel/font/TestFontEmbedding.java`, 17 cases, 914 lines.
 
-### Why this is worth a branch of its own
-
-It is not five files of tidying. **A Go program cannot today write a PDF with an
-embedded font**, which is most of what writing a PDF is for: `slice/7` can merge
-and rewrite documents whose fonts are already embedded, and can write text in
-the 14 standard fonts, and nothing else. The Java class that would do it is
-reached, in the Go, by a method that panics.
+This is not five files of tidying: until this branch a Go program could not
+write a PDF with an embedded font, which is most of what writing a PDF is for.
+`slice/7` could merge and rewrite documents whose fonts were already embedded,
+and write text in the 14 standard fonts, and nothing else.
 
 ---
 

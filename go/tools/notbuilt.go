@@ -2,12 +2,13 @@ package tools
 
 // The commands this port does not build, and what each waits for.
 //
-// B10. Java's `tools` module has 26 main files. This package ports 23 of them,
-// the dispatcher among them, and the three below are missing.
+// B10. Java's `tools` module has 26 main files. This package ports 25 of them,
+// the dispatcher among them, and the one below is missing.
 //
 // The count was "18 of them plus the dispatcher" until track/imageio,
 // track/multipdf and track/raster were planned and the classes were counted
-// against the list below: it was 17 and 9 then, and it is 23 and 3 now.
+// against the list below: it was 17 and 9 then, 23 and 3 once track/raster and
+// track/imageio had run, and 25 and 1 once track/multipdf had.
 //
 // track/raster took `PDFToImage`, which is the whole of what a Backend was
 // wanted for: load, render each page, write it out. It did not take `PrintPDF`,
@@ -50,11 +51,11 @@ type NotBuilt struct {
 // page and writing a file is what `render` does; sending it to a printer is
 // the part that is missing.
 //
-// **Two wait for `multipdf`.** That is not the raster: `PDFMergerUtility`,
-// `LayerUtility` and `Overlay` were deferred by slice 7 to slice 8, slice 8
-// never took them, and the coverage survey counted them as ported because their
-// names appear in a comment saying they are absent. `track/multipdf` claims
-// them now.
+// **Two waited for `multipdf`, and wait no longer.** That was never the raster:
+// `PDFMergerUtility`, `LayerUtility` and `Overlay` were deferred by slice 7 to
+// slice 8, slice 8 never took them, and the coverage survey counted them as
+// ported because their names appear in a comment saying they are absent.
+// `track/multipdf` ported all three, and `merge` and `overlay` are built.
 var NotBuiltCommands = []NotBuilt{
 	{Java: "PrintPDF", Name: "print",
 		Waiting: "a printing system: Go has no PrinterJob, and no pure-Go library has one"},

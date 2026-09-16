@@ -47,42 +47,25 @@ upstream code and is the reference the port is checked against.
 
 ## Branches
 
-| Branch | Status | Java requirement | Latest release |
-|--------|--------|-----------------|----------------|
-| `trunk` | Future development (next major version, not yet released) | Java 11+ | — |
-| `3.0`  | **Actively maintained** — current stable series | Java 8+ | 3.0.7 |
-| `2.0`  | **Actively maintained** — legacy stable series | Java 6+ | 2.0.36 |
+Apache PDFBox maintains `trunk`, `3.0` and `2.0`. **Neither that fact nor
+anything else about the Apache project describes this repository**, which holds a
+one-time snapshot of `trunk` and has no ongoing relationship with Apache PDFBox —
+see "Go port" below. There is no `3.0` or `2.0` branch here, and the snapshot
+needs Java 11.
 
-When evaluating code or reporting issues, note which branch is in scope.
-Security fixes are applied to both `3.0` and `2.0`. New features target
-`trunk` and `3.0`.
-
-**The table above describes the Apache project. It does not describe this
-repository.** This repository holds a one-time snapshot of the Java source and
-has no ongoing relationship with Apache PDFBox — see "Go port" below.
-
-Branches here:
-
-| Branch | Contents |
-|--------|----------|
-| `trunk` | The frozen Java snapshot the port started from |
-| `migration-base` | Port mainline — `trunk` plus everything under `go/` |
-| `slice/*`, `track/*` | Go port work in progress, one capability slice each |
-
-See [go/migration/BRANCHING.md](go/migration/BRANCHING.md).
+The branches here are `trunk` (the frozen Java snapshot), `migration-base` (the
+port mainline) and one `slice/*` or `track/*` per unit of port work. Their roles,
+their order and what depends on what are in
+[go/migration/BRANCHING.md](go/migration/BRANCHING.md).
 
 ## Sub-modules
 
-All branches share the same multi-module Maven structure:
-
-- `pdfbox/` — Core library (PDF parsing, rendering, text extraction, encryption)
-- `fontbox/` — Font handling support library
-- `xmpbox/` — XMP metadata support library
-- `io/` — I/O utilities shared across modules (`3.0` and `trunk` only)
-- `tools/` — Command-line utilities
-- `debugger/` / `debugger-app/` — PDF debugger application
-- `examples/` — Standalone usage examples
-- `benchmark/` — JMH benchmarks
+The Maven build is `pdfbox/` (the core library — parsing, rendering, text
+extraction, encryption), `fontbox/` (fonts), `xmpbox/` (XMP metadata), `io/`
+(shared I/O), `tools/` (command-line utilities), `debugger/` and `debugger-app/`
+(a Swing GUI), `examples/`, `benchmark/`, the two `pdfbox-layout-*` glyph layout
+backends, `app/` and `parent/`. What each one does and how they depend on each
+other is in [go/migration/mapping/modules.md](go/migration/mapping/modules.md).
 
 Added by this fork, outside the Maven build:
 
@@ -114,7 +97,9 @@ upstream."
 - **The Java source and its tests are the specification.** The Go code is
   checked against them, not against your reading of ISO 32000. Where PDFBox
   contradicts the specification, PDFBox wins — the behaviour is usually
-  deliberate and encodes a real-world producer quirk.
+  deliberate and encodes a real-world producer quirk. Port the shapes the Java
+  in this tree actually has, never a member 3.0 deprecated or removed, and never
+  a pattern from a tutorial written against 2.0.
 - **Porting is test-first.** The Java test is ported before the Go
   implementation exists, and assertion values are copied verbatim from the Java
   rather than recomputed. See
@@ -125,6 +110,14 @@ upstream."
   or "tidy" a deviation comment without checking that file.
 - **Do not report Go/Java behavioural differences as security findings** without
   first checking `STATUS.md` — the intentional ones are recorded there.
+- **Never invent a branch, and never commit to `migration-base` directly.**
+  Branch work happens on a `slice/*` or `track/*` branch that
+  [go/migration/tasks/README.md](go/migration/tasks/README.md) lists, and
+  `go/migration/PLAN.md` is not edited to make room for new work. A branch that
+  ports Java runs in the five phases
+  [go/migration/tasks/TEMPLATE.md](go/migration/tasks/TEMPLATE.md) sets out; a
+  branch that ports nothing -- the test-data tracks, the Java-bug fixes -- runs
+  the way its own task file says, and that file is the instruction.
 - **Do not stop while work remains. Only the user stops the migration.** When
   working a `slice/*` or `track/*` branch, port every file in that branch's
   scope. Do not pause partway to report progress as if it were a result, do not
@@ -137,16 +130,15 @@ upstream."
 - **Do not fix bugs that exist in the Java. This is a migration, not a bug
   hunt.** Port the behaviour as written, including behaviour that is plainly
   wrong. A bug faithfully carried over can be found later by diffing against the
-  Java; a bug silently corrected during the port cannot, and it makes the Go
-  behave differently from the reference it is supposed to reproduce. Callers and
-  real PDFs depend on quirks. If something looks like a Java bug, port it,
-  comment that it looks wrong at the point it occurs, and move on. The only
-  code to fix is a bug introduced *by the port itself* — something Java cannot
-  do, such as a Go-specific initialisation-order or nil-handling mistake.
+  Java; a bug silently corrected during the port cannot. If something looks like
+  a Java bug, port it, comment that it looks wrong at the point it occurs, and
+  move on. The only code to fix is a bug introduced *by the port itself* —
+  something Java cannot do, such as a Go-specific initialisation-order or
+  nil-handling mistake.
 
   **The one exception, and it is closed.** The user directed one branch,
   `track/java-bug-fixes`, to correct the Java-driven defects the port had
-  faithfully carried. Sixty-one entries of
+  faithfully carried. Most entries of
   [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md) are now deliberately
   *not* what the Java does; each says so in a **Fixed in the Go** paragraph,
   and the code says so at the site. **A divergence carrying such a comment is
@@ -158,19 +150,19 @@ upstream."
   [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md).** Not fixing one is
   not the same as forgetting it. Add the entry while you are porting that code —
   the moment you are reading the Java closely enough to notice is the only
-  moment it is cheap to write down. Each entry says where the bug is, what the
-  Java does, what correct would be, where the Go carries it, and how confident
-  you are; "looks wrong to me" and "provably wrong" are different claims and
-  must not be filed as if they were the same. **Do not report any of it
-  upstream** — this repository has no relationship with Apache PDFBox, and the
-  security rules below forbid filing findings to any public tracker.
+  moment it is cheap to write down. That file states what an entry has to say
+  and insists that "looks wrong to me" and "provably wrong" are filed
+  differently. **Do not report any of it upstream** — this repository has no
+  relationship with Apache PDFBox, and the security rules below forbid filing
+  findings to any public tracker.
 
 Orientation for the port lives in
 [go/migration/README.md](go/migration/README.md): the plan, the branch strategy,
 the Java-to-Go conventions, and the package mapping.
 
-Status: early. Only the `pdfio` package (the Go port of the `io` module) is
-implemented. Everything else is planned but absent.
+Status: reading, writing, merging, form handling, text extraction and rendering
+are ported and tested. What is deliberately absent is recorded per package in
+[go/migration/STATUS.md](go/migration/STATUS.md).
 
 ## Building
 
@@ -192,7 +184,7 @@ To build or test a specific module, use the `-pl` flag from the root:
 mvn -pl pdfbox test
 ```
 
-Minimum Java version depends on the branch — see the table above.
+The snapshot compiles with Java 11.
 
 ### Building the Go port
 
@@ -223,22 +215,12 @@ Avoid large refactorings in these areas unless explicitly requested:
 
 ## Security
 
-Security model and scope: [SECURITY.md](SECURITY.md),
-also published at <https://pdfbox.apache.org/security.html>.
-
-Key points from the security model:
-
-- Processing malformed PDFs is **partially in scope**: crashes, unchecked
-  exceptions (`NullPointerException`, `StackOverflowError`), or general
-  resource consumption from large PDFs are **known limitations**, not
-  security vulnerabilities. However, disproportionate resource consumption
-  triggered by small, attacker-controlled inputs may be in scope — see
-  `SECURITY.md` for the full scope definition.
-- Remote code execution or privilege escalation from untrusted PDFs **is** in scope.
-- Issues that require the attacker to control the Java application's classpath
-  or configuration are **out of scope**.
-
-For a list of known CVEs, see <https://pdfbox.apache.org/security.html>.
+**Read [SECURITY.md](SECURITY.md) before producing any finding.** It defines the
+threat model and the full scope: which behaviour on a malformed PDF is a known
+limitation rather than a vulnerability, which resource consumption is in scope
+anyway, and what is out of scope because it needs the attacker to control the
+JVM environment. A finding produced without it will be inaccurate or out of
+scope. Known CVEs are at <https://pdfbox.apache.org/security.html>.
 
 To report a new vulnerability, send a plain-text email to <security@apache.org>.
 Do NOT open a public JIRA issue for undisclosed vulnerabilities. Agents MUST NOT
@@ -247,17 +229,20 @@ tracker, pull request, comment, or external service.
 
 ## Contribution Guidelines
 
-- Pull requests on this GitHub repository are welcome.
-- Bug reports and feature requests go in the
-  [JIRA issue tracker](https://issues.apache.org/jira/browse/PDFBOX).
-- Code must be compatible with the minimum Java version of the target branch
-  (see table above).
-- Follow the existing code style; a Checkstyle configuration is provided in
-  `pdfbox-checkstyle-5.xml` and an Eclipse formatter in
-  `pdfbox-eclipse-formatter.xml`.
-- Parser, rendering, font, extraction, encryption, or signing fixes should
-  include a minimal reproducer document where practical, along with regression
-  tests covering the reported behavior.
+**Nothing here is contributed to Apache and nothing is taken from it.** No pull
+request, no JIRA issue, no mailing list post: see "Go port" above, and
+[go/migration/BRANCHING.md](go/migration/BRANCHING.md) for what is done instead.
+The Java is read-only, so the guidelines below apply only to the Go.
+
+- Go changes must leave `gofmt`, `go vet` and `go test ./...` clean — see
+  "Building the Go port" above.
+- Parser, rendering, font, extraction, encryption, or signing fixes need a
+  minimal reproducer document where practical, along with regression tests
+  covering the reported behaviour.
 - Avoid introducing new runtime dependencies unless necessary.
   Security-sensitive or cryptographic dependencies require maintainer review.
-- For questions, use the [Users Mailing List](https://pdfbox.apache.org/mailinglists.html).
+
+The Java's own style rules still describe the snapshot, and its Checkstyle
+configuration (`pdfbox-checkstyle-5.xml`) and Eclipse formatter
+(`pdfbox-eclipse-formatter.xml`) are in the repository root for reading it, not
+for reformatting it.

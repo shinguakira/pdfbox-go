@@ -26,40 +26,23 @@ matters.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
 The five files `migration/STATUS.md` records as deferred out of `slice/0`:
 
-| Java source | Status in STATUS.md |
+| Java source | Why `slice/0` left it |
 | --- | --- |
-| `ScratchFile.java` | not started |
-| `ScratchFileBuffer.java` | not started |
-| `MemoryUsageSetting.java` | not started — only meaningful once `ScratchFile` exists |
-| `RandomAccessReadMemoryMappedFile.java` | not started — needs a decision on `golang.org/x/exp/mmap` vs `syscall` |
-| `NonSeekableRandomAccessReadInputStream.java` | not started |
+| `ScratchFile.java` | deferred to phase 2 |
+| `ScratchFileBuffer.java` | deferred to phase 2 |
+| `MemoryUsageSetting.java` | only meaningful once `ScratchFile` exists |
+| `RandomAccessReadMemoryMappedFile.java` | needs a decision on `golang.org/x/exp/mmap` vs `syscall` |
+| `NonSeekableRandomAccessReadInputStream.java` | deferred to phase 2 |
 
 `NonSeekableRandomAccessReadInputStream` is also what
-`PDPage.getContentsForStreamParsing` needs for its flate fast path — slice 2
-records that as the reason it takes the general path instead.
+`PDPage.getContentsForStreamParsing` needs for its flate fast path, which it
+had been doing without since slice 2. B5 wires it back in.
 
 ---
 
@@ -177,5 +160,6 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] B0. The memory-mapping decision blocks B4 only. Everything else can
-      proceed without it.
+- [x] B0. The memory-mapping decision blocked B4 only; everything else could
+      proceed without it. **Settled** — `STATUS.md`, "The memory mapping
+      decision — B0".

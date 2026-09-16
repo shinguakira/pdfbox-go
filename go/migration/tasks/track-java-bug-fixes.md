@@ -17,15 +17,12 @@ Every other task file says:
 > **NEVER fix a bug that is in the Java.** Port it as written, comment it where
 > it occurs, and record it in `migration/JAVA-BUGS.md`.
 
-That rule bought the migration its most valuable property: when the Go behaves
-oddly, the answer is always "so does the Java, and here is the entry". It was
-right for every branch that ported code.
+`JAVA-BUGS.md`'s own header says what that rule bought and why every branch
+that ported code kept it.
 
-It is the wrong rule for a port that is finished. `JAVA-BUGS.md` has 84 entries
-and roughly seventy of them are carried in the Go on purpose — an `equals` that
-truncates to 32 bits, a text extractor that reverses surrogate pairs, a merge
-that drops the source's article threads and doubles the destination's. Nothing
-downstream benefits from those any more.
+It is the wrong rule for a port that is finished. Most of the entries
+`JAVA-BUGS.md` held when this branch opened were carried in the Go on purpose,
+and nothing downstream benefits from those any more.
 
 **So this branch fixes them in the Go.** The rule is suspended for the entries
 this branch takes, and for nothing else.
@@ -84,26 +81,25 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-**84 entries in `migration/JAVA-BUGS.md`.** A0 divides them; nothing else in
-this file presumes the answer.
+**The 84 entries `migration/JAVA-BUGS.md` held when this branch opened.** A0
+divides them; nothing else in this file presumes the answer. Entries added
+after it are not this branch's, and 85 and 86 came back to it in a second pass.
 
 What is known before A0 starts, from the entries' own "Where the Go carries it"
 lines:
 
-| | Entries | What A0 does with them |
-| --- | ---: | --- |
-| The Go carries it | ~70 | judge each: fix or keep |
-| The Go already does not carry it | ~12 | verify the claim still holds, and say so |
-| The defect is in a Java **test** | 3 | the fix is in the Go test, not the Go code |
+| | What A0 does with them |
+| --- | --- |
+| The Go carries it | judge each: fix or keep |
+| The Go already does not carry it | verify the claim still holds, and say so |
+| The defect is in a Java **test** | the fix is in the Go test, not the Go code |
 
-The three test-only ones are 4 (`TestCOSBase.testByteArrays` never checks the
-lengths), 46 (`PDStreamTest` builds its stop filters from `COSName.toString()`)
-and 78 (`GlyphLayoutDIN91379.pdf` was rendered from a string the test no longer
-has).
+The test-only ones this branch opened with are 4, 46 and 78;
+`JAVA-BUGS.md`'s "How they group" collects them and each entry says what its
+defect is. `STATUS.md` has the count each column ended with.
 
-**The entry numbers are the unit of work and they are stable.** Do not
-renumber, do not compact, do not reorder. A later reader's only handle on any of
-this is "JAVA-BUGS.md 47".
+**The entry numbers are the unit of work.** `JAVA-BUGS.md` says why they never
+move.
 
 ---
 
@@ -125,18 +121,16 @@ this is "JAVA-BUGS.md 47".
   1. **A reader depends on it.** The bug is in something the port *writes*, and
      files written by PDFBox for twenty years carry it, so readers have been
      built to expect it. Changing the writer makes the port produce files that
-     PDFBox itself reads differently. Entry 43 (`PDSeedValue` writes strings and
-     reads names) is the shape to watch for.
+     PDFBox itself reads differently. Entry 43 is the shape to watch for.
   2. **"Correct" is a judgement, not a fact.** Where the entry's own "what
      correct would be" is a guess about intent rather than a reading of the
      specification, there is nothing to fix *to*.
-  3. **Fixing it is new functionality.** Entry 22 (`KerningTable` can never
-     take its version 1 branch) is the example: making the branch reachable
-     means implementing version 1 kerning, which is a port task and not a fix.
+  3. **Fixing it is new functionality.** Entry 22 is the example: making the
+     branch reachable means implementing a kerning table format, which is a
+     port task and not a fix.
   4. **It is unobservable.** A dead branch, a computed value that is never
-     used, a log line. Entry 11 (`parseHex` computes an offset and never uses
-     it) is one. Record it as unobservable rather than fixing it, so the entry
-     stays honest.
+     used, a log line. Entry 11 is one. Record it as unobservable rather than
+     fixing it, so the entry stays honest.
 
   Record the count in each column and the reason for every **keep**. A0 is the
   document this branch is judged on; the code is downstream of it.
@@ -271,33 +265,15 @@ the entry it came from.
 
 # What an entry looks like after a fix
 
-The entry keeps every line it had. It gains one, after **Where the Go carries
-it** and before **Confidence**:
+The entry keeps every line it had, **Where the Go carries it** included —
+`JAVA-BUGS.md`'s header says why that line is never rewritten. It gains one
+line, after that one and before **Confidence**:
 
-```markdown
-**Where the Go carries it** `go/pdfbox/cos/integer.go`, `Integer.Equals`, via
-`Integer.IntValue`, which narrows through int32 so that Go reproduces Java's
-(int) cast.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 1. `Integer.Equals` compares
-the int64 values, so `GetInteger(0)` and `GetInteger(4294967296)` are not equal
-where the Java says they are. `Integer.IntValue` still narrows, because that is
-`intValue()` and callers of it want Java's answer. Tested by
-`TestIntegerEqualsDoesNotTruncate` in `go/pdfbox/cos/integer_test.go`.
-
-**Confidence** high. ...
-```
-
-**Where the Go carries it** is left exactly as it was. It is the record of what
-the port did while it was a port, and rewriting it into the past tense loses
-the fact that the reproduction was deliberate.
-
-An entry that A0 **keeps** gains a line too:
-
-```markdown
-**Kept in the Go** `track/java-bug-fixes` A0: unobservable. The offset is
-computed and never read, so there is nothing a caller can tell apart.
-```
+- **Fixed in the Go** — this branch, the entry number, what the Go does instead
+  of what the Java does, what was deliberately left narrowing or unchanged, and
+  the test that pins it. Entry 1 is the worked example.
+- **Kept in the Go** — this branch, and which one of the four reasons above,
+  with what makes it that one. Entry 11 is the worked example.
 
 ---
 

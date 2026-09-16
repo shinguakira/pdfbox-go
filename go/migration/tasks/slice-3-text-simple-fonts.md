@@ -2,9 +2,9 @@
 
 Slice 3 — text extraction, simple fonts.
 
-**Branch: `slice/3-<name>`** — from and back to `migration-base`.
-The literal name is not written in `migration/BRANCHING.md`; only the pattern
-`slice/N-name` is. **Decide the name before branching.**
+**Branch: `slice/3-text-simple-fonts`** — from and back to `migration-base`.
+Merged. What it delivered is in `migration/STATUS.md`, "Slice 3 — text from
+simple fonts".
 
 ## Rules — do not break these
 
@@ -26,24 +26,7 @@ The literal name is not written in `migration/BRANCHING.md`; only the pattern
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ---
 
@@ -62,15 +45,14 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
     `GlyfCompositeDescriptTest`, `RandomAccessReadBufferDataStreamTest`
   - Skip `GlyphSubstitutionTable*Test`, `TTFSubsetterTest`,
     `TrueTypeFontCollectionTest` — slice 4
-  - `TestCMapSubtable` is **not** ported: both of its tests read fonts that the
-    Java build downloads into `target/fonts` (`NotoSansSC-Regular.otf`,
-    `ipag00303/ipag.ttf`), which this repository does not carry. Its subject,
-    `CmapSubtable.getCharCodes` with several codes for one glyph, is covered by
-    the format 4 read that `TestPostTable` exercises.
-  - `TestTTFParser.testParseVertical` and `testParseHeaders` are not ported
-    either: the first reads the same downloaded font, the second goes through
-    `FontHeaders`, which slice 4 ports. `testParseMisc` is ported for the part
-    this slice covers -- the kerning, vertical and GSUB assertions are slice 4.
+  - `TestTTFParser.testParseVertical` and `testParseHeaders` are not ported:
+    the first reads a font the Java build downloads into `target/fonts`, the
+    second goes through `FontHeaders`, which slice 4 ports. `testParseMisc` is
+    ported for the part this slice covers -- the kerning, vertical and GSUB
+    assertions are slice 4.
+  - `TestCMapSubtable` read the same downloaded fonts and was deferred here;
+    `track/testdata-sources` fetched them and ported it. `STATUS.md`, "What the
+    fetch unblocked".
 
 - [x] A4. `pdmodel/font/encoding` — port `TestFontEncoding`
   - Write from source for `GlyphList` — Java has no test for it
@@ -102,7 +84,6 @@ Ported from the Java test files. Nothing compiles yet; that is expected.
 - [x] A8. `pdfbox/text` — port `TestTextStripper`, the corpus harness
   - Table test over the 40 `.pdf` files in `pdfbox/src/test/resources/input/`
   - Compare against the checked-in expected text, sorted and unsorted
-  - **See Blocked below — this one cannot run yet**
 
 ---
 
@@ -170,21 +151,11 @@ Written from the Java source, in dependency order.
   - `PDFTextStripper` falls back to it when `TextPositionComparator` turns out
     not to be transitive and the JDK sort throws. Port `TestSort` with it.
 
-- [x] B11. **Decided: yes.** `pdfparser/COSParser`, `XrefParser`,
-      `BruteForceParser`, `PDFXrefStreamParser`, `PDFObjectStreamParser`,
-      `PDFParser`, then `pdmodel/PDDocument`, `PDDocumentCatalog`,
-      `PDDocumentInformation`, then `pdfbox/Loader`
-  - **This is a special case and is not a precedent.** Work outside a branch's
-    scope is not allowed. It is allowed here for one reason: this is not new
-    scope, it is *slice 1's* scope. `PLAN.md` slice 1 is "open a document" and
-    lists `pdfbox/pdfparser` at 18 files; the branch was merged to
-    `migration-base` at 12 of 18, with `STATUS.md` recording `COSParser` as
-    "next" and `PDFParser` as "not started — the entry point". `go/cmd/` is
-    empty and nothing in the tree defines `Load`. Slice 1 did not deliver what
-    it says it delivered.
-  - Slices 2 and 3 did not notice, because both take a `PDPage` a caller hands
-    them. Slice 3 is the first slice whose acceptance criterion — score 40 real
-    PDFs — cannot be met without opening a file.
+- [x] B11. **Decided: yes** — port the loader here. **This is a special case and
+      is not a precedent.** Work outside a branch's scope is not allowed; it is
+      allowed here because this is not new scope, it is *slice 1's*. The reason,
+      and what slice 1 had left undone, are in `migration/STATUS.md`, "The
+      loader — slice 1's unfinished half, ported here".
   - Port order, each test-first: `COSParser`, `XrefParser`,
     `PDFXrefStreamParser`, `PDFObjectStreamParser`, `BruteForceParser`,
     `PDFParser`, `PDDocument`, `PDDocumentCatalog`, `PDDocumentInformation`,
@@ -203,7 +174,7 @@ Written from the Java source, in dependency order.
 - [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
 - [x] C5. Update `migration/STATUS.md` — the slice 3 section, and the slice 2
       rows this slice closes
-- [x] C6. Report the corpus score as *N of 40* — **16 of 40**
+- [x] C6. Report the corpus score as *N of 40* — `STATUS.md`, "The corpus"
 
 ---
 
@@ -273,14 +244,6 @@ the ported tests cannot answer.
 
 # Blocked
 
-- [x] Decide whether the loader is ported in this slice — **yes**
-  - `TestTextStripper.java` imports `org.apache.pdfbox.Loader` and `PDDocument`;
-    it opens the 40 files from disk
-  - `Loader.java` is not ported — there is no Go file at `go/pdfbox/` root
-  - `PDDocument` and `PDDocumentCatalog` are not ported
-  - `pdfparser` is 12 of 18: `COSParser`, `XrefParser`, `BruteForceParser`,
-    `PDFObjectStreamParser`, `PDFXrefStreamParser`, `PDFParser` are all absent
-  - **Without them A8 and C6 cannot run and the slice scores nothing.** Every
-    other task in this file is unaffected.
-  - Decided yes, as a special case, because the work is slice 1's unfinished
-    scope rather than new scope. See B11 for the reasoning and the port order.
+- [x] Decide whether the loader is ported in this slice. Without it A8 and C6
+      could not run and the slice scored nothing. **Decided yes**, as a special
+      case; B11 carries the decision and the port order.

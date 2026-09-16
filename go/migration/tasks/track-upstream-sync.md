@@ -62,7 +62,8 @@ The other ten are in scope and each has a row below.
 
 ## How each row runs
 
-The five phases of every other task file, unchanged:
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), read for one row rather than
+one package:
 
 - **A — write the test.** At the exact site, and failing for the right reason
   before any implementation moves. "The exact site" is not the package: it is

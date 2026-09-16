@@ -2,8 +2,10 @@
 
 Slice 6 — the rest of the filters, and images.
 
-**Branch: `slice/6-<name>`** — from and back to `migration-base`.
-Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 7 and 8.
+**Branch: `slice/6-filters-images`** — from and back to `migration-base`.
+Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 7 and 8. Merged.
+What it delivered is in `migration/STATUS.md`, "Slice 6 — the rest of the
+filters, and images".
 
 ## Rules — do not break these
 
@@ -25,24 +27,7 @@ Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 7 and 8.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -74,19 +59,10 @@ relying on it.
 - [x] A2. `pdfbox/filter` — port the second test in that package
 - [ ] A3. `pdmodel/graphics/image` — port all 7 Java tests
 
-      **Three of the seven, and not the other four.** `PDInlineImageTest` and
-      `JPEGFactoryTest` are ported as far as they go without a writer, and
-      `ValidateXImage.validate` is the helper both use. `CCITTFactoryTest`,
-      `LosslessFactoryTest`, `PNGConverterTest` and `PDImageXObjectTest` are
-      not: every one of their tests builds a document, adds the image and saves
-      it, and several then render the saved file back. That is slice 7 and
-      slice 9.
-
-      In their place the port tests the property each factory rests on, which
-      needs neither — that what goes in comes back out, pixel for pixel, over
-      the same checked-in files those tests use. See `migration/STATUS.md`.
-      This box stays open because the four Java tests are still unported, and
-      it is the slice 7 branch that can close it.
+      **Three of the seven, and not the other four.** The box stays open
+      because the other four are still unported. Which they are, why, and what
+      the port tests in their place are in `migration/STATUS.md`, "Which Java
+      tests are ported, and which are not" and "Still open".
 - [x] A4. Write from source for any filter the Java tests do not reach
   - Name which ones before writing
 
@@ -208,13 +184,8 @@ And for this branch in particular:
       them; slice 2's own `colorspace.go` says the create methods and
       `toRGBImage` "belong with the image work of a later slice", which is this
       one. `create` dispatches on the name, so the dispatch has to be complete
-      or the port diverges from the Java on a file it should read.
-
-      Two stay out: **`PDPattern`**, which takes a `PDResources` and builds
-      pattern dictionaries that only rendering reads, and **`PDJPXColorSpace`**,
-      which only `JPXFilter` constructs and that filter needs a JPEG 2000
-      decoder Go has not got. Both go to slice 9. `create` reports them the way
-      Java reports a colour space it cannot build.
+      or the port diverges from the Java on a file it should read. The two that
+      stay out, and why, are in `migration/STATUS.md`.
 
       `PDSeparation` and `PDDeviceN` evaluate a tint transform, so
       `pdmodel/common/function` comes with them — 6 files and the type 4

@@ -31,98 +31,24 @@ change it to suit one branch — change the copy.
 | `track/stale-deferrals` | [`track-stale-deferrals.md`](track-stale-deferrals.md) | **merged** |
 | `track/imageio` | [`track-imageio.md`](track-imageio.md) | **merged** |
 | `track/multipdf` | [`track-multipdf.md`](track-multipdf.md) | **merged** — also finished `Splitter` |
-| `track/raster` | [`track-raster.md`](track-raster.md) | open — the last port, see its A0 |
-| `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | open — **after `track/raster`**; not a port |
+| `track/raster` | [`track-raster.md`](track-raster.md) | **merged** — the last of the port |
+| `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | **merged** — not a port; it fixed in the Go what the port carried from the Java |
+| `track/upstream-sync` | [`track-upstream-sync.md`](track-upstream-sync.md) | **merged** — what the Apache merge of 2026-09-07 changed, measured against the frozen snapshot |
+| `track/performance` | — | **carried**, not merged: its two commits rode into `track/testdata-sources` when that branch reopened. `../PERFORMANCE-PLAN.md` is its record |
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
 
-**Every slice and every earlier track is merged.** Two branches are open:
-`track/raster`, which is the last of the port, and `track/java-bug-fixes`,
-which is not a port at all.
+**The port is merged**, every slice and every track of it, bar the two
+`track/performance` commits that ride in the open branch. What is open is
+`track/testdata-sources`, whose subject is [`../TESTDATA.md`](../TESTDATA.md).
 
-## Order for the last four tracks
-
-**`track/stale-deferrals` first**, on the same argument `track/test-backfill`
-was taken on: it is the only one of the four that can find a defect in work
-already merged. Four deferrals in the tree name a dependency that has since been
-ported, and `TestPDDocument` was recorded nowhere at all.
-
-**`track/imageio` next**, even though it is small and `track/raster` is the one
-everyone is waiting for. It is on the critical path and nothing else is:
-`track/raster`'s last task, the `render` command, writes its output through
-`ImageIOUtil`.
-
-**`track/multipdf` alongside it**, whenever there is someone to take it. It
-depends on nothing and unblocks nothing else — `merge` and `overlay` are the
-only things downstream of it.
-
-**`track/raster` last, and it can start today.** Only its B5 needs
-`track/imageio`; the backend, the nineteen shading contexts and paints, and the
-four transparency classes above it do not. What it must not start without is its
-own A0, which is the last design decision this migration has.
-
-## And then `track/java-bug-fixes`, which is not one of the four
-
-It ports nothing. It goes through [`../JAVA-BUGS.md`](../JAVA-BUGS.md) entry by
-entry and fixes in the Go the defects the port reproduced from the Java on
-purpose — the only branch in this migration where "never fix a bug that is in
-the Java" does not apply, and the only one that makes the Go deliberately
-differ from its reference.
-
-**It goes after `track/raster`**, because every branch before it adds entries to
-the file it works from, and because "the Go does X, is that a defect?" is
-answered by reading the Java right up until the Go is allowed to differ on
-purpose.
-
-The order was taken from the imports of the five commands that are missing, not
-from where the classes sit in the Java tree. `ExtractImages` does not import
-`rendering`; `PDFMerger` and `OverlayPDF` import only `multipdf`; `PDFToImage`
-imports both `rendering` and `imageio`, and is the single edge between two
-branches that are otherwise independent. [`../BRANCHING.md`](../BRANCHING.md)
-carries the graph.
-
-The **contents** came from an audit, not from the 891-class survey that missed
-`multipdf`. The first cut of these tracks had three; the audit added a fourth
-and put two more classes into `track/raster` and one more test class into
-`track/multipdf`. `../STATUS.md` carries the method and the commands to re-run
-it -- the important half of which is not finding unported classes but checking
-whether the reason each recorded deferral gives is **still true**.
-
-## The order the four earlier tracks were taken in
-
-
-**`track/test-backfill` first.** It is the only one that can find defects in
-work already merged; the other three add surface area on top of a base whose
-test coverage has a known hole. Sixteen Java test classes, 107 cases, sitting in
-packages a merged slice calls done and mentioned nowhere in
-[`../STATUS.md`](../STATUS.md) — not deferred with a reason, missed.
-
-Then `track/font-embedding`, which closes a capability gap: nothing in the port
-can write a PDF with an embedded font today, and the method that would is a
-panic. Then `track/tools`, whose 22 commands finally all have their libraries.
-Then `track/pdfbox-layout`, last, because its A0 is a substitution decision
-entangled with `rendering.Backend`.
-
-## The two gaps, and how they were closed
-
-This file used to carry two rows marked **gap** — work `PLAN.md` counted in
-scope with no branch anywhere. Both were closed by the user, in the survey that
-also produced `track/test-backfill` and `track/font-embedding`:
-
-- **`pdfbox-layout-*`** now has `track/pdfbox-layout`, and a row in
-  [`../BRANCHING.md`](../BRANCHING.md).
-- **`tools`** now has `track/tools`. Its file was `tools-unassigned.md`, whose
-  whole purpose was to make the gap visible rather than close it; it is renamed
-  and rewritten, and the argument it made — that `tools` is not one unit of work
-  — is kept, because it is still why this is a track and not a slice.
-
-`PLAN.md` is **not** changed by any of this. It counted both in scope already;
-what was missing was a branch, and branches live in
-[`../BRANCHING.md`](../BRANCHING.md).
+The order the branches were taken in, the dependency graph and the argument for
+each edge are in [`../BRANCHING.md`](../BRANCHING.md).
 
 ## Coverage
 
-Every Java package in scope, and the branch that claims it. Regenerate the left
-column with:
+Every Java package in scope, and the branch that claims it. What each branch
+then delivered is in [`../STATUS.md`](../STATUS.md), one chapter per branch.
+Regenerate the left column with:
 
 ```
 find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
@@ -145,26 +71,26 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `fontbox/ttf/table/common` | 12 | slice 4 |
 | `fontbox/ttf/table/gsub` | 9 | slice 4 |
 | `fontbox/type1` | 6 | slice 4 |
-| `fontbox/util` | 1 | slice 2 — done |
+| `fontbox/util` | 1 | slice 2 |
 | `fontbox/util/autodetect` | 7 | slice 4 |
-| `org/apache/pdfbox` — `Loader` | 1 | slice 3, conditionally — see its Blocked |
-| `pdfbox/contentstream` | 3 | slice 2 — done; slice 9 for the graphics engine |
-| `contentstream/operator` | 5 | slice 2 — done |
+| `org/apache/pdfbox` — `Loader` | 1 | slice 3 |
+| `pdfbox/contentstream` | 3 | slice 2; slice 9 for the graphics engine |
+| `contentstream/operator` | 5 | slice 2 |
 | `contentstream/operator/color` | 13 | slice 9 |
 | `contentstream/operator/graphics` | 23 | slice 9 |
-| `contentstream/operator/markedcontent` | 6 | slice 2 — done bar `DrawObject` |
-| `contentstream/operator/state` | 13 | slice 2 — done bar `gs` |
+| `contentstream/operator/markedcontent` | 6 | slice 2 (5), slice 9 (`DrawObject`) |
+| `contentstream/operator/state` | 13 | slice 2 (12), slice 8 (`gs`) |
 | `contentstream/operator/text` | 16 | slice 2 (11), slice 3 (5) |
-| `pdfbox/cos` | 24 | slice 1, slice 7 for the update-state files — **done** |
-| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) — **done** |
+| `pdfbox/cos` | 24 | slice 1, slice 7 for the update-state files |
+| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) |
 | `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` |
-| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) — **done** |
+| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) |
 | `pdfbox/multipdf` | 6 | slice 7 (3), `track/multipdf` (the other 3, and `PDFCloneUtilityTest`) |
-| `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 conditionally, slice 8 for `FDFParser` |
-| `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
+| `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 (the loader half), slice 8 (`FDFParser`) |
+| `pdfbox/pdfparser/xref` | 6 | slice 1 |
 | `pdfbox/pdfwriter` | 3 | slice 7 |
 | `pdfbox/pdfwriter/compress` | 4 | slice 7 |
-| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio), `track/raster` (`PDPatternContentStream`), `track/stale-deferrals` (`TestPDDocument`) |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 (the loader half), slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio), `track/raster` (`PDPatternContentStream`), `track/stale-deferrals` (`TestPDDocument`) |
 | `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
 | `pdmodel/common/filespecification` | 4 | slice 8 |
 | `pdmodel/common/function` | 6 | slice 9 |
@@ -198,9 +124,9 @@ branch that first needs it. Found by grepping for each import:
 
 | Helper | Used by | Branch | Java test |
 | --- | --- | --- | --- |
-| `Matrix`, `Vector` | the graphics state | slice 2 — **done** | `MatrixTest` |
+| `Matrix`, `Vector` | the graphics state | slice 2 | `MatrixTest` |
 | `IterativeMergeSort` | `PDFTextStripper`, when its comparator is not transitive | slice 3 | `TestSort` |
-| `DateConverter` | `COSDictionary` dates, `FDFAnnotation` | slice 3 with `PDDocumentInformation` if the loader lands there, otherwise slice 8 | `TestDateUtil` |
+| `DateConverter` | `COSDictionary` dates, `FDFAnnotation` | slice 8, with the `COSDictionary` date accessors slice 1 left | `TestDateUtil` |
 | `Hex` | `COSName`, `COSString`, `ASCIIHexFilter`, `COSWriter`, `ToUnicodeWriter`, `FDFAnnotationStamp` | slice 6, with `ASCIIHexFilter` | `TestHexUtil` |
 | `NumberFormatUtil` | `PDAbstractContentStream` | slice 7 | `TestNumberFormatUtil` |
 | `StringUtil` | `PDAbstractContentStream` | slice 7 | `StringUtilTest` |
@@ -208,29 +134,4 @@ branch that first needs it. Found by grepping for each import:
 | `Version` | `tools` only | `track/tools` | — |
 
 `Hex` is a special case: `cos.ParseHexString` already exists in the port, so
-slice 1 folded part of it away. Check what is left of the Java class before
-porting it whole.
-
-`COSDictionary`'s date accessors are the other half of `DateConverter`.
-`STATUS.md` records them as the "minus dates" in the slice 1 `cos` row; they
-land with whichever branch takes `DateConverter`.
-
-## The five phases
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt`, `go vet`, `go test`. A failure is a defect in the
-port, not in the test.
-
-**D — adversarial review.** 敵対的レビュー. Green tests prove the port passes
-the tests, not that the migration is faithful.
-
-**E — user feedback.** Stop. Wait. Judge each item before acting, and where it
-needs fixing, write a strict failing test first.
-
-**A to D run without stopping.** E1 is the only stop; finishing a task, a
-phase, a package or a commit is not one.
+slice 1 folded part of the Java class away before slice 6 ported the rest.

@@ -62,8 +62,7 @@ fixed. The migration guidance names four alternatives: **SkiaSharp** (native),
 
 ## Go
 
-The same shape, measured for A0 and written up in
-[`STATUS.md`](STATUS.md) under "Track `raster` — A0, what draws":
+The same shape, measured for A0 over the four candidates:
 
 | | fill | stroke: width, cap, join, dash | arbitrary clip | PDF's 16 blend modes | groups, soft masks |
 | --- | :-: | :-: | :-: | :-: | :-: |
@@ -84,10 +83,10 @@ part is written by hand whatever else is chosen.
 
 ## What this port does, and why it is not a worse position
 
-`track/raster` builds on `srwiley/rasterx` — one dependency,
-`golang.org/x/image` — for the fills and the stroke model, and writes the
-compositor, the clip and the transparency groups over the `blend.BlendMode`
-the port already has. About 600 lines with no Java to port from.
+`track/raster` builds on `srwiley/rasterx` and writes the compositor, the clip
+and the transparency groups by hand — about 600 lines with no Java to port
+from. Which library does which job is in [`STATUS.md`](STATUS.md), "Track
+`raster` — what draws", with the rest of that decision.
 
 Set against the survey, that is the ordinary cost of the job rather than a
 penalty for choosing Go:
@@ -100,10 +99,10 @@ penalty for choosing Go:
   ran it.
 
 The last of those is worth more here than it looks: `checkRenderIdent` and the
-deferred pixel comparisons render *both* sides through this port's own
-backend, so they are exact. A renderer whose output varies by operating system
-could not make that comparison at all — which is the position
-`PdfPig.Rendering.Skia` documents itself as being in.
+deferred pixel comparisons render *both* sides through this port's own backend,
+so what they compare does not depend on the machine that ran it. A renderer
+whose output varies by operating system could not make that comparison at all —
+which is the position `PdfPig.Rendering.Skia` documents itself as being in.
 
 ## Sources
 
@@ -118,5 +117,4 @@ could not make that comparison at all — which is the position
 
 The Go half of the table was measured rather than read: the four libraries were
 fetched into a scratch module and their sources read. `go/pdfbox/rendering/
-raster/rasterx_test.go` is what came out of it and pins the behaviour relied on
-here.
+raster/rasterx_test.go` is what came out of it.
