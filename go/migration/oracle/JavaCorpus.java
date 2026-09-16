@@ -243,6 +243,67 @@ public class JavaCorpus {
         return hex.toString();
     }
 
+    /**
+     * Every page of one way of opening one file, as the rows of a page table:
+     * page, text, chars and a digest of that page's text. The digest column of
+     * the document table says two extractions of the same length differ; this
+     * says which page they differ on. go/cmd/corpus -pages writes the same
+     * table for the port, and -comparepages joins the two.
+     */
+    static List<String[]> pagesOf(String path, Open open) {
+        List<String[]> rows = new ArrayList<>();
+        PDDocument doc = null;
+        try {
+            doc = load(path, open);
+            int pages = doc.getNumberOfPages();
+            for (int page = 1; page <= pages; page++) {
+                String text = "ok";
+                int chars = 0;
+                String digest = "-";
+                try {
+                    PDFTextStripper stripper = new PDFTextStripper();
+                    stripper.setStartPage(page);
+                    stripper.setEndPage(page);
+                    if (LF) {
+                        stripper.setLineSeparator(LFS);
+                        stripper.setPageEnd(LFS);
+                    }
+                    StringWriter out = new StringWriter();
+                    stripper.writeText(doc, out);
+                    chars = out.toString().codePointCount(0, out.toString().length());
+                    digest = digest(out.toString());
+                } catch (Throwable t) {
+                    text = shorten(t);
+                }
+                rows.add(new String[] { String.valueOf(page), text, String.valueOf(chars), digest });
+            }
+        } catch (Throwable t) {
+            rows.add(new String[] { "0", shorten(t), "0", "-" });
+        } finally {
+            if (doc != null) {
+                try {
+                    doc.close();
+                } catch (Throwable ignored) {
+                    // closing is not what is being measured
+                }
+            }
+        }
+        return rows;
+    }
+
+    /** Opens one file the way one job says to. */
+    static PDDocument load(String path, Open open) throws Exception {
+        if (open == null) {
+            return Loader.loadPDF(new File(path));
+        }
+        if (open.certificate == null) {
+            return Loader.loadPDF(new File(path), open.password);
+        }
+        // The keystore is built inside the fence, so a key that cannot be read
+        // is this row's failure rather than the run's.
+        return Loader.loadPDF(new File(path), open.password, keyStoreFor(open), null);
+    }
+
     static String[] score(String path, Open open) {
         String result = "ok";
         int pages = 0;
@@ -252,16 +313,9 @@ public class JavaCorpus {
 
         PDDocument doc = null;
         try {
-            if (open == null) {
-                doc = Loader.loadPDF(new File(path));
-            } else if (open.certificate == null) {
-                doc = Loader.loadPDF(new File(path), open.password);
-            } else {
-                // The keystore is built inside the fence, so a key that cannot be
-                // read is this row's failure rather than the run's. Its message
-                // then says so, and go/cmd/corpus fails the same line the same way.
-                doc = Loader.loadPDF(new File(path), open.password, keyStoreFor(open), null);
-            }
+            // A key that cannot be read is this row's failure rather than the
+            // run's, and go/cmd/corpus fails the same line the same way.
+            doc = load(path, open);
             pages = doc.getNumberOfPages();
             try {
                 PDFTextStripper stripper = new PDFTextStripper();
@@ -302,7 +356,11 @@ public class JavaCorpus {
 
         long timeoutSeconds = args.length > 1 ? Long.parseLong(args[1]) : 20;
         LF = args.length > 2 && args[2].equals("lf");
-        for (int t = 3; t < args.length; t++) {
+        // args[3] says which table to write: "rows", the one row per file the
+        // oracle joins, or "pages", a digest per page for narrowing one of its
+        // findings to a page. The passwords tables follow it.
+        boolean perPage = args.length > 3 && args[3].equals("pages");
+        for (int t = 4; t < args.length; t++) {
             readTable(args[t]);
         }
 
@@ -333,8 +391,8 @@ public class JavaCorpus {
         // is named by its file and by the password line that opened it, and
         // either can be written in any script.
         PrintStream table = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
-        table.println("file\topen\tpages\ttext\tchars\tdigest");
-        List<Future<String[]>> stuck = new ArrayList<>();
+        table.println(perPage ? "file\tpage\ttext\tchars\tdigest" : "file\topen\tpages\ttext\tchars\tdigest");
+        List<Future<List<String[]>>> stuck = new ArrayList<>();
         for (int i = 0; i < jobs.size(); i++) {
             String path = paths.get(i);
             Open open = jobs.get(i);
@@ -345,20 +403,28 @@ public class JavaCorpus {
                 t.setDaemon(true);
                 return t;
             });
-            String[] row;
-            Future<String[]> future = null;
+            List<String[]> rows;
+            Future<List<String[]>> future = null;
             try {
-                future = pool.submit((Callable<String[]>) () -> score(path, open));
-                row = future.get(timeoutSeconds, TimeUnit.SECONDS);
+                future = pool.submit(perPage
+                        ? (Callable<List<String[]>>) () -> pagesOf(path, open)
+                        : (Callable<List<String[]>>) () -> List.<String[]>of(score(path, open)));
+                rows = future.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
-                row = new String[] { "timeout", "0", "-", "0", "-" };
+                rows = List.<String[]>of(perPage
+                        ? new String[] { "0", "timeout", "0", "-" }
+                        : new String[] { "timeout", "0", "-", "0", "-" });
                 stuck.add(future);
             } catch (Throwable t) {
-                row = new String[] { shorten(t), "0", "-", "0", "-" };
+                rows = List.<String[]>of(perPage
+                        ? new String[] { "0", shorten(t), "0", "-" }
+                        : new String[] { shorten(t), "0", "-", "0", "-" });
             } finally {
                 pool.shutdownNow();
             }
-            table.println(names.get(i) + "\t" + String.join("\t", row));
+            for (String[] row : rows) {
+                table.println(names.get(i) + "\t" + String.join("\t", row));
+            }
             table.flush();
 
             // shutdownNow can only interrupt, and a parser that is not sitting

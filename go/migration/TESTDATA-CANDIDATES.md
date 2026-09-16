@@ -91,8 +91,14 @@ it is ever pursued.
 **The rest of iText's organisation, not fetched.** `itext-java` and
 `itext-dotnet` are iText Core; the other 45 public repositories of
 [github.com/itext](https://github.com/itext) are its add-ons, samples and
-tools, and were counted on 2026-09-16 from each default branch's tree. They are
-not fetched, and nothing on `track/testdata-itext` scored them:
+tools, and were counted on 2026-09-16 from each default branch's tree. **They are
+not fetched, and the decision is that they stay that way**, recorded as I2 of
+[`tasks/track-testdata-itext.md`](tasks/track-testdata-itext.md): 15,279 of them
+are pdfHTML's `cmp_` files and most of the rest are expected output, so they are
+PDFs iText wrote, and the 13,857 already scored from that same writer found two
+port defects and then agreed on every file. The one part that is a different
+producer is iText 5, `itextpdf` and `itextsharp`, and that is the subset to take
+if this is ever reopened:
 
 | Repository | PDFs | What they are |
 | --- | ---: | --- |

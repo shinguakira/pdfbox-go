@@ -42,6 +42,13 @@
 .PARAMETER TimeoutSeconds
     Give up on one file after this. Default 20, matching cmd/corpus.
 
+.PARAMETER Pages
+    Write a digest per page instead of a row per file. The table is
+    file, page, text, chars, digest, and `corpus -comparepages` joins it with
+    the one `corpus -pages` writes. Use it over the files a comparison has
+    already named, not over a corpus: it extracts each page in a pass of its
+    own.
+
 .PARAMETER Passwords
     Tables of the ways encrypted files are opened, in UTF-8 without a byte order
     mark. Each line is one way of opening one file: a path ending, a tab, and the
@@ -75,6 +82,11 @@ param(
     [int]$TimeoutSeconds = 20,
 
     [string[]]$Passwords,
+
+    # Write a digest per page rather than a row per file, for narrowing a
+    # disagreement the document digest found to a page. go/cmd/corpus -pages
+    # writes the same table for the port, and -comparepages joins the two.
+    [switch]$Pages,
 
     [switch]$Rebuild,
 
@@ -211,7 +223,7 @@ Write-Host "running PDFBox over $total files"
 Push-Location $RepoRoot
 try {
     $lfArg = if ($Crlf) { 'crlf' } else { 'lf' }
-    $javaArgs = @($List, $TimeoutSeconds, $lfArg)
+    $javaArgs = @($List, $TimeoutSeconds, $lfArg, $(if ($Pages) { "pages" } else { "rows" }))
     if ($Passwords) { $javaArgs += $Passwords }
     # JavaCorpus writes its table in UTF-8, and PowerShell reads what a native
     # program writes in the console's code page unless told otherwise; a row

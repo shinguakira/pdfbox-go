@@ -145,7 +145,8 @@ The two are JAVA-BUGS 15 and 30, which the Go version fixes on purpose, as on
   and `run-oracle.ps1 -Passwords` take more than one table.
 - Both tables carry a digest of the text, and `-oracle` compares it where the
   lengths agree. This is `track-testdata-sources.md`'s T6, for the whole
-  document; per page it is not done.
+  document; per page it is a mode of its own, `-pages` and `-comparepages`,
+  which I1 below describes.
 - `JavaCorpus` writes its table in UTF-8 and `run-oracle.ps1` reads it so; rows
   named by an Arabic password came back as question marks.
 - `cmd/corpus` writes a panic to the stage that was running. A panic while
@@ -154,11 +155,28 @@ The two are JAVA-BUGS 15 and 30, which the Go version fixes on purpose, as on
 
 ## Open tasks
 
-- [ ] **I1. Per-page digests.** The digest says that a document's text differs,
-  not where. Both of the digest's findings on this branch were located by
-  dumping each side's whole text, and for `TaroUTR50SortedList112.pdf` every
-  text position as well.
-  A digest per page would narrow the next one to a page.
-- [ ] **I2. iText's other 45 repositories.** About 21,000 PDFs, 15,279 of them
-  pdfHTML's output. Counted and not fetched; whether any of them is worth
-  carrying needs a decision.
+- [x] **I1. Per-page digests.** Done 2026-09-16. Both drivers write a page
+  table on request — `corpus -pages <out>` and `run-oracle.ps1 -Pages` — one row
+  per page per way of opening a file, with that page's text digested the way the
+  document's is, and `corpus -comparepages <java> <go>` joins the two and names
+  every page they disagree on. It is a mode rather than a column because a page
+  table over the whole corpus is a quarter of a million rows and extracting per
+  page costs a pass per page; the way to use it is to score the corpus, see
+  which files disagree, and run it over those. Over the two that do, it answers
+  in seconds: `pdfjs/bug1175962.pdf` page 1, 117 characters against 126, and
+  `pdfjs/poppler-90-0-fuzzed.pdf` page 10, 4 against 209 — which is the page
+  whose content stream ends early under JAVA-BUGS 30's fix.
+  `go/cmd/corpus/pages.go`, `pages_test.go`, `migration/oracle/JavaCorpus.java`,
+  `scripts/run-oracle.ps1`.
+- [x] **I2. iText's other 45 repositories.** Decided 2026-09-16: **not
+  carried.** About 21,000 PDFs, and what they are decides it — 15,279 are
+  pdfHTML's `cmp_` files and most of the rest are the examples', the books' and
+  pdfSweep's and pdfOCR's expected output, so they are PDFs iText wrote, which
+  is the producer the 13,857 already here are mostly from. Those found two port
+  defects and then agreed on all 13,857, so another set from the same writer is
+  unlikely to find anything the first did not. The one part that is a different
+  producer is iText 5, `itextpdf` and `itextsharp`, 1,703 files from the
+  previous generation of the library; if this is ever reopened, that is the
+  subset to take and the reason to take it. Reopening it needs a reason to
+  change, and a defect traced to a file iText 5 wrote would be one.
+  [`../TESTDATA-CANDIDATES.md`](../TESTDATA-CANDIDATES.md) carries the counts.

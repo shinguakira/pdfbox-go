@@ -541,6 +541,28 @@ wrong character, or the right characters in the wrong order, that length alone
 passes. A PDFBox table written before the column existed is compared on length
 alone.
 
+**Narrowing one of those to a page.** The digest says a document's text differs;
+it does not say where. Both drivers write a page table on request — one row per
+page per way of opening a file, with that page's text digested the same way —
+and `corpus -comparepages` joins them. Run it over the files the comparison
+named, not over a corpus: each page is extracted in a pass of its own.
+
+```bash
+printf 'go/testdata/corpus/pdfjs/bug1175962.pdf\n' > narrow.txt
+pwsh go/migration/scripts/run-oracle.ps1 -List narrow.txt -Out java-pages.tsv -Pages
+cd go && go run ./cmd/corpus -pages go-pages.tsv testdata/corpus/pdfjs/bug1175962.pdf
+go run ./cmd/corpus -comparepages ../java-pages.tsv go-pages.tsv
+```
+
+```
+  CHARS  go/testdata/corpus/pdfjs/bug1175962.pdf page 1: go 117, java 126
+  CHARS  go/testdata/corpus/pdfjs/poppler-90-0-fuzzed.pdf page 10: go 4, java 209
+```
+
+Those are the two files that disagree, each narrowed to its page in seconds:
+JAVA-BUGS 15 on the first page of one, and on the tenth page of the other the
+content stream that ends early under JAVA-BUGS 30's fix.
+
 Note what this does **not** do: it does not compare against the Java. Running
 PDFBox over three thousand files is not cheap either, and the comparison that
 matters is per-case rather than per-corpus. For that, keep to what

@@ -118,6 +118,8 @@ func main() {
 		quiet    = flag.Bool("q", false, "summary only")
 		isolate  = flag.Bool("isolate", true, "score each file in its own process, so one that takes the runtime down does not end the run")
 		one      = flag.Bool("one", false, "score exactly one file and print its row; how -isolate re-enters this program")
+		pages    = flag.String("pages", "", "instead of scoring, write a digest per page of the files given, for narrowing a disagreement the document digest found to a page")
+		cmpPages = flag.Bool("comparepages", false, "compare two page tables, PDFBox's first and this program's second, and report every page they disagree on")
 		openLine = flag.Int("open", -1, "with -one, open the file as the line of this index in the passwords tables says, counting from 0 across them in order")
 	)
 	flag.Func("passwords", "a table of the ways a source project opens its encrypted documents: <path ending>\\t<password>, or <path ending>\\t<password>\\t<certificate>\\t<private key>; may be given more than once, and each file is opened once for every line naming it", func(table string) error {
@@ -136,6 +138,22 @@ func main() {
 			os.Exit(2)
 		}
 		fmt.Println(scoreNow(jobFor(flag.Arg(0), *openLine), *render, float32(*dpi)))
+		return
+	}
+
+	if *cmpPages {
+		if flag.NArg() != 2 {
+			fmt.Fprintln(os.Stderr, "corpus: -comparepages takes two tables, PDFBox's first")
+			os.Exit(2)
+		}
+		differ, err := comparePages(flag.Arg(0), flag.Arg(1))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		if differ > 0 {
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -168,6 +186,15 @@ func main() {
 	}
 
 	jobs := jobsFor(files)
+
+	if *pages != "" {
+		if err := writePages(jobs, *pages); err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	results := make([]result, 0, len(jobs))
 	started := time.Now()
 	for i, j := range jobs {
