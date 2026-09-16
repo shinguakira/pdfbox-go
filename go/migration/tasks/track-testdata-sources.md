@@ -32,12 +32,15 @@ work stands and what is left.
 What is on disk, tier by tier, and what each suite reaches:
 [`../TESTDATA.md`](../TESTDATA.md). What is not fetched yet, counted per
 project: [`../TESTDATA-CANDIDATES.md`](../TESTDATA-CANDIDATES.md). Where the
-comparison against PDFBox stands, over all 5,090 files on disk outside the
+comparison against PDFBox stands, over every file on disk outside the
 repository: `TESTDATA.md`, "Where it stands".
 
 Two files disagree, both Java bugs the Go fixes on purpose — JAVA-BUGS 15 and
-30, and whether the second fix stays is U6. The 27 encrypted files are compared
-only on refusing them, which is U8.
+30, and whether the second fix stays is U6. The 27 encrypted files that are
+compared only on refusing them are U8. Since 2026-09-16 the comparison carries a
+digest of the text as well as its length, and iText's 13,857 files are in it;
+[`track-testdata-itext.md`](track-testdata-itext.md) is that branch's record and
+it merged into this one.
 
 ### Found and fixed on this branch
 
@@ -276,13 +279,16 @@ purge and has not been measured again; that is T10.
 - [x] **T3.** Fetch pdf.js's test PDFs and score them. Done 2026-09-15: 1,443 on
   disk, all compared; the eight of U7 are not on disk.
 - [ ] **T4.** Fetch PDFium's 301.
-- [ ] **T5.** Decide how much of iText's 6,897 to carry, then fetch it. Being
-  taken on `track/testdata-itext`, a branch from this one; nothing of it is on
-  this branch.
+- [x] **T5.** Decide how much of iText's 6,897 to carry, then fetch it. Done
+  2026-09-16 on `track/testdata-itext`, which the user had made from this branch
+  for it: all of it, the Java repository's 6,897 and the .NET one's 6,960. See
+  [`track-testdata-itext.md`](track-testdata-itext.md).
 - [ ] **T6. Compare text content, not only its length.** A hash of each
   document's text, and of each page's to find where two differ, from both
   `JavaCorpus` and `cmd/corpus`. This is the change most likely to find defects
-  the current comparison cannot see.
+  the current comparison cannot see. **Half done 2026-09-16 on
+  `track/testdata-itext`:** both tables carry a digest of each document's text,
+  and `-oracle` compares it. Per page is not done.
 - [ ] **T7.** Compare rendering with PDFBox, page by page.
 - [ ] **T8.** MuPDF's `tests.git`, when a renderer question needs it.
 - [ ] **T9.** Fuzzing, with what it finds folded back into tests — the one line of

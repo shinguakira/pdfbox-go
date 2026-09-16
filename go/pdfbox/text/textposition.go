@@ -10,6 +10,7 @@ import (
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/util"
+	"golang.org/x/text/unicode/bidi"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -141,11 +142,29 @@ func (t *TextPosition) VisuallyOrderedUnicode() string {
 	return text
 }
 
-// isRightToLeft reports whether the code point is set right to left, which is
-// Java's DIRECTIONALITY_RIGHT_TO_LEFT and DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC.
+// isRightToLeft reports whether Character.getDirectionality answers
+// DIRECTIONALITY_RIGHT_TO_LEFT or DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC for the
+// code point, which is its Unicode bidirectional class being R or AL.
+//
+// The class comes from golang.org/x/text/unicode/bidi, as go/javatext/bidi's
+// does. That data gives an unassigned code point the default class of its
+// block -- R for one in the Hebrew block -- where Java answers
+// DIRECTIONALITY_UNDEFINED, so a code point must also be assigned. Measured
+// against JDK 17 over every code point, this answers the JDK's 2,904 and 58
+// more, all of them characters Unicode 14 added after the JDK's Unicode 13: the
+// Arabic Extended-B block, Old Uyghur, and five others.
+//
+// It used to ask whether the code point belongs to a right-to-left script,
+// which counted those scripts' marks and digits and missed every other
+// right-to-left character. See TestVisuallyOrderedUnicodeAsksTheDirectionality.
 func isRightToLeft(codePoint rune) bool {
-	return unicode.In(codePoint, unicode.Hebrew, unicode.Arabic, unicode.Syriac,
-		unicode.Thaana, unicode.Nko, unicode.Samaritan, unicode.Mandaic)
+	properties, _ := bidi.LookupRune(codePoint)
+	if class := properties.Class(); class != bidi.R && class != bidi.AL {
+		return false
+	}
+	// assigned: Go's unicode.C holds the unassigned code points as well
+	return unicode.In(codePoint, unicode.L, unicode.M, unicode.N, unicode.P, unicode.S,
+		unicode.Z, unicode.Cc, unicode.Cf, unicode.Co)
 }
 
 // CharacterCodes returns the character codes the text was drawn from.
