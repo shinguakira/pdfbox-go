@@ -97,14 +97,30 @@ type PDFTextStripper struct {
 	actualText              string
 	hasActualText           bool
 
-	charactersByArticle  [][]*TextPosition
+	// charactersByArticle is Java's ArrayList<List<TextPosition>>, behind a
+	// pointer because it is an object and not a value: PDFTextStripperByArea
+	// points it at a region's lists, and resetEngine and processPage then clear
+	// and extend whichever lists it points at, in place. A slice here would be
+	// a copy of the region's, and those changes would not reach the region.
+	charactersByArticle  *articleLists
 	characterListMapping map[string]*characterPositions
+
+	// writePage is what ProcessPage writes the page with. Java's call is
+	// virtual and PDFTextStripperByArea overrides it; that type installs its
+	// own here.
+	writePage func() error
 
 	output io.Writer
 
 	inParagraph bool
 
 	listOfPatterns []*regexp.Regexp
+}
+
+// articleLists is the positions of a page, one list per article: the object
+// charactersByArticle points at.
+type articleLists struct {
+	lists [][]*TextPosition
 }
 
 // The defaults Java gives the two paragraph thresholds.
@@ -142,6 +158,8 @@ func NewPDFTextStripper() *PDFTextStripper {
 
 		characterListMapping: map[string]*characterPositions{},
 	}
+	s.charactersByArticle = &articleLists{}
+	s.writePage = s.WritePage
 	s.SetOverrides(s)
 	s.SetProcessTextPosition(s.ProcessTextPosition)
 	return s
@@ -214,17 +232,17 @@ func (s *PDFTextStripper) ProcessPage(page *pdmodel.PDPage) error {
 		s.fillBeadRectangles(page)
 		numberOfArticleSections += len(s.beadRectangles) * 2
 	}
-	originalSize := len(s.charactersByArticle)
+	originalSize := len(s.charactersByArticle.lists)
 	lastIndex := max(numberOfArticleSections, originalSize)
 	for i := 0; i < lastIndex; i++ {
 		if i < originalSize {
-			s.charactersByArticle[i] = s.charactersByArticle[i][:0]
+			s.charactersByArticle.lists[i] = s.charactersByArticle.lists[i][:0]
 		} else if numberOfArticleSections < originalSize {
 			//TODO Looks like decrement (--i) needed because next value will be
 			// ignored. This segment is never reached in tests?!
-			s.charactersByArticle = append(s.charactersByArticle[:i], s.charactersByArticle[i+1:]...)
+			s.charactersByArticle.lists = append(s.charactersByArticle.lists[:i], s.charactersByArticle.lists[i+1:]...)
 		} else {
-			s.charactersByArticle = append(s.charactersByArticle, nil)
+			s.charactersByArticle.lists = append(s.charactersByArticle.lists, nil)
 		}
 	}
 	s.characterListMapping = map[string]*characterPositions{}
@@ -232,14 +250,13 @@ func (s *PDFTextStripper) ProcessPage(page *pdmodel.PDPage) error {
 	if err := s.LegacyPDFStreamEngine.ProcessPage(page); err != nil {
 		return err
 	}
-	if err := s.WritePage(); err != nil {
+	if err := s.writePage(); err != nil {
 		return err
 	}
 	if err := s.EndPage(page); err != nil {
 		return err
 	}
-	// Java calls page.removePageResourceFromCache() here; the port's PDPage has
-	// no resource cache yet. See migration/STATUS.md.
+	page.RemovePageResourceFromCache()
 	return nil
 }
 
@@ -311,14 +328,14 @@ func (s *PDFTextStripper) WritePage() error {
 	startOfPage := true // flag to indicate start of page
 	startOfArticle := false
 
-	if len(s.charactersByArticle) != 0 {
+	if len(s.charactersByArticle.lists) != 0 {
 		if err := s.WritePageStart(); err != nil {
 			return err
 		}
 	}
 
-	for articleIndex := range s.charactersByArticle {
-		textList := s.charactersByArticle[articleIndex]
+	for articleIndex := range s.charactersByArticle.lists {
+		textList := s.charactersByArticle.lists[articleIndex]
 		if s.SortByPosition() {
 			// because the TextPositionComparator is not transitive, but JDK7+
 			// enforces transitivity on comparators, we need to use a custom
@@ -332,7 +349,7 @@ func (s *PDFTextStripper) WritePage() error {
 			// Java removes through the iterator, so the list the article holds
 			// shrinks too; the port writes the shortened slice back.
 			textList = removeContainedSpaces(textList)
-			s.charactersByArticle[articleIndex] = textList
+			s.charactersByArticle.lists[articleIndex] = textList
 		}
 
 		if err := s.textHooks().StartArticleLTR(true); err != nil {
@@ -736,13 +753,13 @@ func (s *PDFTextStripper) ProcessTextPosition(text *TextPosition) error {
 	case notFoundButFirstAboveArticleDivisionIndex != -1:
 		articleDivisionIndex = notFoundButFirstAboveArticleDivisionIndex
 	default:
-		articleDivisionIndex = len(s.charactersByArticle) - 1
+		articleDivisionIndex = len(s.charactersByArticle.lists) - 1
 	}
-	if articleDivisionIndex < 0 || articleDivisionIndex >= len(s.charactersByArticle) {
+	if articleDivisionIndex < 0 || articleDivisionIndex >= len(s.charactersByArticle.lists) {
 		return nil
 	}
 
-	textList := s.charactersByArticle[articleDivisionIndex]
+	textList := s.charactersByArticle.lists[articleDivisionIndex]
 
 	// In the wild, some PDF encoded documents put diacritics (accents on top of
 	// characters) into a separate Tj element. When displaying them graphically,
@@ -769,7 +786,7 @@ func (s *PDFTextStripper) ProcessTextPosition(text *TextPosition) error {
 			textList = append(textList, text)
 		}
 	}
-	s.charactersByArticle[articleDivisionIndex] = textList
+	s.charactersByArticle.lists[articleDivisionIndex] = textList
 	return nil
 }
 
@@ -1163,7 +1180,10 @@ func (s *PDFTextStripper) CurrentPageNo() int { return s.currentPageNo }
 // CharactersByArticle returns the positions of the current page, one list per
 // article.
 func (s *PDFTextStripper) CharactersByArticle() [][]*TextPosition {
-	return s.charactersByArticle
+	if s.charactersByArticle == nil {
+		return nil
+	}
+	return s.charactersByArticle.lists
 }
 
 // SeparateByBeads reports whether the text is split by the article beads of the
@@ -1294,6 +1314,6 @@ func (s *PDFTextStripper) clearCharacterListMapping() {
 // Port of the private resetEngine, which writeText calls first.
 func (s *PDFTextStripper) resetEngine() {
 	s.currentPageNo = 1
-	s.charactersByArticle = nil
+	s.charactersByArticle.lists = s.charactersByArticle.lists[:0]
 	s.clearCharacterListMapping()
 }

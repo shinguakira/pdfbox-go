@@ -1,6 +1,7 @@
 # Performance plan
 
-A plan, not work in progress. Nothing below has been started.
+The plan as it was written, before any of it was started. What happened when it
+was carried out, and where the plan was wrong, are the last two sections.
 
 [`BENCHMARK.md`](BENCHMARK.md) measured the Go version against PDFBox and found
 where the time goes. This file is what could be done about it without leaving
@@ -240,9 +241,14 @@ found; the next one is where the plan was wrong.
 | 4 | The content-stream decompressor goes back to the pool when its data ends | `pdfbox/filter/flate.go` | a new decompressor and window for every page | a new `Inflater` per stream | 1,912 MB |
 
 Tested by `TestPDPageTreeAllHandsOutTheResourceCache`, which fails without
-change 3, and `TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt`,
-which pins that a pooled decompressor is never reached by the stream that
-gave it back.
+change 3; by `TestPDPageTreeAsksTheDocumentForTheCacheAsItHandsOutPages`, which
+pins that the cache is the document's as it stands when a page is handed out,
+as in Java, and not the one the tree was made with; and by
+`TestFlateDecodeReusesOneDecompressor` and
+`TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt`, which run against
+a pool that cannot drop what it is given, and which fail when a decompressor is
+not handed back, not reused, or handed back twice. The pool is recorded as a
+deviation in [`STATUS.md`](STATUS.md).
 
 Change 1 does not take 1b's route through `flateDecoderStream`. It keeps
 `Decode`'s handling of a failing source exactly as it was — every error ends
@@ -278,6 +284,11 @@ before [`BENCHMARK.md`](BENCHMARK.md) takes any of these numbers.
 Against PDFBox, on those numbers: the total went from 6.4× PDFBox's time to
 about 1.7× (10.0 s against 5.8 s), and the peak heap on defaults from above
 PDFBox's (795 MB against 594 MB) to below it (about 250 MB).
+
+Measured again on 2026-09-15 with the rest of the machine at about one core of
+twelve, for [`BENCHMARK.md`](BENCHMARK.md): 8,234 ms against PDFBox's 5,625 ms
+on all 3,597, 1.46×, and a peak heap of 249.7 MB against 590.4 MB. That page has
+the rest.
 
 ### How the output was checked
 

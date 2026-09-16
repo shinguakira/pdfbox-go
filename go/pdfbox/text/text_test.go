@@ -431,3 +431,81 @@ func TestCompareTextPositions(t *testing.T) {
 		t.Error("a position does not compare equal to itself")
 	}
 }
+
+// TestStripperByAreaWriteTextReachesItsWritePage pins the by-area stripper
+// driven through WriteText rather than ExtractRegions.
+//
+// Java's writeText walks processPages and processPage, which the by-area class
+// does not override, and processPage calls writePage, which it does -- so each
+// page's text goes into the regions, and the writer writeText was given gets
+// nothing. The port's base ProcessPage called its own WritePage, so the page's
+// whole text went to that writer instead, as a plain stripper would write it.
+//
+// What the running PDFBox answered over the page helveticaPage builds, holding
+// "top" at y 300 and "bottom" at y 50, with one region over the top 150 points:
+//
+//	a region, never extracted     NullPointerException; the writer empty
+//	extractRegions                top = "top\n"
+//	then writeText                the writer empty; top = "top\ntop\n"
+//	no region at all              the writer empty
+//
+// The first is a region with no character list yet, which Java dereferences;
+// the port panics where it indexes the same nil list.
+func TestStripperByAreaWriteTextReachesItsWritePage(t *testing.T) {
+	content := "BT /F1 12 Tf 100 300 Td (top) Tj 0 -250 Td (bottom) Tj ET"
+	document := func() *pdmodel.PDDocument {
+		doc := pdmodel.NewPDDocument()
+		doc.AddPage(helveticaPage(t, content))
+		return doc
+	}
+	stripper := func(withRegion bool) *text.PDFTextStripperByArea {
+		s := text.NewPDFTextStripperByArea()
+		s.SetSortByPosition(true)
+		s.SetLineSeparator("\n")
+		s.SetPageEnd("\n")
+		if withRegion {
+			s.AddRegion("top", geom.NewRectangle2D(0, 0, 300, 150))
+		}
+		return s
+	}
+
+	var neverExtracted strings.Builder
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("WriteText on a region never extracted did not panic; Java throws NullPointerException")
+			}
+		}()
+		stripper(true).WriteText(document(), &neverExtracted) //nolint:errcheck // it panics
+	}()
+	if neverExtracted.Len() != 0 {
+		t.Errorf("WriteText on a region never extracted wrote %q, want nothing", neverExtracted.String())
+	}
+
+	extracted := stripper(true)
+	doc := document()
+	if err := extracted.ExtractRegions(doc.Page(0)); err != nil {
+		t.Fatalf("ExtractRegions: %v", err)
+	}
+	if got, want := extracted.GetTextForRegion("top"), "top\n"; got != want {
+		t.Errorf("after ExtractRegions, top = %q, want %q", got, want)
+	}
+	var written strings.Builder
+	if err := extracted.WriteText(doc, &written); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
+	if written.Len() != 0 {
+		t.Errorf("WriteText wrote %q to its writer, want nothing", written.String())
+	}
+	if got, want := extracted.GetTextForRegion("top"), "top\ntop\n"; got != want {
+		t.Errorf("after WriteText, top = %q, want %q", got, want)
+	}
+
+	var noRegion strings.Builder
+	if err := stripper(false).WriteText(document(), &noRegion); err != nil {
+		t.Fatalf("WriteText with no region: %v", err)
+	}
+	if noRegion.Len() != 0 {
+		t.Errorf("WriteText with no region wrote %q, want nothing", noRegion.String())
+	}
+}

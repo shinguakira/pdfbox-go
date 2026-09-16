@@ -121,10 +121,28 @@ $suites = @(
         Size    = 'large'
         Bytes   = 195MB
         Licence = 'Apache-2.0'
-        Covers  = "reduced reproducers from another reader's bug tracker. Not ground truth -- pdf.js's expectations are pdf.js's -- but 982 committed files that broke a real implementation, which is what makes them worth opening; the other 459 entries are .link stubs pdf.js fetches on demand and this does not"
+        Covers  = "every PDF pdf.js tests with: the 982 committed in test/pdfs; the 459 it keeps out of its repository, each named by a <file>.link stub holding a URL, downloaded here and checked against the md5 in test/test_manifest.json as pdf.js's own runner checks them; and the two PDFs committed outside test/pdfs, under _repo/. The passwords pdf.js opens its 12 encrypted files with are written to _passwords.tsv. Not on disk: test/pdfs/sig_corpus, eight signed PDFs pdf.js does not commit or download, which its generate.py builds with a mozilla-central checkout. Not ground truth -- pdf.js's expectations are pdf.js's -- but files that broke a real implementation"
         Exercises = 'everything; use as crash and regression input, not as assertions'
         Url     = 'https://codeload.github.com/mozilla/pdf.js/tar.gz/refs/heads/master'
         Subtree = 'test/pdfs'
+        # Copied from the archive into _repo/, keeping their paths: the PDFs pdf.js
+        # commits outside test/pdfs, and the manifest the linked files are checked
+        # against.
+        Extras  = @('web/compressed.tracemonkey-pldi-09.pdf', 'examples/learning/helloworld.pdf', 'test/test_manifest.json')
+        # Resolve the .link stubs, checking each download against this manifest.
+        LinkManifest = '_repo/test/test_manifest.json'
+        # The passwords pdf.js opens its encrypted files with. The manifest gives
+        # some, as "password" on the file's entry, and is read for them; these
+        # are the rest, which only its test code gives. Written, both together,
+        # to _passwords.tsv for run-oracle.ps1 -Passwords and cmd/corpus -passwords.
+        PasswordManifest = '_repo/test/test_manifest.json'
+        Passwords = [ordered]@{
+            'pr6531_1.pdf'             = 'asdfasdf' # test/unit/api_spec.js
+            'pr6531_2.pdf'             = 'asdfasdf' # test/unit/api_spec.js
+            'auth-event-ef-open.pdf'   = '000000'   # test/unit/api_spec.js
+            'encrypted-attachment.pdf' = '000000'   # test/unit/api_spec.js
+            'print_protection.pdf'     = '1234'     # test/integration/viewer_spec.mjs
+        }
     }
 )
 
@@ -181,15 +199,7 @@ function Get-ArchiveSuite {
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corpus-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     try {
-        $archive = Join-Path $tmp 'suite.tar.gz'
-        Invoke-WebRequest -Uri $S.Url -OutFile $archive -TimeoutSec 900 -UseBasicParsing
-
-        $extract = Join-Path $tmp 'x'
-        New-Item -ItemType Directory -Force -Path $extract | Out-Null
-        # --strip-components=1 drops the repo-branch directory GitHub wraps
-        # every source archive in.
-        & tar -xzf $archive -C $extract --strip-components=1
-        if ($LASTEXITCODE -ne 0) { throw "tar exited $LASTEXITCODE" }
+        $extract = Expand-SuiteArchive -S $S -Into $tmp
 
         $source = if ($S.Subtree) { Join-Path $extract $S.Subtree } else { $extract }
         if (-not (Test-Path -LiteralPath $source)) {
@@ -199,10 +209,293 @@ function Get-ArchiveSuite {
         if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force }
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Dest) | Out-Null
         Move-Item -LiteralPath $source -Destination $Dest
+
+        Copy-SuiteExtras -S $S -From $extract -Dest $Dest
     }
     finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# Expand-SuiteArchive downloads a suite's archive into a directory and unpacks
+# it there, answering the directory the repository's files are in.
+function Expand-SuiteArchive {
+    param([object]$S, [string]$Into)
+
+    $archive = Join-Path $Into 'suite.tar.gz'
+    Invoke-WebRequest -Uri $S.Url -OutFile $archive -TimeoutSec 900 -UseBasicParsing
+
+    $extract = Join-Path $Into 'x'
+    New-Item -ItemType Directory -Force -Path $extract | Out-Null
+    # --strip-components=1 drops the repo-branch directory GitHub wraps
+    # every source archive in.
+    & tar -xzf $archive -C $extract --strip-components=1
+    if ($LASTEXITCODE -ne 0) { throw "tar exited $LASTEXITCODE" }
+    return $extract
+}
+
+# Copy-SuiteExtras copies a suite's Extras out of its unpacked archive into
+# _repo/, at their paths in the repository.
+function Copy-SuiteExtras {
+    param([object]$S, [string]$From, [string]$Dest)
+
+    if ($S.PSObject.Properties.Name -notcontains 'Extras') { return }
+    foreach ($extra in $S.Extras) {
+        $source = Join-Path $From $extra
+        if (-not (Test-Path -LiteralPath $source)) {
+            throw "'$extra' is not in the archive -- has the repository moved it?"
+        }
+        $to = Join-Path (Join-Path $Dest '_repo') $extra
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
+        Copy-Item -LiteralPath $source -Destination $to
+    }
+}
+
+# Get-MissingExtras brings a present suite's Extras up to date with its
+# definition. A suite fetched before an extra was added to the definition --
+# pdfjs, fetched before the manifest its linked files and passwords are read
+# from came to be copied -- has the files it had and not the extra, and reading
+# the links or the passwords would stop at the missing manifest. The archive is
+# downloaded again for the extras alone; the suite's own files, and the linked
+# files downloaded into it, stay as they are.
+function Get-MissingExtras {
+    param([object]$S, [string]$Dest)
+
+    if ($S.PSObject.Properties.Name -notcontains 'Extras') { return }
+    $missing = @($S.Extras | Where-Object { -not (Test-Path -LiteralPath (Join-Path (Join-Path $Dest '_repo') $_)) })
+    if ($missing.Count -eq 0) { return }
+
+    Write-Host "  $($missing.Count) of its $(@($S.Extras).Count) files from elsewhere in the repository are missing ($($missing -join ', ')); fetching the archive for them ..."
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corpus-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try {
+        $extract = Expand-SuiteArchive -S $S -Into $tmp
+        Copy-SuiteExtras -S $S -From $extract -Dest $Dest
+    }
+    finally {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Invoke-CurlRound downloads, eight at a time, one candidate URL for each item
+# still missing, and keeps a download only if its md5 is the one the manifest
+# records. What a round could not settle is left for the next, with the attempt
+# written down. curl.exe is used rather than Invoke-WebRequest for the
+# parallelism and the retries; it ships with Windows 10 1803 and later, as tar
+# does.
+function Invoke-CurlRound {
+    param([object[]]$Items, [scriptblock]$CandidateOf)
+
+    $round = @()
+    foreach ($item in $Items) {
+        if ($item.Done) { continue }
+        $candidate = & $CandidateOf $item
+        if (-not $candidate -or $item.Tried.Contains($candidate)) { continue }
+        [void]$item.Tried.Add($candidate)
+        $item.Current = $candidate
+        $round += $item
+    }
+    if ($round.Count -eq 0) { return }
+
+    $config = Join-Path ([System.IO.Path]::GetTempPath()) ("links-" + [guid]::NewGuid().ToString('N') + ".txt")
+    $lines = foreach ($item in $round) {
+        'url = "' + ($item.Current -replace '\\', '\\' -replace '"', '\"') + '"'
+        'output = "' + ("$($item.Target).part" -replace '\\', '\\' -replace '"', '\"') + '"'
+    }
+    [System.IO.File]::WriteAllLines($config, [string[]]$lines, (New-Object System.Text.UTF8Encoding $false))
+    try {
+        & curl.exe --parallel --parallel-max 8 --location --max-redirs 20 --retry 3 --retry-delay 2 `
+            --connect-timeout 60 --max-time 1800 --fail --silent --show-error `
+            --user-agent 'pdfbox-go-fetch-corpus' --config $config 2>$null
+    }
+    finally {
+        Remove-Item -LiteralPath $config -Force -ErrorAction SilentlyContinue
+    }
+
+    foreach ($item in $round) {
+        $part = "$($item.Target).part"
+        if (-not (Test-Path -LiteralPath $part)) {
+            $item.Attempts.Add("$($item.Current) -> nothing arrived")
+            continue
+        }
+        $hash = (Get-FileHash -Algorithm MD5 -LiteralPath $part).Hash.ToLowerInvariant()
+        if ($hash -eq $item.Md5) {
+            Move-Item -Force -LiteralPath $part -Destination $item.Target
+            $item.Done = $true
+            $item.Source = $item.Current
+        }
+        else {
+            $item.Attempts.Add("$($item.Current) -> md5 $hash")
+            Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# Get-Captures asks archive.org's capture index for every capture of a URL that
+# answered 200, as raw-bytes URLs. The index is slow and often busy, so it is
+# only asked about files the link itself could not supply, and asked again a few
+# times before its silence is taken as an answer.
+function Get-Captures {
+    param([string]$Url)
+
+    $original = $Url -replace '^https?://web\.archive\.org/web/\d+(?:id_)?/', ''
+    $query = "https://web.archive.org/cdx/search/cdx?output=json&filter=statuscode:200&url=" + [uri]::EscapeDataString($original)
+    for ($try = 1; $try -le 4; $try++) {
+        $json = & curl.exe --location --silent --fail --max-time 180 --user-agent 'pdfbox-go-fetch-corpus' $query 2>$null
+        if ($LASTEXITCODE -eq 0 -and $json) {
+            $rows = @(($json -join "`n") | ConvertFrom-Json)
+            return @($rows | Select-Object -Skip 1 | ForEach-Object { "https://web.archive.org/web/$($_[1])id_/$($_[2])" })
+        }
+        Start-Sleep -Seconds (10 * $try)
+    }
+    return @()
+}
+
+# Resolve-Links does for a suite what pdf.js's test runner does before it runs:
+# every <file>.link stub names a PDF the project keeps out of its repository, and
+# each is downloaded and checked against the md5 its manifest records.
+#
+# Three rounds, each only for what the one before could not settle: the link as
+# written; for an archive.org link, the same capture asked for its raw bytes; and
+# then every capture archive.org holds of the file's original address. A file
+# that still has not arrived with the right checksum is named in _links.tsv with
+# everything that was tried, and the run fails -- a partial suite must not look
+# whole. Files already present with the right checksum are not fetched again, so
+# a run that stopped part way resumes where it stopped.
+function Resolve-Links {
+    param([object]$S, [string]$Dest)
+
+    if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
+        throw 'curl.exe is not on PATH; it is needed to fetch the linked files'
+    }
+
+    $manifestPath = Join-Path $Dest $S.LinkManifest
+    $expected = @{}
+    foreach ($entry in (Get-Content -Raw -Encoding UTF8 -LiteralPath $manifestPath | ConvertFrom-Json)) {
+        if ($entry.md5) {
+            $expected[($entry.file -replace '^pdfs/', '')] = $entry.md5.ToLowerInvariant()
+        }
+    }
+
+    # Where each file came from, as the run that fetched it wrote down, so that
+    # a later run that finds the file already present does not lose it.
+    $reportPath = Join-Path $Dest '_links.tsv'
+    $previous = @{}
+    if (Test-Path -LiteralPath $reportPath) {
+        foreach ($row in (Get-Content -Encoding UTF8 -LiteralPath $reportPath | Select-Object -Skip 1)) {
+            $fields = $row -split "`t", 3
+            if ($fields.Count -eq 3 -and $fields[1] -eq 'ok' -and $fields[2] -ne 'already present') {
+                $previous[$fields[0]] = $fields[2]
+            }
+        }
+    }
+
+    $items = @()
+    foreach ($link in @(Get-ChildItem -LiteralPath $Dest -Recurse -File -Filter '*.link')) {
+        $name = $link.Name.Substring(0, $link.Name.Length - '.link'.Length)
+        $target = Join-Path $link.DirectoryName $name
+        $item = [pscustomobject]@{
+            Name     = $name
+            Target   = $target
+            Md5      = $expected[$name]
+            Url      = (Get-Content -LiteralPath $link.FullName | Where-Object { $_.Trim() } | Select-Object -First 1).Trim()
+            Done     = $false
+            Source   = ''
+            Current  = ''
+            Tried    = New-Object System.Collections.Generic.HashSet[string]
+            Attempts = New-Object System.Collections.Generic.List[string]
+        }
+        if (-not $item.Md5) {
+            $item.Attempts.Add('no md5 for it in the manifest')
+        }
+        elseif ((Test-Path -LiteralPath $target) -and
+            (Get-FileHash -Algorithm MD5 -LiteralPath $target).Hash.ToLowerInvariant() -eq $item.Md5) {
+            $item.Done = $true
+            $item.Source = if ($previous.ContainsKey($name)) { $previous[$name] } else { 'already present' }
+        }
+        $items += $item
+    }
+    $withMd5 = @($items | Where-Object { $_.Md5 })
+
+    Write-Host "  links: $($items.Count), already present $(@($items | Where-Object { $_.Done }).Count); round 1, the links as written ..."
+    Invoke-CurlRound -Items $withMd5 -CandidateOf { param($i) $i.Url }
+
+    Write-Host "  links: $(@($items | Where-Object { -not $_.Done }).Count) left; round 2, archive.org captures asked for raw bytes ..."
+    Invoke-CurlRound -Items $withMd5 -CandidateOf {
+        param($i)
+        if ($i.Url -match '^https?://web\.archive\.org/web/(\d+)/(.+)$') { "https://web.archive.org/web/$($Matches[1])id_/$($Matches[2])" }
+    }
+
+    $left = @($withMd5 | Where-Object { -not $_.Done })
+    Write-Host "  links: $($left.Count) left; round 3, every capture archive.org holds ..."
+    foreach ($item in $left) {
+        $captures = @(Get-Captures -Url $item.Url)
+        if ($captures.Count -eq 0) {
+            $item.Attempts.Add('archive.org capture index: no capture, or no answer')
+        }
+        foreach ($capture in $captures) {
+            Invoke-CurlRound -Items @($item) -CandidateOf { param($i) $capture }.GetNewClosure()
+            if ($item.Done) { break }
+        }
+    }
+
+    $report = New-Object System.Collections.Generic.List[string]
+    $report.Add("file`tresult`tsource, or everything tried")
+    $failed = 0
+    foreach ($item in ($items | Sort-Object Name)) {
+        if ($item.Done) {
+            $report.Add("$($item.Name)`tok`t$($item.Source)")
+        }
+        else {
+            $failed++
+            $report.Add("$($item.Name)`tMISSING`t$($item.Attempts -join ' | ')")
+        }
+    }
+    [System.IO.File]::WriteAllLines($reportPath, $report, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "$($S.Name) -- $($items.Count) linked files: $($items.Count - $failed) present with the manifest's md5, $failed missing; see $reportPath"
+    return $failed
+}
+
+# Write-Passwords writes _passwords.tsv for a suite whose project publishes the
+# passwords of its encrypted files: one line per file, the file's path under the
+# corpus root, a tab, and the password, in UTF-8 without a byte order mark. Both
+# drivers match a row against the end of the path they were given, so the table
+# reads the same whether they run from the repository root or from go/.
+function Write-Passwords {
+    param([object]$S, [string]$Dest)
+
+    $table = [ordered]@{}
+    function Add-Row([string]$File, [string]$Password, [string]$From) {
+        if ($table.Contains($File) -and $table[$File] -ne $Password) {
+            throw "$($S.Name): two passwords for $File, the second from $From"
+        }
+        $table[$File] = $Password
+    }
+
+    if ($S.PSObject.Properties.Name -contains 'PasswordManifest') {
+        $manifestPath = Join-Path $Dest $S.PasswordManifest
+        foreach ($entry in (Get-Content -Raw -Encoding UTF8 -LiteralPath $manifestPath | ConvertFrom-Json)) {
+            if ($entry.PSObject.Properties.Name -contains 'password') {
+                Add-Row ($entry.file -replace '^pdfs/', '') $entry.password $S.PasswordManifest
+            }
+        }
+    }
+    if ($S.PSObject.Properties.Name -contains 'Passwords') {
+        foreach ($file in $S.Passwords.Keys) {
+            Add-Row $file $S.Passwords[$file] 'the suite definition'
+        }
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($file in $table.Keys) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Dest $file))) {
+            throw "$($S.Name): a password is recorded for $file, which is not in the suite"
+        }
+        $lines.Add("$($S.Name)/$file`t$($table[$file])")
+    }
+    $path = Join-Path $Dest '_passwords.tsv'
+    [System.IO.File]::WriteAllLines($path, $lines, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "$($S.Name) -- passwords for $($lines.Count) encrypted files; see $path"
 }
 
 function Get-ApiSuite {
@@ -234,13 +527,24 @@ function Get-ApiSuite {
     }
 }
 
+$missingLinks = 0
 foreach ($name in $Suite) {
     $s = $all | Where-Object { $_.Name -eq $name } | Select-Object -First 1
     $dest = Join-Path $corpusRoot $name
+    $hasLinks = $s.PSObject.Properties.Name -contains 'LinkManifest'
+    $hasPasswords = @($s.PSObject.Properties.Name | Where-Object { $_ -in 'PasswordManifest', 'Passwords' }).Count -gt 0
 
     if ((Test-Path -LiteralPath $dest) -and -not $Force) {
         $have = (Get-ChildItem -LiteralPath $dest -Recurse -File -Filter *.pdf -ErrorAction SilentlyContinue).Count
         "$name -- already present, $have PDFs (pass -Force to refetch)"
+        # the links and the passwords are read from an extra, so it comes first
+        Get-MissingExtras -S $s -Dest $dest
+        if ($hasLinks) {
+            # a present suite may still be missing linked files; this fetches
+            # only those
+            $missingLinks += Resolve-Links -S $s -Dest $dest
+        }
+        if ($hasPasswords) { Write-Passwords -S $s -Dest $dest }
         continue
     }
 
@@ -251,6 +555,10 @@ foreach ($name in $Suite) {
     else {
         Get-ArchiveSuite -S $s -Dest $dest
     }
+    if ($hasLinks) {
+        $missingLinks += Resolve-Links -S $s -Dest $dest
+    }
+    if ($hasPasswords) { Write-Passwords -S $s -Dest $dest }
 
     $pdfs = (Get-ChildItem -LiteralPath $dest -Recurse -File -Filter *.pdf -ErrorAction SilentlyContinue).Count
     $bytes = (Get-ChildItem -LiteralPath $dest -Recurse -File | Measure-Object -Property Length -Sum).Sum
@@ -262,4 +570,10 @@ foreach ($name in $Suite) {
 Get-ChildItem -LiteralPath $corpusRoot -Directory | ForEach-Object {
     $n = (Get-ChildItem -LiteralPath $_.FullName -Recurse -File -Filter *.pdf -ErrorAction SilentlyContinue).Count
     "  {0,-22} {1,6} PDFs" -f $_.Name, $n
+}
+
+if ($missingLinks -gt 0) {
+    ''
+    "$missingLinks linked file(s) could not be fetched with the right checksum; each is named in its suite's _links.tsv"
+    exit 1
 }

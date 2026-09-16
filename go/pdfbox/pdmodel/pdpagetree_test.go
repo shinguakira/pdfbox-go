@@ -143,6 +143,37 @@ func TestPDPageTreeAllHandsOutTheResourceCache(t *testing.T) {
 	}
 }
 
+// TestPDPageTreeAsksTheDocumentForTheCacheAsItHandsOutPages pins when the cache
+// is read: at the moment a page is handed out, not when the tree was made.
+//
+// Java's tree keeps the PDDocument and asks document.getResourceCache() inside
+// get(int) and inside the iterator's next(), so a cache set on the document
+// after the tree was built is the one its pages get. A tree that took the cache
+// when it was made would keep handing out the one that was replaced.
+func TestPDPageTreeAsksTheDocumentForTheCacheAsItHandsOutPages(t *testing.T) {
+	doc := NewPDDocument()
+	doc.AddPage(NewPDPage())
+	tree := doc.Pages()
+
+	replacement := NewDefaultResourceCache()
+	doc.SetResourceCache(replacement)
+
+	if got := tree.Get(0).resourceCache; got != ResourceCache(replacement) {
+		t.Errorf("Get(0) holds cache %v, want the one set on the document after the tree was made", got)
+	}
+	for page := range tree.All {
+		if page.resourceCache != ResourceCache(replacement) {
+			t.Errorf("the walk handed out cache %v, want the one set on the document after the tree was made",
+				page.resourceCache)
+		}
+	}
+
+	doc.SetResourceCache(nil)
+	if got := tree.Get(0).resourceCache; got != nil {
+		t.Errorf("with caching turned off on the document, Get(0) holds cache %v, want none", got)
+	}
+}
+
 // TestPDPageTreeAllStopsEarly pins that the walk can be broken out of, which is
 // what makes it a range-over-func rather than a slice.
 func TestPDPageTreeAllStopsEarly(t *testing.T) {

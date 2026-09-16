@@ -340,7 +340,9 @@ func (f *pdFont) PositionVector(code int) util.Vector {
 
 // Displacement returns how far the pen moves after the given glyph.
 func (f *pdFont) Displacement(code int) (util.Vector, error) {
-	width, err := f.Width(code)
+	// Through self: Java's getWidth here is a virtual call, and for a Type 0
+	// font it is the descendant's /W and /DW, not this lookup.
+	width, err := f.self.Width(code)
 	if err != nil {
 		return util.Vector{}, err
 	}

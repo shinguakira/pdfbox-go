@@ -42,6 +42,13 @@
 .PARAMETER TimeoutSeconds
     Give up on one file after this. Default 20, matching cmd/corpus.
 
+.PARAMETER Passwords
+    A table of passwords for encrypted files: one line per file, a path ending,
+    a tab, and the password, in UTF-8 without a byte order mark. Pass the same
+    file to cmd/corpus as -passwords so both sides open the same files with the
+    same passwords. fetch-corpus.ps1 writes one for a suite that publishes its
+    passwords, as _passwords.tsv beside the files.
+
 .PARAMETER Rebuild
     Recompile even when the classes are already there.
 
@@ -50,6 +57,9 @@
 
 .EXAMPLE
     pwsh go/migration/scripts/run-oracle.ps1 -List failures.txt -Out java.tsv
+
+.EXAMPLE
+    pwsh go/migration/scripts/run-oracle.ps1 -List pdfjs.txt -Out java-pdfjs.tsv -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
 #>
 [CmdletBinding()]
 param(
@@ -60,6 +70,8 @@ param(
     [switch]$Crlf,
 
     [int]$TimeoutSeconds = 20,
+
+    [string]$Passwords,
 
     [switch]$Rebuild,
 
@@ -184,6 +196,10 @@ if (-not $List) {
     Write-NoBom -Path $List -Lines $paths
 }
 
+# Resolved here, against the directory the script was called from, because the
+# run below moves to the repository root.
+if ($Passwords) { $Passwords = (Resolve-Path -LiteralPath $Passwords).Path }
+
 $total = (Get-Content -LiteralPath $List).Count
 Write-Host "running PDFBox over $total files"
 
@@ -192,7 +208,9 @@ Write-Host "running PDFBox over $total files"
 Push-Location $RepoRoot
 try {
     $lfArg = if ($Crlf) { 'crlf' } else { 'lf' }
-    $rows = & java -Xss8m -cp $classpath JavaCorpus $List $TimeoutSeconds $lfArg
+    $javaArgs = @($List, $TimeoutSeconds, $lfArg)
+    if ($Passwords) { $javaArgs += $Passwords }
+    $rows = & java -Xss8m -cp $classpath JavaCorpus @javaArgs
     if ($LASTEXITCODE -ne 0) { throw "java exited $LASTEXITCODE" }
     Write-NoBom -Path $Out -Lines $rows
 }

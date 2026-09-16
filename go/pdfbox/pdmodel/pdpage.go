@@ -8,6 +8,12 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/filter"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/markedcontent"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/font"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/form"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/shading"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/state"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/action"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/annotation"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/interactive/measurement"
@@ -22,11 +28,6 @@ var delimiter = []byte{'\n'}
 // PDPage is a page in a PDF document.
 //
 // Port of org.apache.pdfbox.pdmodel.PDPage.
-//
-// removePageResourceFromCache is not here: it purges the colour space, ext
-// gstate, pattern, properties, shading and XObject halves of the resource
-// cache, and the ported ResourceCache holds only fonts. See
-// migration/STATUS.md.
 type PDPage struct {
 	page      *cos.Dictionary
 	resources *PDResources
@@ -63,6 +64,149 @@ func NewPDPageOf(pageDictionary *cos.Dictionary) *PDPage {
 // resources through the given cache.
 func NewPDPageOfCache(pageDictionary *cos.Dictionary, cache ResourceCache) *PDPage {
 	return &PDPage{page: pageDictionary, resourceCache: cache}
+}
+
+// RemovePageResourceFromCache removes the page's own resources from the resource
+// cache, which makes sense once the page has been processed.
+//
+// Port of removePageResourceFromCache. Java gives it as a way "to avoid relying
+// on the implementation of the Cache": its DefaultResourceCache holds every
+// entry through a SoftReference the garbage collector may clear. The port's
+// holds them outright, so here it is what lets the resources of pages already
+// processed go.
+//
+// Java declares every removal on ResourceCache. The port's ResourceCache is
+// declared in pdmodel/font and carries the font, CID font and font descriptor
+// ones; the others a cache offers by having the methods, as PDResources asks a
+// cache for the kinds it keeps, and a cache without them keeps none to remove.
+func (p *PDPage) RemovePageResourceFromCache() {
+	if p.resourceCache == nil {
+		return
+	}
+	// limit purge operation to page resources, don't remove inherited resources
+	p.removeResources(p.page.GetCOSDictionary(cos.Resources))
+}
+
+// The removals a resource cache offers beside the ones ResourceCache declares.
+type (
+	colorSpaceRemover interface {
+		RemoveColorSpace(indirect *cos.Object) color.PDColorSpace
+	}
+	extGStateRemover interface {
+		RemoveExtState(indirect *cos.Object) *state.PDExtendedGraphicsState
+	}
+	patternRemover interface {
+		RemovePattern(indirect *cos.Object) any
+	}
+	propertiesRemover interface {
+		RemoveProperties(indirect *cos.Object) markedcontent.PropertyList
+	}
+	shadingRemover interface {
+		RemoveShading(indirect *cos.Object) shading.Shading
+	}
+	xobjectRemover interface {
+		RemoveXObject(indirect *cos.Object) common.COSObjectable
+	}
+)
+
+// removeResources removes the indirect objects of a resource dictionary from
+// the cache, and those of any form XObject it removes.
+//
+// Port of the private removeResources.
+func (p *PDPage) removeResources(resources *cos.Dictionary) {
+	if resources == nil {
+		return
+	}
+	cache := p.resourceCache
+	if c, ok := cache.(colorSpaceRemover); ok {
+		for _, object := range indirectResourceObjects(resources, cos.ColorSpace) {
+			c.RemoveColorSpace(object)
+		}
+	}
+	if c, ok := cache.(extGStateRemover); ok {
+		for _, object := range indirectResourceObjects(resources, cos.ExtGState) {
+			c.RemoveExtState(object)
+		}
+	}
+	if c, ok := cache.(patternRemover); ok {
+		for _, object := range indirectResourceObjects(resources, cos.Pattern) {
+			c.RemovePattern(object)
+		}
+	}
+	if c, ok := cache.(propertiesRemover); ok {
+		for _, object := range indirectResourceObjects(resources, cos.Properties) {
+			c.RemoveProperties(object)
+		}
+	}
+	if c, ok := cache.(shadingRemover); ok {
+		for _, object := range indirectResourceObjects(resources, cos.Shading) {
+			c.RemoveShading(object)
+		}
+	}
+	for _, object := range indirectResourceObjects(resources, cos.Font) {
+		removedFont := cache.RemoveFont(object)
+		if removedFont == nil {
+			continue
+		}
+		fontDict, _ := removedFont.COSObject().(*cos.Dictionary)
+		if fontDict == nil {
+			continue
+		}
+		if _, isType0 := removedFont.(*font.PDType0Font); isType0 {
+			// remove PDCIDFont from cache
+			descendantFonts := fontDict.GetCOSArray(cos.DescendantFonts)
+			if descendantFonts != nil {
+				if descendantFont, ok := descendantFonts.Get(0).(*cos.Object); ok {
+					cache.RemoveCIDFont(descendantFont)
+				}
+				// the font descriptor of a type0 font is part of the descendant
+				// font not of the parent font
+				if descFont, ok := descendantFonts.GetObject(0).(*cos.Dictionary); ok {
+					// remove PDFontDescriptor from cache
+					if fdIndirectObject := descFont.GetCOSObject(cos.FontDescriptor); fdIndirectObject != nil {
+						cache.RemoveFontDescriptor(fdIndirectObject)
+					}
+				}
+			}
+		} else {
+			// remove PDFontDescriptor from cache
+			if fdIndirectObject := fontDict.GetCOSObject(cos.FontDescriptor); fdIndirectObject != nil {
+				cache.RemoveFontDescriptor(fdIndirectObject)
+			}
+		}
+	}
+	if c, ok := cache.(xobjectRemover); ok {
+		for _, object := range indirectResourceObjects(resources, cos.XObject) {
+			removedXObject := c.RemoveXObject(object)
+			// clean up the resources of the XFormObject
+			switch formXObject := removedXObject.(type) {
+			case *form.PDFormXObject:
+				p.removeResources(formXObject.Stream().GetCOSDictionary(cos.Resources))
+			case *form.PDTransparencyGroup:
+				// Java's instanceof PDFormXObject takes the group that extends
+				// it; the Go type embeds it, and has to be named
+				p.removeResources(formXObject.Stream().GetCOSDictionary(cos.Resources))
+			}
+		}
+	}
+}
+
+// indirectResourceObjects answers the indirect objects of one kind of resource
+// that have been read, which are the only ones a cache can hold.
+//
+// Port of the private getIndirectResourceObjects.
+func indirectResourceObjects(pageResources *cos.Dictionary, kind *cos.Name) []*cos.Object {
+	resourcesDictionary := pageResources.GetCOSDictionary(kind)
+	if resourcesDictionary == nil {
+		return nil
+	}
+	var objects []*cos.Object
+	for _, value := range resourcesDictionary.Values() {
+		if object, ok := value.(*cos.Object); ok && object.IsDereferenced() {
+			objects = append(objects, object)
+		}
+	}
+	return objects
 }
 
 // COSObject returns the dictionary behind this page.

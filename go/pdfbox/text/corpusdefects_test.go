@@ -113,3 +113,58 @@ func TestProcessPagesWalksTheTreeTheWayJavaDoes(t *testing.T) {
 		t.Errorf("text = %q, want empty -- the page has no contents", got)
 	}
 }
+
+// TestWriteTextTakesEachPagesResourcesOutOfTheCache pins the last line of
+// PDFTextStripper.processPage, page.removePageResourceFromCache(), which the
+// port had left out with a note that its pages had no resource cache. They have
+// had one since the page tree started handing out the document's, and the
+// port's cache holds its entries outright, so every font and graphics state a
+// stripper read stayed in the document's cache.
+//
+// The page reads a font and a graphics state into the cache, and has no
+// content. PDFBox, over the same objects, answers that neither is cached after
+// writeText.
+func TestWriteTextTakesEachPagesResourcesOutOfTheCache(t *testing.T) {
+	doc := pdmodel.NewPDDocument()
+	cache := pdmodel.NewDefaultResourceCache()
+	doc.SetResourceCache(cache)
+
+	fontDict := cos.NewDictionary()
+	fontDict.SetItem(cos.Type, cos.Font)
+	fontDict.SetItem(cos.Subtype, cos.Type1)
+	fontDict.SetName(cos.BaseFont, "Helvetica")
+	font := cos.NewObject(fontDict)
+	fonts := cos.NewDictionary()
+	fonts.SetItem(cos.GetPDFName("F1"), font)
+	gsDict := cos.NewDictionary()
+	gsDict.SetItem(cos.Type, cos.ExtGState)
+	gs := cos.NewObject(gsDict)
+	gss := cos.NewDictionary()
+	gss.SetItem(cos.GetPDFName("GS1"), gs)
+	resources := cos.NewDictionary()
+	resources.SetItem(cos.Font, fonts)
+	resources.SetItem(cos.ExtGState, gss)
+	page := pdmodel.NewPDPage()
+	page.COSObject().(*cos.Dictionary).SetItem(cos.Resources, resources)
+	doc.AddPage(page)
+
+	r := doc.Page(0).Resources()
+	if f, err := r.GetFont(cos.GetPDFName("F1")); err != nil || f == nil {
+		t.Fatalf("GetFont = %v, %v", f, err)
+	}
+	r.GetExtGState(cos.GetPDFName("GS1"))
+	if cache.GetFont(font) == nil || cache.GetExtGState(gs) == nil {
+		t.Fatalf("reading the resources did not cache them")
+	}
+
+	var out strings.Builder
+	if err := text.NewPDFTextStripper().WriteText(doc, &out); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
+	if cache.GetFont(font) != nil {
+		t.Errorf("after WriteText the font is still cached; PDFBox has taken it out")
+	}
+	if cache.GetExtGState(gs) != nil {
+		t.Errorf("after WriteText the graphics state is still cached; PDFBox has taken it out")
+	}
+}

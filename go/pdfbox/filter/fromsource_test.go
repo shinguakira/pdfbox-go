@@ -50,7 +50,6 @@ func TestByNameCoversEveryFilter(t *testing.T) {
 		{[]*cos.Name{cos.Crypt}, Crypt{}},
 		{[]*cos.Name{cos.JPXDecode}, JPX{}},
 		{[]*cos.Name{cos.JBIG2Decode}, JBIG2{}},
-		{[]*cos.Name{cos.Identity}, Identity{}},
 	}
 	for _, c := range cases {
 		for _, name := range c.names {
@@ -67,6 +66,12 @@ func TestByNameCoversEveryFilter(t *testing.T) {
 
 	if _, err := ByName(cos.GetPDFName("NoSuchFilter")); !errors.Is(err, ErrUnsupportedFilter) {
 		t.Errorf("an unknown filter name gave %v", err)
+	}
+
+	// FilterFactory has no /Identity: PDFBox answers "Invalid filter:
+	// COSName{Identity}", from getFilter and from a stream that names it.
+	if _, err := ByName(cos.Identity); !errors.Is(err, ErrUnsupportedFilter) {
+		t.Errorf("/Identity as a filter name gave %v, want it refused as PDFBox refuses it", err)
 	}
 }
 

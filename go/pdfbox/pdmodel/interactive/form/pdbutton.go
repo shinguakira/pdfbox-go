@@ -36,6 +36,25 @@ func (f *PDButton) initButtonOf(self PDField, acroForm *PDAcroForm, field *cos.D
 	f.initTerminalFieldOf(self, acroForm, field, parent)
 }
 
+// button is what PDButton's own methods ask through the field's self, where
+// Java's calls are virtual. PDPushButton answers all three differently: it has
+// no export values, no on values and no value, so its setters refuse every
+// value but Off.
+type button interface {
+	ExportValues() []string
+	OnValues() []string
+	Value() string
+}
+
+// virtual answers the concrete button, or this one where the field was not
+// built by one of the three constructors.
+func (f *PDButton) virtual() button {
+	if concrete, ok := f.self.(button); ok {
+		return concrete
+	}
+	return f
+}
+
 // IsPushButton reports whether the field is a push button.
 func (f *PDButton) IsPushButton() bool {
 	return f.FieldDictionary().GetFlag(cos.Ff, flagPushButton)
@@ -55,7 +74,7 @@ func (f *PDButton) Value() string {
 		return "Off"
 	}
 	stringValue := value.Name()
-	exportValues := f.ExportValues()
+	exportValues := f.virtual().ExportValues()
 	if len(exportValues) != 0 {
 		idx, err := strconv.Atoi(stringValue)
 		if err != nil {
@@ -74,7 +93,7 @@ func (f *PDButton) SetValue(value string) error {
 
 	// if there are export values/an Opt entry there is a different
 	// approach to setting the value
-	if len(f.ExportValues()) != 0 {
+	if len(f.virtual().ExportValues()) != 0 {
 		f.updateByOption(value)
 	} else {
 		f.updateByValue(value)
@@ -88,7 +107,7 @@ func (f *PDButton) SetValue(value string) error {
 // IllegalArgumentException for an index outside the options, which is
 // unchecked, so the port panics.
 func (f *PDButton) SetValueIndex(index int) error {
-	exportValues := f.ExportValues()
+	exportValues := f.virtual().ExportValues()
 	if len(exportValues) == 0 || index < 0 || index >= len(exportValues) {
 		panic(fmt.Sprintf("index '%d' is not a valid index for the field %s, "+
 			"valid indices are from 0 to %d", index, f.FullyQualifiedName(),
@@ -113,7 +132,7 @@ func (f *PDButton) SetDefaultValue(value string) {
 }
 
 // ValueAsString returns the value of the button as a string.
-func (f *PDButton) ValueAsString() string { return f.Value() }
+func (f *PDButton) ValueAsString() string { return f.virtual().Value() }
 
 // ExportValues returns the /Opt export values of the button.
 func (f *PDButton) ExportValues() []string {
@@ -176,7 +195,7 @@ func (f *PDButton) OnValues() []string {
 		}
 	}
 
-	exportValues := f.ExportValues()
+	exportValues := f.virtual().ExportValues()
 	if len(exportValues) != 0 {
 		for _, value := range exportValues {
 			add(value)
@@ -226,7 +245,7 @@ func onValueForWidget(widget *annotation.PDAnnotationWidget) string {
 // checkValue panics unless the value is Off or one of the on values, which is
 // the IllegalArgumentException Java throws. Java declares it package-private.
 func (f *PDButton) checkValue(value string) {
-	onValues := f.OnValues()
+	onValues := f.virtual().OnValues()
 	if value == cos.Off.Name() {
 		return
 	}
@@ -305,7 +324,7 @@ func findMatchingAppearanceKey(appearanceDict *cos.Dictionary, value string) *co
 // private, and throws IllegalArgumentException where the counts disagree.
 func (f *PDButton) updateByOption(value string) {
 	widgets := f.Widgets()
-	options := f.ExportValues()
+	options := f.virtual().ExportValues()
 
 	if len(widgets) != len(options) {
 		panic("The number of options doesn't match the number of widgets")

@@ -62,6 +62,21 @@ It compiles `io`, `fontbox` and `pdfbox` out of the tree with `javac` — no Mav
 — runs PDFBox over the same list, and writes the same table, which
 `corpus -oracle` then joins.
 
+**Measured again 2026-09-15 over 5,090 files, pdf.js's 1,443 among them. 2 of
+5,090 disagree, and both are Java bugs the Go fixes on purpose — JAVA-BUGS 15
+and 30.** pdf.js's files found one port defect behind twelve of their fourteen
+first disagreements, and behind the one character below: a Type 0 glyph was
+advanced by its font program's width instead of its `/W`, because
+`pdFont.Displacement` called its own `Width` where Java's call is virtual. See
+[`TESTDATA.md`](TESTDATA.md), "pdf.js against the Java".
+
+```
+  open    both 5037, neither 53, behind 0, ahead 0
+  pages   0 disagree
+  text    both 5032, neither 5, behind 0, ahead 0
+  chars   5030 the same length, 2 not
+```
+
 **Measured 2026-09-12 over 3,646 files. The first run found twelve
 disagreements; every one of them was the port's and eleven are fixed. What is
 left is one character in one document — 1 of 3,646, 0.03%.**
@@ -817,9 +832,9 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | Java source | Go source | Status |
 | --- | --- | --- |
 | `Filter.java` | `filter.go` | done — minus the `DecodeOptions` overload, which carries image subsampling |
-| `FilterFactory.java` | `filter.go`, `provider.go` | done — as `ByName` plus a `Provider` type rather than a singleton |
+| `FilterFactory.java` | `filter.go`, `provider.go` | done — as `ByName` plus a `Provider` type rather than a singleton. Until 2026-09-15 `ByName` also answered `/Identity`, which `FilterFactory` refuses with "Invalid filter"; it refuses it now, and nothing depended on it |
 | `Predictor.java` | `predictor.go` | done — matched to PDFBox's output on 2026-09-15: `/Colors` clamped to 32 as `wrapPredictor` does, Java's 32-bit arithmetic throughout, the short last row completed with zeros. JAVA-BUGS 88 is not carried |
-| `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done |
+| `FlateFilter.java`, `FlateFilterDecoderStream.java` | `flate.go` | done — a source that fails, in the header or after it, fails `Decode` and the reader with its own error since 2026-09-15; see the deviations below |
 | `IdentityFilter.java` | `filter.go` | done |
 | `DecodeResult.java` | `filter.go` | partial — the JPX colour space and soft mask fields arrive with that filter |
 | `DecodeOptions.java` | `decodeoptions.go` | done in slice 6 |
@@ -830,6 +845,37 @@ Only the filters slice 1 needs. The rest arrive in slice 6.
 | `PredictorTest` | `predictor_test.go` | complete |
 | — | `predictorpath_test.go`, `javabug88_test.go` | no Java test reaches the predictor the way a PDF does, through FlateDecode and LZWDecode; these take PDFBox's own output for each case as the expected value |
 | `TestFilters` | `flate_test.go` | the round-trip generator is ported; `testPDFBOX4517` needs a loader, `testPDFBOX1977` needs LZW, `testRLE` needs RunLength |
+
+### Deviations — `filter`
+
+Each commented at the point it occurs. Recorded on `track/performance`; see
+[`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) for why.
+
+- **Decompressors are pooled.** Java makes a new `Inflater` for every stream,
+  and `FlateFilterDecoderStream.close` ends it. `flate.go` keeps
+  `compress/flate` decompressors in a pool and resets one for each stream, in
+  `Flate.Decode` and in the reader `NewFlateDecoderReader` returns. That reader
+  hands its decompressor back when its data ends rather than on `Close`,
+  because the stream engine, like Java's, never closes a content stream it has
+  parsed; a `Close` after that answers nil, which is what it answered before.
+  Allocation and lifetime only: nothing a caller reads changes. Pinned by
+  `TestFlateDecodeReusesOneDecompressor` and
+  `TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt`, which run
+  against a pool that cannot drop what it is given.
+- **Unpredicted data is copied through a pooled 32 KB buffer** in
+  `decodePredictor`, where Java's `transferTo` allocates one for each call.
+  Allocation only.
+- **`Flate.Decode` ended the data at every error, a failing source included —
+  no longer, since 2026-09-15 on `track/testdata-sources`.**
+  `FlateFilterDecoderStream` catches `DataFormatException` alone, so an
+  `IOException` from the source comes out of `FlateFilter.decode`, and so does
+  one from the two header bytes its constructor reads. The port's `Decode`
+  logged every error and carried on, and both it and `NewFlateDecoderReader`
+  took a header they could not read, for any reason, as a stream with nothing
+  in it. `endAtDamage` now ends the data at damage only, and a source that
+  fails, in the header or after it, fails with its own error on both paths; a
+  source that merely ends still ends the data. `TestFlateLetsAFailingSourceOut`
+  holds PDFBox's answers.
 
 ## Slice 1 — `pdfbox/pdfparser`
 
@@ -1025,10 +1071,10 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `common/PDStream.java` | `common/pdstream.go` | done — the reading path here, the rest in slice 8 |
 | `common/COSArrayList.java` | — | not started here — slice 8, with its Java test |
 | `PDResources.java` | `pdresources.go`, `pdresources_colorspace.go`, `pdresources_graphics.go` | done — the dictionary plumbing and `getFont` with its direct cache here; `getColorSpace` and `getExtGState` came with slices 3 and 6, `getProperties` with slice 8, and `getShading`, `getPattern`, `getXObject` and the add and put family with slice 9 |
-| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | done — the font and font descriptor members here, the rest arriving with their types up to slice 9. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package, so the five kinds it cannot name are asked of the cache by shape from `pdmodel` instead |
+| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | done — the font and font descriptor members here, the rest arriving with their types up to slice 9. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package, so the five kinds it cannot name are asked of the cache by shape from `pdmodel` instead — and so are their removals, by `PDPage.RemovePageResourceFromCache` |
 | `DefaultResourceCache.java` | `resourcecache.go` | done in slice 9 — all eight kinds, each with the stable-cache bookkeeping, which the port writes once as a generic map rather than eight times. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
-| `PDPage.java` | `pdpage.go` | partial here — boxes, rotation, resources, contents. The `PDStream` methods came with slice 7 and everything else with slice 8; only `removePageResourceFromCache` is still absent |
-| `PDPageTree.java` | `pdpagetree.go` | done — minus the `PDDocument` the reading constructor takes, which is only there to reach a `ResourceCache` |
+| `PDPage.java` | `pdpage.go` | done — boxes, rotation, resources, contents here. The `PDStream` methods came with slice 7, everything else but `removePageResourceFromCache` with slice 8, and that with `track/testdata-sources` |
+| `PDPageTree.java` | `pdpagetree.go` | done — the reading constructor takes the `PDDocument`, as Java's does, and asks it for the `ResourceCache` each time a page is handed out, by index or by the walk |
 | `MissingResourceException.java` | `errors.go` | done |
 | `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started here — slice 3 for the document and its information, slice 8 for the catalogue |
 
@@ -1038,6 +1084,94 @@ needs `FlateFilterDecoderStream` and `NonSeekableRandomAccessReadInputStream`,
 neither of which was ported then. `track/scratchfile` ported both and wired the
 fast path back in, so `ContentsForStreamParsing` now branches the way Java does
 -- including onto the predictor bug the fast path carries, JAVA-BUGS 63.
+
+### `PDPageTree` and the resource cache — two port defects, fixed on `track/performance`
+
+Java hands a page its resource cache at the moment the page is handed out:
+`PDPageTree.get(int)` and the iterator's `next()` each ask
+`document.getResourceCache()` there and then. The port got that wrong twice.
+
+1. **The walk handed out pages with no cache at all.** `All` built each page
+   with `NewPDPageOf`, where `Get` passed the tree's cache. Text extraction
+   walks the tree, so every font lookup built its font again; that was most of
+   the time the heaviest documents took — see
+   [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md). Fixed first.
+2. **The tree kept the cache it was made with.** `NewPDPageTreeOfCache` took
+   `document.ResourceCache()` once, when the tree was built, and `Get` — and,
+   after the first fix, `All` — handed that out for as long as the tree lived.
+   A cache set on the document afterwards reached only trees taken afterwards.
+   Found by review of the first fix. The tree now keeps the document, as Java's
+   does, through `NewPDPageTreeOfDocument`.
+
+Neither changes the text extracted or a page rendered. What they change is which
+cache a page reads its fonts, colour spaces and images through, and so what is
+built again and what memory can be let go.
+
+**What was never let go, until `track/testdata-sources`.** With the cache handed
+to every page, the resources every page read stayed in it for as long as the
+document was open: Java's `PDFTextStripper.processPage` ends with
+`page.removePageResourceFromCache()`, and the port had neither the call nor the
+method. Java's cache would let them go anyway under memory pressure, through its
+`SoftReference`s; the port's holds them outright. Found by review, and ported
+there with the call; on `pdfjs/geothermal.pdf`, 372 pages, what text extraction
+left live on the heap went from 27.5 MB to 10.9 MB. Counting what text
+extraction leaves in the cache, over the 5,037 corpus files that open on both
+sides, is what found the port's purge missing transparency groups; the numbers,
+and what the purge costs, are in
+[`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md), "Found in
+review".
+
+**What happens, run rather than read.** The same steps, on one page tree taken
+before any change, in PDFBox compiled from this tree and in the Go version at
+three points: before `track/performance`, after the first fix, and now. On
+`PDFBOX-4423-000746.pdf`, 33 pages and 8 font objects; A is the document's
+cache when the tree was taken, B the one set in its place.
+
+| step | PDFBox | before | after fix 1 | now |
+| --- | --- | --- | --- | --- |
+| walk, page 1 | A | none | A | A |
+| cache set to B; walk, page 2 | B | none | A | B |
+| cache set to B; `Get(0)` on the same tree | B | A | A | B |
+| cache set to B; `Get(0)` on a tree taken now | B | B | B | B |
+| cache set to nil; walk, page 3 | none | none | A | none |
+| cache set to nil; `Get(0)` on the same tree | none | A | A | none |
+| caching off, one font object read on every page | a font per read | a font per read | **one font for every read** | a font per read |
+| caching on again, the same tree | one font for every read | **a font per read** | one font for every read | one font for every read |
+| cache replaced, every font read again through the same tree: fonts left over from the first read | 0 of 8 | walk 0 of 139; by index **8 of 8** | **8 of 8** | 0 of 8 |
+
+`PDFBOX-4418-000671.pdf`, 19 pages and 8 font objects, answered every row the
+same way. So in the Go version before this, replacing or switching off the
+cache did nothing to a tree already in hand: the tree went on reading the old
+cache, and the fonts it had put there came back out. Now each row answers what
+PDFBox answers.
+
+**Memory.** The heap after forced collections, with the tree still held, before
+and after the document's cache is replaced by a new one:
+
+| | before, by index | after fix 1 | now |
+| --- | ---: | ---: | ---: |
+| `PDFBOX-4423-000746.pdf` | 10.4 → 10.4 MB | 10.4 → 10.4 MB | 10.4 → 9.5 MB |
+| `PDFBOX-4418-000671.pdf` | 7.4 → 7.4 MB | 7.4 → 7.4 MB | 7.4 → 7.0 MB |
+
+The fonts in these two documents are small, so the numbers say that the replaced
+cache is let go at all, not how much that is worth. PDFBox is not in this table:
+its cache holds each entry through a `SoftReference`, so what it keeps depends
+on the collector's pressure rather than on reachability.
+
+**Who could have seen defect 2.** Only a caller that replaces or switches off a
+document's cache with `SetResourceCache` while it holds a `PDPageTree`, or pages
+taken from one. `PDDocument.Pages()` builds a new tree on every call, so taking
+the tree again after the change always got the new cache. Nothing in this
+repository calls `SetResourceCache` outside the test for this, so no tool here —
+text extraction, rendering, the benchmark — behaved differently because of it,
+and the measurements taken before and after the fix are the same within their
+noise. Defect 1, by contrast, touched every text extraction, for time and memory.
+
+Pinned by `TestPDPageTreeAllHandsOutTheResourceCache` and
+`TestPDPageTreeAsksTheDocumentForTheCacheAsItHandsOutPages`, each of which fails
+on the code before its fix. The Go side of the run above is
+`go/testdata/oracle/cacheprobe`, which git ignores; the PDFBox side was a
+throwaway program doing the same steps against the javac-compiled tree.
 
 ### `pdfbox/pdmodel/graphics`
 
@@ -1426,6 +1560,14 @@ fails without its fix.
   reimplements `processPage` — Go embedding does not dispatch — and had left it
   out. A stripper used twice, which `extractRegions` documents as supported,
   reported nothing the second time.
+  **Since 2026-09-15 there is no reimplementation:** the base `ProcessPage`
+  writes the page through a hook the by-area stripper installs its `WritePage`
+  in, and `charactersByArticle` is a pointer to the lists rather than a slice,
+  so that the base clearing and extending a region's lists in place reaches the
+  region, as Java's shared `ArrayList` does. A by-area stripper driven through
+  `WriteText` was writing the whole page to the writer; it now fills the regions
+  and writes nothing there, as PDFBox does.
+  `TestStripperByAreaWriteTextReachesItsWritePage`.
 - **`GetTextOfPages` did not reset the engine.** Java's `writeText` calls
   `resetEngine` first, which puts `currentPageNo` back to 1 and empties the
   per-page state, and applies the extra formatting where it was asked for. The
@@ -2382,6 +2524,17 @@ PDFBox repairs. The port decoded both. The reduction is in
 `createInputStream()` with no stop filters does not do it: it chains the filters
 one for one through `COSInputStream`.
 
+**That last sentence was wrong, corrected 2026-09-15 on
+`track/testdata-sources`.** In this Java tree `COSInputStream.create` and
+`createView` both go through `Filter.decode` too, so all three decode a repeated
+filter once, and `/DecodeParms` is read at each filter's place in the reduced
+list. The reduction moved into `Stream.decode`, which all three reach.
+`TestRepeatedFilterIsDecodedOnceOnEveryPath` holds PDFBox's answers from all
+three paths; the writer still encodes through every entry, which
+`TestRepeatedFilterIsWrittenEveryTime` pins. `TestStreamTwoFilterChain`, which
+expected `[/FlateDecode /FlateDecode]` to come back whole, was not a port of
+anything and is replaced by the two Java tests it stood in for.
+
 **`Raster.SetPixel` half wrote a pixel.** Handed fewer values than the raster
 has bands it stopped at the shorter of the two, leaving the remaining bands
 holding whatever the pixel had before. Java reads `numBands` values and throws
@@ -2940,7 +3093,9 @@ slice's, taken in dependency order, and they read through it.
   `setAnnotations`, `getViewports`, `setViewports`, `getUserUnit` and
   `setUserUnit` are ported. Only `removePageResourceFromCache` is left: it
   purges the colour space, ext gstate, pattern, shading and XObject halves of
-  the resource cache, and four of those five still have no type.
+  the resource cache, and four of those five still have no type. (Since ported
+  by `track/testdata-sources`, with the call `PDFTextStripper.processPage`
+  makes; see "`PDPageTree` and the resource cache".)
 - **`PDDocumentCatalog`.** Every accessor is ported. `getAcroForm` and
   `setAcroForm` are in `interactive/form` (see above); the other 36 are in
   `pddocumentcatalog.go`, kept out of `pddocument.go` so that the file next to

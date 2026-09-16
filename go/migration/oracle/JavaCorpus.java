@@ -1,5 +1,6 @@
 import java.io.File;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -41,9 +42,14 @@ import org.apache.pdfbox.text.PDFTextStripper;
  * text in it differs by one character per line, and the comparison says nothing
  * about content.
  *
- * <p>Usage: {@code java JavaCorpus <listfile> [timeoutSeconds] [lf]}, where
- * listfile holds one repository-relative path per line. Driven by
- * {@code migration/scripts/run-oracle.ps1}.
+ * <p>Pass a passwords file as the fourth argument to open encrypted files the
+ * way their source project does: one line per file, a path ending, a tab, and
+ * the password, in UTF-8. A file whose path ends that way is opened with that
+ * password; every other file is opened with none.
+ *
+ * <p>Usage: {@code java JavaCorpus <listfile> [timeoutSeconds] [lf|crlf]
+ * [passwordsfile]}, where listfile holds one repository-relative path per line.
+ * Driven by {@code migration/scripts/run-oracle.ps1}.
  */
 public class JavaCorpus {
 
@@ -53,6 +59,25 @@ public class JavaCorpus {
     static final int MAX_STUCK = 4;
 
     static boolean LF = false;
+
+    /**
+     * Rows of the optional passwords table: a path ending and the password for
+     * the file whose path ends that way. The same table, matched the same way,
+     * as go/cmd/corpus's -passwords, so each side opens the same files with the
+     * same passwords.
+     */
+    static final List<String[]> PASSWORDS = new ArrayList<>();
+
+    static String passwordFor(String path) {
+        String slashed = path.replace('\\', '/');
+        for (String[] row : PASSWORDS) {
+            if (slashed.equals(row[0]) || slashed.endsWith("/" + row[0])) {
+                return row[1];
+            }
+        }
+        return null;
+    }
+
     static final String LFS = String.valueOf((char) 10);
 
     static String shorten(Throwable t) {
@@ -75,7 +100,8 @@ public class JavaCorpus {
 
         PDDocument doc = null;
         try {
-            doc = Loader.loadPDF(new File(path));
+            String password = passwordFor(path);
+            doc = password == null ? Loader.loadPDF(new File(path)) : Loader.loadPDF(new File(path), password);
             pages = doc.getNumberOfPages();
             try {
                 PDFTextStripper stripper = new PDFTextStripper();
@@ -115,6 +141,18 @@ public class JavaCorpus {
 
         long timeoutSeconds = args.length > 1 ? Long.parseLong(args[1]) : 20;
         LF = args.length > 2 && args[2].equals("lf");
+        if (args.length > 3) {
+            for (String line : Files.readAllLines(Paths.get(args[3]), StandardCharsets.UTF_8)) {
+                if (line.isBlank() || line.startsWith("#")) {
+                    continue;
+                }
+                int tab = line.indexOf('\t');
+                if (tab <= 0) {
+                    throw new IllegalArgumentException(args[3] + ": a line with no tab: " + line);
+                }
+                PASSWORDS.add(new String[] { line.substring(0, tab).replace('\\', '/'), line.substring(tab + 1) });
+            }
+        }
 
         // Daemon threads, so a file that will not return cannot keep the JVM
         // alive. Each one gets its own executor because the previous one may
