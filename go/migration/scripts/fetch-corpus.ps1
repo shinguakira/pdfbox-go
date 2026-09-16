@@ -199,15 +199,7 @@ function Get-ArchiveSuite {
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corpus-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     try {
-        $archive = Join-Path $tmp 'suite.tar.gz'
-        Invoke-WebRequest -Uri $S.Url -OutFile $archive -TimeoutSec 900 -UseBasicParsing
-
-        $extract = Join-Path $tmp 'x'
-        New-Item -ItemType Directory -Force -Path $extract | Out-Null
-        # --strip-components=1 drops the repo-branch directory GitHub wraps
-        # every source archive in.
-        & tar -xzf $archive -C $extract --strip-components=1
-        if ($LASTEXITCODE -ne 0) { throw "tar exited $LASTEXITCODE" }
+        $extract = Expand-SuiteArchive -S $S -Into $tmp
 
         $source = if ($S.Subtree) { Join-Path $extract $S.Subtree } else { $extract }
         if (-not (Test-Path -LiteralPath $source)) {
@@ -218,17 +210,67 @@ function Get-ArchiveSuite {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Dest) | Out-Null
         Move-Item -LiteralPath $source -Destination $Dest
 
-        if ($S.PSObject.Properties.Name -contains 'Extras') {
-            foreach ($extra in $S.Extras) {
-                $from = Join-Path $extract $extra
-                if (-not (Test-Path -LiteralPath $from)) {
-                    throw "'$extra' is not in the archive -- has the repository moved it?"
-                }
-                $to = Join-Path (Join-Path $Dest '_repo') $extra
-                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
-                Copy-Item -LiteralPath $from -Destination $to
-            }
+        Copy-SuiteExtras -S $S -From $extract -Dest $Dest
+    }
+    finally {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Expand-SuiteArchive downloads a suite's archive into a directory and unpacks
+# it there, answering the directory the repository's files are in.
+function Expand-SuiteArchive {
+    param([object]$S, [string]$Into)
+
+    $archive = Join-Path $Into 'suite.tar.gz'
+    Invoke-WebRequest -Uri $S.Url -OutFile $archive -TimeoutSec 900 -UseBasicParsing
+
+    $extract = Join-Path $Into 'x'
+    New-Item -ItemType Directory -Force -Path $extract | Out-Null
+    # --strip-components=1 drops the repo-branch directory GitHub wraps
+    # every source archive in.
+    & tar -xzf $archive -C $extract --strip-components=1
+    if ($LASTEXITCODE -ne 0) { throw "tar exited $LASTEXITCODE" }
+    return $extract
+}
+
+# Copy-SuiteExtras copies a suite's Extras out of its unpacked archive into
+# _repo/, at their paths in the repository.
+function Copy-SuiteExtras {
+    param([object]$S, [string]$From, [string]$Dest)
+
+    if ($S.PSObject.Properties.Name -notcontains 'Extras') { return }
+    foreach ($extra in $S.Extras) {
+        $source = Join-Path $From $extra
+        if (-not (Test-Path -LiteralPath $source)) {
+            throw "'$extra' is not in the archive -- has the repository moved it?"
         }
+        $to = Join-Path (Join-Path $Dest '_repo') $extra
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
+        Copy-Item -LiteralPath $source -Destination $to
+    }
+}
+
+# Get-MissingExtras brings a present suite's Extras up to date with its
+# definition. A suite fetched before an extra was added to the definition --
+# pdfjs, fetched before the manifest its linked files and passwords are read
+# from came to be copied -- has the files it had and not the extra, and reading
+# the links or the passwords would stop at the missing manifest. The archive is
+# downloaded again for the extras alone; the suite's own files, and the linked
+# files downloaded into it, stay as they are.
+function Get-MissingExtras {
+    param([object]$S, [string]$Dest)
+
+    if ($S.PSObject.Properties.Name -notcontains 'Extras') { return }
+    $missing = @($S.Extras | Where-Object { -not (Test-Path -LiteralPath (Join-Path (Join-Path $Dest '_repo') $_)) })
+    if ($missing.Count -eq 0) { return }
+
+    Write-Host "  $($missing.Count) of its $(@($S.Extras).Count) files from elsewhere in the repository are missing ($($missing -join ', ')); fetching the archive for them ..."
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corpus-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try {
+        $extract = Expand-SuiteArchive -S $S -Into $tmp
+        Copy-SuiteExtras -S $S -From $extract -Dest $Dest
     }
     finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -495,6 +537,8 @@ foreach ($name in $Suite) {
     if ((Test-Path -LiteralPath $dest) -and -not $Force) {
         $have = (Get-ChildItem -LiteralPath $dest -Recurse -File -Filter *.pdf -ErrorAction SilentlyContinue).Count
         "$name -- already present, $have PDFs (pass -Force to refetch)"
+        # the links and the passwords are read from an extra, so it comes first
+        Get-MissingExtras -S $s -Dest $dest
         if ($hasLinks) {
             # a present suite may still be missing linked files; this fetches
             # only those
