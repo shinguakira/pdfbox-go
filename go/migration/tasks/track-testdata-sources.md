@@ -144,6 +144,111 @@ disagree, the same two.
   "Invalid filter"; `ByName` answered it, with a note that the parser depended
   on it. Nothing did. `go/pdfbox/filter/filter.go`; `TestByNameCoversEveryFilter`.
 
+### Found in review, 2026-09-16
+
+Three findings of the branch's review, and two defects that checking the third
+turned up. Each test-first, with PDFBox's output as the expected value. The
+comparison over the 5,090 files, run again with all five in: the same 2
+disagreements, and every file's row — open, pages, text, length — the same as
+before them.
+
+- **A codec that cannot be compared panicked the reduction of repeated
+  filters.** The reduction above kept a map keyed on each filter's
+  `StreamCodec`. That is an interface a `CodecProvider` answers, and nothing
+  makes the value behind it comparable: one holding a slice panicked with "hash
+  of unhashable type" on every stream with two filters or more, before
+  decoding began. A codec that can be compared is still its own key — the
+  provider in `pdfbox/filter` answers values that are equal exactly where
+  Java's `FilterFactory` hands out the same instance — and one that cannot is
+  keyed by the name the filter array gives it. `go/pdfbox/cos/stream.go`;
+  `TestRepeatedFilterReductionTakesACodecThatCannotBeCompared`, which reads
+  through `CreateReader`, `CreateView` and `CreateReaderStopping`, panicked
+  before the change.
+- **A pdf.js fetched by the earlier script could not be brought up to date.**
+  When the linked files came in, the script started copying
+  `test/test_manifest.json` into `_repo/`, and the links and the passwords are
+  read from it. A `pdfjs`
+  fetched before that has no manifest, and a rerun without `-Force` stopped at
+  reading it, before any linked file. A present suite now has its missing
+  extras fetched first, from the archive, and only those; its own files and the
+  linked files already downloaded stay as they are.
+  `go/migration/scripts/fetch-corpus.ps1`. Run with `_repo` moved aside: the
+  rerun fetched the three files, which came back identical to the ones moved
+  aside, and went on to find all 459 linked files present with the manifest's
+  md5.
+- **Nothing took a processed page's resources out of the cache.** Since
+  `track/performance` every page reads through the document's cache, and
+  `DefaultResourceCache` keeps its fonts, colour spaces, graphics states,
+  patterns, property lists, shadings and XObjects. Java's
+  `PDFTextStripper.processPage` ends with `page.removePageResourceFromCache()`;
+  the port had left the call out, with a note that its pages had no cache, and
+  had no such method on `PDPage`. Java's cache also holds its entries through a
+  `SoftReference` the collector may clear, and the port's holds them outright,
+  so everything any page read stayed for as long as the document was open.
+  `PDPage.RemovePageResourceFromCache` is now ported — the page's own
+  resources, not inherited ones; a Type 0 font's descendant font and its
+  descriptor; and the resources of each form XObject removed, recursively — and
+  `ProcessPage` calls it. `go/pdfbox/pdmodel/pdpage.go`,
+  `go/pdfbox/text/pdftextstripper.go`;
+  `TestRemovePageResourceFromCacheLeavesTheInheritedResources`, fifteen values
+  PDFBox printed for the same objects, and
+  `TestWriteTextTakesEachPagesResourcesOutOfTheCache`.
+
+**The purge, checked over the corpus.** The tests pin the method; they do not
+say that text extraction leaves the same cache behind. So both caches were
+wrapped to count what text extraction put in and what was still in at the end,
+per kind, over every one of the 5,037 files that open on both sides. The Go
+side is `go/testdata/oracle/purgeprobe`, which git ignores; the PDFBox side was
+a throwaway program wrapping `DefaultResourceCache` the same way. The count
+found two defects, both fixed:
+
+1. **A transparency group's resources stayed.** The recursion took a
+   `*form.PDFormXObject` only. Java's `instanceof PDFormXObject` also takes the
+   `PDTransparencyGroup` that extends it; the Go type embeds it instead, and
+   has to be named. `pdfjs/geothermal.pdf` kept 7 XObjects PDFBox takes out.
+   Added to the first test above, which failed on it.
+2. **An AES-128 stream of the initialization vector alone could not be read.**
+   This one is not in the purge; the count found it. `aesCBC` answered "no data to
+   decrypt" where Java's `Cipher.doFinal` decrypts nothing to nothing, and on
+   the AES-128 path that error made the whole object unreadable.
+   `pdfjs/ichiji.pdf` has two such form XObjects, 16 bytes each; PDFBox reads
+   them as empty forms, and the port read them as null — the text did not
+   change, because they are empty. `go/pdfbox/pdmodel/encryption/securityhandler.go`;
+   `TestAESPathsAnswerShortInputAsPDFBoxDoes`, twelve rows PDFBox's two AES
+   paths answered when called through reflection, of which this was the one
+   that failed.
+
+With both fixed, 5,021 of the 5,037 files leave PDFBox's cache exactly: the same
+entries put in, kind by kind, and the same left at the end. 15 fail on both
+sides — 10 of pdf.js's encrypted files, which the count opened without their
+passwords, and the 5 whose text extraction fails on both sides in the table
+above. The one that differs is `pdfjs/poppler-90-0-fuzzed.pdf`, JAVA-BUGS 30
+again: the port's page 10 content stream ends sooner, so it reads one font
+fewer, 9 put and 2 left where PDFBox has 10 and 3.
+
+**What the purge lets go**, measured on three long documents with the purge and
+with a cache that ignores removals: how much more heap is live once text
+extraction has walked every page than before it began, the document still
+open, and how many entries the cache still holds.
+
+| document | pages | without | with | entries left, without → with |
+| --- | ---: | ---: | ---: | --- |
+| `pdfjs/geothermal.pdf` | 372 | 27.5 MB | **10.9 MB** | 836 → 102 |
+| `pdfjs/issue2386.pdf` | 141 | 14.6 MB | 14.1 MB | 1,088 → 100 |
+| `pdfbox/target/pdfs/PDFBOX-3949-…` | 234 | 16.6 MB | 16.4 MB | 40 → 21 |
+
+**What it costs.** `BENCHMARK.md`'s 3,597 documents, one pass each, alternating
+three times between a build with the purge and one without it — the same code
+with the call left out through `go build -overlay`, so the tree was not changed
+for it. Both extract 1,834,959 characters and fail none. With the purge a pass
+allocates 6,208 MB where it allocated 5,944, **4.4% more**, in every round: a
+resource pages share is read again after each purge, until the stable-cache
+bookkeeping keeps it, as in PDFBox. Time did not come apart from the noise: CPU
+time 25.7–27.3 s without and 24.3–27.8 s with, and the peak live heap 242–259 MB
+without and 240–271 MB with, while other programs, a game among them, used 4.8
+to 6.2 cores of the twelve. `BENCHMARK.md` was measured before the
+purge and has not been measured again; that is T10.
+
 ## Open tasks
 
 ### Unresolved
@@ -200,6 +305,15 @@ disagree, the same two.
   2026-09-15; above, with `SetDefaultValue`.
 - [x] **U10. `PDFTextStripperByArea` driven through `WriteText`.** Closed
   2026-09-15; above.
+- [ ] **U11. Outside text extraction, the cache still keeps everything.** Found
+  2026-09-16, with the purge above. `removePageResourceFromCache` has one caller
+  in PDFBox, `PDFTextStripper.processPage`. Rendering a page, or any other
+  stream engine walking pages, leaves what it read in the document's cache,
+  and Java lets that go when memory runs short, through the cache's
+  `SoftReference`s; the port has no such reference, so a document rendered page
+  by page holds every page's fonts, colour spaces and XObjects until it is
+  closed. The purge is public, so a caller can call it after each page; whether
+  the port's renderer should, where PDFBox's does not, needs a decision.
 
 ### Not yet done
 
@@ -217,3 +331,7 @@ disagree, the same two.
 - [ ] **T8.** MuPDF's `tests.git`, when a renderer question needs it.
 - [ ] **T9.** Fuzzing, with what it finds folded back into tests — the one line of
   qpdf's test model this repository does not have.
+- [ ] **T10. Measure `BENCHMARK.md` again with the page purge in.** Its tables
+  are the code before 2026-09-16. Not done that day because the machine was not
+  quiet: the page's runs had the rest of it at 0.3 to 1.3 cores, and it was at
+  4.8 to 6.2. What is known is above: 4.4% more allocated, the same output.

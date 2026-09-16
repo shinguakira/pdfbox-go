@@ -1071,9 +1071,9 @@ interface; this is where that starts. Only what PDFBox calls is here.
 | `common/PDStream.java` | `common/pdstream.go` | done — the reading path here, the rest in slice 8 |
 | `common/COSArrayList.java` | — | not started here — slice 8, with its Java test |
 | `PDResources.java` | `pdresources.go`, `pdresources_colorspace.go`, `pdresources_graphics.go` | done — the dictionary plumbing and `getFont` with its direct cache here; `getColorSpace` and `getExtGState` came with slices 3 and 6, `getProperties` with slice 8, and `getShading`, `getPattern`, `getXObject` and the add and put family with slice 9 |
-| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | done — the font and font descriptor members here, the rest arriving with their types up to slice 9. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package, so the five kinds it cannot name are asked of the cache by shape from `pdmodel` instead |
+| `ResourceCache.java` | `pdmodel/font/resourcecache.go`, aliased in `resourcecache.go` | done — the font and font descriptor members here, the rest arriving with their types up to slice 9. The interface is declared in `pdmodel/font` because it names `PDFont` and `pdmodel` imports that package, so the five kinds it cannot name are asked of the cache by shape from `pdmodel` instead — and so are their removals, by `PDPage.RemovePageResourceFromCache` |
 | `DefaultResourceCache.java` | `resourcecache.go` | done in slice 9 — all eight kinds, each with the stable-cache bookkeeping, which the port writes once as a generic map rather than eight times. Java holds each entry through a `SoftReference`; Go has none, so the port holds them outright |
-| `PDPage.java` | `pdpage.go` | partial here — boxes, rotation, resources, contents. The `PDStream` methods came with slice 7 and everything else with slice 8; only `removePageResourceFromCache` is still absent |
+| `PDPage.java` | `pdpage.go` | done — boxes, rotation, resources, contents here. The `PDStream` methods came with slice 7, everything else but `removePageResourceFromCache` with slice 8, and that with `track/testdata-sources` |
 | `PDPageTree.java` | `pdpagetree.go` | done — the reading constructor takes the `PDDocument`, as Java's does, and asks it for the `ResourceCache` each time a page is handed out, by index or by the walk |
 | `MissingResourceException.java` | `errors.go` | done |
 | `PDDocument.java`, `PDDocumentCatalog.java`, `PDDocumentInformation.java` | — | not started here — slice 3 for the document and its information, slice 8 for the catalogue |
@@ -1106,6 +1106,20 @@ Java hands a page its resource cache at the moment the page is handed out:
 Neither changes the text extracted or a page rendered. What they change is which
 cache a page reads its fonts, colour spaces and images through, and so what is
 built again and what memory can be let go.
+
+**What was never let go, until `track/testdata-sources`.** With the cache handed
+to every page, the resources every page read stayed in it for as long as the
+document was open: Java's `PDFTextStripper.processPage` ends with
+`page.removePageResourceFromCache()`, and the port had neither the call nor the
+method. Java's cache would let them go anyway under memory pressure, through its
+`SoftReference`s; the port's holds them outright. Found by review, and ported
+there with the call; on `pdfjs/geothermal.pdf`, 372 pages, what text extraction
+left live on the heap went from 27.5 MB to 10.9 MB. Counting what text
+extraction leaves in the cache, over the 5,037 corpus files that open on both
+sides, is what found the port's purge missing transparency groups; the numbers,
+and what the purge costs, are in
+[`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md), "Found in
+review".
 
 **What happens, run rather than read.** The same steps, on one page tree taken
 before any change, in PDFBox compiled from this tree and in the Go version at
@@ -3079,7 +3093,9 @@ slice's, taken in dependency order, and they read through it.
   `setAnnotations`, `getViewports`, `setViewports`, `getUserUnit` and
   `setUserUnit` are ported. Only `removePageResourceFromCache` is left: it
   purges the colour space, ext gstate, pattern, shading and XObject halves of
-  the resource cache, and four of those five still have no type.
+  the resource cache, and four of those five still have no type. (Since ported
+  by `track/testdata-sources`, with the call `PDFTextStripper.processPage`
+  makes; see "`PDPageTree` and the resource cache".)
 - **`PDDocumentCatalog`.** Every accessor is ported. `getAcroForm` and
   `setAcroForm` are in `interactive/form` (see above); the other 36 are in
   `pddocumentcatalog.go`, kept out of `pddocument.go` so that the file next to

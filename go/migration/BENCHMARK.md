@@ -12,6 +12,16 @@ This page was first written on 2026-09-13, before
 measured on it was measured again on 2026-09-15, after. Where a section records
 what was found on the first date, it says so and keeps that date's numbers.
 
+**Not yet measured here: the page purge.** On 2026-09-16 `track/testdata-sources`
+ported `PDPage.removePageResourceFromCache` and the call to it that ends
+`PDFTextStripper.processPage`, which lets a processed page's resources out of
+the document's cache. On this page's 3,597 documents it makes a pass allocate
+4.4% more, 6,208 MB against 5,944, with the same characters out. What it does to
+time could not be told apart from the noise that day, with other programs using
+4.8 to 6.2 cores, so the tables below are the code before it.
+[`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md), "Found in
+review", has the runs.
+
 `go/cmd/bench` and `migration/oracle/JavaBench.java` print the same numbers in
 the same shape; [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) builds the
 Java side. The unit of work is one document's worth of real use — open the file,
