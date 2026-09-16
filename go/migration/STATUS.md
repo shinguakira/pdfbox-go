@@ -62,94 +62,40 @@ It compiles `io`, `fontbox` and `pdfbox` out of the tree with `javac` — no Mav
 — runs PDFBox over the same list, and writes the same table, which
 `corpus -oracle` then joins.
 
-**Measured again 2026-09-15 over 5,090 files, pdf.js's 1,443 among them. 2 of
-5,090 disagree, and both are Java bugs the Go fixes on purpose — JAVA-BUGS 15
-and 30.** pdf.js's files found one port defect behind twelve of their fourteen
-first disagreements, and behind the one character below: a Type 0 glyph was
-advanced by its font program's width instead of its `/W`, because
-`pdFont.Displacement` called its own `Width` where Java's call is virtual. See
-[`TESTDATA.md`](TESTDATA.md), "pdf.js against the Java".
+**Where the comparison stands, and every run behind it, is in
+[`TESTDATA.md`](TESTDATA.md)** — the scoreboard, the defects each run found and
+what each turned out to be. The branch that runs it keeps its own record in
+[`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md). In one
+line: there is no document in the corpus PDFBox reads and the port does not, and
+the disagreements left are Java bugs the Go fixes on purpose.
 
-```
-  open    both 5037, neither 53, behind 0, ahead 0
-  pages   0 disagree
-  text    both 5032, neither 5, behind 0, ahead 0
-  chars   5030 the same length, 2 not
-```
+What that comparison taught that belongs in this file rather than in that one:
 
-**Measured 2026-09-12 over 3,646 files. The first run found twelve
-disagreements; every one of them was the port's and eleven are fixed. What is
-left is one character in one document — 1 of 3,646, 0.03%.**
-
-```
-  open    both 3600, neither 46, behind 0, ahead 0
-  pages   0 disagree
-  text    both 3597, neither 3, behind 0, ahead 0
-  chars   3596 the same length, 1 not
-```
-
-There is no document in the corpus PDFBox reads and the port does not, at either
-stage. The twelve and what each turned out to be are in
-[`TESTDATA.md`](TESTDATA.md); in summary, five were `PDFTextStripper.processPages`
-walking the page tree by index where Java iterates it — the two guards
-`PDPageTree` carries against a cycle differ on purpose, and the port reached the
-throwing one; one was an xref repair computed and then dropped because the port's
-`XrefTable` answers a copy; two were `compress/flate` raising from `Close` the
-damage its `Read` had already absorbed, which `inflater.end()` cannot do; and
-three were complexity rather than behaviour — an unordered lookup where Java has
-a `TreeMap` sub-range, and the same copied xref table, which together took a
-ten-thousand-page document from 238 seconds to 0.51.
-
-One thing that comparison needed first: Java initialises `PDFTextStripper`'s
-`lineSeparator` and `pageEnd` from `System.lineSeparator()`, CRLF on Windows,
-and the port hardcodes LF. Before that is forced equal, 2,925 of the documents
-differ by exactly one character and the comparison says nothing at all.
-
-All of it is described in [`TESTDATA.md`](TESTDATA.md), including the first run:
-**3,646 files, 99.4% open and 99.2% text after the one fix below**, and four
-groups of failure of which one was a port defect.
-
-**The port defect, found and fixed.** Three files panicked in
-`text.handleDirection` with an index out of range, two of them from the set the
-Java build downloads and therefore in front of the Java's own tests
-(`PDFBOX-4418-000314.pdf`, `PDFBOX-4418-000671.pdf`). The cause is the one
-substitution that method makes: `java.text.Bidi` has no counterpart in Go's
-standard library, and `golang.org/x/text/unicode/bidi` resolves a word made only
-of paragraph separators to zero runs, then indexes the first of them when asked
-the direction. Java returns such a word untouched. `direction.go` now answers
-before asking, and `pdfbox/text/corpusdefects_test.go` pins the empty string and
-all six code points of Unicode bidi class B.
-
-**The gap it looked like it corroborated, and did not.** Eighteen
-`qpdf/issue-*.pdf` files come back `Missing root object specification in trailer`
-or `Page tree root must be a dictionary`, which was read here as the
-cross-reference recovery path failing — the hole this file names, `TestCOSParser`
-and `TestPDFParser`, 47 `@Test` methods never run in the port.
-
-Running PDFBox over the same eighteen says otherwise. **Seventeen of them fail in
-the Java too, with the identical message**, `IOException: Missing root object
-specification in trailer.` and `IOException: Page tree root must be a
-dictionary`. The port is reproducing PDFBox, not falling short of it. One file,
-`issue-202.pdf`, is a real difference: PDFBox opens it at ten pages and the port
-does not. The test-class backlog stands on its own merits; these files were never
-evidence for it.
-
-**What was left alone, and what was wrong about that.** Three veraPDF files in
-clause 6.1.12 timed out, which is what a file built to exceed implementation
-limits is for — except that PDFBox reads all three, so what the limit found was
-the port's complexity and not the file's size. `qpdf/deep-pages.pdf` was written
-down here as the port's carry of Java's own `IllegalStateException` about
-page-tree recursion; **PDFBox opens that file and extracts from it without the
-guard firing**, so it was a port defect and not a carry. All four are fixed, and
-the reasoning that got them wrong is kept in [`TESTDATA.md`](TESTDATA.md)
-alongside the comparison that caught it. What is *genuinely* left alone is
-`safedocs-targeted`'s
-`ContentStreamCycleType3insideType3.pdf`, a Type 3 glyph that draws itself,
-recurses until Go's stack overflow ends the process — the Java is no better,
-since neither side bounds Type 3 recursion, because the `level` guard both carry
-is wired into the three `DrawObject` operators and not into `showType3Glyph`. But
-Java's `StackOverflowError` is catchable and Go's is fatal, which is why
-`cmd/corpus` isolates each file in a child process.
+- **The separators have to be forced equal before anything is compared.** Java
+  initialises `PDFTextStripper`'s `lineSeparator` and `pageEnd` from
+  `System.lineSeparator()`, CRLF on Windows, and the port hardcodes LF. Until
+  that is settled, 2,925 of the documents differ by exactly one character and
+  the comparison says nothing at all.
+- **`text.handleDirection` panicked on a word of paragraph separators.**
+  `java.text.Bidi` has no counterpart in Go's standard library, and
+  `golang.org/x/text/unicode/bidi` resolves such a word to zero runs, then
+  indexes the first of them when asked the direction; Java returns the word
+  untouched. `direction.go` now answers before asking, and
+  `pdfbox/text/corpusdefects_test.go` pins the empty string and all six code
+  points of Unicode bidi class B. Two of the three files that panicked are from
+  the set the Java build downloads, and so were in front of the Java's own
+  tests.
+- **Eighteen `qpdf/issue-*.pdf` were not evidence for the cross-reference
+  recovery hole**, which is the gap this file names — `TestCOSParser` and
+  `TestPDFParser`, 47 `@Test` methods. Seventeen of them fail in the Java too,
+  with the identical message. One, `issue-202.pdf`, was a real difference and is
+  fixed. The test-class backlog stands on its own merits.
+- **`cmd/corpus` scores each file in a child process** because Go's stack
+  overflow is fatal where Java's `StackOverflowError` is catchable. The file
+  that needs it is `safedocs-targeted`'s
+  `ContentStreamCycleType3insideType3.pdf`, a Type 3 glyph that draws itself:
+  neither side bounds Type 3 recursion, since the `level` guard both carry is
+  wired into the three `DrawObject` operators and not into `showType3Glyph`.
 
 ### What the fetch unblocked, and what it did not
 
@@ -565,83 +511,39 @@ ids; six of those nine turned out to be javadoc on methods the port already
 has. That is the correction that produced the two caveats above.
 
 
-## What is left, and the four tracks that claim it
+## The 891-class survey, and why it was replaced
 
-Every slice in [`PLAN.md`](PLAN.md) is merged into `migration-base`, and so are
-`track/xmpbox` and `track/scratchfile`. This section is the answer to "what is
-actually left", taken from a survey that compared **all 891 in-scope Java main
-classes and 237 Java test classes** against the Go tree, class by class.
+**Superseded.** This was the answer to "what is actually left", taken from a
+survey that compared all 891 in-scope Java main classes and 237 Java test
+classes against the Go tree, class by class. It missed `multipdf` outright, and
+"The audit that found what the survey missed", below, replaces it — that section
+carries the live answer, its method and the commands to re-run it. What is kept
+here is the part that did not depend on the survey being right.
 
-Method, because the numbers here are only as good as it: every Java class name
-and fully-qualified name was matched against every identifier and comment in
-`go/`, and every class that did not match was then read on both sides. A name
-appearing in the Go tree is **not** evidence of a port — the survey's first pass
-was wrong twice for exactly that reason, matching a class named in a Go comment
-that said the class was *not* ported. A `Port of <FQN>` comment, or a type, is
-evidence; a name is not.
+Method, because the numbers were only as good as it: every Java class name and
+fully-qualified name was matched against every identifier and comment in `go/`,
+and every class that did not match was then read on both sides. A name appearing
+in the Go tree is **not** evidence of a port — the survey's first pass was wrong
+twice for exactly that reason, matching a class named in a Go comment that said
+the class was *not* ported. A `Port of <FQN>` comment, or a type, is evidence; a
+name is not.
 
-### 66 of 891 classes were unported. 24 of those are settled.
+### What it found, in one paragraph
 
-| Group | Files | Verdict |
-| --- | ---: | --- |
-| `graphics/shading` `Paint` and `PaintContext` implementations | 19 | deliberate — slice 9 put the raster half behind `rendering.Backend` |
-| `rendering`: `GroupGraphics`, `SoftMask`, `TilingPaint`, `TilingPaintFactory` | 4 | **all four ported by `track/raster`**, into `rendering/raster`. Slice 9 had put the raster half behind `rendering.Backend`; that branch wrote the backend |
-| `cos/COSInputStream`, `cos/COSOutputStream` | 2 | deliberate — one carries a `DecodeResult` Go returns directly, one is folded into `streamWriter` |
-| `encryption/MessageDigests`, `SecurityProvider` | 2 | deliberate — JCE lookups Go answers with `crypto/*` |
-| `graphics/color/PDJPXColorSpace` | 1 | deliberate — only the JPX filter constructs it |
+66 of the 891 were unported and 24 of those were settled already — the 19
+shading `Paint` and `PaintContext` classes and the four raster `rendering`
+classes slice 9 put behind `rendering.Backend`, the two `COS*Stream` wrappers Go
+folds away, the two JCE lookups `crypto/*` answers, and `PDJPXColorSpace`. The
+other 42 were real, and each went to one of the last four tracks; `io`,
+`fontbox` and `xmpbox` had no unported class at all. **The finding that mattered
+was the test gap**: 36 unported Java test classes, sixteen of them recorded
+nowhere — 107 `@Test` methods in packages a merged slice called done, 47 of them
+the cross-reference recovery suite. That list became `track/test-backfill`, and
+it was taken first because it was the only one of the four that could find a
+defect in work already merged.
 
-Every one of those was already recorded here with a reason. Nothing in that
-group is a gap.
-
-### 42 were real. Every one of them now has a branch.
-
-| Group | Files | Branch |
-| --- | ---: | --- |
-| `pdmodel/font` embedders and `ToUnicodeWriter` | 5 | **done** — `track/font-embedding`. Four, not five: `ToUnicodeWriter` was already ported and this survey missed it |
-| `pdmodel` resource cache factory | 3 | **done** — `track/test-backfill`, which was already in those files |
-| `pdfbox-layout-awt`, `pdfbox-layout-fop` | 7 | **substituted, not ported** — `track/pdfbox-layout`. See its section |
-| `tools`, `tools/imageio` | 26 | **22 done** — `track/tools`, then `track/imageio`. Four left: see its section |
-| `pdmodel/AbstractGlyphLayoutProcessor` | 1 | **done** -- `track/pdfbox-layout`, on `go/javatext/bidi` |
-| `multipdf/PDFMergerUtility`, `LayerUtility`, `Overlay` | 3 | **done** — `track/multipdf`, which also finished `Splitter`. This survey missed them: slice 7 deferred all three to slice 8 and slice 8 never took them. They had no branch until the last four tracks were planned, and the miss is why the audit at the end of this file replaces this survey |
-
-`io`, `fontbox` and `xmpbox` have no unported class at all.
-
-### The test gap is the finding that mattered
-
-36 Java test classes are unported. Twenty of them are recorded here with a
-reason — a corpus this repository does not carry, a network fetch, `java.awt`.
-**Sixteen are not recorded anywhere**: they sit in packages a merged slice calls
-done, and were missed rather than deferred.
-
-107 `@Test` methods, 2,557 lines. Five of the sixteen and 47 of the 107 are the
-parser — `TestCOSParser` and `TestPDFParser` are the recovery suite for broken
-cross-reference tables and truncated objects, and nothing in the port has run
-them.
-
-`track/test-backfill` is that list, and it is the first of the four to take. It
-is the only one that can find a defect in work already merged; the other three
-add surface on top of a base whose test coverage has a known hole.
-
-### Order
-
-1. **`track/test-backfill`** — 16 test classes, the resource cache factory, and
-   the stale rows below. Depends on nothing. **Done.**
-2. **`track/font-embedding`** — a capability gap, not tidying: nothing in the
-   port could write a PDF with an embedded font, and `PDType0Font`'s embedding
-   methods panicked where the half was missing. **Done** — the port embeds and
-   subsets TrueType fonts, and the three panics answer.
-3. **`track/tools`** — **done as far as it can go.** 18 commands built, 7 held
-   for the raster backend as expected, and 2 held for `multipdf`, which was not
-   expected and which no branch claims.
-4. **`track/pdfbox-layout`** -- **the backend is built, and measured against the
-   Java's own output.** AbstractGlyphLayoutProcessor is in, on
-   `go/javatext/bidi`, which is UAX#9 written out because
-   `golang.org/x/text/unicode/bidi` exposes no embedding level. GPOS is in,
-   written from the OpenType specification because neither PDFBox nor Go has
-   one. On top of the two, `go/pdfbox/glyphlayout` is the shaper the two Java
-   backends borrow from the platform. It is a substitution and not a
-   transliteration, so what it does differently is measured against the
-   reference PDFs the Java tests render, and listed. See its section.
+Every branch named there has since merged. What is left now, and by which
+branch, is in "What is left, and the four branches that claim it", below.
 
 ### Rows this file had wrong
 
@@ -6096,14 +5998,6 @@ draws is that branch's A0, and it is a substitution rather than a port —
 `java.awt.Graphics2D` has no Go equivalent. `track/pdfbox-layout` is the worked
 precedent for how a substitution is measured and its deviations pinned.
 
-### The tools count was wrong
-
-This file said `tools` was **18 of 26** and `go/tools/notbuilt.go` said "18 of
-them plus the dispatcher". Counting the classes against that file's own list:
-17 are ported, the dispatcher among them, and 9 are not. 17 and 9 is 26. Both
-are corrected, and the nine are what the three branches above divide between
-them.
-
 ## The audit that found what the survey missed
 
 The 891-class survey recorded above **missed `multipdf` entirely**, and its
@@ -6182,7 +6076,9 @@ carries name a dependency that has since been ported.
 | `contentstream/operator/text` says `Tj`, `TJ`, `'` and `"` are absent; they were ported by slice 3 | doc comment | `track/stale-deferrals` |
 
 The `tools` count — 18 of 26, in this file and in `go/tools/notbuilt.go` — was
-wrong the same way. 17 are ported and 9 are not.
+wrong the same way: counted against that file's own list, 17 were ported, the
+dispatcher among them, and 9 were not. Both were corrected, and the nine are
+what the branches below divide between them.
 
 ## `track/stale-deferrals` — the deferrals whose reason had stopped being true
 

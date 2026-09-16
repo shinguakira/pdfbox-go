@@ -262,9 +262,10 @@ Points that bear directly on our plan:
 - **Unstable areas named by the project:** reader/writer infrastructure, font
   instantiation, colour operation signatures, the CLI, and incremental parsing.
 
-**Rule this adds:** port against `trunk` / 3.0 API shapes, and never port a
-member that 3.0 deprecated or removed. Check the migration guide before porting
-any class it names.
+**Rule this adds**, and it is stated once in
+[`java-to-go.md`](java-to-go.md), "Which Java to port against": port against the
+3.0 shapes, never a member 3.0 deprecated or removed. The evidence for it is
+above.
 
 ## Sources
 

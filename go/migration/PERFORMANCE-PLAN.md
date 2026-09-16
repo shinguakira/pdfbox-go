@@ -281,14 +281,14 @@ most of the measuring. The two builds run alternately under that load gave
 process CPU 143 s → 24 s and 181 s → 40 s. Measure again on an idle machine
 before [`BENCHMARK.md`](BENCHMARK.md) takes any of these numbers.
 
-Against PDFBox, on those numbers: the total went from 6.4× PDFBox's time to
-about 1.7× (10.0 s against 5.8 s), and the peak heap on defaults from above
-PDFBox's (795 MB against 594 MB) to below it (about 250 MB).
+Against PDFBox, on those numbers: the total went from several times PDFBox's
+time to within striking distance of it, and the peak heap on defaults from above
+PDFBox's to below it.
 
-Measured again on 2026-09-15 with the rest of the machine at about one core of
-twelve, for [`BENCHMARK.md`](BENCHMARK.md): 8,234 ms against PDFBox's 5,625 ms
-on all 3,597, 1.46×, and a peak heap of 249.7 MB against 590.4 MB. That page has
-the rest.
+**Those are this branch's prototype numbers, taken under load, and nothing
+should quote them.** [`BENCHMARK.md`](BENCHMARK.md) measured the same runs again
+on a quiet machine afterwards, and it is where the port's speed and memory are
+stated.
 
 ### How the output was checked
 

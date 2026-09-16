@@ -114,7 +114,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
 | [`safedocs-targeted`](https://github.com/pdf-association/safedocs) | 11 | Apache-2.0 | Hand-coded by the DARPA SafeDocs programme to break parsers on purpose: dual `startxref`, Type 3 inside Type 3, a page with no `/Contents`, a font inside a shading pattern, UTF-16LE strings. Small, and it earns its place — see below |
 | [`pdf20examples`](https://github.com/pdf-association/pdf20examples) | 7 | see archive | PDF 2.0 features one per file: UTF-8 strings, page-level output intents, black point compensation, 2.0 reached by incremental save, a non-zero start offset |
 | [`text-rendering-tests`](https://github.com/unicode-org/text-rendering-tests) | 0 | OFL fonts | No PDFs — test fonts with expected glyph ids and positions per string. This is the only **shaping ground truth independent of PDFBox**, and `go/pdfbox/glyphlayout` is the one part of the port written from a specification rather than ported, so it is the one part with no Java to check against |
-| [`pdfjs`](https://github.com/mozilla/pdf.js/tree/master/test/pdfs) | 1,443, `-Suite pdfjs` | Apache-2.0 | Reduced reproducers from another reader's tracker. Not ground truth — pdf.js's expectations are pdf.js's — but files that broke a real implementation, which is what makes them worth opening. 982 are committed in `test/pdfs`. 459 are `.link` stubs holding a URL, which pdf.js downloads when its tests run; the script downloads them too and keeps each only with the md5 `test/test_manifest.json` records, so a file that cannot be had fails the run, and `_links.tsv` says where each came from. 2 are committed outside `test/pdfs` and land under `_repo/`, with the manifest. The passwords its tests open 12 of them with are written to `_passwords.tsv`. A `pdfjs` fetched before the script copied those three has them fetched on the next run, without `-Force`, before the links are read. **Not on disk:** `test/pdfs/sig_corpus`, eight signed PDFs pdf.js neither commits nor downloads, which its `generate.py` builds from a mozilla-central checkout. Crash input, not assertions |
+| [`pdfjs`](https://github.com/mozilla/pdf.js/tree/master/test/pdfs) | 1,443, `-Suite pdfjs` | Apache-2.0 | Reduced reproducers from another reader's tracker. Not ground truth — pdf.js's expectations are pdf.js's — but files that broke a real implementation, which is what makes them worth opening. Some are committed, most of the rest are `.link` stubs the script downloads and matches against the md5 `test/test_manifest.json` records, and twelve are encrypted and opened with the passwords its tests use. "pdf.js against the Java", below, has the breakdown, the passwords and the eight signed PDFs that are not on disk. Crash input, not assertions |
 
 ## What the first run found
 
@@ -205,16 +205,14 @@ PDFBox does with the same file.
 `qpdf/deep-pages.pdf` panics with `pdmodel: possible recursion found when
 searching for page 1`. Read against the Java that looks like a faithful carry:
 `PDPageTree.get` throws `IllegalStateException` with that message, declares no
-checked exception, and so has no error channel the port could have used — the
-line above it carries `IndexOutOfBoundsException` the same way.
+checked exception, and so has no error channel the port could have used.
 
 **Running the Java says otherwise. PDFBox opens the file, reports one page, and
-extracts from it without the guard firing.** So the port's recursion detection
-fired where the Java's does not, on identical input, and that was a port defect
-rather than a carry — fixed below, along with four other files that had looked
-like unrelated single-character disagreements and were the same defect.
+extracts from it without the guard firing.** It was a port defect, and it was
+five files rather than one: "Five were one walk", below, has which guard text
+extraction reaches and what fixed it.
 
-This section is worth its length for the reason it was wrong: reading two
+The entry is worth keeping for the reason it was wrong: reading two
 implementations side by side is how the wrong conclusion got written down here in
 the first place, and running them side by side is what caught it.
 
@@ -443,8 +441,12 @@ cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
 **What is there.** 1,443 PDFs: the 982 committed in `test/pdfs`, the 459 its
 `.link` stubs name — 176 of the stubs an archive.org capture and the rest the
 file's own address, every file downloaded and matched against the md5 in
-`test/test_manifest.json` — and the two committed elsewhere in the repository,
+`test/test_manifest.json`, with `_links.tsv` saying where each came from — and
+the two committed elsewhere in the repository,
 `web/compressed.tracemonkey-pldi-09.pdf` and `examples/learning/helloworld.pdf`.
+Those two and the manifest are copied under `_repo/`; a `pdfjs` fetched before
+the script copied them has them fetched on the next run, without `-Force`, and
+before the links are read.
 **Not there:** `test/pdfs/sig_corpus`. Its eight PDFs are ignored by pdf.js's own
 `.gitignore` and appear in no manifest; they exist only once its `generate.py`
 has been run against a built mozilla-central checkout, for testing Firefox's

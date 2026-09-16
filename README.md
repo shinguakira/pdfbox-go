@@ -71,13 +71,15 @@ chars   5030 the same length, 2 not
 
 There is no document in that corpus PDFBox reads and this port does not. The two
 that disagree are two bugs in the Java that this port fixes on purpose.
-[`go/migration/TESTDATA.md`](go/migration/TESTDATA.md) has the corpus, how to
-fetch it, and both of them.
+That run is of 2026-09-15; [`go/migration/TESTDATA.md`](go/migration/TESTDATA.md)
+is where the corpus, the current result and both of those live.
 
 Speed and memory
 ----------------
 
-Measured by running both, on 2026-09-15. There is no single number:
+Measured by running both, on 2026-09-15, and summarised from
+[`go/migration/BENCHMARK.md`](go/migration/BENCHMARK.md), which carries the
+machine, the method and the rest. There is no single number:
 
 | | this port | PDFBox | |
 | --- | ---: | ---: | --- |

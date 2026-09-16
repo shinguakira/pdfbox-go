@@ -39,85 +39,20 @@ change it to suit one branch — change the copy.
 `track/raster`, which is the last of the port, and `track/java-bug-fixes`,
 which is not a port at all.
 
-## Order for the last four tracks
+## The order they were taken in
 
-**`track/stale-deferrals` first**, on the same argument `track/test-backfill`
-was taken on: it is the only one of the four that can find a defect in work
-already merged. Four deferrals in the tree name a dependency that has since been
-ported, and `TestPDDocument` was recorded nowhere at all.
+[`../BRANCHING.md`](../BRANCHING.md) is where the order lives, with the
+dependency graph and the argument for each edge — the last four tracks in "The
+last four tracks", the earlier ones in the branch table above it. Two things
+about this list rather than about the branches:
 
-**`track/imageio` next**, even though it is small and `track/raster` is the one
-everyone is waiting for. It is on the critical path and nothing else is:
-`track/raster`'s last task, the `render` command, writes its output through
-`ImageIOUtil`.
-
-**`track/multipdf` alongside it**, whenever there is someone to take it. It
-depends on nothing and unblocks nothing else — `merge` and `overlay` are the
-only things downstream of it.
-
-**`track/raster` last, and it can start today.** Only its B5 needs
-`track/imageio`; the backend, the nineteen shading contexts and paints, and the
-four transparency classes above it do not. What it must not start without is its
-own A0, which is the last design decision this migration has.
-
-## And then `track/java-bug-fixes`, which is not one of the four
-
-It ports nothing. It goes through [`../JAVA-BUGS.md`](../JAVA-BUGS.md) entry by
-entry and fixes in the Go the defects the port reproduced from the Java on
-purpose — the only branch in this migration where "never fix a bug that is in
-the Java" does not apply, and the only one that makes the Go deliberately
-differ from its reference.
-
-**It goes after `track/raster`**, because every branch before it adds entries to
-the file it works from, and because "the Go does X, is that a defect?" is
-answered by reading the Java right up until the Go is allowed to differ on
-purpose.
-
-The order was taken from the imports of the five commands that are missing, not
-from where the classes sit in the Java tree. `ExtractImages` does not import
-`rendering`; `PDFMerger` and `OverlayPDF` import only `multipdf`; `PDFToImage`
-imports both `rendering` and `imageio`, and is the single edge between two
-branches that are otherwise independent. [`../BRANCHING.md`](../BRANCHING.md)
-carries the graph.
-
-The **contents** came from an audit, not from the 891-class survey that missed
-`multipdf`. The first cut of these tracks had three; the audit added a fourth
-and put two more classes into `track/raster` and one more test class into
-`track/multipdf`. `../STATUS.md` carries the method and the commands to re-run
-it -- the important half of which is not finding unported classes but checking
-whether the reason each recorded deferral gives is **still true**.
-
-## The order the four earlier tracks were taken in
-
-
-**`track/test-backfill` first.** It is the only one that can find defects in
-work already merged; the other three add surface area on top of a base whose
-test coverage has a known hole. Sixteen Java test classes, 107 cases, sitting in
-packages a merged slice calls done and mentioned nowhere in
-[`../STATUS.md`](../STATUS.md) — not deferred with a reason, missed.
-
-Then `track/font-embedding`, which closes a capability gap: nothing in the port
-can write a PDF with an embedded font today, and the method that would is a
-panic. Then `track/tools`, whose 22 commands finally all have their libraries.
-Then `track/pdfbox-layout`, last, because its A0 is a substitution decision
-entangled with `rendering.Backend`.
-
-## The two gaps, and how they were closed
-
-This file used to carry two rows marked **gap** — work `PLAN.md` counted in
-scope with no branch anywhere. Both were closed by the user, in the survey that
-also produced `track/test-backfill` and `track/font-embedding`:
-
-- **`pdfbox-layout-*`** now has `track/pdfbox-layout`, and a row in
-  [`../BRANCHING.md`](../BRANCHING.md).
-- **`tools`** now has `track/tools`. Its file was `tools-unassigned.md`, whose
-  whole purpose was to make the gap visible rather than close it; it is renamed
-  and rewritten, and the argument it made — that `tools` is not one unit of work
-  — is kept, because it is still why this is a track and not a slice.
-
-`PLAN.md` is **not** changed by any of this. It counted both in scope already;
-what was missing was a branch, and branches live in
-[`../BRANCHING.md`](../BRANCHING.md).
+- **A branch gets a row here when it gets a row there.** `PLAN.md` is not
+  edited to add one; it counts the work, not the branches.
+- **The contents of the last four came from an audit, not from the 891-class
+  survey**, which missed `multipdf` outright. `../STATUS.md` carries that audit
+  and the commands to re-run it. Its important half is not finding unported
+  classes: it is checking whether the reason each recorded deferral gives is
+  **still true**.
 
 ## Coverage
 
@@ -217,20 +152,8 @@ land with whichever branch takes `DateConverter`.
 
 ## The five phases
 
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt`, `go vet`, `go test`. A failure is a defect in the
-port, not in the test.
-
-**D — adversarial review.** 敵対的レビュー. Green tests prove the port passes
-the tests, not that the migration is faithful.
-
-**E — user feedback.** Stop. Wait. Judge each item before acting, and where it
-needs fixing, write a strict failing test first.
-
-**A to D run without stopping.** E1 is the only stop; finishing a task, a
-phase, a package or a commit is not one.
+A to E — write the test, port the implementation, run and fix, adversarial
+review, user feedback — are set out in [`TEMPLATE.md`](TEMPLATE.md), "How each
+unit of work runs", and every branch file carries that copy. **A to D run
+without stopping**; E1 is the only stop, and finishing a task, a phase, a
+package or a commit is not one.

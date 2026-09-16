@@ -38,12 +38,12 @@ Three things this is not:
 | [`STATUS.md`](STATUS.md) | Per-package progress, ported tests, and the deviations from Java recorded so far |
 | [`conventions/tdd.md`](conventions/tdd.md) | **Test-driven porting — the Java test is ported before the Go implementation exists.** The rule the port runs on |
 | [`conventions/java-to-go.md`](conventions/java-to-go.md) | How Java constructs are translated. Read this before porting anything |
-| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then fixed 61 of the 84 in the Go, and every entry says which it is |
+| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then fixed most of them in the Go, and every entry says which it is. That file carries the count |
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
-| [`TESTDATA.md`](TESTDATA.md) | What the port is checked against: the 168 documents in the repository, the 78 the Java build downloads and nothing here ever fetched, the third-party suites worth adding, and how to score a corpus |
-| [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted: iText 6,897, pdfium 301, PoDoFo 102, qpdf's unfetched 78. PDFBox alone is the oracle; every project is fair game as input |
-| [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run, measured again after the performance work: 1.46× on the total with one worker, faster with four, at the median, in CPU and at start-up; where the time goes, and the two defects benchmarking found |
-| [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) | What could be done about the slow tail without leaving pure Go, in order, with what each step needs decided first. The plan as written, then what prototyping it on `track/performance` bought — the heaviest documents 6× faster — and where the plan was wrong |
+| [`TESTDATA.md`](TESTDATA.md) | What the port is checked against, tier by tier: the documents in the repository, the ones the Java build downloads, the third-party suites and what each reaches, and how to score a corpus against PDFBox. It carries the counts and the current result |
+| [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted per project: iText, PDFium, PoDoFo, qpdf's unfetched rest. PDFBox alone is the oracle; every project is fair game as input |
+| [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run on one machine: the total, the median, CPU, start-up, what it takes to ship, and where the time goes. **Every performance number in this repository comes from here**, with the machine and the method beside it |
+| [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) | What could be done about the slow tail without leaving pure Go, in order, with what each step needs decided first. The plan as written, then what prototyping it on `track/performance` bought, and where the plan was wrong. The numbers it ends on are `BENCHMARK.md`'s |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
@@ -115,19 +115,12 @@ compiles `io`, `fontbox` and `pdfbox` straight out of the tree with `javac` —
 **no Maven, and no JDK beyond the one the poms already ask for** — runs PDFBox
 over a list of documents, and writes the table `go/cmd/corpus` writes.
 `corpus -oracle` then joins the two and reports every disagreement, and exits
-non-zero when the port is behind.
+non-zero when the port is behind. [`TESTDATA.md`](TESTDATA.md) has the two
+commands, the corpus they run over and what they answer today.
 
-```bash
-pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
-cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
-    -oracle testdata/oracle/java-corpus.tsv \
-    ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
-```
-
-The first run of it is in [`TESTDATA.md`](TESTDATA.md): twelve files out of
-3,646 disagree, and one of the twelve had already been written down in that file
-as a faithful carry on the strength of reading the Java. It was not. That is
-what this is for.
+What it is for is in its first run, which that file records: twelve of the files
+disagreed, and one of the twelve had already been written down there as a
+faithful carry on the strength of reading the Java. It was not.
 
 ## Refreshing the inventory
 

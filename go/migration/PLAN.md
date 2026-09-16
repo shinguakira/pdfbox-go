@@ -251,34 +251,18 @@ this too" is the answer that made every strange behaviour cheap to investigate
 for the length of this migration. Each one is recorded in
 [`JAVA-BUGS.md`](JAVA-BUGS.md), with where the Go carries it.
 
-**That rule expires when the port does.** There are 84 entries and about seventy
-of them are live in the Go — an `equals` that truncates to 32 bits, a text
-extractor that reverses surrogate pairs, a merge that drops the source's
-article threads and doubles the destination's. Nothing downstream benefits from
-those once there is nothing left to port.
+**That rule expires when the port does.** Most of the entries are live in the Go
+— an `equals` that truncates to 32 bits, a text extractor that reverses
+surrogate pairs, a merge that drops the source's article threads and doubles the
+destination's. Nothing downstream benefits from those once there is nothing left
+to port.
 
 So there is a fifth branch, and it is the only one in this plan that is not a
 port: **`track/java-bug-fixes`**. It goes through `JAVA-BUGS.md` entry by entry
-and fixes in the Go the ones worth fixing.
-
-Three things about it are fixed and not negotiable:
-
-- **It changes no Java.** That rule does not expire. The Java stays the
-  reference, and a fixed Go is judged against it.
-- **It deletes no entry.** A fixed bug is still a bug in the Java, and the
-  entry is still the only record that anyone noticed. A fix *adds* a line —
-  **Fixed in the Go** — saying what the Go does instead and where. The
-  **Where the Go carries it** line is left alone, because it is the record of
-  what the port did while it was a port.
-- **It goes last.** Every branch before it adds entries to the file it works
-  from, and while porting continues, letting the Go differ on purpose makes
-  "is this a port defect?" expensive to answer.
-
-Its first task is a triage of all 84 entries — fix, keep, not-carried,
-test-only — written into `STATUS.md` before any code moves. Fix is the default;
-the four reasons an entry may be kept are in
-[`tasks/track-java-bug-fixes.md`](tasks/track-java-bug-fixes.md), and "it looked
-risky" is not one of them.
+and fixes in the Go the ones worth fixing. What it may and may not do — it
+changes no Java, it deletes no entry, it goes last, and it triages every entry
+in writing first — is in [`BRANCHING.md`](BRANCHING.md) and in its task file,
+[`tasks/track-java-bug-fixes.md`](tasks/track-java-bug-fixes.md).
 
 ---
 
