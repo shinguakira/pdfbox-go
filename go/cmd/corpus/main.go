@@ -26,8 +26,11 @@
 // files, and may be given more than once. Each line is one way of opening one
 // file: "<path ending>\t<password>", or "<path ending>\t<password>\t<certificate>\t<private key>"
 // for a file encrypted for the holder of a certificate, the two files named
-// relative to the table's directory. fetch-corpus.ps1 writes one for a suite
-// that publishes them, and run-oracle.ps1 -Passwords hands the same tables to
+// relative to the table's directory, or "<path ending>\t<passphrase>\t<keystore>"
+// where the project keeps that certificate and key in a PKCS#12 keystore rather
+// than as two files, the passphrase opening the store and its key.
+// fetch-corpus.ps1 writes one for a suite that publishes them, and
+// run-oracle.ps1 -Passwords hands the same tables to
 // PDFBox, so both sides open the same files the same ways. A file is opened once
 // for every line that names it, and scored once for each; where there is more
 // than one, each row's file is followed by the rest of its line in brackets, the
@@ -122,7 +125,7 @@ func main() {
 		cmpPages = flag.Bool("comparepages", false, "compare two page tables, PDFBox's first and this program's second, and report every page they disagree on")
 		openLine = flag.Int("open", -1, "with -one, open the file as the line of this index in the passwords tables says, counting from 0 across them in order")
 	)
-	flag.Func("passwords", "a table of the ways a source project opens its encrypted documents: <path ending>\\t<password>, or <path ending>\\t<password>\\t<certificate>\\t<private key>; may be given more than once, and each file is opened once for every line naming it", func(table string) error {
+	flag.Func("passwords", "a table of the ways a source project opens its encrypted documents: <path ending>\\t<password>, <path ending>\\t<password>\\t<certificate>\\t<private key>, or <path ending>\\t<passphrase>\\t<PKCS#12 keystore>; may be given more than once, and each file is opened once for every line naming it", func(table string) error {
 		passwordsPaths = append(passwordsPaths, table)
 		return loadPasswords(table)
 	})
@@ -783,6 +786,7 @@ type opening struct {
 	password    string
 	certificate string // "" for a password line; else resolved against the table's directory
 	key         string
+	keystore    string // "" unless the line names a PKCS#12 keystore instead of a certificate and a key
 	label       string // the line after its path ending, its fields joined by " | "
 }
 
@@ -810,12 +814,15 @@ func loadPasswords(table string) error {
 		switch {
 		case o.ending != "" && len(fields) == 2:
 			o.password = fields[1]
+		case o.ending != "" && len(fields) == 3:
+			o.password = fields[1]
+			o.keystore = filepath.Join(dir, filepath.FromSlash(fields[2]))
 		case o.ending != "" && len(fields) == 4:
 			o.password = fields[1]
 			o.certificate = filepath.Join(dir, filepath.FromSlash(fields[2]))
 			o.key = filepath.Join(dir, filepath.FromSlash(fields[3]))
 		default:
-			return fmt.Errorf("%s: a line that is neither a path ending and a password nor a path ending, a password, a certificate and a key: %q", table, line)
+			return fmt.Errorf("%s: a line that is none of a path ending and a password, a path ending, a passphrase and a keystore, and a path ending, a password, a certificate and a key: %q", table, line)
 		}
 		openings = append(openings, o)
 	}
@@ -867,6 +874,15 @@ func openDocument(j job) (*pdmodel.PDDocument, error) {
 		return pdfbox.LoadPDF(j.path)
 	}
 	o := openings[j.open]
+	if o.keystore != "" {
+		// The project keeps the certificate and the key in a keystore of its
+		// own, which is the shape both loaders read: it is handed over as it is.
+		store, err := os.ReadFile(o.keystore)
+		if err != nil {
+			return nil, err
+		}
+		return pdfbox.LoadPDFWithKeyStore(j.path, o.password, bytes.NewReader(store), "")
+	}
 	if o.certificate == "" {
 		return pdfbox.LoadPDFWithPassword(j.path, o.password)
 	}

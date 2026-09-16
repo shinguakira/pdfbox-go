@@ -2,15 +2,17 @@
 
 Fetch every PDF iText Core keeps as test data, in its Java and its .NET
 repository, run the Go version against PDFBox over them, and fix what they show
-the Go version doing differently.
+the Go version doing differently. Since I2 below, the same for every other
+repository iText publishes: 34 suites, 34,770 files.
 
 **Branch: `track/testdata-itext`** — made on 2026-09-16 from
 `track/testdata-sources` at `b023f3d52`, on the user's instruction, and merged
 back into it the same day. It is that branch's T5, taken whole.
 
 What the test data is and how to fetch it is in
-[`../TESTDATA.md`](../TESTDATA.md); "iText against the Java" there has the
-findings in full. This file is where the work stands and what is left.
+[`../TESTDATA.md`](../TESTDATA.md); "iText against the Java" and "iText's other
+repositories" there have the findings in full. This file is where the work
+stands and what is left.
 
 ## Rules
 
@@ -19,9 +21,10 @@ The rules of [`track-testdata-sources.md`](track-testdata-sources.md), unchanged
 - **The Java tree is read-only**, and PDFBox is the reference: a disagreement is
   the Go version's to explain, never the Java's to change.
 - **Nothing fetched is committed.** iText's documents are AGPL;
-  `go/testdata/corpus/` and `go/testdata/oracle/` are ignored. The two password
+  `go/testdata/corpus/` and `go/testdata/oracle/` are ignored. The ten password
   tables in `go/migration/scripts/passwords/` are committed: they hold file
-  names, passwords and key file names read from iText's tests, and no content.
+  names, passwords and the names of key and keystore files, read from iText's
+  own samples and tests, and no content.
 - **A disagreement is fixed test-first**, with PDFBox's own output as the
   expected value. A bug found in the Java is recorded in
   [`../JAVA-BUGS.md`](../JAVA-BUGS.md), not fixed in the Java.
@@ -35,22 +38,18 @@ The rules of [`track-testdata-sources.md`](track-testdata-sources.md), unchanged
 | --- | ---: | --- | --- |
 | `itext-java` | 6,897, and 25 certificate and key files | `go/testdata/corpus/itext-java` | `develop` at `b0b6709a4`, 2026-09-14 |
 | `itext-dotnet` | 6,960, and 25 certificate and key files | `go/testdata/corpus/itext-dotnet` | `develop` at `3b871a861`, 2026-09-14 |
+| iText's other 32 repositories | 20,913, and 2 keystores | one directory each under `go/testdata/corpus` | each repository's default branch, 2026-09-16, in `_revision.txt` |
 
 Every PDF each repository commits, at its path there, each checked against its
-git blob id. Counted by content, 6,678 distinct files are in both repositories,
-39 only in the Java one and 102 only in the .NET one: 6,819 distinct files in
-all. Both suites are scored whole.
+git blob id. Counted by content, 6,678 distinct files are in both Core
+repositories, 39 only in the Java one and 102 only in the .NET one: 6,819
+distinct files in all. Every suite is scored whole.
 
 **Not on disk, and why:**
 
 - **The PDFs iText's tests write.** They exist only after iText's Maven build
   has run its tests. What the tests compare them with, the `cmp_` files, is on
   disk.
-- **iText's other 45 public repositories** — pdfHTML, pdfSweep, pdfOCR, iText 5,
-  the published examples — about 21,000 PDFs between them, counted in
-  [`../TESTDATA-CANDIDATES.md`](../TESTDATA-CANDIDATES.md). The request was iText
-  Core's test resources; these were counted so that none is left unnamed, not
-  fetched.
 - **Nothing is behind a link.** iText's tests read no PDF from the network; the
   one PDF address in their sources is a signature policy's, written into a
   signature and never downloaded.
@@ -73,6 +72,18 @@ once more with all 47 candidate passwords on each of the 378 files a password
 opens or that open with none, both sides accepted the same 622 opens and refused
 the same 17,144.
 
+In the other 32 repositories, 35 files name an encryption dictionary. Eight more
+tables — `i5js-sandbox.tsv`, `itext-publications-book-java.tsv`,
+`-examples-java.tsv`, `-highlevel-java.tsv`, `-samples-dotnet.tsv`, `rups.tsv`,
+`itextpdf.tsv`, `itextsharp.tsv` — give 28 of them 50 ways of being opened, read
+from the samples and tests that write and read them; 21 open with no password
+and keep their no-password line beside the owner's. Two of the tables name a
+PKCS#12 keystore instead of a certificate and a key, which is the third shape a
+passwords line now has. Run with all 13 candidate passwords those projects hold
+against each of the 14 files a password touches, both sides accepted the same 20
+opens and refused the same 162. `TESTDATA.md` has the two the material itself
+keeps shut.
+
 ## Compared with PDFBox, 2026-09-16
 
 Over iText, after the fixes below:
@@ -88,21 +99,40 @@ Over iText, after the fixes below:
   0 of 13857 files disagree
 ```
 
-And over every file on disk, the earlier 5,090 with them:
+Over iText's other 32 repositories, fetched the same day under I2:
 
 ```
-18947 files, opened 19201 ways, 27 of them encrypted and skipped
-  open    both 19094, neither 107, behind 0, ahead 0
+20913 files, opened 20935 ways
+  open    both 20917, neither 17, behind 0, ahead 1
   pages   0 disagree
-  text    both 19085, neither 9, behind 0, ahead 0
-  chars   19083 the same length, 2 not
-  digest  19083 of the same length the same text, 0 not
+  text    both 20917, neither 0, behind 0, ahead 0
+  chars   20917 the same length, 0 not
+  digest  20917 of the same length the same text, 0 not
 
-  2 of 18947 files disagree (0.01%)
+  1 of 20913 files disagree
 ```
 
-The two are JAVA-BUGS 15 and 30, which the Go version fixes on purpose, as on
-`track/testdata-sources`. The 27 encrypted files are that branch's U8.
+The one is `itext-pdfhtml-dotnet`'s `background-size-near-zero-svg.pdf`, which
+PDFBox did not finish inside the 20-second limit; given five minutes it reads it
+and answers what the Go version answered in under a second.
+
+And over every file on disk:
+
+```
+39860 files, opened 40136 ways, 27 of them encrypted and skipped
+  open    both 40008, neither 125, behind 0, ahead 3
+  pages   0 disagree
+  text    both 39999, neither 9, behind 0, ahead 0
+  chars   39997 the same length, 2 not
+  digest  39997 of the same length the same text, 0 not
+
+  5 of 39860 files disagree (0.01%)
+```
+
+Two of the five are JAVA-BUGS 15 and 30, which the Go version fixes on purpose,
+as on `track/testdata-sources`; the other three are files PDFBox did not finish
+inside its limit and agrees on when given five minutes. The 27 encrypted files
+are that branch's U8.
 
 ## Found and fixed on this branch
 
@@ -143,6 +173,13 @@ The two are JAVA-BUGS 15 and 30, which the Go version fixes on purpose, as on
 - A passwords table may open a file more than one way, and a line may give a
   certificate and a private key instead of a password. `cmd/corpus -passwords`
   and `run-oracle.ps1 -Passwords` take more than one table.
+- A line of three fields — a path ending, a passphrase and a PKCS#12 keystore —
+  opens a file with a store the project publishes rather than with a certificate
+  and a key this tooling puts into one. Both drivers hand the store to their
+  loader as it is; `cmd/corpus/passwords_test.go` holds the three shapes apart.
+  iText's samples ship `test.p12`, and without this the two files it decrypts —
+  one in the Java examples, one in the .NET ones — could only be compared on
+  both sides refusing them.
 - Both tables carry a digest of the text, and `-oracle` compares it where the
   lengths agree. This is `track-testdata-sources.md`'s T6, for the whole
   document; per page it is a mode of its own, `-pages` and `-comparepages`,
@@ -168,15 +205,19 @@ The two are JAVA-BUGS 15 and 30, which the Go version fixes on purpose, as on
   whose content stream ends early under JAVA-BUGS 30's fix.
   `go/cmd/corpus/pages.go`, `pages_test.go`, `migration/oracle/JavaCorpus.java`,
   `scripts/run-oracle.ps1`.
-- [x] **I2. iText's other 45 repositories.** Decided 2026-09-16: **not
-  carried.** About 21,000 PDFs, and what they are decides it — 15,279 are
-  pdfHTML's `cmp_` files and most of the rest are the examples', the books' and
-  pdfSweep's and pdfOCR's expected output, so they are PDFs iText wrote, which
-  is the producer the 13,857 already here are mostly from. Those found two port
-  defects and then agreed on all 13,857, so another set from the same writer is
-  unlikely to find anything the first did not. The one part that is a different
-  producer is iText 5, `itextpdf` and `itextsharp`, 1,703 files from the
-  previous generation of the library; if this is ever reopened, that is the
-  subset to take and the reason to take it. Reopening it needs a reason to
-  change, and a defect traced to a file iText 5 wrote would be one.
-  [`../TESTDATA-CANDIDATES.md`](../TESTDATA-CANDIDATES.md) carries the counts.
+- [x] **I2. iText's other 45 repositories.** Done 2026-09-16: **fetched and
+  scored, all of them.** This was first recorded as "not carried", on the
+  argument that 15,279 of the files are pdfHTML's `cmp_` files and most of the
+  rest is expected output, so they are PDFs iText wrote and the 13,857 from that
+  same writer had just agreed on every file. That is an argument about the
+  producer and not a measurement of the files, and it was overruled: fetch them
+  and open them.
+
+  32 of the 45 hold PDFs — 20,913 files, 889 MB — and the other 13 hold none.
+  Each is a suite of its own in `fetch-corpus.ps1`, fetched the way iText Core
+  is, and every file was checked against its blob id. Both sides read all
+  20,913: no file the Java opens the Go version does not, no page count
+  disagrees, and all 20,917 openings that both read gave the same characters,
+  digest for digest. What each group is, what its encrypted files needed, and
+  the table in full is [`../TESTDATA.md`](../TESTDATA.md), "iText's other
+  repositories"; the numbers are under "Compared with PDFBox" above.

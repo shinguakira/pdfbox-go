@@ -53,7 +53,10 @@
     Tables of the ways encrypted files are opened, in UTF-8 without a byte order
     mark. Each line is one way of opening one file: a path ending, a tab, and the
     password; or a path ending, the password, a certificate and a private key,
-    tab separated, the two files named relative to the table's directory. A file
+    tab separated, the two files named relative to the table's directory; or a
+    path ending, a passphrase and a PKCS#12 keystore, for a project that keeps
+    that certificate and key in a store of its own, which is the shape PDFBox
+    reads and is handed to it as it is. A file
     is opened, and gets a row, once for every line naming it. Pass the same
     tables to cmd/corpus as -passwords, in the same order, so both sides open the
     same files the same ways. fetch-corpus.ps1 writes one for a suite that

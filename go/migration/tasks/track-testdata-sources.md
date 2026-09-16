@@ -36,9 +36,10 @@ comparison against PDFBox stands, over every file on disk outside the
 repository: `TESTDATA.md`, "Where it stands".
 
 Two files disagree, both Java bugs the Go fixes on purpose — JAVA-BUGS 15 and
-30, and whether the second fix stays is U6. The 27 encrypted files that are
+30, and whether the second fix stays is U6. The 25 encrypted files that are
 compared only on refusing them are U8. Since 2026-09-16 the comparison carries a
-digest of the text as well as its length, and iText's 13,857 files are in it;
+digest of the text as well as its length, and all 34,770 of iText's files are in
+it — Core's 13,857 and the 20,913 of its other 32 repositories;
 [`track-testdata-itext.md`](track-testdata-itext.md) is that branch's record and
 it merged into this one.
 

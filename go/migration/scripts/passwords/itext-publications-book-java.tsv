@@ -1,0 +1,26 @@
+# The ways iText's samples and tests open the encrypted PDFs of
+# itext-publications-book-java, one line for each way of opening one file,
+# read from the classes named above each group. fetch-corpus.ps1 writes these
+# lines to _passwords.tsv with the suite's name in front of each file, and
+# fetches the certificates, keys and keystores they name.
+#
+# A password line gives a password the class holds that PDFBox opens the file
+# with, and an empty one besides where the file also opens with none. The
+# exceptions are the files of revision 7, which PDFBox refuses before it looks
+# at a password: their lines give the password the sample uses. A keystore
+# line gives, relative to the suite, the PKCS#12 keystore the sample decrypts
+# with and the passphrase that opens it and its key.
+
+# src/main/java/com/itextpdf/samples/book/part3/chapter12/Listing_12_09_EncryptionPdf.java
+cmpfiles/book/part3/chapter12/cmp_Listing_12_09_EncryptionPdf_encryption.pdf	Hello
+cmpfiles/book/part3/chapter12/cmp_Listing_12_09_EncryptionPdf_encryption.pdf	World
+cmpfiles/book/part3/chapter12/cmp_Listing_12_09_EncryptionPdf_encryption_encrypted.pdf	Hello
+cmpfiles/book/part3/chapter12/cmp_Listing_12_09_EncryptionPdf_encryption_encrypted.pdf	World
+
+# Listing_12_11_EncryptWithCertificate.java encrypts for two certificates,
+# and its cmp_ files are not opened here. The key of the one whose
+# certificate the repository carries, foobar, is in the JKS keystore
+# src/main/resources/encryption/.keystore, whose store password f00b4r and
+# key password f1lmf3st differ; PDFBox takes one password for both and so
+# opens neither way. The other recipient's key is in a store the
+# repository does not carry.

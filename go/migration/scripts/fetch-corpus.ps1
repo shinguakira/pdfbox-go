@@ -182,6 +182,79 @@ $gitSuites = @(
     }
 )
 
+# iText's other repositories: the add-ons, the published examples, the books and
+# iText 5. Thirty-two of the forty-five have PDFs, counted from each default
+# branch's tree on 2026-09-16, and they are written as a table rather than as
+# thirty-two blocks because only the name, the branch and the counts differ --
+# every one is fetched the same way itext-java is, a partial clone and a sparse
+# checkout of *.pdf, each file checked against its blob id.
+#
+# They are here because "PDFs iText wrote are all alike" is an argument and not
+# a measurement, and this repository takes measurements. What they scored is in
+# TESTDATA.md, "iText's other repositories".
+$itextOthers = @(
+    @{ Name = 'itext-pdfhtml-dotnet'; Branch = 'develop'; Pdfs = 7649; Bytes = 71MB; What = "pdfHTML for .NET: HTML and CSS in, PDF out, and nearly all of them cmp_ files pdfHTML itself wrote" }
+    @{ Name = 'itext-pdfhtml-java'; Branch = 'develop'; Pdfs = 7630; Bytes = 69MB; What = 'pdfHTML for Java, the same set ported' }
+    @{ Name = 'itext-publications-samples-dotnet'; Branch = 'develop'; Pdfs = 1013; Bytes = 153MB; What = "the published .NET examples' expected output" }
+    @{ Name = 'itextpdf'; Branch = 'develop'; Pdfs = 854; Bytes = 86MB; What = 'iText 5 for Java, the previous generation of the library, with its own test resources -- a different writer from iText Core' }
+    @{ Name = 'itextsharp'; Branch = 'develop'; Pdfs = 849; Bytes = 82MB; What = 'iText 5 for .NET, the same' }
+    @{ Name = 'itext-publications-examples-java'; Branch = 'develop'; Pdfs = 762; Bytes = 80MB; What = "the published Java examples' expected output" }
+    @{ Name = 'i5js-sandbox'; Branch = 'master'; Pdfs = 515; Bytes = 59MB; What = 'iText 5 examples, archived' }
+    @{ Name = 'itext-publications-book-java'; Branch = 'develop'; Pdfs = 331; Bytes = 57MB; What = "the book's examples" }
+    @{ Name = 'itext-pdfsweep-dotnet'; Branch = 'develop'; Pdfs = 254; Bytes = 34MB; What = 'pdfSweep: redaction inputs and the results it compares with' }
+    @{ Name = 'itext-pdfsweep-java'; Branch = 'develop'; Pdfs = 252; Bytes = 34MB; What = 'pdfSweep for Java, the same' }
+    @{ Name = 'itext-pdfocr-dotnet'; Branch = 'develop'; Pdfs = 196; Bytes = 40MB; What = 'pdfOCR: PDFs written from scanned images, with the text layer OCR produced' }
+    @{ Name = 'itext-publications-signatures-java'; Branch = 'develop'; Pdfs = 173; Bytes = 15MB; What = "the signatures book's examples, signed every way iText signs" }
+    @{ Name = 'itext-pdfocr-java'; Branch = 'develop'; Pdfs = 169; Bytes = 37MB; What = 'pdfOCR for Java, the same' }
+    @{ Name = 'itext-publications-highlevel-java'; Branch = 'develop'; Pdfs = 112; Bytes = 13MB; What = "the high-level API book's examples" }
+    @{ Name = 'itext-publications-jumpstart-java'; Branch = 'develop'; Pdfs = 48; Bytes = 49MB; What = "the jumpstart tutorial's examples" }
+    @{ Name = 'i5ns-book'; Branch = 'master'; Pdfs = 18; Bytes = 1MB; What = "iText 5 for .NET, the book's examples, archived" }
+    @{ Name = 'i5js-book'; Branch = 'develop'; Pdfs = 12; Bytes = 1MB; What = "iText 5 for Java, the book's examples, archived" }
+    @{ Name = 'itext-2022-customer-event'; Branch = 'master'; Pdfs = 11; Bytes = 2MB; What = 'a conference demo' }
+    @{ Name = 'rups'; Branch = 'develop'; Pdfs = 10; Bytes = 1MB; What = "RUPS, iText's PDF inspector, and the files its own tests open" }
+    @{ Name = 'itext-android-ui'; Branch = 'develop'; Pdfs = 8; Bytes = 1MB; What = 'an Android UI demo' }
+    @{ Name = 'pdfcop'; Branch = 'main'; Pdfs = 7; Bytes = 3MB; What = 'pdfCop, a validator demo' }
+    @{ Name = 'itext-python-example'; Branch = 'main'; Pdfs = 7; Bytes = 1MB; What = 'a Python interop example' }
+    @{ Name = 'itext-publications-signing-examples-java'; Branch = 'develop'; Pdfs = 7; Bytes = 1MB; What = 'signing examples' }
+    @{ Name = 'GIDS2026'; Branch = 'master'; Pdfs = 5; Bytes = 1MB; What = 'a conference demo' }
+    @{ Name = 'i5js-tutorial'; Branch = 'master'; Pdfs = 4; Bytes = 1MB; What = "iText 5's tutorial, archived" }
+    @{ Name = 'i5ns-tutorial'; Branch = 'master'; Pdfs = 4; Bytes = 1MB; What = "iText 5 for .NET's tutorial, archived" }
+    @{ Name = 'ndi-demo'; Branch = 'master'; Pdfs = 4; Bytes = 1MB; What = 'a demo' }
+    @{ Name = 'i7js-zugferd'; Branch = 'master'; Pdfs = 3; Bytes = 1MB; What = 'ZUGFeRD invoices, which are PDF/A-3 with XML attached' }
+    @{ Name = 'pdfdeserializer'; Branch = 'main'; Pdfs = 3; Bytes = 1MB; What = 'a deserialiser demo' }
+    @{ Name = 'AndroidPdfViewer'; Branch = 'develop'; Pdfs = 1; Bytes = 3MB; What = 'an Android viewer demo' }
+    @{ Name = 'pdfchain'; Branch = 'master'; Pdfs = 1; Bytes = 1MB; What = 'a blockchain demo' }
+    @{ Name = 'wtpdf-demo'; Branch = 'main'; Pdfs = 1; Bytes = 1MB; What = 'a well-tagged PDF demo, archived' }
+)
+$gitSuites += @($itextOthers | ForEach-Object {
+    # Eight of them hold PDFs their own samples and tests open with a password
+    # or a keystore, and each of those keeps its table in passwords/ beside this
+    # script under the suite's name.
+    $table = "passwords/$($_.Name).tsv"
+    $hasTable = Test-Path -LiteralPath (Join-Path (Join-Path $RepoRoot 'go/migration/scripts') $table)
+    $covers = "$($_.Pdfs) PDFs on $($_.Branch) at 2026-09-16 -- $($_.What)"
+    if ($hasTable) {
+        $covers += ". The ways its own classes open its encrypted files are in $table, written to _passwords.tsv; any certificate, key or keystore those lines name is fetched with the PDFs"
+    }
+    # Not $suite: that is this script's own parameter, and PowerShell would
+    # write the last suite over the list of suites to fetch.
+    $entry = [pscustomobject]@{
+        Name    = $_.Name
+        Size    = 'large'
+        Bytes   = $_.Bytes
+        Licence = 'AGPL-3.0, or commercial from Apryse'
+        Covers  = $covers
+        Exercises = 'whatever wrote them: these are read as input, and what any of iText`s tools believed about them decides nothing'
+        Git     = "https://github.com/itext/$($_.Name).git"
+        Branch  = $_.Branch
+        Keep    = @('*.[pP][dD][fF]')
+    }
+    if ($hasTable) {
+        $entry | Add-Member -NotePropertyName PasswordTable -NotePropertyValue $table
+    }
+    $entry
+})
+
 # pdfCabinetOfHorrors is a handful of files inside a 520 MB repository, so it is
 # fetched file by file through the contents API instead of by archive.
 $apiSuites = @(
@@ -497,9 +570,10 @@ function Resolve-Links {
 # for each way of opening a file, the file's path under the corpus root, a tab,
 # and the password -- or, for a file encrypted for a certificate, the password,
 # the certificate and the private key, tab separated, those two relative to the
-# suite. Both drivers match a line against the end of the path they were given,
-# so the table reads the same whether they run from the repository root or from
-# go/.
+# suite, or the passphrase and the project's own PKCS#12 keystore where it keeps
+# the two in one file. Both drivers match a line against the end of the path
+# they were given, so the table reads the same whether they run from the
+# repository root or from go/.
 function Write-Passwords {
     param([object]$S, [string]$Dest)
 
@@ -570,8 +644,8 @@ function Read-PasswordTable {
     foreach ($line in $lines) {
         if ($line.StartsWith('#') -or -not $line.Trim()) { continue }
         $count = ($line -split "`t").Count
-        if ($count -ne 2 -and $count -ne 4) {
-            throw "$path`: a line that is neither a file and a password nor a file, a password, a certificate and a key: $line"
+        if ($count -ne 2 -and $count -ne 3 -and $count -ne 4) {
+            throw "$path`: a line that is none of a file and a password, a file, a passphrase and a keystore, and a file, a password, a certificate and a key: $line"
         }
     }
     return $lines
@@ -678,7 +752,7 @@ function Get-GitSuite {
         $when = (& git -C $tmp log -1 --format=%cI HEAD).Trim()
         Remove-Item -LiteralPath (Join-Path $tmp '.git') -Recurse -Force
         [System.IO.File]::WriteAllLines((Join-Path $tmp '_revision.txt'),
-            [string[]]@("$($S.Git) $($S.Branch) $commit $when", "$($paths.Count) files, each checked against its blob id: those matching $($S.Keep -join ' '), and $($patterns.Count - @($S.Keep).Count) certificates and keys the passwords table names"),
+            [string[]]@("$($S.Git) $($S.Branch) $commit $when", "$($paths.Count) files, each checked against its blob id: those matching $($S.Keep -join ' '), and $($patterns.Count - @($S.Keep).Count) certificates, keys and keystores the passwords table names"),
             (New-Object System.Text.UTF8Encoding $false))
 
         if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force }

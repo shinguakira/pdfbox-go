@@ -32,6 +32,7 @@ checked 2026-09-16. PDFBox's own are tiers 0 and 1 of
 | --- | ---: | --- | --- | --- |
 | [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | **all fetched** 2026-09-16, with the passwords and keys its tests open 229 of them with |
 | [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | **all fetched** 2026-09-16, the same for 235 |
+| iText's [other 45 repositories](https://github.com/itext) | **20,913** | 32 of the 45; see below | AGPL / commercial | **all fetched** 2026-09-16, with the passwords and keystores eight of them open 28 encrypted files with |
 | [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest/qpdf` 639, `qpdf/qtest/storage` 2, and 76 more | Apache-2.0 | **639 fetched**, 78 not |
 | [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |
 | [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | not fetched |
@@ -88,17 +89,16 @@ differ and the *list of painful places* does not.
 [`conventions/prior-art.md`](conventions/prior-art.md) is where that belongs if
 it is ever pursued.
 
-**The rest of iText's organisation, not fetched.** `itext-java` and
-`itext-dotnet` are iText Core; the other 45 public repositories of
-[github.com/itext](https://github.com/itext) are its add-ons, samples and
-tools, and were counted on 2026-09-16 from each default branch's tree. **They are
-not fetched, and the decision is that they stay that way**, recorded as I2 of
-[`tasks/track-testdata-itext.md`](tasks/track-testdata-itext.md): 15,279 of them
-are pdfHTML's `cmp_` files and most of the rest are expected output, so they are
-PDFs iText wrote, and the 13,857 already scored from that same writer found two
-port defects and then agreed on every file. The one part that is a different
-producer is iText 5, `itextpdf` and `itextsharp`, and that is the subset to take
-if this is ever reopened:
+**The rest of iText's organisation — fetched, and no longer a candidate.**
+`itext-java` and `itext-dotnet` are iText Core; the other 45 public repositories
+of [github.com/itext](https://github.com/itext) are its add-ons, samples and
+tools, counted on 2026-09-16 from each default branch's tree. Thirty-two of them
+hold PDFs, 20,913 between them, and **all 20,913 are on disk and scored**: what
+they are and what the two sides made of them is
+[`TESTDATA.md`](TESTDATA.md), "iText's other repositories", and the work is I2
+of [`tasks/track-testdata-itext.md`](tasks/track-testdata-itext.md). The counts
+below are what was counted before the fetch, and the fetch matched every one of
+them:
 
 | Repository | PDFs | What they are |
 | --- | ---: | --- |

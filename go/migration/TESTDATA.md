@@ -95,6 +95,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1            # every suite marked small
 pwsh go/migration/scripts/fetch-corpus.ps1 -List
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-java,itext-dotnet   # ~1.1 GB, needs git
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-pdfhtml-java,itextpdf,rups   # and iText's other repositories, one name each
 ```
 
 | Suite | PDFs | Licence | What it is, and what it reaches |
@@ -108,6 +109,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-java,itext-dotnet   # ~1
 | [`pdfjs`](https://github.com/mozilla/pdf.js/tree/master/test/pdfs) | 1,443, `-Suite pdfjs` | Apache-2.0 | Reduced reproducers from another reader's tracker. Not ground truth — pdf.js's expectations are pdf.js's — but files that broke a real implementation, which is what makes them worth opening. 982 are committed in `test/pdfs`, 459 are `.link` stubs the script downloads and matches against the md5 in `test/test_manifest.json`, and two are committed elsewhere in the repository; `_links.tsv` says where each came from, and the manifest and those two are copied under `_repo/`. Twelve are encrypted and open with the passwords its own tests use, which the script writes to `_passwords.tsv`. `test/pdfs/sig_corpus` is not fetched: pdf.js generates its eight signed PDFs rather than committing or downloading them, and [`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md) U7 has what having them would take. Crash input, not assertions |
 | [`itext-java`](https://github.com/itext/itext-java) | 6,897, `-Suite itext-java` | AGPL-3.0 or commercial | Every PDF committed to iText Core for Java, taken from `develop` as it was on 2026-09-14, each at its path in the repository and each checked against the blob id git records for it. All are test resources: `layout` 2,342, `kernel` 1,779, `svg` 1,446, `forms` 682, `sign` 386, `pdfa` 172, and six smaller modules. They are the inputs iText's tests read and the `cmp_` files the tests compare their output with. 234 name an encryption dictionary. [`scripts/passwords/itext-java.tsv`](scripts/passwords/itext-java.tsv) lists the ways the tests open them, and the 25 certificate and key files it names are fetched with the PDFs. **Not on disk:** the PDFs the tests write, which exist only after iText's Maven build has run them. See "iText against the Java" |
 | [`itext-dotnet`](https://github.com/itext/itext-dotnet) | 6,960, `-Suite itext-dotnet` | AGPL-3.0 or commercial | The same for iText Core for .NET, under `itext.tests`. The library is ported from the Java and so are its tests: 6,678 of its 6,780 distinct contents are also in `itext-java`, and the other 102 are not, 80 of them in `itext.sign.tests`. 240 name an encryption dictionary; [`scripts/passwords/itext-dotnet.tsv`](scripts/passwords/itext-dotnet.tsv) |
+| iText's other 32 repositories | 20,913, one `-Suite` name each | AGPL-3.0 or commercial | Everything else in [github.com/itext](https://github.com/itext) that holds a PDF: pdfHTML 15,279, the published examples and the books 2,446, iText 5 for Java and for .NET 1,703, its archived sandbox 515, pdfSweep 506, pdfOCR 365, and sixteen smaller repositories 99. Each is a suite of its own, fetched the way iText Core is. They are here because "PDFs iText wrote are all alike" is an argument and not a measurement; see "iText's other repositories" below for what measuring them said |
 
 ## Tier 3 — bulk
 
@@ -229,10 +231,38 @@ Go differ from the Java on purpose.
 ### Where it stands
 
 Everything on disk outside the repository — the 3,646 of the first run, pdf.js's
-1,443, `PDFBOX-4131-0.pdf`, which the 2026-09-12 PDFBox table was missing, and
-iText's 13,857 — with `run-oracle.ps1`'s default list and all three passwords
-tables on both sides. Measured 2026-09-16, and the first run that compares the
-text by a digest of its characters as well as by its length:
+1,443, `PDFBOX-4131-0.pdf`, which the 2026-09-12 PDFBox table was missing,
+iText Core's 13,857 and iText's other 20,913 — with `run-oracle.ps1`'s default
+list and all eleven passwords tables on both sides. Measured 2026-09-16:
+
+```
+39860 files, opened 40136 ways, 27 of them encrypted and skipped
+  open    both 40008, neither 125, behind 0, ahead 3
+  pages   0 disagree
+  text    both 39999, neither 9, behind 0, ahead 0
+  chars   39997 the same length, 2 not
+  digest  39997 of the same length the same text, 0 not
+
+  5 of 39860 files disagree (0.01%)
+```
+
+"Opened 40,136 ways" is 39,860 files, 244 of which a passwords table opens more
+than one way — with a password, with a certificate or with a keystore — for 276
+openings beyond the first; "iText against the Java" and "iText's other
+repositories", below, say which.
+
+**There is no document in the corpus that PDFBox reads and the port does not.**
+Not one, at either stage. No page count disagrees anywhere, and of the five files
+in that last line, three are files PDFBox did not finish inside its 20-second
+limit and the port did: `manyAppendModeUpdates.pdf`,
+`background-size-near-zero-svg.pdf` and pdf.js's `issue1721.pdf`. Given five
+minutes PDFBox reads all three, and its text is the port's to the digest — 4,216
+characters, 1 and 2,036,568. The other two are the deliberate Java-bug fixes,
+JAVA-BUGS 15 and 30: the only two texts in 39,997 that differ.
+
+The run before it, of the same day and over the 18,947 files that were on disk
+before iText's other repositories, was the first to compare the text by a digest
+of its characters as well as by its length:
 
 ```
 18947 files, opened 19201 ways, 27 of them encrypted and skipped
@@ -243,27 +273,6 @@ text by a digest of its characters as well as by its length:
   digest  19083 of the same length the same text, 0 not
 
   2 of 18947 files disagree (0.01%)
-```
-
-"Opened 19,201 ways" is 18,947 files of which 254 are opened twice, with a
-password and with a certificate; "iText against the Java", below, says which.
-
-**There is no document in the corpus that PDFBox reads and the port does not.**
-Not one, at either stage. No page count disagrees anywhere, no text of the same
-length differs, and the two lengths that differ are the two deliberate Java-bug
-fixes above.
-
-The run before it, of 2026-09-15 and over the 5,090 files that were on disk
-then, compared length alone and found the same two:
-
-```
-5090 files, 27 of them encrypted and skipped
-  open    both 5037, neither 53, behind 0, ahead 0
-  pages   0 disagree
-  text    both 5032, neither 5, behind 0, ahead 0
-  chars   5030 the same length, 2 not
-
-  2 of 5090 files disagree (0.04%)
 ```
 
 The 27 encrypted files are 24 of qpdf's, one of cabinet-of-horrors' and two
@@ -467,9 +476,10 @@ copies each of `kernel/pdf/PdfFontTest/cmp_halfWidthFont.pdf` and
 
 #### And everything together, with the digest
 
-Every file on disk, iText's 13,857 and the 5,090 that were there before, is
-"Where it stands" above: 2 of 18,947 disagree, and they are JAVA-BUGS 15 and 30
-as before. Before the last fix below, the digest also found a third:
+Every file on disk, iText Core's 13,857 and the 5,090 that were there before, is
+"Where it stands" above: of the 18,947 they then made, 2 disagree, and they are
+JAVA-BUGS 15 and 30 as before. Before the last fix below, the digest also found
+a third:
 
 **A position's text reversed by script, not by direction.** pdf.js's
 `TaroUTR50SortedList112.pdf` is a table of code points for vertical text, 64,255
@@ -492,6 +502,99 @@ all added in Unicode 14 and unknown to the JDK's Unicode 13, and it is Unicode
 15's data, as the rest of the package's is. `TestVisuallyOrderedUnicodeAsksTheDirectionality`
 holds PDFBox's answers for twenty-one strings, that position's among them; seven
 failed before the change. The file's text is now PDFBox's byte for byte.
+
+## iText's other repositories, 2026-09-16
+
+`itext-java` and `itext-dotnet` are iText Core. The other 45 repositories of
+[github.com/itext](https://github.com/itext) are its add-ons, its samples and
+its tools, and 32 of them hold PDFs: **20,913 files, 889 MB, all of them on disk
+and all of them scored.**
+
+What was nearly recorded instead is why they are here. The first answer was that
+they need not be fetched: 15,279 of them are pdfHTML's `cmp_` files, most of the
+rest is expected output, so they are PDFs iText wrote — the same writer as the
+13,857 that had just agreed on every file. That is an argument about the
+producer. It is not a measurement of the files, and a document is only ever
+settled by opening it.
+
+```bash
+# each repository is a suite of its own, fetched the way iText Core is
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-pdfhtml-java,itextpdf,rups
+pwsh go/migration/scripts/run-oracle.ps1 -List <every path> -Out java-full.tsv `
+    -Passwords (Get-ChildItem go/testdata/corpus/*/_passwords.tsv).FullName
+cd go && go run ./cmd/corpus -passwords testdata/corpus/itextpdf/_passwords.tsv ... ./testdata/corpus
+```
+
+**What is there.** Counted from each default branch's tree on 2026-09-16 and
+fetched the same day, each file at its path in its repository and each checked
+against the blob id git holds for it:
+
+| Group | Repositories | PDFs |
+| --- | ---: | ---: |
+| pdfHTML, for Java and for .NET | 2 | 15,279 |
+| the published examples and the three books | 7 | 2,446 |
+| iText 5, for Java and for .NET | 2 | 1,703 |
+| the archived iText 5 sandbox | 1 | 515 |
+| pdfSweep | 2 | 506 |
+| pdfOCR | 2 | 365 |
+| demos, tutorials, RUPS and the rest | 16 | 99 |
+| repositories with no PDF in them | 13 | 0 |
+
+Most of it is iText's own output, and the one part that is not is iText 5:
+`itextpdf`, `itextsharp` and `i5js-sandbox` are the previous generation of the
+library, a different writer from iText Core.
+
+**Encrypted files.** 35 of the 20,913 name an encryption dictionary. Eight
+repositories publish the passwords and the keys for them, in their samples and
+tests, and eight tables under [`scripts/passwords/`](scripts/passwords/) carry
+them: 28 of the 35 files, 50 ways of being opened. Twelve of those 28 open with
+no password as well as with their owner's, and keep a line for each. Of the
+seven the tables leave alone, five open with no password and nothing else is
+known about them, and two are below. Two of the tables name a PKCS#12 keystore
+the sample decrypts with, `test.p12` with the passphrase its own comment gives,
+which the fetch brings down with the PDFs; that is the third shape a passwords
+line now has.
+
+Two files are opened by neither side, and the reason is in the material rather
+than in either reader.
+`itext-publications-book-java`'s `Listing_12_11_EncryptWithCertificate` writes
+for two recipients. The key of the one whose certificate the repository carries
+is in a JKS keystore whose store password and key password differ — `f00b4r` and
+`f1lmf3st`, both in the sample — and PDFBox takes **one** password for both
+(`COSParser.prepareDecryption`), so it answers "the private key is not
+recoverable" with the first and "keystore was tampered with" with the second.
+Measured, both ways. The other recipient's key is in a store the repository does
+not carry.
+
+Run once more over every candidate password these projects hold — 13 of them
+against each of the 14 files a password touches, 182 openings — both sides
+accepted exactly the same 20 and refused exactly the same 162, and the 20 they
+accepted gave the same text on both sides.
+
+**What it found.** Both sides over all 20,913, with the tables on each:
+
+```
+20913 files, opened 20935 ways
+  open    both 20917, neither 17, behind 0, ahead 1
+  pages   0 disagree
+  text    both 20917, neither 0, behind 0, ahead 0
+  chars   20917 the same length, 0 not
+  digest  20917 of the same length the same text, 0 not
+```
+
+**Nothing disagrees.** Every file PDFBox opens, the port opens; every page count
+is the same; and all 20,917 texts are the same length *and* the same characters
+— 57,496 pages and 44,088,979 characters of them. The "ahead" is
+`itext-pdfhtml-dotnet`'s `background-size-near-zero-svg.pdf`, which PDFBox did
+not finish inside the 20-second limit and the port read in under one; given
+five minutes PDFBox reads it too, and agrees.
+
+The 17 openings neither side gets past are the 4 revision 7 files, the 2
+certificate files above, 7 files of zero length, and 4 whose trailer names no
+root object — `itextpdf` and `itextsharp`'s `endArrayClosingBracketInsteadOfEndDic.pdf`
+and `endDicClosingBracketInsideTheDic.pdf`, which iText 5's own
+`CompressionTest` expects to fail. Both sides refuse each of them with the same
+reason.
 
 ## Scoring a corpus
 
@@ -525,9 +628,13 @@ files, in UTF-8, and can be given more than once. Each line is one way of openin
 one file: `<path ending>`, tab, `<password>`; or `<path ending>`, `<password>`,
 `<certificate>`, `<private key>`, tab separated, for a file encrypted for the
 holder of a certificate, with the two files named relative to the table and the
-password decrypting the key where it is encrypted. `fetch-corpus.ps1` writes one
-as `_passwords.tsv` for a suite whose project publishes them — pdf.js, and both
-iText suites — and `run-oracle.ps1 -Passwords` gives PDFBox the same tables. A
+password decrypting the key where it is encrypted; or `<path ending>`,
+`<passphrase>`, `<keystore>`, for a project that keeps that certificate and key
+in a PKCS#12 keystore of its own, which is the shape both loaders read and is
+handed over as it is. `fetch-corpus.ps1` writes one as `_passwords.tsv` for a
+suite whose project publishes them — pdf.js, both iText Core suites, and eight
+of iText's other repositories — and `run-oracle.ps1 -Passwords` gives PDFBox the
+same tables. A
 file is opened once for every line naming it and gets a row for each; where there
 is more than one, each row's file is followed by the rest of its line in brackets.
 A file no line names that refuses a password is reported `encrypted` and left out

@@ -1,0 +1,20 @@
+# The ways iText's samples and tests open the encrypted PDFs of itextpdf, one
+# line for each way of opening one file, read from the classes named above
+# each group. fetch-corpus.ps1 writes these lines to _passwords.tsv with the
+# suite's name in front of each file, and fetches the certificates, keys and
+# keystores they name.
+#
+# A password line gives a password the class holds that PDFBox opens the file
+# with, and an empty one besides where the file also opens with none. The
+# exceptions are the files of revision 7, which PDFBox refuses before it looks
+# at a password: their lines give the password the sample uses. A keystore
+# line gives, relative to the suite, the PKCS#12 keystore the sample decrypts
+# with and the passphrase that opens it and its key.
+
+# itext/src/test/java/com/itextpdf/text/pdf/PdfEncryptionTest.java
+itext/src/test/resources/com/itextpdf/text/pdf/PdfEncryptionTest/AES256EncryptedDocument.pdf	
+itext/src/test/resources/com/itextpdf/text/pdf/PdfEncryptionTest/AES256EncryptedDocument.pdf	ownerPassword
+itext/src/test/resources/com/itextpdf/text/pdf/PdfEncryptionTest/cmp_AES256Encrypted.pdf	
+itext/src/test/resources/com/itextpdf/text/pdf/PdfEncryptionTest/cmp_AES256Encrypted.pdf	ownerPassword
+itext/src/test/resources/com/itextpdf/text/pdf/PdfEncryptionTest/cmp_unethicalStampAES256.pdf	
+itext/src/test/resources/com/itextpdf/text/pdf/PdfEncryptionTest/cmp_unethicalStampAES256.pdf	ownerPassword
