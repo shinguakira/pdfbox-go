@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfio"
 )
@@ -191,23 +192,23 @@ func (s *Stream) CreateReader() (io.Reader, error) {
 		return nil, err
 	}
 
-	codecs, err := s.codecList()
+	filters, err := s.filterList()
 	if err != nil {
 		return nil, err
 	}
-	if len(codecs) == 0 {
+	if len(filters) == 0 {
 		return raw, nil
 	}
 
-	decoded, err := s.decode(raw, codecs)
+	decoded, err := s.decode(raw, filters)
 	if err != nil {
 		return nil, err
 	}
 	return pdfio.NewReader(decoded), nil
 }
 
-// decode runs raw through each codec in turn, each into a buffer of its own,
-// and answers the last buffer rewound to its start.
+// decode runs raw through each filter's codec in turn, each into a buffer of
+// its own, and answers the last buffer rewound to its start.
 //
 // Port of the static Filter.decode, which COSInputStream.create, createView and
 // PDStream.createInputStream(List<String>) all go through.
@@ -215,26 +216,26 @@ func (s *Stream) CreateReader() (io.Reader, error) {
 // It first reduces a list that names a filter more than once to the first of
 // each, which is how PDFBox repairs such a stream rather than decoding it into
 // rubbish. Java compares the FilterFactory instances, which a name and its
-// abbreviation share; the codecs are comparable values that are equal exactly
-// then. The index each codec is then decoded with is its place in the reduced
-// list, and that is the index /DecodeParms is read at.
+// abbreviation share; see filterCodec.identity for what the port compares. The
+// index each codec is then decoded with is its place in the reduced list, and
+// that is the index /DecodeParms is read at.
 //
 // Java sizes each buffer's chunks from what it knows of the input: four times
 // its length when that is under a kilobyte, which covers most content streams,
 // and the default 4 KB otherwise. The first input's length is the stream's
 // /Length, and each after that is the buffer the previous filter wrote.
-func (s *Stream) decode(raw io.Reader, codecs []StreamCodec) (*pdfio.ReadWriteBuffer, error) {
-	if len(codecs) > 1 {
-		seen := make(map[StreamCodec]bool, len(codecs))
-		reduced := make([]StreamCodec, 0, len(codecs))
-		for _, c := range codecs {
-			if !seen[c] {
-				seen[c] = true
-				reduced = append(reduced, c)
+func (s *Stream) decode(raw io.Reader, filters []filterCodec) (*pdfio.ReadWriteBuffer, error) {
+	if len(filters) > 1 {
+		seen := make(map[any]bool, len(filters))
+		reduced := make([]filterCodec, 0, len(filters))
+		for _, f := range filters {
+			if identity := f.identity(); !seen[identity] {
+				seen[identity] = true
+				reduced = append(reduced, f)
 			}
 		}
-		if len(reduced) != len(codecs) {
-			codecs = reduced
+		if len(reduced) != len(filters) {
+			filters = reduced
 			slog.Warn("cos: removed duplicated filter entries")
 		}
 	}
@@ -242,7 +243,8 @@ func (s *Stream) decode(raw io.Reader, codecs []StreamCodec) (*pdfio.ReadWriteBu
 	length := s.GetLongDefault(Length, pdfio.DefaultChunkSize4KB)
 	current := raw
 	var decoded *pdfio.ReadWriteBuffer
-	for i, codec := range codecs {
+	for i, f := range filters {
+		codec := f.codec
 		if i > 0 {
 			var err error
 			if length, err = decoded.Length(); err != nil {
@@ -348,10 +350,54 @@ func (s *Stream) Filters() Base {
 	return s.GetDictionaryObject(Filter)
 }
 
+// filterCodec is one entry of a stream's filter array: the name the array gives
+// and the codec the provider resolved it to.
+type filterCodec struct {
+	name  *Name
+	codec StreamCodec
+}
+
+// nameIdentity is a filter's identity when its codec cannot be compared; a type
+// of its own, so no codec value can equal it.
+type nameIdentity string
+
+// identity answers what makes two entries of a filter array the same filter,
+// for decode's reduction.
+//
+// Java puts the filters in a HashSet, and FilterFactory hands out one instance
+// per filter, under its name and its abbreviation both. The provider in
+// pdfbox/filter answers comparable values that are equal in exactly those
+// cases, so a codec that can be compared is its own identity. A provider is not
+// bound to that: StreamCodec says nothing of the value behind it, and one that
+// cannot be compared -- a struct holding a slice, or a struct holding such a
+// value in an interface -- would panic as a map key. Such a codec is the same
+// filter when the array gives the same name, which is what FilterFactory's
+// map would answer.
+func (f filterCodec) identity() any {
+	if f.codec != nil && reflect.ValueOf(f.codec).Comparable() {
+		return f.codec
+	}
+	return nameIdentity(f.name.Name())
+}
+
 // codecList resolves the stream's filter array to codecs, in order.
 //
 // Port of the private getFilterList.
 func (s *Stream) codecList() ([]StreamCodec, error) {
+	filters, err := s.filterList()
+	if err != nil {
+		return nil, err
+	}
+	codecs := make([]StreamCodec, len(filters))
+	for i, f := range filters {
+		codecs[i] = f.codec
+	}
+	return codecs, nil
+}
+
+// filterList resolves the stream's filter array, keeping each entry's name
+// beside its codec.
+func (s *Stream) filterList() ([]filterCodec, error) {
 	switch filters := s.Filters().(type) {
 	case nil:
 		return nil, nil
@@ -361,10 +407,10 @@ func (s *Stream) codecList() ([]StreamCodec, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []StreamCodec{codec}, nil
+		return []filterCodec{{name: filters, codec: codec}}, nil
 
 	case *Array:
-		out := make([]StreamCodec, 0, filters.Size())
+		out := make([]filterCodec, 0, filters.Size())
 		for i := 0; i < filters.Size(); i++ {
 			name, ok := filters.Get(i).(*Name)
 			if !ok {
@@ -375,7 +421,7 @@ func (s *Stream) codecList() ([]StreamCodec, error) {
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, codec)
+			out = append(out, filterCodec{name: name, codec: codec})
 		}
 		return out, nil
 
@@ -527,11 +573,11 @@ func (w *streamWriter) encodeBuffered() error {
 // second view onto that file rather than copied into memory; anything else is
 // read into a buffer.
 func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
-	codecs, err := s.codecList()
+	filters, err := s.filterList()
 	if err != nil {
 		return nil, err
 	}
-	if len(codecs) == 0 {
+	if len(filters) == 0 {
 		if s.randomAccess == nil && s.readView != nil {
 			length, err := s.readView.Length()
 			if err != nil {
@@ -555,7 +601,7 @@ func (s *Stream) CreateView() (pdfio.RandomAccessRead, error) {
 	if err != nil {
 		return nil, err
 	}
-	decoded, err := s.decode(raw, codecs)
+	decoded, err := s.decode(raw, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -576,22 +622,22 @@ func (s *Stream) CreateReaderStopping(count int) (io.Reader, error) {
 		return nil, err
 	}
 
-	codecs, err := s.codecList()
+	filters, err := s.filterList()
 	if err != nil {
 		return nil, err
 	}
-	if count > len(codecs) {
-		count = len(codecs)
+	if count > len(filters) {
+		count = len(filters)
 	}
 	if count <= 0 {
 		return raw, nil
 	}
-	codecs = codecs[:count]
+	filters = filters[:count]
 
 	// Java's PDStream.createInputStream(List<String>) hands the filters before
 	// the stop to the static Filter.decode, as createInputStream and createView
 	// hand it all of them; decode reduces a repeated filter for all three.
-	decoded, err := s.decode(raw, codecs)
+	decoded, err := s.decode(raw, filters)
 	if err != nil {
 		return nil, err
 	}

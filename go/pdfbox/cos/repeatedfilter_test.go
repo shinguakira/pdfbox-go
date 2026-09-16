@@ -133,3 +133,144 @@ func TestRepeatedFilterIsWrittenEveryTime(t *testing.T) {
 		encodeData(t, encodeData(t, input, cos.FlateDecode), cos.FlateDecode))
 	validateDecoded(t, createStream(t, input, filters), encodeData(t, input, cos.FlateDecode))
 }
+
+// TestRepeatedFilterReductionTakesACodecThatCannotBeCompared keeps the
+// reduction above from panicking on a provider's codec.
+//
+// StreamCodec asks for two methods and nothing about the value behind them, and
+// a Stream takes any CodecProvider. The reduction used the codecs themselves as
+// the keys of a map, so a codec whose value cannot be compared -- a struct
+// holding a slice, or a comparable struct holding such a value in an interface
+// -- made every stream with more than one filter panic with "hash of unhashable
+// type" before a byte was decoded.
+//
+// Java has nothing to measure this against: FilterFactory cannot be given a
+// filter of its own, and every filter it holds is one shared instance under its
+// name and its abbreviation. What the reduction keeps from that is its shape: a
+// codec that can be compared is the same filter when it is the same value, and
+// one that cannot is the same filter when the array gives the same name. Each
+// codec below appends its tag, so the output says which ran.
+func TestRepeatedFilterReductionTakesACodecThatCannotBeCompared(t *testing.T) {
+	x, y := cos.GetPDFName("X"), cos.GetPDFName("Y")
+	for _, c := range []struct {
+		name     string
+		provider cos.CodecProvider
+		filters  []cos.Base
+		want     string
+	}{
+		{"a slice-holding codec, the same name twice", sliceCodecs{}, []cos.Base{x, x}, "data+X"},
+		{"a slice-holding codec, two names", sliceCodecs{}, []cos.Base{x, y}, "data+X+Y"},
+		{"a slice-holding codec, the first name again after the second", sliceCodecs{}, []cos.Base{x, y, x}, "data+X+Y"},
+		{"a comparable struct holding one, the same name twice", wrappedSliceCodecs{}, []cos.Base{x, x}, "data+X"},
+		{"a comparable struct holding one, two names", wrappedSliceCodecs{}, []cos.Base{x, y}, "data+X+Y"},
+		{"a comparable codec answered for two names is one filter", sameCodecForEveryName{}, []cos.Base{x, y}, "data+A"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			newStream := func() *cos.Stream {
+				s := cos.NewStream(c.provider)
+				s.SetItem(cos.Filter, cos.NewArrayOf(c.filters))
+				w, err := s.CreateRawWriter()
+				if err != nil {
+					t.Fatalf("CreateRawWriter: %v", err)
+				}
+				if _, err := w.Write([]byte("data")); err != nil {
+					t.Fatalf("Write: %v", err)
+				}
+				if err := w.Close(); err != nil {
+					t.Fatalf("Close: %v", err)
+				}
+				return s
+			}
+
+			reader, err := newStream().CreateReader()
+			if err != nil {
+				t.Fatalf("CreateReader: %v", err)
+			}
+			if got, err := io.ReadAll(reader); err != nil || string(got) != c.want {
+				t.Errorf("CreateReader = %q, %v; want %q", got, err, c.want)
+			}
+
+			view, err := newStream().CreateView()
+			if err != nil {
+				t.Fatalf("CreateView: %v", err)
+			}
+			if got, err := io.ReadAll(pdfio.NewReader(view)); err != nil || string(got) != c.want {
+				t.Errorf("CreateView = %q, %v; want %q", got, err, c.want)
+			}
+
+			stopping, err := newStream().CreateReaderStopping(len(c.filters))
+			if err != nil {
+				t.Fatalf("CreateReaderStopping: %v", err)
+			}
+			if got, err := io.ReadAll(stopping); err != nil || string(got) != c.want {
+				t.Errorf("CreateReaderStopping = %q, %v; want %q", got, err, c.want)
+			}
+		})
+	}
+}
+
+// sliceCodec copies its input and appends its tag. Its value holds a slice, so
+// it cannot be compared.
+type sliceCodec struct{ tag []byte }
+
+func (c sliceCodec) Decode(w io.Writer, r io.Reader, _ *cos.Dictionary, _ int) error {
+	if _, err := io.Copy(w, r); err != nil {
+		return err
+	}
+	_, err := w.Write(c.tag)
+	return err
+}
+
+func (c sliceCodec) Encode(w io.Writer, r io.Reader, _ *cos.Dictionary) error {
+	_, err := io.Copy(w, r)
+	return err
+}
+
+// sliceCodecs answers a new sliceCodec for every name, tagged with the name.
+type sliceCodecs struct{}
+
+func (sliceCodecs) CodecForName(name *cos.Name) (cos.StreamCodec, error) {
+	return sliceCodec{tag: []byte("+" + name.Name())}, nil
+}
+
+// wrappedCodec is a comparable struct type, but the value in its interface field
+// is a sliceCodec, so comparing two of them panics all the same.
+type wrappedCodec struct{ inner cos.StreamCodec }
+
+func (c wrappedCodec) Decode(w io.Writer, r io.Reader, p *cos.Dictionary, i int) error {
+	return c.inner.Decode(w, r, p, i)
+}
+
+func (c wrappedCodec) Encode(w io.Writer, r io.Reader, p *cos.Dictionary) error {
+	return c.inner.Encode(w, r, p)
+}
+
+type wrappedSliceCodecs struct{}
+
+func (wrappedSliceCodecs) CodecForName(name *cos.Name) (cos.StreamCodec, error) {
+	return wrappedCodec{inner: sliceCodec{tag: []byte("+" + name.Name())}}, nil
+}
+
+// tagCodec is comparable: two with the same tag are the same value.
+type tagCodec struct{ tag string }
+
+func (c tagCodec) Decode(w io.Writer, r io.Reader, _ *cos.Dictionary, _ int) error {
+	if _, err := io.Copy(w, r); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, c.tag)
+	return err
+}
+
+func (c tagCodec) Encode(w io.Writer, r io.Reader, _ *cos.Dictionary) error {
+	_, err := io.Copy(w, r)
+	return err
+}
+
+// sameCodecForEveryName answers one codec whatever the name, which is how a
+// name and its abbreviation reach the same FilterFactory instance.
+type sameCodecForEveryName struct{}
+
+func (sameCodecForEveryName) CodecForName(*cos.Name) (cos.StreamCodec, error) {
+	return tagCodec{tag: "+A"}, nil
+}
