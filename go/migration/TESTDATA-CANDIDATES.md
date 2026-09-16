@@ -16,27 +16,26 @@ believed about it decides nothing, and a file written to break qpdf's lexer
 breaks a lexer. The value in these repositories is that somebody already went and
 found the documents that hurt, and named them after the thing they hurt.
 
-So: harvest the files from all of them, take the answers from none of them.
-
-That also settles the licensing, which is the same policy
-[`TESTDATA.md`](TESTDATA.md) already runs on and needs saying again here because
-two of these are AGPL: **nothing fetched is committed, modified or
-redistributed.** It is downloaded into a gitignored directory, read as input, and
-that is all. Test *data* and test *approach* travel; source does not.
+So: harvest the files from all of them, take the answers from none of them. That
+is what settles the licensing, two of these being AGPL:
+[`TESTDATA.md`](TESTDATA.md)'s rule that nothing fetched is committed, modified
+or redistributed applies unchanged here. Test *data* and test *approach* travel;
+source does not.
 
 ## What is actually there
 
-Counted 2026-09-13 against each repository's default branch.
+Counted 2026-09-13 against each repository's default branch; the on-disk state
+checked 2026-09-16. PDFBox's own are tiers 0 and 1 of
+[`TESTDATA.md`](TESTDATA.md), which carries their counts.
 
 | Source | PDFs | Where | Licence | State |
 | --- | ---: | --- | --- | --- |
-| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched |
-| [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | not fetched |
+| [itext-java](https://github.com/itext/itext-java) | **6,897** | `*/src/test/resources` | AGPL / commercial | not fetched on this branch -- `track/testdata-itext` is where it is being taken |
+| [itext-dotnet](https://github.com/itext/itext-dotnet) | **6,960** | the same, mirrored | AGPL / commercial | the same |
 | [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest/qpdf` 639, `qpdf/qtest/storage` 2, and 76 more | Apache-2.0 | **639 fetched**, 78 not |
 | [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |
 | [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | not fetched |
 | [mupdf](https://github.com/ArtifexSoftware/mupdf) | **0** | — see below | AGPL-3.0 | n/a |
-| PDFBox | 179 committed + 78 declared | this repository | Apache-2.0 | in use, tiers 0 and 1 |
 
 Two of those numbers are worth stopping on.
 
@@ -45,7 +44,8 @@ suite is Artifex's separate `tests.git`, which is served from
 <https://cgit.ghostscript.com/cgi-bin/cgit.cgi/tests.git/> and reachable. So
 "read MuPDF for its test data" means going somewhere else than the obvious
 place, and reading MuPDF's *source* is a different activity with an AGPL
-attached.
+attached. Worth opening when the content stream interpreter, a colour space, a
+font or the graphics state is the thing that disagrees — and read, not lifted.
 
 **iText is an order of magnitude larger than everything else combined.** Nearly
 seven thousand PDFs in each of the two repositories. They are the same library in
@@ -54,13 +54,13 @@ suggests near-mirroring rather than two independent corpora, which means fetchin
 one is most of the value and fetching both is worth doing only to find where they
 diverge.
 
+MuPDF and pdfium are both ruled out as *dependencies* by the pure-Go rule —
+go-fitz wraps MuPDF through cgo, go-pdfium ships a wasm blob. Nothing here
+changes that; this is about reading their files.
+
 ## What each is good for
 
 ### PDFBox
-
-Already the backbone: tiers 0 and 1 of [`TESTDATA.md`](TESTDATA.md) are its
-committed test resources and the 78 files its poms download, and every one of the
-latter is the reduced reproducer of a numbered issue.
 
 The part **not** mined is the history rather than the files — the JIRA entries,
 and the recorded reason each fix exists. PDF is not a format where handling
@@ -90,30 +90,20 @@ it is ever pursued.
 
 ### QPDF
 
-Already tier 2, and it earned its place: qpdf's files found four of the twelve
-disagreements the oracle run turned up. What it is strong at is exactly the low
-layer — lexer and parser, indirect objects, xref tables and streams, object
-streams, incremental update, encryption, damaged-PDF recovery.
+Already tier 2, and it earned its place: its files are behind three of the six
+port defects [`TESTDATA.md`](TESTDATA.md) records the oracle finding, and eight
+of the twelve disagreements. What it is strong at is exactly the low layer — lexer and parser, indirect objects, xref
+tables and streams, object streams, incremental update, encryption, damaged-PDF
+recovery.
 
-Two things are still on the table:
+The 78 not fetched are `qpdf/qtest/storage` 2, `examples/qtest` 49,
+`compare-for-test/qtest` 21 and `libtests/qtest` 6; the suite takes
+`qpdf/qtest/qpdf` alone, so reaching them is a path change.
 
-- **78 PDFs not being fetched.** The suite takes `qpdf/qtest/qpdf` and leaves
-  the two beside it in `qpdf/qtest/storage`, `examples/qtest` (49),
-  `compare-for-test/qtest` (21) and `libtests/qtest` (6). Recounted 2026-09-15
-  from the repository tree: 639 + 2 + 49 + 21 + 6 = 717. The first count missed
-  the two in `qpdf/qtest/storage`, so its fetched and not fetched added up to
-  715.
-- **The test model, of which one line is missing here.** qpdf rasterises some
-  PDFs and compares the image; it is in OSS-Fuzz, and malformed PDFs that fuzzing
-  finds are folded back into the regression tests. This port has the first three
-  lines and not the fourth:
-
-  ```
-  unit tests over well-formed PDFs        ✓
-  PDFBox's existing regression PDFs       ✓
-  qpdf-style malformed PDF tests          ✓
-  fuzzing, folded back into tests         ✗
-  ```
+One line of qpdf's test model this repository does not have: qpdf is in
+OSS-Fuzz, and the malformed PDFs fuzzing finds are folded back into its
+regression tests. Unit tests over well-formed PDFs, PDFBox's own regression
+PDFs and qpdf-style malformed PDF tests are all here; fuzzing is not.
 
 ### PoDoFo
 
@@ -147,27 +137,15 @@ expected `.png` output beside them. Lower priority for a reason that is about
 shape rather than quality: pdfium is a renderer, so its corpus leans where a
 renderer leans.
 
-### MuPDF
-
-Lowest priority, and the entry is mostly a correction: no PDFs in the repository,
-AGPL on the source, and a test suite that lives at Artifex's `tests.git`. Worth
-opening when the content stream interpreter, a colour space, a font or the
-graphics state is the thing that disagrees — and read, not lifted.
-
-Both MuPDF and pdfium are already ruled out as *dependencies* by the pure-Go rule
-(go-fitz wraps MuPDF through cgo; go-pdfium ships a wasm blob). Nothing here
-changes that; this is about reading their files.
-
 ## Order to take them in
 
-1. **PoDoFo** — 102 files, one per failure mode, a few lines in
-   `fetch-corpus.ps1`. Best ratio on the page.
-2. **qpdf's remaining 78** — the suite is already there; it is a path change.
-3. **pdfium** — 301, BSD, and brings expected images with it.
-4. **iText** — 6,897, and the reason it is fourth rather than first is that it is
-   larger than everything above put together and wants its own decision about how
-   much of it to carry.
-5. **MuPDF via `tests.git`** — only when a renderer question needs it.
+PoDoFo first, the cheapest addition of anything here; then qpdf's remaining 78,
+which is a path change to a suite already there; then PDFium, BSD and bringing
+expected images with it; then iText, last because it is larger than everything
+above put together and wants its own decision about how much of it to carry; and
+MuPDF's
+`tests.git` only when a renderer question needs it. Each is an open task in
+[`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md).
 
 Each one that lands gets a row in [`TESTDATA.md`](TESTDATA.md) with what it
 scored, and its line here should then say so.

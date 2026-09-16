@@ -8,7 +8,7 @@ than in each file.**
 [`JAVA-BUGS.md`](../JAVA-BUGS.md) opens with "Do not report any of this
 upstream". Both stand for everything else. What is in this directory was
 written on the explicit, repeated instruction of the repository owner, for
-defects they decided to report, and each file records what was asked and when.
+defects they decided to report. Each file carries its own date.
 
 **Nothing here has been filed.** These are drafts: the issue text, the patch
 and the test, ready to be submitted by a person. No file here is applied to the

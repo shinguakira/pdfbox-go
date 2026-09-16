@@ -32,23 +32,27 @@ Three things this is not:
 
 | File | What it is |
 | --- | --- |
-| [`PLAN.md`](PLAN.md) | The porting plan — capability slices, what each needs, and in what order |
+| [`PLAN.md`](PLAN.md) | The porting plan — capability slices, what each needs, in what order, and the definition of done |
 | [`BRANCHING.md`](BRANCHING.md) | Migration flow, branch roles, slice dependency graph. Carries the scope rule: no upstream sync, no PRs to Apache |
-| [`mapping/modules.md`](mapping/modules.md) | What each of PDFBox's twelve Maven modules does, and how they depend on each other |
+| [`tasks/README.md`](tasks/README.md) | One file per branch: its scope, its checklist and what it left open. The index there is the branch list and each branch's state |
+| [`mapping/modules.md`](mapping/modules.md) | What each of PDFBox's Maven modules does, which are in the port, and how they depend on each other |
 | [`STATUS.md`](STATUS.md) | Per-package progress, ported tests, and the deviations from Java recorded so far |
 | [`conventions/tdd.md`](conventions/tdd.md) | **Test-driven porting — the Java test is ported before the Go implementation exists.** The rule the port runs on |
 | [`conventions/java-to-go.md`](conventions/java-to-go.md) | How Java constructs are translated. Read this before porting anything |
-| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then fixed most of them in the Go, and every entry says which it is. That file carries the count |
+| [`JAVA-BUGS.md`](JAVA-BUGS.md) | Java bugs found while porting. Recorded as they were found and carried on purpose for the length of the port; `track/java-bug-fixes` then went through them in the Go, and every entry says whether it was fixed or kept. That file carries the counts |
 | [`conventions/prior-art.md`](conventions/prior-art.md) | How PDFBox was ported before (PdfPig in C#, .NET via IKVM), what carries over to Go and what does not |
 | [`TESTDATA.md`](TESTDATA.md) | What the port is checked against, tier by tier: the documents in the repository, the ones the Java build downloads, the third-party suites and what each reaches, and how to score a corpus against PDFBox. It carries the counts and the current result |
 | [`TESTDATA-CANDIDATES.md`](TESTDATA-CANDIDATES.md) | Where else there are PDFs worth reading, counted per project: iText, PDFium, PoDoFo, qpdf's unfetched rest. PDFBox alone is the oracle; every project is fair game as input |
 | [`BENCHMARK.md`](BENCHMARK.md) | Speed and memory against PDFBox, both run on one machine: the total, the median, CPU, start-up, what it takes to ship, and where the time goes. **Every performance number in this repository comes from here**, with the machine and the method beside it |
 | [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md) | What could be done about the slow tail without leaving pure Go, in order, with what each step needs decided first. The plan as written, then what prototyping it on `track/performance` bought, and where the plan was wrong. The numbers it ends on are `BENCHMARK.md`'s |
 | [`RASTER-PRECEDENT.md`](RASTER-PRECEDENT.md) | What PdfPig and .NET do about drawing pixels, measured for `track/raster`'s A0. Java is the outlier: `Graphics2D` ships in the JDK and nobody else has that |
+| [`upstream/`](upstream/README.md) | Drafts of issues for Apache, written on the owner's explicit instruction and never filed. The directory's own README says why it sits outside the rules the rest of this tree follows |
 | [`mapping/packages.tsv`](mapping/packages.tsv) | Java package to Go package. Hand maintained |
 | [`mapping/inventory.tsv`](mapping/inventory.tsv) | Generated: files and lines per Java package, with the Go package each maps to |
 | [`scripts/inventory.ps1`](scripts/inventory.ps1) | Regenerates `inventory.tsv` from the Java tree |
-| [`scripts/fetch-testdata.ps1`](scripts/fetch-testdata.ps1) | Fetches the 78 test files the Java build declares, into the `target/` directories the Java build puts them in. See [`TESTDATA.md`](TESTDATA.md) |
+| [`scripts/gen-cos-names.ps1`](scripts/gen-cos-names.ps1) | Generates `go/pdfbox/cos/names.go` from the predefined name constants in `COSName.java`, which are too many to transcribe by hand and be reviewed |
+| [`scripts/fetch-testdata.ps1`](scripts/fetch-testdata.ps1) | Fetches the test files the Java build declares, into the `target/` directories the Java build puts them in. See [`TESTDATA.md`](TESTDATA.md) |
+| [`scripts/fetch-flatten.ps1`](scripts/fetch-flatten.ps1) | Fetches the documents `PDAcroFormFlattenTest` names in its own source rather than in a pom, which is why `fetch-testdata.ps1` never saw them |
 | [`scripts/fetch-corpus.ps1`](scripts/fetch-corpus.ps1) | Fetches the third-party PDF suites the port is scored against, into `go/testdata/corpus/` |
 | [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) | Compiles the Java tree with `javac` and runs PDFBox over a corpus, so `cmd/corpus -oracle` can say where the port and the Java disagree. No Maven needed |
 | [`oracle/JavaCorpus.java`](oracle/JavaCorpus.java) | The driver that script runs. One of the two `.java` files this repository owns, with `JavaBench.java`; both sit outside the Maven module directories, compile against them, and are compiled by that script |
@@ -118,26 +122,29 @@ over a list of documents, and writes the table `go/cmd/corpus` writes.
 non-zero when the port is behind. [`TESTDATA.md`](TESTDATA.md) has the two
 commands, the corpus they run over and what they answer today.
 
-What it is for is in its first run, which that file records: twelve of the files
-disagreed, and one of the twelve had already been written down there as a
-faithful carry on the strength of reading the Java. It was not.
+What it is for is in its first run, which that file records: files disagreed
+that reading the Java had not predicted, and one of them had already been
+written down there as a faithful carry on the strength of that reading. It was
+not.
 
 ## Refreshing the inventory
 
-The Java tree is frozen, so this only needs re-running when the mapping in
-`packages.tsv` changes or a Go package is added:
+The Java tree is a fixed snapshot, so this only needs re-running when the
+mapping in `packages.tsv` changes or a Go package is added:
 
 ```bash
 pwsh go/migration/scripts/inventory.ps1
 ```
 
 It rewrites `mapping/inventory.tsv` and lists any Java package missing from
-`packages.tsv`, so new upstream packages surface instead of being silently
+`packages.tsv`, so a package with no mapping surfaces instead of being silently
 skipped.
 
 ## Relationship to the Java tree
 
 The Java source stays where it is, untouched, in the module directories at the
-repository root. It is the reference the port is checked against, and upstream
-changes keep arriving — so this is a port living beside its original, not a
-replacement of it. Nothing under `go/` should require editing a `.java` file.
+repository root. It is the reference the port is checked against, and it is a
+snapshot rather than a tracked upstream — [`BRANCHING.md`](BRANCHING.md) carries
+that rule and the one sync that happened before it. So this is a port living
+beside its original, not a replacement of it. Nothing under `go/` should require
+editing a `.java` file.

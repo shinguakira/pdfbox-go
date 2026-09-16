@@ -2,8 +2,9 @@
 
 Slice 5 — encrypted documents.
 
-**Branch: `slice/5-<name>`** — from and back to `migration-base`.
-Depends on `slice/1` only. Independent of slices 2, 3, 4, 6, 7 and 8.
+**Branch: `slice/5-encryption`** — from and back to `migration-base`.
+Depends on `slice/1` only. Independent of slices 2, 3, 4, 6, 7 and 8. Merged.
+What it delivered is in `migration/STATUS.md`, "Slice 5 — encrypted documents".
 
 ## Rules — do not break these
 
@@ -28,24 +29,7 @@ Depends on `slice/1` only. Independent of slices 2, 3, 4, 6, 7 and 8.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -66,12 +50,11 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 # Phase A — Write the tests
 
 - [ ] A1. Port `TestSymmetricKeyEncryption` — RC4 and AES, 40/128/256 bit
-  - **1 of its 7 tests ported** (`testPermissions`). Four encrypt and save a
-    document and cannot run until the writer of slice 7; two read PDFs from
-    `target/pdfs`, which this repository does not carry.
+  - `testPermissions` here; `track/testdata-sources` ported two more once their
+    input was fetched, and four that encrypt and save stay open
 - [ ] A2. Port `TestPublicKeyEncryption` — certificate-based
-  - **4 of its 7 tests ported**, the four that only read. The other three
-    encrypt and save and cannot run until the writer of slice 7.
+  - the four that only read here; `track/stale-deferrals` ported the other
+    three once the writer and the CMS encoder existed
 - [x] A3. Write from source for the 19 classes the two tests do not reach
   - Name which ones those are before writing, so the gap is visible
 
@@ -87,9 +70,8 @@ Go covers most of the primitives: `crypto/aes`, `crypto/rc4`, `crypto/sha256`,
 - [ ] B3. Public key security — certificate
   - `PublicKeySecurityHandler`, `PublicKeyProtectionPolicy`,
     `PublicKeyDecryptionMaterial`, `PublicKeyRecipient`
-  - **The reading half is ported; the encrypting half is not.**
-    `PublicKeySecurityHandler.prepareDocumentForEncryption` returns an error
-    rather than building the CMS enveloped data Java builds.
+  - the reading half here; `PrepareDocumentForEncryption` had no CMS encoder to
+    build the enveloped data with, and `track/stale-deferrals` wrote one
 - [x] B4. The crypt filters and the rest of the package
 - [x] B5. Wire decryption into the parser — an encrypted document must open
 
@@ -188,8 +170,6 @@ And for this branch in particular:
 - [ ] `TestSymmetricKeyEncryption` writes encrypted PDFs as well as reading
       them. The writer lands in slice 7. Decide whether this branch ports only
       the reading half, or waits.
-  - **Decided: the reading half.** That decision does not close this item —
-    10 of the 14 tests across the two Java classes, and
-    `PublicKeySecurityHandler.prepareDocumentForEncryption`, are still
-    unported and belong to this branch's scope. They stay open until slice 7
-    makes them runnable.
+  - **Decided: the reading half**, leaving what needed the writer to a later
+    branch. `track/stale-deferrals` closed most of it; what is left is the four
+    `TestSymmetricKeyEncryption` cases that encrypt and save.

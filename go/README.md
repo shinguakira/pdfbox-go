@@ -19,14 +19,20 @@ go/
 ├── fontbox/            <- org.apache.fontbox
 ├── xmpbox/             <- org.apache.xmpbox
 ├── pdfbox/             <- org.apache.pdfbox         (cos, filter, pdmodel, ...)
-├── cmd/                <- org.apache.pdfbox.tools   (command line entry points)
+├── tools/              <- org.apache.pdfbox.tools   (the commands themselves)
+├── awt/                <- java.awt                  (Color, geom, image)
+├── javatext/           <- java.text                 (Bidi)
+├── w3c/                <- org.w3c.dom               (a reading DOM)
+├── cmd/                the binaries: pdfbox, and corpus and bench for migration
 ├── internal/           helpers with no Java counterpart
 └── migration/          the porting plan, conventions, mapping and status
 ```
 
-The tree mirrors the Java package structure so that any Go file can be traced
-back to the Java file it came from. The full package table is
-[`migration/mapping/packages.tsv`](migration/mapping/packages.tsv).
+The PDFBox modules mirror the Java package structure, so that any Go file can be
+traced back to the Java file it came from; the full package table is
+[`migration/mapping/packages.tsv`](migration/mapping/packages.tsv). The three
+JDK directories are there because the Java being ported uses those classes and
+Go has no equivalent — each says so in its package doc comment.
 
 ## Building
 
@@ -47,14 +53,11 @@ The Go module is self-contained: building it needs no JDK and no Maven, and
 
 Read [`migration/conventions/java-to-go.md`](migration/conventions/java-to-go.md)
 first — it is the difference between a port and as many unrelated translations
-as there are packages. The short version:
-
-- Idiomatic Go at the API boundary, faithful algorithm inside.
-- `error` returns rather than exceptions, with sentinel values in each package's
-  `errors.go`.
-- `io.EOF` for end of input, never a `-1` sentinel.
-- Every package carries its Java tests, ported alongside the code.
-- Every deliberate deviation from Java behaviour is commented where it happens.
+as there are packages. It is where the naming, the error convention, the class
+translations and the recording of a deliberate deviation are written down.
+[`migration/conventions/tdd.md`](migration/conventions/tdd.md) is the other half:
+the Java test is ported before the Go implementation exists, and its assertion
+values are copied from the Java rather than read off the Go.
 
 ## Licence
 

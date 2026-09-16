@@ -34,24 +34,7 @@ its output through `ImageIOUtil`. Everything before B5 can be worked before
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -88,12 +71,11 @@ comparisons possible for the first time.
 # Phase A — Write the tests
 
 - [x] A0. **Decide what draws.** `PLAN.md`'s slice 9 section names three ways
-      and slice 9 took a fourth. The three are still the three:
-  - `golang.org/x/image/vector` plus hand-written compositing — small
-    dependency, most work. **It is not in `go.mod` and there is no network**;
-    settle how it gets there before choosing it.
-  - a Cairo or Skia binding — closest to Java2D, adds cgo.
-  - write the rasteriser here, over the geometry `awt/geom` already has.
+      and slice 9 took a fourth; the three are still the three, and
+      [`../RASTER-PRECEDENT.md`](../RASTER-PRECEDENT.md) is what each of them
+      costs and what other ecosystems did with the same problem.
+  - Whatever is chosen has to get into `go.mod` with no network, so settle that
+    before choosing it.
   - Whatever is chosen, `awt/geom.Area` **flattens curves to polylines** where
     the JDK intersects them exactly. That is a recorded approximation and it is
     what the clip is built from. Read `awt/geom/area.go`'s head comment before
@@ -139,10 +121,10 @@ Ordered so that each step is testable before the next needs it.
   - Transparency groups, blend modes and soft masks are `PushGroup`/`PopGroup`
     and `SoftMaskedPaint`. This is the part Java gets from `Graphics2D` for
     free and the part a Go backend has to write.
-  - `PDPatternContentStream` goes here too: `pdformcontentstream.go` says it is
-    not ported because it names `PDTilingPattern`, which this task brings.
-  - `textmarkuphandlers.go` says `generateNormalAppearance` for the squiggly
-    annotation is not ported for the same reason. Close it or restate it.
+  - `PDPatternContentStream` goes here too, and the squiggly annotation's
+    `generateNormalAppearance` with it: both were deferred for want of
+    `PDTilingPattern`, which this task brings. Close them or restate the
+    reason. `STATUS.md`'s "What this closed elsewhere" is where the answer goes.
 - [x] B5. `PDFToImage` and `PrintPDF`, and their rows out of
       `go/tools/notbuilt.go`
   - **B5 needs `track/imageio` merged.** `PDFToImage` writes through
@@ -164,44 +146,16 @@ Ordered so that each step is testable before the next needs it.
 
 # Phase D — Adversarial review
 
-敵対的レビュー. Green tests prove the port passes the tests, not that it is a
-faithful migration. Go in assuming it is wrong. Every check below is a question
-the ported tests cannot answer.
+敵対的レビュー. The seven checks are [`TEMPLATE.md`](TEMPLATE.md)'s, and each
+was run.
 
 - [x] D1. Read every ported file against its Java side by side
-  - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
-  - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
-  - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
-    such conversion written out?
-
 - [x] D2. Hunt for silently dropped behaviour
-  - Anything Java does in a `finally` — is it still done on the Go error path?
-  - Anything Java logs and swallows — does the Go swallow it too, or does it
-    return an error the Java would not have?
-  - Anything Java throws — is it an error, or a panic, and is that the right one?
-
 - [x] D3. Check the tests are Java-derived, not Go-derived
-  - For each assertion: is that value in the Java test, or did it come from
-    running the Go? A value read off the port proves nothing.
-  - Which Java test cases were dropped, and is each one recorded with a reason?
-
 - [x] D4. Check every function phase B touched has a test
-  - Name the test that covers it. Not "the suite is green"
-  - Where there is none, the function was changed on an argument rather than on
-    evidence. Write the test, and take whatever it says
-
 - [x] D5. Check every deferral is real and recorded
-  - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
-  - Every deferral — is it deferred because the type is absent, or because it
-    was hard? The second is not a deferral.
-
 - [x] D6. Check the Java bugs
-  - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
-    what correct would be, where the Go carries it, and how confident?
-  - Was any of them "fixed" on the way past? Revert it.
-
 - [x] D7. Write the review down
-  - What was checked, what was found, what was fixed, what is still open
 
 And for this branch in particular:
 
@@ -221,21 +175,9 @@ And for this branch in particular:
 # Phase E — User feedback
 
 - [ ] E1. Stop and wait for the user's review. Do not start the next branch.
-
 - [x] E2. For each item of feedback, judge it before acting
-  - Is it a port defect, a missing piece of scope, or a difference the Java
-    itself has?
-  - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
-    user is told why it stays.
-
 - [x] E3. Where it needs fixing, write a **strict** test first
-  - Strict: it fails before the fix, takes the real path with the real types,
-    and asserts what the Java does
-  - Then fix the Go
-  - Then `gofmt`, `go vet`, `go test ./...` again
-
 - [ ] E4. Report back
-  - What was changed, what was not, and why for each
 
 ---
 

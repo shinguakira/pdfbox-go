@@ -39,28 +39,16 @@ change it to suit one branch — change the copy.
 
 **The port is merged**, every slice and every track of it, bar the two
 `track/performance` commits that ride in the open branch. What is open is
-`track/testdata-sources`, which ports nothing: it collects other projects' test
-PDFs, scores the port against PDFBox over them, and fixes what that finds.
+`track/testdata-sources`, whose subject is [`../TESTDATA.md`](../TESTDATA.md).
 
-## The order they were taken in
-
-[`../BRANCHING.md`](../BRANCHING.md) is where the order lives, with the
-dependency graph and the argument for each edge — the last four tracks in "The
-last four tracks", the earlier ones in the branch table above it. Two things
-about this list rather than about the branches:
-
-- **A branch gets a row here when it gets a row there.** `PLAN.md` is not
-  edited to add one; it counts the work, not the branches.
-- **The contents of the last four came from an audit, not from the 891-class
-  survey**, which missed `multipdf` outright. `../STATUS.md` carries that audit
-  and the commands to re-run it. Its important half is not finding unported
-  classes: it is checking whether the reason each recorded deferral gives is
-  **still true**.
+The order the branches were taken in, the dependency graph and the argument for
+each edge are in [`../BRANCHING.md`](../BRANCHING.md).
 
 ## Coverage
 
-Every Java package in scope, and the branch that claims it. Regenerate the left
-column with:
+Every Java package in scope, and the branch that claims it. What each branch
+then delivered is in [`../STATUS.md`](../STATUS.md), one chapter per branch.
+Regenerate the left column with:
 
 ```
 find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
@@ -83,26 +71,26 @@ find fontbox/src/main pdfbox/src/main io/src/main xmpbox/src/main \
 | `fontbox/ttf/table/common` | 12 | slice 4 |
 | `fontbox/ttf/table/gsub` | 9 | slice 4 |
 | `fontbox/type1` | 6 | slice 4 |
-| `fontbox/util` | 1 | slice 2 — done |
+| `fontbox/util` | 1 | slice 2 |
 | `fontbox/util/autodetect` | 7 | slice 4 |
-| `org/apache/pdfbox` — `Loader` | 1 | slice 3, conditionally — see its Blocked |
-| `pdfbox/contentstream` | 3 | slice 2 — done; slice 9 for the graphics engine |
-| `contentstream/operator` | 5 | slice 2 — done |
+| `org/apache/pdfbox` — `Loader` | 1 | slice 3 |
+| `pdfbox/contentstream` | 3 | slice 2; slice 9 for the graphics engine |
+| `contentstream/operator` | 5 | slice 2 |
 | `contentstream/operator/color` | 13 | slice 9 |
 | `contentstream/operator/graphics` | 23 | slice 9 |
-| `contentstream/operator/markedcontent` | 6 | slice 2 — done bar `DrawObject` |
-| `contentstream/operator/state` | 13 | slice 2 — done bar `gs` |
+| `contentstream/operator/markedcontent` | 6 | slice 2 (5), slice 9 (`DrawObject`) |
+| `contentstream/operator/state` | 13 | slice 2 (12), slice 8 (`gs`) |
 | `contentstream/operator/text` | 16 | slice 2 (11), slice 3 (5) |
-| `pdfbox/cos` | 24 | slice 1, slice 7 for the update-state files — **done** |
-| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) — **done** |
+| `pdfbox/cos` | 24 | slice 1, slice 7 for the update-state files |
+| `pdfbox/filter` | 23 | slice 1 (4), slice 6 (rest) |
 | `pdfbox/glyphlayout/*` | 7 | `track/pdfbox-layout` |
-| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) — **done** |
+| `pdfbox/io` | 18 | slice 0 (13), `track/scratchfile` (5) |
 | `pdfbox/multipdf` | 6 | slice 7 (3), `track/multipdf` (the other 3, and `PDFCloneUtilityTest`) |
-| `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 conditionally, slice 8 for `FDFParser` |
-| `pdfbox/pdfparser/xref` | 6 | slice 1 — done |
+| `pdfbox/pdfparser` | 12 | slice 1 (6), slice 3 (the loader half), slice 8 (`FDFParser`) |
+| `pdfbox/pdfparser/xref` | 6 | slice 1 |
 | `pdfbox/pdfwriter` | 3 | slice 7 |
 | `pdfbox/pdfwriter/compress` | 4 | slice 7 |
-| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 conditionally, slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio), `track/raster` (`PDPatternContentStream`), `track/stale-deferrals` (`TestPDDocument`) |
+| `pdfbox/pdmodel` | 29 | slice 2 (4), slice 3 (the loader half), slice 7, `track/test-backfill` (the `ResourceCacheFactory` trio), `track/raster` (`PDPatternContentStream`), `track/stale-deferrals` (`TestPDDocument`) |
 | `pdmodel/common` | 16 | slice 2 (5), slice 8 (rest) |
 | `pdmodel/common/filespecification` | 4 | slice 8 |
 | `pdmodel/common/function` | 6 | slice 9 |
@@ -136,9 +124,9 @@ branch that first needs it. Found by grepping for each import:
 
 | Helper | Used by | Branch | Java test |
 | --- | --- | --- | --- |
-| `Matrix`, `Vector` | the graphics state | slice 2 — **done** | `MatrixTest` |
+| `Matrix`, `Vector` | the graphics state | slice 2 | `MatrixTest` |
 | `IterativeMergeSort` | `PDFTextStripper`, when its comparator is not transitive | slice 3 | `TestSort` |
-| `DateConverter` | `COSDictionary` dates, `FDFAnnotation` | slice 3 with `PDDocumentInformation` if the loader lands there, otherwise slice 8 | `TestDateUtil` |
+| `DateConverter` | `COSDictionary` dates, `FDFAnnotation` | slice 8, with the `COSDictionary` date accessors slice 1 left | `TestDateUtil` |
 | `Hex` | `COSName`, `COSString`, `ASCIIHexFilter`, `COSWriter`, `ToUnicodeWriter`, `FDFAnnotationStamp` | slice 6, with `ASCIIHexFilter` | `TestHexUtil` |
 | `NumberFormatUtil` | `PDAbstractContentStream` | slice 7 | `TestNumberFormatUtil` |
 | `StringUtil` | `PDAbstractContentStream` | slice 7 | `StringUtilTest` |
@@ -146,17 +134,4 @@ branch that first needs it. Found by grepping for each import:
 | `Version` | `tools` only | `track/tools` | — |
 
 `Hex` is a special case: `cos.ParseHexString` already exists in the port, so
-slice 1 folded part of it away. Check what is left of the Java class before
-porting it whole.
-
-`COSDictionary`'s date accessors are the other half of `DateConverter`.
-`STATUS.md` records them as the "minus dates" in the slice 1 `cos` row; they
-land with whichever branch takes `DateConverter`.
-
-## The five phases
-
-A to E — write the test, port the implementation, run and fix, adversarial
-review, user feedback — are set out in [`TEMPLATE.md`](TEMPLATE.md), "How each
-unit of work runs", and every branch file carries that copy. **A to D run
-without stopping**; E1 is the only stop, and finishing a task, a phase, a
-package or a commit is not one.
+slice 1 folded part of the Java class away before slice 6 ported the rest.

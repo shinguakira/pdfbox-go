@@ -27,24 +27,7 @@ separately.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -55,8 +38,8 @@ defect, write a strict failing test first and only then fix.
 `migration/mapping/packages.tsv` renames one package: `org.apache.xmpbox.type`
 becomes `xmpbox/xmptype`, because `type` is a Go keyword.
 
-Java parses XMP with DOM. Go has `encoding/xml`. Whichever way that goes, it is
-a deviation and belongs in `STATUS.md`.
+Java parses XMP with DOM and Go has `encoding/xml`. What that became is in
+`STATUS.md` under "The DOM, and how it differs from Xerces".
 
 ---
 
@@ -161,5 +144,4 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] Nothing. This is the one part of the project with no ordering constraint
-      at all.
+- [ ] Nothing.

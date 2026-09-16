@@ -1,10 +1,11 @@
 # Migration flow and branch strategy
 
-How the port moves from the Java in this repository to shipped Go, which
-branches exist, and what depends on what.
+How the port moved from the Java in this repository to shipped Go, which
+branches exist, and what depended on what.
 
 Work units are the capability slices in [`PLAN.md`](PLAN.md). This file is about
-how those slices are arranged in git.
+how those slices were arranged in git. Every branch named below is merged;
+[`tasks/README.md`](tasks/README.md) is the index and carries each one's state.
 
 ## Scope rule — read this first
 
@@ -14,7 +15,7 @@ how those slices are arranged in git.
   contribution upstream.
 - **Never** pull, fetch, merge or rebase from `apache/pdfbox`. Do not add it as
   a remote.
-- The Java tree here is a **one-time snapshot**. It does not get updated.
+- The Java tree here is a **snapshot**. It does not get updated.
 
 The Java is a reference to port *from* and to check the Go *against*, and
 nothing else. Apache's later work is out of scope.
@@ -27,15 +28,20 @@ these documents.
 
 Two things follow, and both matter:
 
-**There is no sync procedure, and no drift to check.** The Java never changes,
-so a ported Go file can never fall out of step with it. Whatever was true about
-the Java when a package was ported stays true.
+**There is no sync procedure, and no drift to check.** A ported Go file cannot
+fall out of step with Java that does not move. This held once, and then did not:
+the merge `3d024173c` of 2026-09-07 brought 25 Apache commits into
+`migration-base` and moved 16 Java files under the port. `track/upstream-sync`
+is the record of what that cost — which `JAVA-BUGS.md` entries it closed, and
+which five sites left the Go behind the new reference. Its task file,
+[`tasks/track-upstream-sync.md`](tasks/track-upstream-sync.md), has the ten
+in-scope files one by one. The rule above is what stands now.
 
 **Mirroring the Java package layout has lost its main justification.** The
 argument for `pdfbox/pdmodel/interchange/logicalstructure` over a Go-shaped
-name was "so an upstream fix can be located." There are no upstream fixes. See
-the open question in [`PLAN.md`](PLAN.md) — this should be settled before
-`slice/1`, because it gets expensive to reverse afterwards.
+name was "so an upstream fix can be located." There are no upstream fixes.
+`slice/1` kept the mirrored layout anyway, and [`PLAN.md`](PLAN.md)'s slice 1
+section records what it settled on and where the Go says so.
 
 ## Branch roles
 
@@ -78,70 +84,75 @@ graph LR
   TI --> TR
 ```
 
-**`slice/1` is the bottleneck, and the only one.** It carries the COS object
-model and the parser. Until it lands, nothing else can start; once it lands,
-five branches open at once. That has two consequences:
+**`slice/1` was the bottleneck, and the only one.** It carries the COS object
+model and the parser. Until it landed nothing else could start; once it landed,
+five branches opened at once. That had two consequences:
 
-- Do not parallelise `slice/1`. One person, done carefully. The object-model
+- It was not parallelised. One person, done carefully, because the object-model
   decision in `PLAN.md` is made here and everything inherits it.
-- Do not start `slice/2` alongside it hoping to save time. It will be rewritten
-  when the object model settles.
+- `slice/2` was not started alongside it to save time. It would have been
+  rewritten when the object model settled.
 
-**After `slice/1`, five branches are genuinely independent:** 2, 5, 6, 7 and 8
-touch disjoint packages and can be worked and merged in any order.
+**After `slice/1`, five branches were genuinely independent:** 2, 5, 6, 7 and 8
+touch disjoint packages and could be worked and merged in any order.
 
-`slice/9` is the only one with two parents — it needs text (3) and images (6),
-plus the raster backend decision `PLAN.md` says to take before starting.
+`slice/9` is the only one with two parents — it needed text (3) and images (6),
+plus the raster backend question, which `PLAN.md`'s slice 9 section settles.
 
 ## Parallel tracks (相互関係なし)
 
-| Track | Depends on | Can start |
+| Track | Depends on | Could start |
 | --- | --- | --- |
-| `track/xmpbox` | **nothing** | today, in parallel with any slice |
+| `track/xmpbox` | **nothing** | any time, in parallel with any slice |
 | `track/scratchfile` | `slice/0` | whenever memory pressure matters |
-| `track/test-backfill` | **nothing** | today — it ports tests, not classes |
+| `track/test-backfill` | **nothing** | any time — it ports tests, not classes |
 | `track/font-embedding` | `slice/4`, `slice/7` | once both are merged |
 | `track/tools` | every slice | once they are all merged |
 | `track/pdfbox-layout` | `slice/4`, and a decision | after the text shaper is chosen |
-| `track/stale-deferrals` | **nothing** | today, and **first** — it is the only one that can find defects in merged work |
-| `track/imageio` | **nothing** | today — `PDImage.Image()` already answers pixels |
-| `track/multipdf` | **nothing** | today — slice 7's writer is all it needs |
-| `track/raster` | `track/imageio`, for one task of it | today; merge after `track/imageio` |
+| `track/stale-deferrals` | **nothing** | any time, and **first** — see below |
+| `track/imageio` | **nothing** | any time — `PDImage.Image()` already answers pixels |
+| `track/multipdf` | **nothing** | any time — slice 7's writer is all it needs |
+| `track/raster` | `track/imageio`, for one task of it | any time; merge after `track/imageio` |
 | `track/java-bug-fixes` | **nothing**, and **last** | once every other branch is merged — see below |
 
 Four of the last five were added once every slice had merged, from a survey that
-compared all 891 in-scope Java classes and 237 Java test classes against the Go
-tree. They cover what `PLAN.md` counts in scope and no slice claimed. Each has a
-file in [`tasks/`](tasks/README.md); the order to take them in is there too, and
-the short version is **`track/test-backfill` first**, because it is the only one
-that can find defects in work already merged rather than adding more of it.
+compared every in-scope Java class and test class against the Go tree;
+[`STATUS.md`](STATUS.md) carries that survey and its counts. They cover what
+`PLAN.md` counts in scope and no slice claimed, and each has a file in
+[`tasks/`](tasks/README.md).
+
+**A branch that can find defects in merged work goes before one that adds more
+of it.** That is the whole of the ordering argument for the two marked
+**first** above — `track/test-backfill` among the earlier ones,
+`track/stale-deferrals` among the last four — and neither is on anything else's
+critical path.
 
 `PLAN.md` was not changed to add those four. It already counted the work; what
 was missing was a branch, and branches are this file's business.
+`track/java-bug-fixes` is the exception: it is not work `PLAN.md` counted and
+forgot to assign, but work the plan's own rules forbade until the port was
+finished, and a branch that suspends one of those rules belongs in the document
+that states them.
 
-**`track/java-bug-fixes` is different, and `PLAN.md` does say so.** It is not
-work `PLAN.md` counted and forgot to assign — it is work the plan's own rules
-forbade, right up until the port was finished. A branch that suspends one of
-those rules belongs in the document that states them.
-
-`xmpbox` is worth calling out: 74 files, 12.3k lines, and `pdfbox` does not
-depend on it — metadata comes back as a raw stream that `xmpbox` parses
-separately. It is the one piece of this project with no ordering constraint at
-all, so it is the right thing to hand to a second person on day one.
+`xmpbox` is worth calling out: nothing in the build depends on it — see
+[`mapping/modules.md`](mapping/modules.md) — so it is the one piece of this
+project with no ordering constraint at all, and the right thing to hand to a
+second person on day one.
 
 ## `track/java-bug-fixes` — the one branch that is not a port
 
 Every branch above ports Java into Go and reproduces its defects on purpose.
-`JAVA-BUGS.md` is the record, and it carries the count: every entry was carried
-in the Go deliberately, with a comment at the site saying so.
+`JAVA-BUGS.md` is the record, and it carries the counts: while the port ran,
+every entry was carried in the Go deliberately, with a comment at the site
+saying so.
 
-**`track/java-bug-fixes` fixes them in the Go.** It is the only branch that
-makes the Go behave differently from the reference, and its task file
-[`tasks/track-java-bug-fixes.md`](tasks/track-java-bug-fixes.md) is the only
-one where the standing rule "never fix a bug that is in the Java" is suspended.
-It still changes no Java, and it deletes no entry from `JAVA-BUGS.md`: a fixed
-bug is still a bug in the Java, and the entry gains a **Fixed in the Go** line
-rather than going away.
+**`track/java-bug-fixes` fixed them in the Go**, and is merged. It is the only
+branch that makes the Go behave differently from the reference, and its task
+file [`tasks/track-java-bug-fixes.md`](tasks/track-java-bug-fixes.md) is the
+only one where the standing rule "never fix a bug that is in the Java" is
+suspended. It still changes no Java, and it deletes no entry from
+`JAVA-BUGS.md`: a fixed bug is still a bug in the Java, and the entry gains a
+**Fixed in the Go** line rather than going away.
 
 **It goes last, and the reason is not caution.** Every branch before it adds
 entries to the file it works from, so taking it early means doing it twice. And
@@ -157,24 +168,16 @@ and "it looked risky" is not one of them.
 
 ## CAUTION — finish the slice
 
-**A slice branch is worked until every file in its scope is ported. Do not
-stop partway.**
-
-- Do **not** stop at a natural-looking pause and report progress as if it were a
-  result. Four files of twenty-four is not a milestone; it is an unfinished
-  branch.
-- Do **not** ask whether to continue. The scope is written in
-  [`PLAN.md`](PLAN.md). Continuing is the default and needs no confirmation.
-- Do **not** treat a partially ported package as deliverable. `STATUS.md`
-  records partial state so it stays visible, not so it can be handed over.
+**A slice branch is worked until every file in its scope is ported. Do not stop
+partway**, and do not ask whether to continue — the scope is written in
+[`PLAN.md`](PLAN.md). The rule in full, with the phases it applies to, is in
+[`tasks/TEMPLATE.md`](tasks/TEMPLATE.md), which every branch file copies.
 
 If one item in the scope is genuinely blocked — it needs a package from a later
 slice, or a decision only the user can make — then port **everything else in the
 slice first**, and say plainly at the end what was left and why. Narrowing the
-slice is not a decision to take quietly.
-
-The slice ends when its demo in `PLAN.md` runs on a real PDF. Until then the
-work is not finished, regardless of how much of it passes.
+slice is not a decision to take quietly. How much of the slice passes is not the
+test of whether it is finished; `PLAN.md`'s definition of done is.
 
 ## Slice lifecycle
 
@@ -199,71 +202,64 @@ someone later asks what a slice actually contained.
 
 A slice merges when: its demo runs on a real PDF, its ported Java tests pass,
 its `STATUS.md` rows are updated, and — from `slice/3` onward — its score
-against the 40-document corpus is recorded in the merge message.
+against the text-extraction corpus is recorded in the merge message.
 
 ## What is not decided here
 
 Whether `migration-base` eventually becomes the default branch, and whether the
 Java tree is eventually deleted once the port no longer needs it as a reference.
-Both stay open until the port does something useful.
+Both were left open until the port did something useful. It does; `trunk` is
+still the default branch and the Java tree is still in place, so both are still
+open and are now the user's to take.
 
 ## The last four tracks (残りの四本)
 
 Added once all fifteen earlier branches had merged. **Not from the 891-class
 survey** -- that survey missed `multipdf` outright and its subtotals do not add
 up to its own headings -- but from the audit that replaced it, which is written
-down in [`STATUS.md`](STATUS.md) with the commands to re-run it. The first cut
-of this section had three tracks and the audit added a fourth, plus items to
-two of the other three.
+down in [`STATUS.md`](STATUS.md) with the commands to re-run it.
 
-| Track | Java classes | What it unblocks |
+| Track | Java classes | What it unblocked |
 | --- | ---: | --- |
 | `track/stale-deferrals` | none -- pieces of merged slices | article beads, `sh` in a written stream, 3 test classes |
 | `track/imageio` | `tools/imageio` ×4, `tools/ExtractImages` | `export:images` |
 | `track/multipdf` | `multipdf` ×3, `tools/PDFMerger`, `tools/OverlayPDF` | `merge`, `overlay` |
-| `track/raster` | `graphics/shading` ×19, `rendering` ×4, `BlendComposite`, `PDPatternContentStream`, `tools/PDFToImage`, `tools/PrintPDF` | `render`, `print`, every deferred pixel comparison |
+| `track/raster` | `graphics/shading` ×19, `rendering` ×4, `BlendComposite`, `PDPatternContentStream`, `tools/PDFToImage`, `tools/PrintPDF` | `render`, every deferred pixel comparison |
 
-**Two of the three depend on nothing and can be worked at the same time.** The
-ordering was taken from the imports of the five commands that are missing, not
-from where the classes sit:
+The ordering was taken from the imports of the five commands that were missing,
+not from where the classes sit:
 
 - **`ExtractImages` does not import `rendering`.** It walks the content stream
   with `PDFGraphicsStreamEngine`, which slice 9 ported, and writes what it finds
   with `ImageIOUtil`. The port already decodes an embedded image to pixels —
-  `PDImage.Image()` answers a `go image.Image` — so nothing here waits for a
-  rasteriser. `track/imageio` is therefore small, independent, and worth taking
-  first even though `track/raster` is the branch everyone is waiting for.
+  `PDImage.Image()` answers a `go image.Image` — so nothing there waited for a
+  rasteriser. `track/imageio` was therefore small, independent, and worth taking
+  first even though `track/raster` was the branch everyone was waiting for.
 - **`PDFMerger` and `OverlayPDF` import only `multipdf`.** No raster, no
-  imageio. `track/multipdf` is off the critical path entirely.
+  imageio. `track/multipdf` was off the critical path entirely.
 - **`PDFToImage` imports both `rendering` and `imageio`.** That single command
-  is the only edge between the two branches, and it is the last task of
-  `track/raster`, so the two can be worked in parallel as long as
-  `track/imageio` merges first.
+  is the only edge between the two branches, and it was the last task of
+  `track/raster`, so the two could be worked in parallel as long as
+  `track/imageio` merged first.
 
-**The critical path is `track/imageio` → `track/raster`, and nothing else is on
-it.** `track/multipdf` and `track/stale-deferrals` run alongside and merge
-whenever they are ready.
+**The critical path was `track/imageio` → `track/raster`, and nothing else was
+on it.** `track/multipdf` and `track/stale-deferrals` ran alongside, and
+`track/stale-deferrals` went first under the rule above. It exists because that
+rule was not applied a second time after `track/test-backfill`: four deferrals
+in the tree named a dependency that had since been ported, and one test class
+was never recorded at all.
 
-```mermaid
-graph LR
-  TI["track/imageio<br/>4 + 1 classes<br/>small"] --> TR["track/raster<br/>25 + 2 classes<br/>the big one"]
-  TM["track/multipdf<br/>3 + 2 classes<br/>off the critical path"]
-  TD["track/stale-deferrals<br/>no new classes<br/>take it first"]
-```
+`track/raster` carried the last decision this migration had left. `PLAN.md`'s
+slice 9 section names three ways to take it and slice 9 took the fourth — put
+the raster behind an interface and ship everything above it — which is why
+`rendering.Backend` existed with no implementation. Choosing one was that
+branch's A0, and it was a substitution rather than a port:
+`java.awt.Graphics2D` has no Go equivalent, so what the branch wrote is measured
+against the Java's output rather than translated from its source.
+`track/pdfbox-layout` is the worked precedent for how that is done. What it
+chose, and what stays unported by name because of it, is in `PLAN.md`'s slice 9
+section and in [`STATUS.md`](STATUS.md).
 
-**`track/stale-deferrals` is not on the critical path and should still be taken
-first.** It is the only one of the four that can find a defect in work already
-merged; the other three add surface on top of it. That is the argument
-`track/test-backfill` was taken on, and this branch exists because the same
-argument was not applied a second time: four deferrals in the tree name a
-dependency that has since been ported, and one test class was never recorded at
-all.
-
-`track/raster` is the last decision this migration has left. `PLAN.md`'s slice 9
-section names three ways to take it and slice 9 took the fourth — put the raster
-behind an interface and ship everything above it — which is why `rendering.
-Backend` exists with no implementation. Choosing one is that branch's A0, and it
-is a substitution rather than a port: `java.awt.Graphics2D` has no Go
-equivalent, so what the branch writes is measured against the Java's output
-rather than translated from its source. `track/pdfbox-layout` is the worked
-precedent for how that is done.
+`tools/PrintPDF` is what the table above lists for `track/raster` and that
+branch did not build: it waits on a printing system, not on a rasteriser. See
+`PLAN.md`, "What is left".

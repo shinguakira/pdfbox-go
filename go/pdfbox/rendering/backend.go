@@ -11,7 +11,8 @@ package rendering
 // above it -- which paint applies, what the stroke is made of, what the clip
 // intersects to, which shading is evaluated where, whether an optional content
 // group is visible -- is ported and runs; what a Backend does with the calls is
-// the drawing, and no Backend ships in this slice. See migration/STATUS.md.
+// the drawing. Slice 9 shipped none; rendering/raster is the one track/raster
+// wrote. See migration/STATUS.md.
 
 import (
 	"errors"

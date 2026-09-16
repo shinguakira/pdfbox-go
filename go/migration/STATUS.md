@@ -4652,8 +4652,10 @@ three the Java gets wrong.
 - The pixel half of `OverlayTest` and of `checkMergeIdentical`. The port
   compares content streams and form XObjects instead, against the same model
   files; what a renderer would add is a second opinion on identical marks.
-- The source's /Threads, its /UserProperties and the /PageMode are not merged,
-  all three because the Java does not merge them; JAVA-BUGS.md 82, 83 and 84.
+- Nothing else. The source's /Threads, its /UserProperties and the /PageMode
+  went unmerged here because the Java does not merge them, and
+  `track/java-bug-fixes` then merged all three in the Go: JAVA-BUGS.md 82, 83
+  and 84, each with a **Fixed in the Go** line.
 
 ## `track/java-bug-fixes` — the branch that is not a port
 

@@ -2,8 +2,9 @@
 
 Slice 4 — text extraction, hard fonts. Drives the corpus score up.
 
-**Branch: `slice/4-<name>`** — from and back to `migration-base`.
-Depends on `slice/3`.
+**Branch: `slice/4-text-cid-cff`** — from and back to `migration-base`.
+Depends on `slice/3`. Merged. What it delivered is in `migration/STATUS.md`,
+"Slice 4 — text from CID and CFF fonts".
 
 ## Rules — do not break these
 
@@ -25,24 +26,7 @@ Depends on `slice/3`.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -113,7 +97,7 @@ The bulk of `fontbox`, and the CID half of the font model.
 - [x] C3. `go test ./...` green
 - [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md`
 - [x] C5. Update `migration/STATUS.md`
-- [x] C6. Report the corpus score as *N of 40*, and the change from slice 3 — **34 of 40 unsorted, 33 sorted**, from 16 either way
+- [x] C6. Report the corpus score as *N of 40*, and the change from slice 3 — both are in `STATUS.md`, "The corpus"
 
 ---
 
@@ -187,6 +171,5 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] Nothing outside this branch, provided `slice/3` has landed. If the loader
-      decision in slice 3 went the other way, the corpus still cannot run and
-      C6 is unreportable.
+- [ ] Nothing outside this branch. It needed `slice/3` to have ported the
+      loader, which it did, so the corpus runs and C6 is reportable.

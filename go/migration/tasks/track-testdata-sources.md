@@ -27,62 +27,17 @@ work stands and what is left.
   `corpus -oracle` must not report more disagreements than before it.
 - **Pure Go**, and no new dependency without a decision.
 
-## Where the test data stands, 2026-09-15
+## Where the test data stands
 
-### On disk
+What is on disk, tier by tier, and what each suite reaches:
+[`../TESTDATA.md`](../TESTDATA.md). What is not fetched yet, counted per
+project: [`../TESTDATA-CANDIDATES.md`](../TESTDATA-CANDIDATES.md). Where the
+comparison against PDFBox stands, over all 5,090 files on disk outside the
+repository: `TESTDATA.md`, "Where it stands".
 
-| Source | PDFs | Where | Compared with PDFBox |
-| --- | ---: | --- | --- |
-| PDFBox, committed | 179 — 166 in the Java test resources, 13 elsewhere | the repository | through the ported Java tests |
-| PDFBox, downloaded by its build | 58 PDFs, among 74 of the 78 files the poms declare | `pdfbox/target`, `examples/target`, `fontbox/target` | yes |
-| veraPDF corpus | 2,908 | `go/testdata/corpus/verapdf` | yes |
-| qpdf, `qpdf/qtest/qpdf` | 639 | `go/testdata/corpus/qpdf` | yes |
-| pdf.js, everything its tests use | 1,443 — 982 committed in `test/pdfs`, 459 named by `.link` stubs, 2 committed elsewhere | `go/testdata/corpus/pdfjs` | yes, with the passwords its tests use for its 12 encrypted files |
-| cabinet-of-horrors | 24 | `go/testdata/corpus/cabinet-of-horrors` | yes |
-| SafeDocs targeted | 11 | `go/testdata/corpus/safedocs-targeted` | yes |
-| PDF 2.0 examples | 7 | `go/testdata/corpus/pdf20examples` | yes |
-| text-rendering-tests | none; test fonts | `go/testdata/corpus/text-rendering-tests` | no — shaping ground truth, not PDFs |
-
-The four downloads that no longer fetch are all in `benchmark` and read by no
-test.
-
-### Not fetched
-
-| Source | PDFs | How it would be fetched | What it is for |
-| --- | ---: | --- | --- |
-| pdf.js `test/pdfs/sig_corpus` | 8 | generated, not downloaded — see U7 | signed PDFs for testing Firefox's signature panel by hand |
-| PoDoFo `podofo-resources` | 102 | not in `fetch-corpus.ps1` yet | one file per failure mode: every RC4 and AES key length, xref recovery, broken tables |
-| qpdf, the rest | 78 | a change to the qpdf suite's subtree | `qpdf/qtest/storage` 2, `examples/qtest` 49, `compare-for-test/qtest` 21, `libtests/qtest` 6 |
-| PDFium `testing/resources` | 301 | not in the script | renderer input, with the expected PNGs beside it |
-| iText, Java and .NET | 6,897 and 6,960 | not in the script | the largest set by far; AGPL, and wants a decision on how much to carry |
-| MuPDF `tests.git` | not counted | a separate repository | renderer questions only |
-| SafeDocs issue-tracker corpus, batch 1 | 1.8 GB | tier 3 | every PDF attached to a PDFBOX issue; may contain malicious files |
-
-### Compared with PDFBox
-
-Over all 5,090 files on disk outside the repository:
-
-```
-5090 files, 27 of them encrypted and skipped
-  open    both 5037, neither 53, behind 0, ahead 0
-  pages   0 disagree
-  text    both 5032, neither 5, behind 0, ahead 0
-  chars   5030 the same length, 2 not
-
-  2 of 5090 files disagree (0.04%)
-```
-
-- **2 disagreements, both Java bugs the Go fixes on purpose.**
-  `pdfjs/bug1175962.pdf` is JAVA-BUGS 15 and `pdfjs/poppler-90-0-fuzzed.pdf` is
-  JAVA-BUGS 30; each entry now says what the file shows. See U6.
-- **27 encrypted files are compared only on refusing them.** See U8.
-- Everything else agrees, `PDFBOX-4131-0.pdf` included.
-
-**What "agrees" covers.** The comparison is whether a document opens, how many
-pages it has, whether its text extracts, and **how many characters** that text
-has. It does not compare which characters they are, nor rendering, forms,
-annotations, saving, or image extraction. A wrong character in the right place,
-or a wrong pixel, passes.
+Two files disagree, both Java bugs the Go fixes on purpose — JAVA-BUGS 15 and
+30, and whether the second fix stays is U6. The 27 encrypted files are compared
+only on refusing them, which is U8.
 
 ### Found and fixed on this branch
 
@@ -95,8 +50,7 @@ disagree, the same two.
   virtual call. It was behind 12 of pdf.js's 14 first disagreements and behind
   `PDFBOX-3951`, and it moved Type 0 glyphs in rendering too. Fixed in
   `go/pdfbox/pdmodel/font/pdfont.go`; pinned by
-  `TestType0DisplacementIsTheDescendantWidth`. `TESTDATA.md`, "pdf.js against
-  the Java", has the rest.
+  `TestType0DisplacementIsTheDescendantWidth`.
 - **The Type 0 half of the vertical width scaling was never ported.**
   `LegacyPDFStreamEngine.ShowGlyph` scaled a vertical `PDTrueTypeFont`'s width
   by 1000 / `unitsPerEm` and not a `PDType0Font`'s over a `PDCIDFontType2`.

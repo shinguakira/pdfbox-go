@@ -14,13 +14,12 @@ what was found on the first date, it says so and keeps that date's numbers.
 
 **Not yet measured here: the page purge.** On 2026-09-16 `track/testdata-sources`
 ported `PDPage.removePageResourceFromCache` and the call to it that ends
-`PDFTextStripper.processPage`, which lets a processed page's resources out of
-the document's cache. On this page's 3,597 documents it makes a pass allocate
-4.4% more, 6,208 MB against 5,944, with the same characters out. What it does to
-time could not be told apart from the noise that day, with other programs using
-4.8 to 6.2 cores, so the tables below are the code before it.
+`PDFTextStripper.processPage`. On this page's 3,597 documents it makes a pass
+allocate 4.4% more with the same characters out, and what it does to time could
+not be told apart from the noise that day, so the tables below are the code
+before it. The runs are in
 [`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md), "Found in
-review", has the runs.
+review".
 
 `go/cmd/bench` and `migration/oracle/JavaBench.java` print the same numbers in
 the same shape; [`scripts/run-oracle.ps1`](scripts/run-oracle.ps1) builds the
@@ -81,8 +80,7 @@ The port got 4.5× faster, used 5.3× less CPU and held 3.2× less heap. PDFBox
 moved within the noise, which is what it should do: its code did not change,
 only the machine's state around it. What changed the port is in
 [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md), "What happened when it was carried
-out": above all the page tree, which handed out pages without the document's
-resource cache, so every font lookup built its font again.
+out".
 
 ## CPU, which is where the headline changes shape
 
@@ -99,17 +97,16 @@ pass, both sides, as process CPU time; the median of three rounds, run in turn:
 
 **PDFBox's best pass is 1.46× faster, and it spends 2.9× the CPU to get there.**
 Over the whole process — the warmup pass the JIT is still compiling through, and
-the timed one — the port finishes first. The rest of PDFBox's advantage is bought
-with cores: the JIT compiler threads put it at 2.93 cores where the port sits at
-1.11.
+the timed one — the port finishes first. The rest of PDFBox's advantage is
+bought with cores, by the JIT compiler threads.
 
 Which number matters depends entirely on the deployment. On an idle machine with
 cores to spare and a process that lives long enough to warm up, the best pass is
-the answer and PDFBox is faster by 1.46×. Where CPU is what is counted — a
-one-core quota, a bill per CPU-second — the CPU column is the answer, and the
-port needs 2.9× less. Neither was measured under an actual quota; both are read
-off the table above. For a process that handles a few documents and exits, see
-"Starting up".
+the answer and PDFBox is faster. Where CPU is what is counted — a one-core
+quota, a bill per CPU-second — the CPU column is the answer, and the port needs
+2.9× less. Neither was measured under an actual quota; both are read off the
+table above. For a process that handles a few documents and exits, see "Starting
+up".
 
 ### Where those cores go, and whether the port is missing something
 
@@ -220,8 +217,8 @@ The port's resident set is now below PDFBox's even with PDFBox's heap capped at
 
 ## Four ways to measure this that do not work
 
-Each of these was tried first, on 2026-09-13, and produced a confident wrong
-answer. The numbers in this section are that date's.
+Each was tried first, on 2026-09-13, and produced a confident wrong answer. The
+numbers in this section are that date's.
 
 **Timing a small document once.** `time.Now()` on this machine resolves about
 7µs, and 2,516 of the 3,597 files are veraPDF clause tests a few hundred bytes
@@ -239,8 +236,8 @@ JVM heap. Both sides now report the peak heap in use, sampled every millisecond:
 sum of `MemoryPoolMXBean.getPeakUsage()` over the heap pools. Each pool reaches
 its peak at its own moment — the young generation just before a collection, the
 old one somewhere else — so the sum describes a heap that never existed, and it
-is never smaller than the real peak. Review caught it: the default run went from
-638.4 MB to 593.6 MB when the whole heap was sampled instead.
+is never smaller than the real peak. Sampling the whole heap instead took the
+default run from 638.4 MB to 593.6 MB.
 
 **Comparing two default configurations.** Both runtimes use what they are given.
 PDFBox peaked at 513 MB under `-Xmx4g` and at 94 MB under `-Xmx96m` on the 40
@@ -248,10 +245,9 @@ documents of "Memory" below, extracting identical text either way. A
 default-vs-default number compares two GC settings, not two implementations. See
 "Memory" for the number that means something.
 
-And one presentational error worth naming, because it flattered the port:
-comparing the two `max` columns. Those were *different documents* — on
-2026-09-13 the port's slowest was not PDFBox's slowest — and dividing them gave
-"20×" where the same document was **112×**.
+And one presentational error: comparing the two `max` columns. Those were
+*different documents* — on 2026-09-13 the port's slowest was not PDFBox's
+slowest — and dividing them gave "20×" where the same document was **112×**.
 
 ## Where the time actually goes
 
@@ -296,8 +292,7 @@ yet known.
 ## What was fixed
 
 Before the performance plan, on 2026-09-13: two defects, both found by this
-benchmark, both verified against the oracle afterwards (`0 of N files
-disagree`). The numbers in this section are that date's. What the plan fixed
+benchmark. The numbers in this section are that date's. What the plan fixed
 after them is in [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md).
 
 ### The predictor's row, in `filter`
@@ -311,28 +306,16 @@ after them is in [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md).
 
 The port worked the row out as 536,870,913 bytes, and `decodePredictor`
 allocated two of them — **a gigabyte of zeroed memory from a 531-byte file**.
-
-**The first fix had the right symptom and the wrong cause.** It saw that
-`536870913 * 8` wraps to 8 in Java's 32-bit `int`, made the port's arithmetic
-wrap the same way, and wrote down that PDFBox's row is one byte. It is not.
-`Predictor.wrapPredictor` reads `/Colors` through `Math.min(..., 32)` before the
-row length is worked out, so PDFBox's row for this file is 32 bytes. The wrap
-took the time to 0.71 ms and still gave a different answer from the reference:
-over 40 bytes of data, one-byte rows and 40 bytes out, where PDFBox has 32-byte
-rows and 64 bytes out. Review caught it.
-
-What is there now is the clamp, where Java has it, and Java's 32-bit arithmetic
-all through the predictor — `/BitsPerComponent` and `/Columns` are not clamped
-and can still wrap. Matching PDFBox's output case by case turned up the rest: the
+PDFBox's row for this file is 32 bytes: `Predictor.wrapPredictor` reads
+`/Colors` through `Math.min(..., 32)` before the row length is worked out. What
+is there now is that clamp, where Java has it, and Java's 32-bit arithmetic all
+through the predictor — `/BitsPerComponent` and `/Columns` are not clamped and
+can still wrap. Matching PDFBox's output case by case turned up the rest: the
 last row completed with zeros, a row's algorithm byte read as a signed Java
 byte, and a predictor of 0 or below passing the data through whatever the other
-parameters say. `TestPredictorAnswersWhatPDFBoxAnswers` holds PDFBox's own
-output for each case; JAVA-BUGS 88 is the one case where PDFBox has no answer.
-
-`conventions/java-to-go.md` already said which width to use: *"Java int is
-32-bit: use int32 where the width is load-bearing (format fields,
-overflow-sensitive arithmetic)"*. The width was load-bearing, and it was not the
-whole of it.
+parameters say. [`STATUS.md`](STATUS.md), "Slice 1 — `pdfbox/filter`", records
+it with the tests that hold PDFBox's own output for each case; JAVA-BUGS 88 is
+the one case where PDFBox has no answer.
 
 PDFBox's own `SECURITY.md` puts disproportionate resource consumption from small
 attacker-controlled inputs in scope, so this was not only a speed defect.
@@ -343,16 +326,14 @@ The port's table switch is identical to `TTFParser.readTable` **except for one
 extra case**: `GPOS`. PDFBox has no glyph positioning reader at all — GSUB is
 there, GPOS is not — and an unknown tag becomes a plain `TTFTable` that reads
 nothing. So `parseTables` costs Java nothing for GPOS, and cost the port a full
-parse on every font load.
+parse on every font load: **work PDFBox does not do**, on a path that never uses
+it. Extracting text from `PDFBOX-5927.pdf`, a one-megabyte document, the port
+held 464 MB against PDFBox's 59.4 MB, and 52 MB of that was `readPairSet` —
+kerning pairs, parsed while extracting text. The only caller of `GPOS()` in the
+tree is the shaper, and `table()` already reads on demand.
 
-Not a slower version of the same work: **work PDFBox does not do**, on a path
-that never uses it. Extracting text from `PDFBOX-5927.pdf`, a one-megabyte
-document, the port held 464 MB against PDFBox's 59.4 MB, and 52 MB of that was
-`readPairSet` — kerning pairs, parsed while extracting text. The only caller of
-`GPOS()` in the tree is the shaper, and `table()` already reads on demand.
-
-Left until asked for. **464 MB → 156 MB on that document**, and across the whole
-corpus:
+Left until asked for, which `TestGPOSIsNotReadUntilAsked` pins. **464 MB →
+156 MB on that document**, and across the whole corpus:
 
 | | before | after |
 | --- | ---: | ---: |
@@ -366,22 +347,15 @@ were under a second of thirty-eight.
 
 ## What was not fixed on 2026-09-13, and what became of it
 
-The page said two things were not worth fixing. Carrying out the plan showed
-that neither diagnosis held.
-
+The page said two things were not worth fixing, and neither diagnosis held.
 **`compress/flate`** was named as most of the remaining gap on the heavy
-documents: the 112× document spent 26% of its time in `huffSym`, and Go's inflate
-is pure Go where PDFBox's is native zlib. Inflate was not the cause. In the
-plan's profile, 97% of the inflating was inflating font files, for fonts
-built again on every lookup because the page tree handed out pages without the
-resource cache; `PERFORMANCE-PLAN.md`, "Where the plan was wrong", has the
-measurements. With that fixed, and the same `compress/flate` doing the inflating,
-that document, `PDFBOX-4423-000746.pdf`, takes 103.8 ms against PDFBox's 97.7.
-
-**`encoding.newEncodingBase`, 58.75 MB on `PDFBOX-4418-000671.pdf`,** was put down
-as a faithful 250-entry pre-size with 15,422 encodings live at the peak. After
-the same fix it is out of the sixty largest allocators, and that document takes
-209.9 ms against PDFBox's 184.6.
+documents — the 112× document, `PDFBOX-4423-000746.pdf`, spent 26% of its time
+in `huffSym`, and Go's inflate is pure Go where PDFBox's is native zlib. **`encoding.newEncodingBase`,
+58.75 MB on `PDFBOX-4418-000671.pdf`,** was put down as a faithful 250-entry
+pre-size with 15,422 encodings live at the peak. Both were symptoms of fonts
+being built again on every lookup: [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md),
+"Where the plan was wrong", has the measurements, and what those two documents
+take now is in "Where the time actually goes" above.
 
 ## Memory
 
@@ -437,19 +411,10 @@ CPU time and peak resident set are its own.
 ## Leads
 
 Moved into [`PERFORMANCE-PLAN.md`](PERFORMANCE-PLAN.md), which profiles the 40
-heaviest documents rather than one, and corrected there. What the list here got
-wrong, on 2026-09-13:
-
-- It put `bufio.ReadByte` down to the predictor being read a byte at a time, and
-  said "unlike inflate it is the port's own code". Profiled across the 40 rather
-  than the one document the list used, 89% of those calls are made inside
-  `compress/flate` — `huffSym` pulling its input one byte at a time. They are
-  inflate.
-- It said inflate was worth touching "only if someone is willing to revisit the
-  pure-Go rule". Part of it is not: the port created a new decompressor for
-  every stream, and inflated into a buffer of its own before copying the result
-  out, which Java's `FlateFilter` does not do. The standard library alone
-  removed both.
+heaviest documents rather than one, and corrected there: what this list said
+about `bufio.ReadByte` being the port's own code, and about inflate needing the
+pure-Go rule revisited, is answered by "What the profiles say" and item 1 of
+"The work".
 
 What is left to look at, from the 2026-09-15 numbers: the four small veraPDF
 files above 5×, and the floor, 76 MB against PDFBox's 48.

@@ -4,11 +4,9 @@ Track — `tools`, the command-line utilities.
 
 **Branch: `track/tools`** — from and back to `migration-base`.
 
-This file used to be `tools-unassigned.md`, and existed to make a gap visible
-rather than to close it: `PLAN.md` counted `tools` in scope, deliberately kept
-it out of the out-of-scope list, and then never mentioned it again — no slice,
-no track, no branch. The gap is closed now. The argument the old file made is
-kept below, because it is still the reason this is a track and not a slice.
+`PLAN.md` counts `tools` in scope and deliberately keeps it out of the
+out-of-scope list, then never mentions it again — no slice, no track, no
+branch. This branch closes that gap.
 
 ## Rules — do not break these
 
@@ -30,24 +28,7 @@ kept below, because it is still the reason this is a track and not a slice.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Why a track, and why now
 
@@ -58,9 +39,7 @@ nothing and depends on everything.
 
 **Why now.** The reason it could not be a track before was that its libraries
 did not exist. They do: every slice 1 through 9 and both earlier tracks are
-merged into `migration-base`. The old file listed three options for where
-`tools` should live; the third — "a track of its own, once the libraries under
-it exist" — is the one that became true.
+merged into `migration-base`.
 
 | Command | Needs | State |
 | --- | --- | --- |
@@ -68,30 +47,31 @@ it exist" — is the one that became true.
 | `DecompressObjectstreams`, `WriteDecodedDoc` | slice 1 | ready |
 | `ExtractText`, `PDFText2HTML`, `PDFText2Markdown` | slice 3 | ready |
 | `Decrypt`, `Encrypt` | slice 5 | ready |
-| `ExtractImages`, `ImageToPDF` | slice 6 | ready, but see the raster note |
-| `PDFMerger`, `PDFSplit`, `OverlayPDF`, `TextToPDF` | slice 7 | ready |
+| `ExtractImages`, `ImageToPDF` | slice 6 | `ImageToPDF` ready; `ExtractImages` held |
+| `PDFMerger`, `PDFSplit`, `OverlayPDF`, `TextToPDF` | slice 7 | `PDFSplit` and `TextToPDF` ready; the other two held, for `multipdf` |
 | `ExportFDF`, `ImportFDF`, `ExportXFDF`, `ImportXFDF` | slice 8 | ready |
-| `PDFToImage`, `PrintPDF` | slice 9 | **blocked** — see below |
+| `PDFToImage`, `PrintPDF` | slice 9 | held — see below |
 | `ExtractXMP` | `track/xmpbox` | ready |
 
 ## Scope
 
 26 Java main files, 6 Java test classes.
 
-**Not all 26 are portable today.** Eight of them reach `javax.imageio` or
-`java.awt`, and `rendering.Backend` — the interface slice 9 put the raster half
-behind — has no implementation:
+**Not all 26 are portable on this branch.** Eight of them reach `javax.imageio`
+or `java.awt`, and `rendering.Backend` — the interface slice 9 put the raster
+half behind — has no implementation when this branch runs:
 
 | Java | Why it is held back |
 | --- | --- |
 | `PDFToImage`, `PrintPDF` | render a page to a raster. Nothing implements `rendering.Backend` |
-| `imageio/ImageIOUtil`, `TIFFUtil`, `JPEGUtil`, `MetaUtil` | `javax.imageio` writers, and its metadata trees. Go's `image/png`, `image/jpeg` and a TIFF library are a substitution, not a transliteration, and the substitution is only worth choosing once there is a raster to write |
+| `imageio/ImageIOUtil`, `TIFFUtil`, `JPEGUtil`, `MetaUtil` | `javax.imageio` writers, and its metadata trees. Go's `image/png`, `image/jpeg` and a TIFF library are a substitution, not a transliteration |
 | `ExtractImages` | writes the images it extracts through `ImageIOUtil` |
 | `PDFBox` (the dispatcher) | lists every command, so it can only be finished last |
 
-So the branch is roughly **18 commands portable now, 7 held for the raster
-backend, and the dispatcher last.** Do not port a weakened `PDFToImage` that
-writes nothing; record it as held and say what it is waiting for.
+Do not port a weakened `PDFToImage` that writes nothing; record it as held and
+say what it is waiting for, in `go/tools/notbuilt.go`. That file is the live
+list of what is not built, held against what the dispatcher registers by
+`TestSubcommandNamesAreJavas`.
 
 ### Two things specific to this module
 
@@ -107,9 +87,9 @@ writes nothing; record it as held and say what it is waiting for.
 
 ### Where it goes in the Go tree
 
-`STATUS.md` has been carrying a row for this as "phase 7 `cmd/pdfbox`", which
-`PLAN.md` does not say. `go/cmd/` does not exist yet. Settle the directory in
-A0 and make `STATUS.md` agree with whatever is chosen.
+`STATUS.md`'s phase 7 row has been carrying "`cmd/pdfbox`", which `PLAN.md` does
+not say, and `go/cmd/` does not exist when this branch opens. Settle the
+directory in A0 and make `STATUS.md` agree with whatever is chosen.
 
 ---
 
@@ -163,8 +143,7 @@ port has already paid for more than once.
 - [x] C3. `go test ./...` green
 - [x] C4. Record every Java bug found on the way in `migration/JAVA-BUGS.md`
 - [x] C5. Update `migration/STATUS.md` — this branch's section, and the phase 7
-      row, which currently says `not started` for a directory the plan never
-      named
+      row, which said `not started` for a directory the plan never named
 
 ---
 
@@ -227,8 +206,12 @@ And for this branch in particular:
 
 # Blocked
 
-- [ ] `PDFToImage`, `PrintPDF`, `ExtractImages` and the four `imageio` helpers
-      need a raster. `rendering.Backend` is the interface slice 9 defined for
-      it and nothing implements it. **That is a design decision outside this
-      branch** — what Go draws with — and this branch must not take it in
-      passing. Port the other 18, record these 7 as held, and name the decision.
+- [x] `PDFToImage`, `PrintPDF`, `ExtractImages` and the four `imageio` helpers
+      were recorded here as needing a raster. **That is a design decision
+      outside this branch** — what Go draws with — and this branch must not take
+      it in passing. It ported the rest and recorded these seven as held.
+      **Closed since, and five of the seven were never waiting for a raster:**
+      `track/imageio` took `ExtractImages` and the four helpers, and
+      `track/raster` took `PDFToImage` and wrote `rendering.Backend`'s
+      implementation. `PrintPDF` alone is still not built; `STATUS.md` under
+      "Deferrals, and which branch closed each" has the rest.

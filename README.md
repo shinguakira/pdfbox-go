@@ -47,14 +47,7 @@ How closely it matches
 PDFBox itself is the oracle, and it is run rather than consulted.
 [`scripts/run-oracle.ps1`](go/migration/scripts/run-oracle.ps1) compiles the Java
 in this repository and puts it over the same documents, and `cmd/corpus -oracle`
-reports every disagreement:
-
-```bash
-pwsh go/migration/scripts/run-oracle.ps1 -Passwords go/testdata/corpus/pdfjs/_passwords.tsv
-cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfjs/_passwords.tsv \
-    -oracle testdata/oracle/java-corpus.tsv \
-    ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
-```
+reports every disagreement.
 
 Over **5,090 documents** — PDFBox's own regression files, veraPDF's ISO clause
 tests, qpdf's damaged files, the SafeDocs parser traps, and every PDF pdf.js
@@ -72,7 +65,8 @@ chars   5030 the same length, 2 not
 There is no document in that corpus PDFBox reads and this port does not. The two
 that disagree are two bugs in the Java that this port fixes on purpose.
 That run is of 2026-09-15; [`go/migration/TESTDATA.md`](go/migration/TESTDATA.md)
-is where the corpus, the current result and both of those live.
+is where the corpus, the commands that produce this table, the current result
+and both of those disagreements live.
 
 Speed and memory
 ----------------
@@ -90,16 +84,16 @@ machine, the method and the rest. There is no single number:
 | cores used | 1.11 | 2.93 | |
 | cold start, one document | **59 ms** | 615 ms | **10.4× faster** |
 | peak heap, PDFBox at `-Xmx4g` | **250 MB** | 590 MB | **2.4× smaller** |
-| lowest peak heap that still extracts the 40 heaviest documents unchanged | 76 MB | 48 MB | 1.6× more |
+| lowest peak heap that still extracts 40 heavy documents unchanged | 76 MB | 48 MB | 1.6× more |
 | minimum to ship | **15.6 MB** | 49.0 MB | **3.1× smaller** |
 
 2,410 of the 3,597 documents are faster here, and none of the ten slowest takes
-twice as long as in PDFBox. Before the performance work of 2026-09-15 the same
-table read 36.8 s against 5.8 s and ten documents were 79% of the time: the page
-tree handed out pages without the resource cache, so every font lookup built its
-font again. The full analysis, including four ways of measuring this that produce
-confident wrong answers, is in
-[`go/migration/BENCHMARK.md`](go/migration/BENCHMARK.md).
+twice as long as in PDFBox. That is after the performance work of 2026-09-15,
+which [`go/migration/PERFORMANCE-PLAN.md`](go/migration/PERFORMANCE-PLAN.md)
+records — what it started from, what each change bought and where the plan was
+wrong. [`go/migration/BENCHMARK.md`](go/migration/BENCHMARK.md) carries the rest
+of the numbers, including four ways of measuring this that produce confident
+wrong answers.
 
 Building
 --------
@@ -145,10 +139,11 @@ fix a bug found while reading it. A bug faithfully carried can be found later by
 diffing against the Java; a bug silently corrected during the port cannot.
 
 Java bugs found while porting are recorded in
-[`go/migration/JAVA-BUGS.md`](go/migration/JAVA-BUGS.md) — 88 entries so far,
-each saying what the Java does, what correct would be, where the Go carries it,
-and how sure the author was. One branch, `track/java-bug-fixes`, then corrected
-61 of them in the Go on purpose; every one of those says so at the site.
+[`go/migration/JAVA-BUGS.md`](go/migration/JAVA-BUGS.md), each entry saying what
+the Java does, what correct would be, where the Go carries it, and how sure the
+author was. That file carries the count. One branch, `track/java-bug-fixes`, then
+corrected most of them in the Go on purpose, and every one of those says so both
+in its entry and at the site.
 
 **This repository has no relationship with Apache PDFBox going forward.** No pull
 requests are opened against `apache/pdfbox`, nothing is pulled or merged from it,

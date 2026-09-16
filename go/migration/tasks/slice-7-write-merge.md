@@ -3,8 +3,10 @@
 Slice 7 — write and manipulate. The first slice that produces a PDF rather than
 consuming one.
 
-**Branch: `slice/7-<name>`** — from and back to `migration-base`.
-Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 6 and 8.
+**Branch: `slice/7-write-merge`** — from and back to `migration-base`.
+Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 6 and 8. Merged.
+What it delivered is in `migration/STATUS.md`, "Slice 7 — write and
+manipulate".
 
 ## Rules — do not break these
 
@@ -26,24 +28,7 @@ Depends on `slice/1` only. Independent of slices 2, 3, 4, 5, 6 and 8.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -64,19 +49,14 @@ slice; they are the incremental-save machinery.
 # Phase A — Write the tests
 
 - [x] A1. `pdfbox/pdfwriter` — 2 of the 5 Java tests are portable now and are
-      ported; `OperatorNameTest` in full, `COSWriterTest` for the 2 of its 4
-      that do not need slice 8 or the network.
-      `COSWriterCompressionPoolTest`, `COSDocumentCompressionTest` and
-      `ContentStreamWriterTest` need slice 8 or a renderer. Each is named with
-      its reason in `migration/STATUS.md`
-- [x] A2. `pdfbox/multipdf` — `PageExtractorTest` ported in full. The other 6
-      need `PDFMergerUtility`, `LayerUtility`, `PDPageContentStream` or a
-      renderer, which slice 8 brings; each is named with its reason in
-      `migration/STATUS.md`
+      ported. Which 2, and what each of the other 3 was waiting for, are in
+      `migration/STATUS.md`, "Which Java tests are ported, and which are not"
+- [x] A2. `pdfbox/multipdf` — `PageExtractorTest` ported in full; the other 6
+      wait on files this branch does not port, and are in the same table
 - [x] A3. `pdmodel/font` — port `TestFontEmbedding` and `TestToUnicodeWriter`,
       which slice 3 deferred here because they write PDFs.
-      `TestToUnicodeWriter` is ported in full, with `ToUnicodeWriter` beside it.
-      `TestFontEmbedding` needs `PDPageContentStream` and `TestPDFToImage`
+      `TestToUnicodeWriter` is ported in full, with `ToUnicodeWriter` beside it;
+      `TestFontEmbedding` waited on more and `track/font-embedding` took it
 - [x] A4. **Close the slice 1 open debt.** `migration/STATUS.md` records it:
       the `accept()` tests in `cos` assert the visitor and a direct `WritePDF`
       call, because `COSWriter` did not exist. Now it does. Restore the byte
@@ -94,12 +74,11 @@ slice; they are the incremental-save machinery.
       4 files of `pdfwriter/compress`, which hold the object-stream
       compression pool
 - [x] B3. `pdfparser/PDFXRefStream` — writing the cross-reference stream
-- [x] B4. `pdfbox/multipdf` — `PageExtractor` and `PDFCloneUtility` in full,
-      `Splitter` as far as slice 8 allows. `PDFMergerUtility`, `LayerUtility`
-      and `Overlay` are deferred to slice 8; the reason for each, and the seven
-      `Splitter` methods left out, are in `migration/STATUS.md`.
-      The five Java names this line listed are `PDFMergerUtility`, `Splitter`,
-      `PageExtractor`, `LayerUtility` and `Overlay`
+- [x] B4. `pdfbox/multipdf` — the six files are `PDFCloneUtility`,
+      `PageExtractor`, `Splitter`, `PDFMergerUtility`, `LayerUtility` and
+      `Overlay`. The first two are ported in full here and `Splitter` as far as
+      this branch could take it; `track/multipdf` finished the rest.
+      `migration/STATUS.md` says which methods were left and what that cost
 - [x] B5. `PDDocument.save` and the incremental save path
 
 ---
@@ -108,7 +87,7 @@ slice; they are the incremental-save machinery.
 
 - [x] C1. `gofmt -l .` clean
 - [x] C2. `go vet ./...` clean
-- [x] C3. `go test ./...` green — 35 packages with tests
+- [x] C3. `go test ./...` green
 - [x] C4. Record every Java bug found in `migration/JAVA-BUGS.md` — entry 33
 - [x] C5. Update `migration/STATUS.md` — including removing the open-debt note
       in the slice 1 `cos` section, once A4 is done
@@ -167,12 +146,8 @@ And for this branch in particular:
 - [x] D9. Check every deferral slice 1 made here was actually closed
   - `STATUS.md` names four `cos` files and one open debt. All five, or say why
     not.
-  - All five are closed. `COSUpdateInfo`, `COSUpdateState`, `COSDocumentState`
-    and `COSIncrement` are ported and wired in, and the `accept()` byte
-    assertions are restored in `cos/accept_external_test.go`. The one thing not
-    restored is `TestCOSFloat`'s `java.util.Random` sweep, which cannot be
-    reproduced in Go without porting the generator; the reason and the sweep
-    used instead are in `migration/STATUS.md`.
+  - All five are closed; `migration/STATUS.md` carries what each was and the
+    one assertion that could not be restored.
 
 ---
 
@@ -181,19 +156,15 @@ And for this branch in particular:
 - [x] E1. Stop and wait for the user's review. Do not start the next branch.
 
 - [x] E2. For each item of feedback, judge it before acting — 4 items: 2 port
-      defects (`COSDictionary.addAll` routed through `setItem`, the trailer /ID
-      digest hashing UTF-8), 1 documentation defect (`SetTrailer`), 1 Java
-      difference (`PageExtractor.Extract` panicking past the last page), which
-      is JAVA-BUGS 34
+      defects, 1 documentation defect and 1 Java difference. Each, with the test
+      that pins it, is in `migration/STATUS.md`
   - Is it a port defect, a missing piece of scope, or a difference the Java
     itself has?
   - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
     user is told why it stays.
 
-- [x] E3. Where it needs fixing, write a **strict** test first —
-      `TestDictionaryAddAllIsARawPut` and `TestDocumentIDDigestUsesISO88591`
-      both failed before their fix; `TestExtractBeyondTheDocumentPanics` pins
-      the Java bug that stays
+- [x] E3. Where it needs fixing, write a **strict** test first — both port
+      defects had one that failed before its fix
   - Strict: it fails before the fix, takes the real path with the real types,
     and asserts what the Java does
   - Then fix the Go

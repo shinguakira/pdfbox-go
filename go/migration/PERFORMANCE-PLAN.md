@@ -102,8 +102,7 @@ doubling; Java writes it once.**
 The Go comment gives the reason for the buffer: a decode error must not lose the
 bytes that did inflate. Java meets that another way —
 `FlateFilterDecoderStream` catches the damage and ends the stream — and the Go
-version already has the same in `flateDecoderStream`, which
-`NewFlateDecoderReader` uses.
+version already has the same in `flateDecoderStream`.
 
 | | change | size | new dependency |
 | --- | --- | --- | --- |
@@ -112,33 +111,17 @@ version already has the same in `flateDecoderStream`, which
 | **1c** | Replace `compress/flate` with `github.com/klauspost/compress/flate` | small | **yes — needs a decision** |
 | **1d** | Write an inflater | large | no — **not without an instruction** |
 
-**1b moves the Go version toward the Java**, so it needs no deviation entry; the
-comment that explains the buffer is what gets rewritten. It brings one
-behaviour change, also toward the Java, which needs a test of its own before the
-change: `Decode` today logs *every* inflate error and carries on, a failing
-source included. Java reads the source outside its `try` and catches
-`DataFormatException` alone, so an `IOException` from the source propagates.
-`flateDecoderStream` already draws the line in the same place, through
-`isDeflateDamage`.
+**1b moves the Go version toward the Java**, so it needs no deviation entry, and
+it brings one behaviour change with it, also toward the Java: `Decode` logs
+*every* inflate error and carries on, a failing source included, where Java
+reads the source outside its `try` and catches `DataFormatException` alone. That
+needs a test of its own before the change.
 
 **1c** is API-compatible with `compress/flate` (`NewReader`, `Resetter`), has no
 cgo and no assembly in its `flate` package, and its module requires nothing
-else — checked against v1.19.0. What makes it a candidate is that its decoder
-has type-specialised paths for `*bufio.Reader`, `*bytes.Reader`,
-`*bytes.Buffer` and `*strings.Reader`, so it does not make an interface call per
-input byte, which is what the 6% `bufio.ReadByte` row is. How much faster it is
-on these documents is a measurement, not a given.
-
-**Not a step: handing the decompressor an `io.ByteReader`** so that it skips
-`bufio`. `compress/flate` reads one `ReadByte` call at a time through an
-interface whichever reader it is given, and 1a already reuses the `bufio`
-buffer. With the standard library the byte-at-a-time row stays; only 1c removes
-it.
-
-1a and 1b add nothing to `go.mod` and change no output apart from the
-source-failure case above. 1c is a decision about dependencies rather than about
-code, and should be taken on measurements after 1a and 1b rather than before
-them. 1d is recorded as the option that exists, not as a proposal.
+else — checked against v1.19.0. It is a decision about dependencies rather than
+about code, and is taken on measurements after 1a and 1b; "Where the plan was
+wrong" is where it was taken.
 
 ### 2. Allocation outside inflate
 
@@ -153,9 +136,9 @@ recorded if it is done.
 | **2c** | Drop the pre-size of 250 in `encoding.newEncodingBase` | small | Pre-sizes to 250 as well: `Encoding`'s two `HashMap`s |
 | **2d** | Allocate a `pdfio.ReadBuffer` in one piece when its length is known | small | Grows 4 KB at a time, as the Go version does. Those bytes are the data being stored, not waste, so this would cut the number of allocations and not the amount. Last, and possibly not worth doing |
 
-2b is not the GPOS change again. That change halved the peak live heap
-(1,651 MB → 795 MB over the corpus) by skipping work PDFBox never does — PDFBox
-has no GPOS reader. The character-mapping tables are work PDFBox does.
+2b is not the GPOS change again. That change skipped work PDFBox never does —
+PDFBox has no GPOS reader; see [`BENCHMARK.md`](BENCHMARK.md), "The GPOS table,
+in `fontbox/ttf`". The character-mapping tables are work PDFBox does.
 
 `ttf.(*CmapSubtable).processSubtype4`, 3.6%, has not been compared with the
 Java yet.
@@ -180,18 +163,17 @@ here should be changed until that number exists.
 
 ### 4. The 366 MB floor — no step yet
 
-**Answered by change 3**, which took the heap left after a collection from
-418 MB to 133 MB; see the end of this file.
+**Answered by change 3**, which took the heap left after a collection down to a
+third; see the end of this file.
 
 [`BENCHMARK.md`](BENCHMARK.md) found that the Go version does not go below
 about 366 MB, where PDFBox completes in 48 MB. Nothing above is known to move
 that. **The first step is an in-use heap profile taken at the floor.**
 
-One candidate, not measured: the Go `FontCache` holds each font outright, where
-Java holds it through a `SoftReference`. The difference is recorded in
-`pdfbox/pdmodel/font/fontcache.go` — Go has no soft reference — and it means a
-font the Go version reads stays for the life of the process, where the JVM may
-drop it when memory runs short.
+One candidate, not measured: the Go `FontCache` holds each font outright where
+Java holds it through a `SoftReference`, so a font the Go version reads stays
+for the life of the process. The deviation is
+[`STATUS.md`](STATUS.md)'s, under slice 4.
 
 ## Order
 
@@ -227,11 +209,8 @@ It will not change the startup time, which was already several times faster than
 PDFBox when this was written, or the size of the binary beyond what 1c would add
 if it is taken.
 
-It will probably not close the whole gap to PDFBox on those documents. The
-decoding itself is the largest cost, and Java's `Inflater` is zlib in C. 1a and
-1b take the waste out of the Go version's inflate, not the difference in the
-decoder. How much is left after them is the number that decides whether 1c is
-worth a dependency.
+It will probably not close the whole gap to PDFBox on those documents, because
+the decoding itself is the largest cost and Java's `Inflater` is zlib in C.
 
 ## What happened when it was carried out
 
@@ -249,30 +228,26 @@ found; the next one is where the plan was wrong.
 | 3 | `PDPageTree.All` hands each page the document's resource cache. Not in the plan | `pdfbox/pdmodel/pdpagetree.go` | no page had a cache, so every font lookup built the font again, inflating and parsing an embedded font file each time: `PDFBOX-4423-000746.pdf` built 139 fonts out of 8 font objects | `PageIterator.next()` passes `document.getResourceCache()`, as `get(int)` does | 2,318 MB |
 | 4 | The content-stream decompressor goes back to the pool when its data ends | `pdfbox/filter/flate.go` | a new decompressor and window for every page | a new `Inflater` per stream | 1,912 MB |
 
-Tested by `TestPDPageTreeAllHandsOutTheResourceCache`, which fails without
-change 3; by `TestPDPageTreeAsksTheDocumentForTheCacheAsItHandsOutPages`, which
-pins that the cache is the document's as it stands when a page is handed out,
-as in Java, and not the one the tree was made with; and by
-`TestFlateDecodeReusesOneDecompressor` and
-`TestFlateDecoderReaderPoolsItsDecompressorWithoutSharingIt`, which run against
-a pool that cannot drop what it is given, and which fail when a decompressor is
-not handed back, not reused, or handed back twice. The pool is recorded as a
-deviation in [`STATUS.md`](STATUS.md).
+The tests that pin changes 1, 3 and 4, and the pooled decompressor as a
+deviation, are [`STATUS.md`](STATUS.md)'s, under "Deviations — `filter`" and
+"`PDPageTree` and the resource cache".
 
 Change 1 does not take 1b's route through `flateDecoderStream`. It keeps
 `Decode`'s handling of a failing source exactly as it was — every error ends
 the data — so that the output before and after could be required to be
 identical. The difference from Java that 1b names, a source's `IOException`
-propagating, is still there.
+propagating, was closed afterwards by `track/testdata-sources`.
 
 ### Before and after
 
+The speed and the peak heap of this prototype are not quoted here: it ran while
+other programs were using about four cores, and [`BENCHMARK.md`](BENCHMARK.md)
+measured the same changes again on a quiet machine afterwards. What is kept is
+what that page does not carry — the heap left after a collection, and the
+one-pass profile, the after one with all four changes in:
+
 | | before | after |
 | --- | ---: | ---: |
-| 40 heaviest, best of three passes | 35.7 s | **5.5 s** |
-| all 3,597, best of three single passes | 37.7 s | **10.0 s** |
-| peak heap, 40 heaviest | 726 MB | **145 MB** |
-| peak heap, all 3,597 | 712–744 MB | **244–246 MB** |
 | heap left after a collection, 40 heaviest | 336 MB | **74 MB** |
 | heap left after a collection, all 3,597 | 418 MB | **133 MB** |
 | CPU, 40 heaviest, one pass | 38.8 s | **6.9 s** |
@@ -280,40 +255,15 @@ propagating, is still there.
 | — inflating | 14.1 s, 36% | 0.2 s, 3% |
 | — the collector marking | 7.5 s, 19% | 0.7 s, 10% |
 
-The time and heap rows were measured with changes 1 to 3; change 4 only
-lowers allocation. The CPU rows are the one-pass profiles, the after one with
-all four.
-
-**The times are approximate.** Other programs were using about four cores for
-most of the measuring. The two builds run alternately under that load gave
-137.6 s → 16.3 s on the 40 heaviest and 207.1 s → 32.8 s on all 3,597, with
-process CPU 143 s → 24 s and 181 s → 40 s. Measure again on an idle machine
-before [`BENCHMARK.md`](BENCHMARK.md) takes any of these numbers.
-
-Against PDFBox, on those numbers: the total went from several times PDFBox's
-time to within striking distance of it, and the peak heap on defaults from above
-PDFBox's to below it.
-
-**Those are this branch's prototype numbers, taken under load, and nothing
-should quote them.** [`BENCHMARK.md`](BENCHMARK.md) measured the same runs again
-on a quiet machine afterwards, and it is where the port's speed and memory are
-stated.
-
 ### How the output was checked
 
-Besides the four checks under "How each step is checked", a throwaway harness
-compared the build before the changes with the build after them, directly:
-
-| what | compared | differences |
-| --- | ---: | ---: |
-| every stream's decoded bytes, through `CreateReader` and through `CreateView` | 42,435 streams in 3,626 documents | 0 |
-| every document's extracted text | 3,646 documents | 0 |
-| pixels of the first three pages at 36 DPI | 497 pages of 400 documents | 0 |
-| `gofmt -l .`, `go vet ./...`, `go test ./...` | | clean |
-| `corpus -oracle` | 3,646 documents | still 1, `PDFBOX-3951` |
-
-The harness is `go/testdata/oracle/perfcheck`, which git and `./...` both
-ignore.
+Besides the four checks under "How each step is checked", the throwaway harness
+`go/testdata/oracle/perfcheck`, which git and `./...` both ignore, compared the
+build before the changes with the build after them: every stream's decoded
+bytes through `CreateReader` and through `CreateView`, 42,435 streams in 3,626
+documents; every document's extracted text, 3,646 documents; and the pixels of
+the first three pages at 36 DPI, 497 pages of 400 documents. No difference
+anywhere.
 
 ### Why there was this much to take
 
@@ -322,13 +272,8 @@ doing and PDFBox never did. Text extraction walks the page tree, the walk handed
 out pages without a resource cache, and so every font lookup built its font
 from nothing — for an embedded font, inflating and parsing the font file again.
 Building fonts was 60% of the CPU, and 97% of the time spent inflating was
-inflating font files for it.
-
-It went unseen for two reasons. A missing cache changes no output, so neither
-the tests nor the oracle, which both compare output, could see it. And the
-hottest functions in the profile were inside `compress/flate`, which read as
-pure-Go inflate against native zlib, when the question to ask was what was
-calling inflate that often.
+inflating font files for it. A missing cache changes no output, so neither the
+tests nor the oracle, which both compare output, could see it.
 
 ## Where the plan was wrong
 
@@ -343,8 +288,8 @@ calling inflate that often.
   preempting threads — was about 5%, and it belongs to the collector. Counting
   font cache hits was not needed.
 - **Item 4, the 366 MB floor, had a step and a cause after all.** The heap left
-  after a collection went from 418 MB to 133 MB over all 3,597 documents, and
-  change 3 is almost all of it.
+  after a collection fell to a third over all 3,597 documents, as "Before and
+  after" shows, and change 3 is almost all of it.
 - **1c, klauspost/compress, is not worth a dependency.** Over all 23,392 flate
   streams in the corpus, 16 of them damaged, it gave identical output, at 1.14×
   the speed of `compress/flate` (1.10× on the 40 heaviest). With inflating at
@@ -356,10 +301,12 @@ calling inflate that often.
   are out of the top sixty. Neither is worth a deviation from Java now.
 - **"What this will and will not change" aimed too low.** It expected the gap
   to PDFBox to stay mostly where it was, at 6.4× on the total, because inflate
-  in pure Go is slower than zlib. The gap left is about 1.7×.
+  in pure Go is slower than zlib. What the gap is now is
+  [`BENCHMARK.md`](BENCHMARK.md)'s headline.
 
 What is left, on the after profile: parsing content-stream tokens 21% of CPU,
 `showText` 20%, loading the document 17%. A second difference from Java found
-on the way — `CreateReader` does not collapse a repeated filter the way
-`Filter.decode` does — is a behaviour question, not a speed one, and is left for
-its own change.
+on the way — `CreateReader` did not collapse a repeated filter the way
+`Filter.decode` does — was a behaviour question rather than a speed one, and
+`track/testdata-sources` closed it; [`STATUS.md`](STATUS.md) records it with its
+tests.

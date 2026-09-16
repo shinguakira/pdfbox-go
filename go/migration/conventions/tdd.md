@@ -86,13 +86,13 @@ untested — that is how a mistranslation reaches slice 9 undetected.
 
 ## Acceptance, beyond unit tests
 
-From `slice/3` onward there is a second layer:
-`pdfbox/src/test/resources/input/` holds **40 PDFs with checked-in expected text
-extractions**, plus reading-order-sorted variants. Wire that up as a Go table
-test as soon as any text comes out, and record the score.
-
-Unit tests say the algorithm was translated correctly. The corpus says the
-library actually works.
+Unit tests say the algorithm was translated correctly. A corpus says the library
+actually works, and there are two layers of it above the unit tests:
+`pdfbox/src/test/resources/input/`, whose PDFs ship their own checked-in expected
+text, ported as a table test in `go/pdfbox/text/corpus_test.go`; and the
+third-party suites scored against PDFBox itself. The tiers, the counts and the
+current result are in [`../TESTDATA.md`](../TESTDATA.md), and the score each
+slice reached is in [`../STATUS.md`](../STATUS.md).
 
 ## Definition of done
 

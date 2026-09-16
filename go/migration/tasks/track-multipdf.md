@@ -28,24 +28,7 @@ whenever it is ready.
 
 ## How each unit of work runs
 
-Five phases, in this order, never overlapping:
-
-**A — write the test.** Port the Java test to Go. Assertion values are copied
-from the Java, never read off the Go. The implementation does not exist yet.
-
-**B — port the implementation.** Write the Go from the Java source, line for
-line. Do not look at what makes the test pass; look at what the Java does.
-
-**C — run and fix.** `gofmt -l . && go vet ./... && go test ./...`. A failure
-is a defect in the port, not in the test. Fix the Go. If the Java itself is
-wrong, keep the wrong behaviour and record it in `JAVA-BUGS.md`.
-
-**D — adversarial review.** Green tests are not evidence the port is faithful.
-Read the Go against the Java looking for what the tests cannot catch, and
-assume the port is wrong until each check says otherwise.
-
-**E — user feedback.** Stop. Wait. Judge each item, and where it is a real
-defect, write a strict failing test first and only then fix.
+The five phases of [`TEMPLATE.md`](TEMPLATE.md), unchanged.
 
 ## Scope
 
@@ -62,11 +45,10 @@ defect, write a strict failing test first and only then fix.
 `multipdf` is 6 files; `Splitter`, `PageExtractor` and `PDFCloneUtility` are
 already ported by slice 7. This is the other half.
 
-**How it was missed.** Slice 7 deferred all three to slice 8, slice 8 never took
-them, and the coverage survey counted them as ported because their names appear
-in a Go comment saying they are *absent*. `track/tools` then found the same
-matcher failing the other way. Nothing about the work is hard or blocked — it
-simply had no branch.
+**How it was missed.** Slice 7 deferred all three to slice 8 and slice 8 never
+took them; `STATUS.md`'s "The 891-class survey, and why it was replaced" has
+why the coverage survey then counted them as done. Nothing about the work is
+hard or blocked — it simply had no branch.
 
 `PDFCloneUtility` is the piece the other three are written against, and it is
 in. Read it first.
@@ -87,12 +69,11 @@ in. Read it first.
     about the object graph and record the pixel half.
 
 - [x] A5. Port `PDFCloneUtilityTest`
-  - `PDFCloneUtility` was ported by slice 7 and its test was not: `STATUS.md`
-    records all three of its cases as needing `PDPageContentStream`,
-    `PDFMergerUtility` or `PDOptionalContentProperties`, and two of those three
-    have since been ported. This branch brings the third, so the whole class
-    can go in. **Port it before B1** -- it tests the machinery the other three
-    classes are written against.
+  - `PDFCloneUtility` was ported by slice 7 and its test was not: its three
+    cases needed `PDPageContentStream`, `PDOptionalContentProperties` and
+    `PDFMergerUtility`, and only the last was still missing when this branch
+    opened, so the whole class can go in. **Port it before B1** -- it tests the
+    machinery the other three classes are written against.
 
 ---
 
@@ -123,65 +104,25 @@ in. Read it first.
 
 # Phase D — Adversarial review
 
-敵対的レビュー. Green tests prove the port passes the tests, not that it is a
-faithful migration. Go in assuming it is wrong. Every check below is a question
-the ported tests cannot answer.
+敵対的レビュー. The seven checks are [`TEMPLATE.md`](TEMPLATE.md)'s, and each
+was run.
 
 - [x] D1. Read every ported file against its Java side by side
-  - Is any method missing? Any branch of an `if`, any `case`, any `catch`?
-  - Is any loop bound, any off-by-one, any `<` that should be `<=` different?
-  - Java `int` narrows on cast and `float` saturates; Go does neither. Is every
-    such conversion written out?
-
 - [x] D2. Hunt for silently dropped behaviour
-  - Anything Java does in a `finally` — is it still done on the Go error path?
-  - Anything Java logs and swallows — does the Go swallow it too, or does it
-    return an error the Java would not have?
-  - Anything Java throws — is it an error, or a panic, and is that the right one?
-
 - [x] D3. Check the tests are Java-derived, not Go-derived
-  - For each assertion: is that value in the Java test, or did it come from
-    running the Go? A value read off the port proves nothing.
-  - Which Java test cases were dropped, and is each one recorded with a reason?
-
 - [x] D4. Check every function phase B touched has a test
-  - Name the test that covers it. Not "the suite is green"
-  - Where there is none, the function was changed on an argument rather than on
-    evidence. Write the test, and take whatever it says
-
 - [x] D5. Check every deferral is real and recorded
-  - Every "not ported yet" in a doc comment — is it in `migration/STATUS.md`?
-  - Every deferral — is it deferred because the type is absent, or because it
-    was hard? The second is not a deferral.
-
 - [x] D6. Check the Java bugs
-  - Every bug found — is it in `migration/JAVA-BUGS.md` with where, what,
-    what correct would be, where the Go carries it, and how confident?
-  - Was any of them "fixed" on the way past? Revert it.
-
 - [x] D7. Write the review down
-  - What was checked, what was found, what was fixed, what is still open
 
 ---
 
 # Phase E — User feedback
 
 - [ ] E1. Stop and wait for the user's review. Do not start the next branch.
-
 - [ ] E2. For each item of feedback, judge it before acting
-  - Is it a port defect, a missing piece of scope, or a difference the Java
-    itself has?
-  - A Java difference is not fixed — it is recorded in `JAVA-BUGS.md` and the
-    user is told why it stays.
-
 - [ ] E3. Where it needs fixing, write a **strict** test first
-  - Strict: it fails before the fix, takes the real path with the real types,
-    and asserts what the Java does
-  - Then fix the Go
-  - Then `gofmt`, `go vet`, `go test ./...` again
-
 - [ ] E4. Report back
-  - What was changed, what was not, and why for each
 
 ---
 
@@ -193,6 +134,5 @@ the ported tests cannot answer.
 
   `TestLayerUtility` turned out to have no rendering half at all: it asserts
   about the object graph and all of it is ported. `OverlayTest` and
-  `checkMergeIdentical` are the ones that render, and the port compares content
-  streams and form XObjects against the same model files instead. Recorded in
-  `STATUS.md`.
+  `checkMergeIdentical` are the ones that render; `STATUS.md` says what the port
+  compares instead and what is still open there.
