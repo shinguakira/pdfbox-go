@@ -146,7 +146,7 @@ upstream."
 
   **The one exception, and it is closed.** The user directed one branch,
   `track/java-bug-fixes`, to correct the Java-driven defects the port had
-  faithfully carried. Sixty-one entries of
+  faithfully carried. Most entries of
   [go/migration/JAVA-BUGS.md](go/migration/JAVA-BUGS.md) are now deliberately
   *not* what the Java does; each says so in a **Fixed in the Go** paragraph,
   and the code says so at the site. **A divergence carrying such a comment is
@@ -169,8 +169,9 @@ Orientation for the port lives in
 [go/migration/README.md](go/migration/README.md): the plan, the branch strategy,
 the Java-to-Go conventions, and the package mapping.
 
-Status: early. Only the `pdfio` package (the Go port of the `io` module) is
-implemented. Everything else is planned but absent.
+Status: reading, writing, merging, form handling, text extraction and rendering
+are ported and tested. What is deliberately absent is recorded per package in
+[go/migration/STATUS.md](go/migration/STATUS.md).
 
 ## Building
 
@@ -246,6 +247,12 @@ automatically draft, submit, or export security-related findings to any public
 tracker, pull request, comment, or external service.
 
 ## Contribution Guidelines
+
+**These are the Apache project's, kept because they describe the Java this
+repository snapshots. They do not describe this repository**, which takes no
+change upstream and sends none: see "Go port" above, and
+[go/migration/BRANCHING.md](go/migration/BRANCHING.md) for what is done here
+instead.
 
 - Pull requests on this GitHub repository are welcome.
 - Bug reports and feature requests go in the

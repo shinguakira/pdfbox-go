@@ -4,10 +4,11 @@ A Go port of [Apache PDFBox](https://pdfbox.apache.org/), living beside the Java
 source it is ported from. The Java modules stay at the repository root and are
 the reference; this directory holds the Go module.
 
-**Status: early.** The foundation layer (`pdfio`) is ported and tested; nothing
-above it exists yet. See [`migration/STATUS.md`](migration/STATUS.md) for what
-is done and [`migration/PLAN.md`](migration/PLAN.md) for the order the rest
-follows.
+**Status.** Reading, writing, merging, form handling, text extraction and
+rendering are in, and the command-line tool is `go/cmd/pdfbox`. What is
+deliberately absent, and why, is per package in
+[`migration/STATUS.md`](migration/STATUS.md);
+[`migration/PLAN.md`](migration/PLAN.md) is the order the work was taken in.
 
 ## Layout
 
@@ -45,8 +46,8 @@ The Go module is self-contained: building it needs no JDK and no Maven, and
 ## Contributing to the port
 
 Read [`migration/conventions/java-to-go.md`](migration/conventions/java-to-go.md)
-first — it is the difference between a port and 77 unrelated translations. The
-short version:
+first — it is the difference between a port and as many unrelated translations
+as there are packages. The short version:
 
 - Idiomatic Go at the API boundary, faithful algorithm inside.
 - `error` returns rather than exceptions, with sentinel values in each package's

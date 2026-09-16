@@ -9,7 +9,7 @@ none". This file is where partial work and the reasons for it get recorded.
 
 Status values: `done` · `in progress` · `blocked` · `not started` · `out of scope`
 
-Last updated: 2026-09-12
+Last updated: 2026-09-16
 
 ## Summary
 
@@ -18,7 +18,7 @@ Last updated: 2026-09-12
 | 0 | `pdfio` | 18 | **done — all 18 files**, finished by `track/scratchfile` |
 | 1 | `pdfbox/cos` | 24 | **done — 22 of 24 ported**. Slice 7 closed the incremental-save deferral: `COSIncrement`, `COSUpdateInfo` and `COSUpdateState` are in. The two left are deliberate — `COSInputStream`, which exists in Java only to carry a `DecodeResult`, and `COSOutputStream`, folded into `streamWriter` |
 | 2 | `filter`, `pdfparser`, `pdfwriter` | 48 | **done — all 48**. `filter` 23 of 23, finished by slice 6, `DecodeOptions` included; `pdfparser` all 18 including `FDFParser`; `pdfwriter` all 7, `getDataToSign` included |
-| 3 | `pdfbox/pdmodel` | 433 | in progress — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` **at 39 of 39**, finished by `track/font-embedding`, all 12 encodings, `pdmodel/encryption` at 17 of 19. What is left is the 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` |
+| 3 | `pdfbox/pdmodel` | 433 | **done bar names left unported on purpose** — every file of `interactive`, `documentinterchange`, `fdf`, `fixup`, `common`, `graphics/optionalcontent`, `graphics/pattern` and `graphics/form`, and the model half of `graphics/shading`; `pdmodel/font` **at 39 of 39**, finished by `track/font-embedding`, all 12 encodings, `pdmodel/encryption` at 17 of 19, the two left being JCE lookups `crypto/*` answers. The 19 `java.awt.Paint` and `PaintContext` classes of `graphics/shading` stay unported by name; `track/raster` ported their arithmetic into `rendering/raster` |
 | 4 | `fontbox` | 143 | **done — all 143 files**, finished by slice 4 |
 | 5 | `contentstream`, `text` | 85 | **done — all 85 files**, finished by slice 9: the graphics engine, all 23 graphics operators, all 13 colour operators and the three `DrawObject`s |
 | — | `awt/geom` (the JDK, not PDFBox) | — | in progress — `Point2D`, `AffineTransform`, `Path2D`, `Rectangle2D`, `Ellipse2D`, `FlatteningPathIterator`, and `Area` minus curves |
@@ -574,13 +574,14 @@ matched the class name in `tounicodewriter.go`'s header, which reads `Port of
 miss down as verified. **A survey that says a row was checked is worth no more
 than the matcher it was checked with.**
 
-`track/tools` then found the same matcher failing the other way. `multipdf` is
-3 of 6 -- `PDFMergerUtility`, `LayerUtility` and `Overlay` are not ported --
-and the survey counted all three as done, because `pdfcloneutility.go`'s package
-comment reads "PDFMergerUtility, LayerUtility and Overlay are **not** here". It
-read a name in a sentence saying the class is absent as evidence it is present.
-The count above is 66 rather than 63 because of it, and `merge` and `overlay`
-are the two commands `track/tools` could not build.
+`track/tools` then found the same matcher failing the other way. `multipdf` was
+3 of 6 at the time -- `PDFMergerUtility`, `LayerUtility` and `Overlay` were not
+ported -- and the survey counted all three as done, because
+`pdfcloneutility.go`'s package comment reads "PDFMergerUtility, LayerUtility and
+Overlay are **not** here". It read a name in a sentence saying the class is
+absent as evidence it is present. The count above is 66 rather than 63 because
+of it, and `merge` and `overlay` were the two commands `track/tools` could not
+build. **`track/multipdf` ported all three and built both commands.**
 
 The lesson for every branch from here: **C5 means the summary row and the row
 that deferred the work, not only your own section.**
@@ -794,16 +795,16 @@ bug-prone, so it is ported line for line and every recovery path is kept.
 | `xref/FreeXReference.java` | `xref/xref.go` | done |
 | `xref/NormalXReference.java` | `xref/xref.go` | done |
 | `xref/ObjectStreamXReference.java` | `xref/xref.go` | done |
-| `COSParser.java` | — | **next — 2,021 lines, the core** |
-| `XrefParser.java` | — | not started — 695 lines |
-| `BruteForceParser.java` | — | not started — 857 lines, the damaged-file recovery path |
+| `COSParser.java` | `fileparser.go`, `objectparser.go` | next when this table was written, 2,021 lines; ported by slice 3, "The loader" |
+| `XrefParser.java` | `xrefparser.go` | 695 lines; ported by slice 3, "The loader" |
+| `BruteForceParser.java` | `bruteforceparser.go` | 857 lines, the damaged-file recovery path; ported by slice 3 |
 | `PDFStreamParser.java` | `streamtokenparser.go` | done in slice 2 — named `StreamTokenParser`, because `StreamParser` is already COSParser's stream half |
-| `PDFXRefStream.java` | — | not started |
-| `PDFXrefStreamParser.java` | — | not started |
-| `PDFParser.java` | — | not started — the entry point |
-| `PDFObjectStreamParser.java` | — | not started |
-| `EndstreamFilterStream.java` | — | not started |
-| `FDFParser.java` | — | not started — FDF, not needed for slice 1 |
+| `PDFXRefStream.java` | `pdfxrefstream.go` | the writing path; slice 7 |
+| `PDFXrefStreamParser.java` | `xrefstreamparser.go` | ported by slice 3 |
+| `PDFParser.java` | `pdfparser.go` | the entry point; ported by slice 3 |
+| `PDFObjectStreamParser.java` | `objectstreamparser.go` | ported by slice 3 |
+| `EndstreamFilterStream.java` | `streamparser.go` | ported later in this slice, with `parseCOSStream` and `readUntilEndStream` |
+| `FDFParser.java` | `fdfparser.go` | FDF, not needed for slice 1; slice 8 |
 
 None of the Java files in this package have tests; the parsers are exercised
 only through whole documents. Every test here is therefore written from the
@@ -1237,9 +1238,11 @@ Two things Go cannot reproduce directly, both commented where they are:
   of its own. Go embedding does not shadow, so the composite count has its own
   name.
 
-`TestCMapSubtable` is not ported: both of its tests read fonts the Java build
-downloads into `target/fonts`, which this repository does not carry. **[input present since 2026-09-11; see "What the fetch unblocked"]**
-`TestTTFParser.testParseVertical` and `testParseHeaders` likewise.
+`TestCMapSubtable` was not ported here: both of its tests read fonts the Java
+build downloads into `target/fonts`, which this repository did not carry.
+`TestTTFParser.testParseVertical` and `testParseHeaders` likewise. **[input
+present since 2026-09-11, and all three are ported; see "What the fetch
+unblocked"]**
 
 ### `pdmodel/font/encoding` — all 12 files
 
@@ -1268,7 +1271,7 @@ always gives the same encoding.
 | `PDType1Font` | `pdtype1font.go` | partial — the standard 14 path is whole; the embedded PFB needs `fontbox/type1` and the substitute needs the font mapper, both slice 4 |
 | `PDTrueTypeFont` | `pdtruetypefont.go` | done — an embedded font is read whole; the substitute for one that is not embedded arrived with slice 4's font mapper, and the `load` factories that write one with `track/font-embedding`, in `pdtruetypefont_embed.go` |
 | `PDType3Font`, `PDType3CharProc` | `pdtype3font.go`, `pdtype3charproc.go` | done |
-| `PDFontFactory` | `pdfontfactory.go` | partial — Type 1, TrueType and Type 3; Type 0, Type 1C, Multiple Master and the CID fonts report that they are not ported |
+| `PDFontFactory` | `pdfontfactory.go` | partial here — Type 1, TrueType and Type 3; Type 0, Type 1C, Multiple Master and the CID fonts reported that they were not ported, and slice 4 added them |
 | `PDType0Font`, `PDCIDFont*`, `PDType1CFont`, `PDMMType1Font`, the `FontMapper` chain, every `*Embedder`, `Subsetter`, `ToUnicodeWriter`, `CMapManager`, `FontCache`, `FileSystemFontProvider` | — | done elsewhere — slice 4 took all but the embedders, slice 7 took `ToUnicodeWriter`, and `track/font-embedding` took `TrueTypeEmbedder`, `PDTrueTypeFontEmbedder`, `PDCIDFontType2Embedder` and `Subsetter` |
 
 What a font in this slice cannot do, and why:
@@ -1319,6 +1322,7 @@ The four glyph hooks join `StreamEngineOverrides`.
 `shouldProcessColorOperators` is still always true: the Type 3 char proc case
 that clears it is `d0`/`d1` handling, which belongs with the renderer.
 `processChildStream` is still absent, so a form XObject is still not walked.
+**Slice 9 ported it**, into `contentstream/forms.go`.
 
 ### `pdfbox/text` — 6 files
 
@@ -1367,7 +1371,7 @@ met without a file, so the work was done here as a special case.
 | `PDDocument.java` | `pdmodel/pddocument.go` | partial — the reading path; signatures, form fields, importing a page and saving each need a package this port has not reached |
 | `PDDocumentCatalog.java` | `pdmodel/pddocument.go` | partial — the pages and the version; forms, outlines, names, threads, metadata and actions wait on their types |
 | `PDDocumentInformation.java` | `pdmodel/pddocument.go` | partial here — minus the dates, `getTrapped`, `getMetadataKeys` and `getPropertyStringValue`, which slice 8 added with `DateConverter` |
-| `PDFXRefStream.java`, `EndstreamFilterStream.java`, `FDFParser.java` | — | not started — the first two are the writing path, the third is FDF |
+| `PDFXRefStream.java`, `EndstreamFilterStream.java`, `FDFParser.java` | `pdfparser/pdfxrefstream.go`, `pdfparser/streamparser.go`, `pdfparser/fdfparser.go` | not started here -- `PDFXRefStream` is the writing path and slice 7 took it; `EndstreamFilterStream` had landed with slice 1's stream half already; `FDFParser` is FDF, and slice 8 took it |
 
 Four things worth naming:
 
@@ -2466,12 +2470,13 @@ forbids the direction Java uses; putting the definitions at the bottom of the
 dependency keeps one implementation rather than two. `compress/tokens.go` says
 so, and so does the block at the top of `coswriter.go`.
 
-`getDataToSign` is **not ported.** It builds the byte range to be signed out of
+`getDataToSign` is **not ported here.** It builds the byte range to be signed out of
 `COSFilterInputStream`, which lives in `pdmodel/interactive/digitalsignature`
 and arrives with slice 8. Everything around it is ported: `doWriteSignature`
 computes and writes the `/ByteRange`, and `WriteExternalSignature` writes a
 signature made elsewhere into the reserved space. Signing through a
-`SignatureInterface` returns an error naming this gap. `SignatureInterface`
+`SignatureInterface` returns an error naming this gap. **Slice 8 closed it**:
+`COSWriter.DataToSign` is in `pdfwriter/coswriter.go`. `SignatureInterface`
 itself is declared in `pdfwriter` rather than in the package Java has it in, for
 the same reason — it is one method, and the writer is the only thing in this
 slice that names it.
@@ -2537,9 +2542,10 @@ the Java main tree.
 `getContentStreams`, `getContents` and the two `setContents`; `PDStream` gained
 the constructors that write into a document.
 
-`subsetDesignatedFonts` is a no-op: Java walks `fontsToSubset` and calls
+`subsetDesignatedFonts` is a no-op here: Java walks `fontsToSubset` and calls
 `font.subset()`, and font subsetting is font embedding, which slice 3 left out.
 The set is always empty, so the call site is ported and the body is not.
+**`track/font-embedding` wrote the body**, in `pdmodel/pddocument_save.go`.
 
 `new PDDocument()` now does two things it did not: it sets `/Version` `1.4` on
 the catalogue, which Java's constructor does, and it hands the document a
@@ -2596,7 +2602,7 @@ Seven of the eight pass now; the eighth reads `target/pdfs`. **[input present si
 | `COSWriterTest` | `pdfwriter/coswriter_test.go` | 2 of 4 — see below |
 | `PageExtractorTest` | `multipdf/pageextractor_test.go` | complete |
 | `TestToUnicodeWriter` | `pdmodel/font/tounicodewriter_test.go` | all 8, complete — the A3 deferral from slice 3 |
-| `COSWriterCompressionPoolTest` | — | needs `PDDocumentOutline` and `PDOutlineItem` — slice 8 |
+| `COSWriterCompressionPoolTest` | `pdfwriter/compression_test.go` | needed `PDDocumentOutline` and `PDOutlineItem` -- slice 8; ported by `track/stale-deferrals` |
 | `COSDocumentCompressionTest` | — | all 5 need `PDAcroForm`, `PDComplexFileSpecification`, `PDPageContentStream`, `PDCheckBox` or `protect` |
 | `ContentStreamWriterTest` | `pdfwriter/contentstreamwriter_render_test.go` | **`track/raster`** — the round trip renders identically. Java reads a downloaded `PDFBOX-4750.pdf`; the port uses the page it writes for its own raster comparisons |
 | `PDFCloneUtilityTest` | `multipdf/pdfcloneutility_test.go` | all 3 — `track/multipdf` |
@@ -2604,8 +2610,8 @@ Seven of the eight pass now; the eighth reads `target/pdfs`. **[input present si
 | `TestLayerUtility` | `multipdf/layerutility_test.go` | complete — `track/multipdf` |
 | `PDFMergerUtilityTest` | `multipdf/pdfmergerutility_test.go`, `multipdf/splitwithstructure_test.go` | 22 of 30 — `track/multipdf`; the other 8 read `target/pdfs` |
 | `MergeAcroFormsTest` | `multipdf/mergeacroforms_test.go` | 1 of 3 — the other 2 read `target/pdfs` |
-| `MergeAnnotationsTest` | — | its one case reads `target/pdfs` |
-| `TestFontEmbedding` | — | needs `PDPageContentStream` and `TestPDFToImage`; the other half of slice 3's A3 deferral |
+| `MergeAnnotationsTest` | `multipdf/mergedownloaded_test.go` | its one case reads `target/pdfs`, present since the fetch of 2026-09-11 |
+| `TestFontEmbedding` | `pdmodel/font/fontembedding_test.go` | needed `PDPageContentStream` and `TestPDFToImage`; the other half of slice 3's A3 deferral, ported by `track/font-embedding` and finished after the fetch |
 
 `COSWriterTest`'s two that are not ported: `testPDFBox5945` builds an AcroForm
 out of `PDAcroForm`, `PDTextField` and `PDAnnotationWidget`, and `testPDFBox6036`
@@ -3395,8 +3401,9 @@ has nothing equivalent.
 **The decision, taken as B0, is `PLAN.md`'s third option: port the geometry,
 defer the raster backend behind an interface.** Everything that computes is
 ported and runs. Only the last drawing step is behind `rendering.Backend`, and
-**no implementation of that interface ships**. What that costs is written out
-under "What the raster decision costs" below, rather than left implicit.
+**no implementation of that interface shipped with this slice**. What that cost
+is written out under "What the raster decision costs" below, rather than left
+implicit. **`track/raster` wrote the backend**, in `rendering/raster`.
 
 Slice 8 had not landed on `migration-base` when this branch started, and eleven
 types it ports are named directly by `pdfbox/rendering`.
@@ -3448,7 +3455,7 @@ because `PLAN.md` counts them; they are not slice 9's work.
 | `PDMeshBasedShadingType`, `PDShadingType6/7.java` | `shading/pdshadingtype67.go` | done |
 | `Patch`, `CoonsPatch`, `TensorPatch`, `CubicBezierCurve` | `shading/patch.go` | done — unexported, as Java's are package-private |
 | `Vertex`, `Line`, `ShadedTriangle`, `CoordinateColorPair` | `shading/triangle.go` | done — unexported |
-| the 19 `*Paint` and `*Context` classes | — | **not ported** — see below |
+| the 19 `*Paint` and `*Context` classes | `rendering/raster/shading*.go` | **not ported by name** -- see below; `track/raster` ported their arithmetic |
 
 The nineteen that are missing are `AxialShadingPaint`, `AxialShadingContext`,
 `RadialShadingPaint`, `RadialShadingContext`, `Type1ShadingPaint`,
@@ -3573,7 +3580,9 @@ how thin a clip may be before it is widened, whether an optional content group i
 visible at this destination, whether an annotation is skipped, how far an image
 may be subsampled, whether a transparency group needs its backdrop.
 
-Four pieces of it are raster work end to end and are not ported:
+Four pieces of it are raster work end to end and were not ported by this slice.
+**`track/raster` ported all four**, in `rendering/raster`; the rows above say
+where each landed. What this slice deferred, and why:
 
 - **the `TransparencyGroup` inner class**, which makes a `BufferedImage`,
   renders into it and composites it. `Backend.PushGroup` and `PopGroup` stand
@@ -4686,10 +4695,13 @@ it now points at `addAttribute` as the only thing that fills the map.
 - `maxBinCharTestLength` is unpinned, above. Writing a case that pins it would
   be writing a test the Java does not have, which is not this branch's job; it
   is worth doing by whoever next touches the inline image parser.
-- The seventeen `TestPDFParser` cases stay unported until this repository has a
-  corpus. They are the whole-document recovery suite, and they are the largest
-  single block of Java testing the port has no answer to.
-- `testSubsetting` is waiting on `track/font-embedding`, which names it.
+- The seventeen `TestPDFParser` cases stayed unported here, until this
+  repository had a corpus. They are the whole-document recovery suite, and they
+  were the largest single block of Java testing the port had no answer to.
+  **All eighteen are ported since the fetch of 2026-09-11**, in
+  `go/pdfbox/testpdfparser_test.go`.
+- `testSubsetting` was waiting on `track/font-embedding`, which names it.
+  **That branch wrote it**, in `go/pdfbox/increment_test.go`.
 
 ## Track `font-embedding` — writing a font into a document
 
@@ -4997,8 +5009,10 @@ Branch `track/tools`. The last of the four the survey found, and the one that
 was never in `PLAN.md` at all: the plan counted `tools` in scope, kept it out of
 the out-of-scope list, and then never mentioned it again.
 
-**18 of Java's 26 main files are built**, plus the dispatcher. The Go package is
-`go/tools` and the single binary `go/cmd/pdfbox`.
+**18 of Java's 26 main files are built**, plus the dispatcher -- counted wrongly,
+as "The audit that found what the survey missed" records: it was 17 of 26 built
+and 9 left, and the last three tracks took eight of those nine. The Go package
+is `go/tools` and the single binary `go/cmd/pdfbox`.
 
 ### A0 — the two decisions, taken before any code
 
@@ -5082,9 +5096,10 @@ apart.
 
 **Seven waited for a raster**, which is what the task file expected:
 `PDFToImage`, `PrintPDF`, `ExtractImages`, and the four `tools/imageio`
-helpers. `rendering.Backend` is the interface slice 9 defined and nothing
-implements it. **What Go draws with is a design decision outside this branch**,
-and it is named rather than taken in passing. `ImageIOUtil` and its three
+helpers. `rendering.Backend` is the interface slice 9 defined, and nothing
+implemented it while this branch ran; `track/raster` wrote it afterwards.
+**What Go draws with was a design decision outside this branch**, and it is
+named rather than taken in passing. `ImageIOUtil` and its three
 companions are `javax.imageio` writers and its metadata trees; Go's
 `image/png`, `image/jpeg` and a TIFF library are a substitution worth choosing
 once there is a raster to write.
@@ -5094,19 +5109,24 @@ them: `ExtractImages` never imports `rendering`, and neither do the four
 `tools/imageio` classes — writing an image out and rendering a page are
 different jobs, and only `PDFToImage` and `PrintPDF` need both. The
 substitution was made there rather than in `track/raster`; see the `imageio`
-section at the end of this file. Two wait for a raster now.
+section at the end of this file. Two wait for a raster now; `track/raster` built
+both.
 
 **Two wait for `multipdf`**, which the task file did not expect: `PDFMerger`
-needs `PDFMergerUtility` and `OverlayPDF` needs `Overlay`, and neither is
-ported. Slice 7 deferred `PDFMergerUtility`, `LayerUtility` and `Overlay` to
-slice 8; slice 8 never took them; the coverage survey counted them as done. No
-branch claims them. See "Rows this file had wrong" above.
+needs `PDFMergerUtility` and `OverlayPDF` needs `Overlay`, and neither was
+ported then. Slice 7 deferred `PDFMergerUtility`, `LayerUtility` and `Overlay`
+to slice 8; slice 8 never took them; the coverage survey counted them as done.
+No branch claimed them until `track/multipdf` was planned, and **that branch
+ported all three and built both commands**. See "Rows this file had wrong"
+above.
 
-**`Encrypt -certFile` is not built.** Public key encryption needs an X.509
+**`Encrypt -certFile` is not built here.** Public key encryption needs an X.509
 certificate and the CMS enveloping around it, and the port's
-`PublicKeySecurityHandler` already reports that its encryption half is not
+`PublicKeySecurityHandler` reported at the time that its encryption half was not
 ported. The option is refused by name with what it waits for, rather than
-silently writing a password-encrypted file instead.
+silently writing a password-encrypted file instead. **`track/stale-deferrals`
+found that reason had stopped being true and built it**, in
+`go/tools/encrypt.go`.
 
 ### What this branch had to add underneath
 
@@ -5276,15 +5296,17 @@ command's own flag set which options take a separate value, and treats the one
 argument after `help` as its parameter — which it has to, because that argument
 is a subcommand name.
 
-## Track `pdfbox-layout` — A0, and why the branch stops there
+## Track `pdfbox-layout` — A0, and what was built after it
 
 Branch `track/pdfbox-layout`, the last of the four the survey found.
 
-**Nothing was ported.** A0 is the whole of this branch's work, and its answer is
-that the backend cannot be chosen yet — not because the choice is hard, but
-because **three separate substitutions have to be decided together and two of
-them belong to other work**. What follows is the evidence, measured rather than
-argued, so that nobody has to take it again.
+**A0 said nothing could be ported yet**, and "What was built after all", below,
+is what happened next: the branch wrote the bidi algorithm, GPOS and a shaper,
+and measured them against the Java. This section is the decision as it was
+taken. Its answer was that the backend could not be chosen — not because the
+choice is hard, but because **three separate substitutions have to be decided
+together and two of them belong to other work**. What follows is the evidence,
+measured rather than argued, so that nobody has to take it again.
 
 ### What the module actually is
 
@@ -5642,8 +5664,9 @@ it in the text, not on the page — and reverses at the end.
 `pdfbox-layout-awt/src/test/resources/pdf/` holds the PDFs the Java tests
 compare against, and they are the output of the real AWT backend, checked into
 the repository. `TestBase.checkRenderIdent` uses them by rendering both
-documents and comparing pixels, which this port cannot do — nothing implements
-`rendering.Backend`, and that is slice 9's. But the shaping is *in the content
+documents and comparing pixels, which this port could not do when the branch ran
+-- nothing implemented `rendering.Backend` then, and `track/raster` wrote it
+since. But the shaping is *in the content
 stream*: which glyph, in which order, moved by how much.
 
 `go/pdfbox/glyphlayout/testdata/awt-*.txt` is those PDFs read back — one line
@@ -5802,7 +5825,8 @@ yet correct as of 4.7.2026", so there is nothing else in it to port.
 
 `GlyphLayoutDin91379FormTest` is not: it needs `PDAcroForm` field appearances
 driven by a layout processor, which is slice 8's `generateAppearance` path over
-a backend that does not exist yet. The two hello-world classes are examples,
+a backend that did not exist when this branch ran; `track/raster` wrote one
+since. The two hello-world classes are examples,
 which `PLAN.md` puts out of scope.
 
 #### What the GPOS reader does not do
@@ -5977,7 +6001,7 @@ the audit recorded at the end of this file.
 | `track/imageio` | 5 | nothing | **done** — `export:images` |
 | `track/multipdf` | 5 + 1 test | nothing | **done** — `merge`, `overlay`, and `Splitter`'s other half |
 | `track/raster` | 27 | `track/imageio`, for one task | **done** — `render` and every deferred pixel comparison. Not `print`: see its section |
-| `track/java-bug-fixes` | **none — it is not a port** | nothing, and goes last | the 84 entries of `JAVA-BUGS.md` |
+| `track/java-bug-fixes` | **none — it is not a port** | nothing, and goes last | the entries of `JAVA-BUGS.md` |
 
 **`track/imageio` is on the critical path and `track/multipdf` is not.**
 `ExtractImages` never imports `rendering` — it walks the content stream with
@@ -6566,7 +6590,8 @@ in the annotation package, where it lives.
 - Twelve of `PDFMergerUtilityTest`'s thirty cases, two of three of
   `MergeAcroFormsTest` and the one of `MergeAnnotationsTest` read `target/pdfs`,
   which the Maven build downloads. Listed in the file comment of each ported
-  test.
+  test. **The fetch of 2026-09-11 brought that input in and all of them are
+  ported**; see "What the fetch unblocked".
 - The pixel half of `OverlayTest` and of `checkMergeIdentical`. The port
   compares content streams and form XObjects instead, against the same model
   files; what a renderer would add is a second opinion on identical marks.
@@ -6576,9 +6601,10 @@ in the annotation package, where it lives.
 
 ## `track/java-bug-fixes` — the branch that is not a port
 
-`JAVA-BUGS.md` has 84 entries. Every one of them is a defect in Apache PDFBox
-that this port noticed while reading the Java closely enough to translate it,
-and roughly **seventy of them are live in the Go on purpose**: the port
+`JAVA-BUGS.md` had 84 entries when this branch opened, and has taken more since.
+Every one of them is a defect in Apache PDFBox that this port noticed while
+reading the Java closely enough to translate it, and roughly **seventy of them
+were live in the Go on purpose** when the branch started: the port
 reproduces them, each with a comment at the site saying so and pointing at the
 entry.
 
@@ -7020,8 +7046,8 @@ produce.
 | `checkRenderIdent`, bidi | same | **written**, red until B |
 | `checkRenderIdent`, supplementary plane | same | **written**, red until B |
 | `ContentStreamWriterTest` | `pdfwriter/contentstreamwriter_render_test.go` | **written after all** — see below |
-| `PDAcroFormFlattenTest` | — | **still blocked, and not by the raster** |
-| `TestFontEmbedding`, the 6 unported cases | — | **still blocked, and not by the raster** |
+| `PDAcroFormFlattenTest` | — | **blocked when this A0 was taken, and not by the raster** -- ported since the fetch of 2026-09-11 |
+| `TestFontEmbedding`, the 6 unported cases | — | **blocked when this A0 was taken, and not by the raster** -- ported since that fetch |
 
 **What `checkRenderIdent` actually asserts, and why it is possible now.** It
 renders the PDF the test just wrote and the reference PDF checked into

@@ -20,9 +20,10 @@ deviation, not a repair.
 - **No large hand-written replacement of a library without an instruction.** One
   item below would be that; it is listed so the option is on record, and it is
   not to be started on its own initiative.
-- **Every change keeps the oracle where it is.** `corpus -oracle` over the 3,646
-  documents stands at 1 disagreement (`PDFBOX-3951`); a change that moves it is a
-  change that broke something, however much faster it is.
+- **Every change keeps the oracle where it is.** `corpus -oracle` stood at 1
+  disagreement over the 3,646 documents of the day, `PDFBOX-3951`; a change that
+  moves it is a change that broke something, however much faster it is.
+  [`TESTDATA.md`](TESTDATA.md) is where the comparison stands now.
 - **A deviation from the Java is commented where it happens and recorded in
   [`STATUS.md`](STATUS.md)**, even when it is only an allocation size.
 
@@ -71,6 +72,10 @@ buffer Java does not have. The collector's work follows the allocator's, so they
 are also part of the 24% allocation row of the CPU table.
 
 ## The work
+
+**This is the plan as it was written, and it was carried out.** Each item below
+keeps the reasoning it had then; what each one came to -- including the two that
+were measuring the wrong thing -- is in "Where the plan was wrong", at the end.
 
 ### 1. Inflate
 
@@ -175,6 +180,9 @@ here should be changed until that number exists.
 
 ### 4. The 366 MB floor — no step yet
 
+**Answered by change 3**, which took the heap left after a collection from
+418 MB to 133 MB; see the end of this file.
+
 [`BENCHMARK.md`](BENCHMARK.md) found that the Go version does not go below
 about 366 MB, where PDFBox completes in 48 MB. Nothing above is known to move
 that. **The first step is an in-use heap profile taken at the floor.**
@@ -215,8 +223,9 @@ It will change the heavy tail, because that is where every item above lives —
 the 40 documents are 92% of the time, and inflate and allocation are 56% of
 theirs.
 
-It will not change the startup time, which is already 9× faster than PDFBox, or
-the size of the binary beyond what 1c would add if it is taken.
+It will not change the startup time, which was already several times faster than
+PDFBox when this was written, or the size of the binary beyond what 1c would add
+if it is taken.
 
 It will probably not close the whole gap to PDFBox on those documents. The
 decoding itself is the largest cost, and Java's `Inflater` is zlib in C. 1a and

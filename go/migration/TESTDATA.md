@@ -15,7 +15,7 @@ in a test.
 
 | Tier | What | Files | Where | Committed |
 | --- | --- | ---: | --- | --- |
-| 0 | In the repository already | 168 PDFs | `*/src/test/resources/` | yes |
+| 0 | In the repository already | 166 PDFs, and 13 more elsewhere in the tree | `*/src/test/resources/` | yes |
 | 1 | What the Java build downloads | 74 of 78 | `*/target/{pdfs,fonts,imgs}` | no — `.gitignore` |
 | 2 | Targeted third-party suites | 5,032 PDFs | `go/testdata/corpus/` | no — `.gitignore` |
 | 3 | Bulk, for scoring not asserting | millions | not fetched | no |
@@ -26,8 +26,9 @@ redistributed from here.
 
 ## Tier 0 — already here
 
-168 PDFs came with the Java snapshot, and they are the only ones a fresh clone
-has. Most are small and each one was added alongside a fix.
+166 PDFs came with the Java snapshot under `src/test/resources`, and 13 more sit
+elsewhere in the tree; they are the only ones a fresh clone has. Most are small,
+and each one was added alongside a fix.
 
 | Where | Files | What it is for |
 | --- | ---: | --- |
@@ -39,7 +40,7 @@ has. Most are small and each one was added alongside a fix.
 | `.../encryption/` | 10 | Every standard security handler revision, plus the keystores |
 | `tools/src/test/resources/input/ImageIOUtil/` | 8 | Raster output |
 | `pdfbox-layout-{awt,fop}/src/test/resources/pdf/` | 14 | The reference PDFs the two shaping backends render. `go/pdfbox/glyphlayout` is measured against these |
-| `.../pdfparser/`, `.../input/compression/`, the rest | 35 | Missing catalogs, object streams, embedded files |
+| `.../pdfparser/`, `.../input/compression/`, the rest | 33 | Missing catalogs, object streams, embedded files |
 
 The Go tests reach these by relative path — `../../../pdfbox/src/test/resources/…`
 — rather than copying them, so there is one copy and the Java and the Go read
@@ -75,7 +76,7 @@ SHA-512 matches. No JDK needed.
 
 | Lands in | Files | What it unlocks |
 | --- | ---: | --- |
-| `pdfbox/target/pdfs` | 56 | `TestPDFParser`'s xref-recovery suite, `PDFMergerUtilityTest`'s 30 cases, `PDButtonTest`, `TestRadioButtons`, `TestSymmetricKeyEncryption`, `TestQuality`, `ContentStreamWriterTest` |
+| `pdfbox/target/pdfs` | 58, 55 of them PDFs | `TestPDFParser`'s xref-recovery suite, `PDFMergerUtilityTest`'s 30 cases, `PDButtonTest`, `TestRadioButtons`, `TestSymmetricKeyEncryption`, `TestQuality`, `ContentStreamWriterTest` |
 | `pdfbox/target/fonts` | 12 | The IPA fonts, `PDFBOX-5484.ttf`, `n019003l.pfb` |
 | `pdfbox/target/imgs` | 3 | `JPEGFactoryTest`, `LosslessFactoryTest` — a 16-bit PNG and two JPEGs |
 | `fontbox/target/fonts` | 13 | `CFFParserTest`, `TestCMap`, `PfbParserTest`, `TTFSubsetterTest` — all four used to skip on every machine |
@@ -180,12 +181,19 @@ trailer`, three more `Page tree root must be a dictionary`. These are qpdf's own
 reduced reproducers of damaged files, and the question they raise is whether
 PDFBox's cross-reference reconstruction recovers them where the port does not.
 
-**That is the area [`STATUS.md`](STATUS.md) already names as the port's largest
-untested hole:** `TestCOSParser` and `TestPDFParser` are the recovery suite for
-broken cross-reference tables and truncated objects, five test classes and 47
-`@Test` methods, and nothing in the port has run them. Eighteen qpdf files
-landing on it is corroboration, not a new finding. Settling it means running the
-Java on one of them, per [`README.md`](README.md).
+That looked like the area [`STATUS.md`](STATUS.md) then named as the port's
+largest untested hole: `TestCOSParser` and `TestPDFParser`, the recovery suite
+for broken cross-reference tables and truncated objects, five test classes and
+47 `@Test` methods the port had never run.
+
+**Running the Java settled it, and the answer was no.** Seventeen of the
+eighteen fail in PDFBox too, with the identical message: the port is
+reproducing it, not falling short of it. The one real difference was
+`issue-202.pdf`, an xref repair the port computed and dropped, fixed below. The
+test-class backlog stood on its own merits and `track/test-backfill` took it;
+these files were never evidence for it. Settling a question like this one means
+running the Java, per [`README.md`](README.md), which is the whole reason the
+oracle exists.
 
 ### Three verapdf timeouts, which are the point of those files
 
@@ -266,7 +274,9 @@ cd go && go run ./cmd/corpus -oracle testdata/oracle/java-corpus.tsv \
 ```
 
 Over the same 3,646 files, the first run found twelve disagreements. All twelve
-were the port's, eleven of them are fixed, and this is where it stands now:
+were the port's, and eleven were fixed that day. This is where that run left
+it; the twelfth was closed on 2026-09-15, and the corpus has grown to 5,090
+files since -- "Where it stands" below is current:
 
 ```
 3646 files, 27 of them encrypted and skipped
@@ -278,10 +288,10 @@ were the port's, eleven of them are fixed, and this is where it stands now:
   1 of 3646 files disagree (0.03%)
 ```
 
-**There is no document in the corpus that PDFBox reads and the port does not.**
-Not one, at either stage. No page count disagrees anywhere, and of the 3,597
-documents both extract, 3,596 come out the same length. The twelfth disagreement
-is one character in 126,330, and it is described below.
+**There was no document in the corpus that PDFBox read and the port did not.**
+Not one, at either stage. No page count disagreed anywhere, and of the 3,597
+documents both extracted, 3,596 came out the same length. The twelfth
+disagreement was one character in 126,330, and it is described below.
 
 For contrast, the first run of this comparison — before any of the fixes — read:
 
@@ -309,7 +319,8 @@ not a defect, and comparing content requires taking it out first.
 ### The twelve, and what each one turned out to be
 
 Every one of them was the port's defect, not a difference of opinion with
-PDFBox. Eleven are fixed; the twelfth is a character and is described below.
+PDFBox. Eleven were fixed on the day; the twelfth is a character, described
+below, and closed on 2026-09-15.
 
 | File | Was | Cause |
 | --- | --- | --- |
@@ -383,7 +394,10 @@ how big it is is quadratic in the objects. A profile of the ten-thousand-page
 Isartor file put 71% of 238 seconds inside it. With `XRefTableSize` and
 `EachXRefKey` answering without copying, **238 seconds became 0.51**.
 
-#### One is still open, and it is one character
+#### One that was open for three days, and it was one character
+
+**What follows is the reasoning as it stood on 2026-09-12, and two of its
+measurements were wrong; the correction is at the end of this section.**
 
 `PDFBOX-3951-FIHUZ…` is 142 pages and differs from PDFBox by a single character
 in 126,330: the copyright line reads `©  ECRI` here and `© ECRI` there. The extra
@@ -401,9 +415,9 @@ the port's `ShowGlyph` is handed 120. That is an encoding question in a symbolic
 TrueType font, it is a layer below the text stripper, and it wants its own piece
 of work rather than a guess.
 
-Left open deliberately. It is recorded here with the measurements so the next
-person starts where this stopped, and it is one character out of 126,330 in one
-document out of 3,646.
+Left open deliberately that day. It is recorded here with the measurements so
+the next person starts where this stopped, and it was one character out of
+126,330 in one document out of 3,646.
 
 **Closed on 2026-09-15**, by the defect the pdf.js corpus found — see
 [pdf.js against the Java](#pdfjs-against-the-java-2026-09-15). Two things in
@@ -578,7 +592,9 @@ trailer` and three `Page tree root must be a dictionary`, with the same message
 from both; the two that neither extracts text from are `issue12823.pdf`, a
 Type 0 font with no descendant, and `issue15604.pdf`, a number written `-.`.
 
-And everything together — the 3,646 files above, pdf.js's 1,443, and
+### Where it stands
+
+Everything together — the 3,646 files above, pdf.js's 1,443, and
 `PDFBOX-4131-0.pdf`, which the 2026-09-12 PDFBox table was missing — with
 `run-oracle.ps1`'s default list and the passwords table on both sides:
 

@@ -58,7 +58,7 @@ Three things this is not:
 
 1. Read [`conventions/tdd.md`](conventions/tdd.md) and
    [`conventions/java-to-go.md`](conventions/java-to-go.md). The first governs
-   the order the work is done in; the second keeps 81 packages reading as one
+   the order the work is done in; the second keeps every package reading as one
    library.
 2. Check the package has a row in [`mapping/packages.tsv`](mapping/packages.tsv);
    add one if not.

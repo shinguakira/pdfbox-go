@@ -21,8 +21,9 @@ That rule bought the migration its most valuable property: when the Go behaves
 oddly, the answer is always "so does the Java, and here is the entry". It was
 right for every branch that ported code.
 
-It is the wrong rule for a port that is finished. `JAVA-BUGS.md` has 84 entries
-and roughly seventy of them are carried in the Go on purpose — an `equals` that
+It is the wrong rule for a port that is finished. `JAVA-BUGS.md` had 84 entries
+when this branch opened and roughly seventy of them were carried in the Go on
+purpose — an `equals` that
 truncates to 32 bits, a text extractor that reverses surrogate pairs, a merge
 that drops the source's article threads and doubles the destination's. Nothing
 downstream benefits from those any more.
@@ -84,8 +85,9 @@ defect, write a strict failing test first and only then fix.
 
 ## Scope
 
-**84 entries in `migration/JAVA-BUGS.md`.** A0 divides them; nothing else in
-this file presumes the answer.
+**The 84 entries `migration/JAVA-BUGS.md` held when this branch opened.** A0
+divides them; nothing else in this file presumes the answer. Entries added
+after it are not this branch's, and 85 and 86 came back to it in a second pass.
 
 What is known before A0 starts, from the entries' own "Where the Go carries it"
 lines:

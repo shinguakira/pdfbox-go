@@ -31,13 +31,16 @@ change it to suit one branch — change the copy.
 | `track/stale-deferrals` | [`track-stale-deferrals.md`](track-stale-deferrals.md) | **merged** |
 | `track/imageio` | [`track-imageio.md`](track-imageio.md) | **merged** |
 | `track/multipdf` | [`track-multipdf.md`](track-multipdf.md) | **merged** — also finished `Splitter` |
-| `track/raster` | [`track-raster.md`](track-raster.md) | open — the last port, see its A0 |
-| `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | open — **after `track/raster`**; not a port |
+| `track/raster` | [`track-raster.md`](track-raster.md) | **merged** — the last of the port |
+| `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | **merged** — not a port; it fixed in the Go what the port carried from the Java |
+| `track/upstream-sync` | [`track-upstream-sync.md`](track-upstream-sync.md) | **merged** — what the Apache merge of 2026-09-07 changed, measured against the frozen snapshot |
+| `track/performance` | — | **carried**, not merged: its two commits rode into `track/testdata-sources` when that branch reopened. `../PERFORMANCE-PLAN.md` is its record |
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
 
-**Every slice and every earlier track is merged.** Two branches are open:
-`track/raster`, which is the last of the port, and `track/java-bug-fixes`,
-which is not a port at all.
+**The port is merged**, every slice and every track of it, bar the two
+`track/performance` commits that ride in the open branch. What is open is
+`track/testdata-sources`, which ports nothing: it collects other projects' test
+PDFs, scores the port against PDFBox over them, and fixes what that finds.
 
 ## The order they were taken in
 

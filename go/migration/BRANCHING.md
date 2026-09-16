@@ -132,8 +132,8 @@ all, so it is the right thing to hand to a second person on day one.
 ## `track/java-bug-fixes` — the one branch that is not a port
 
 Every branch above ports Java into Go and reproduces its defects on purpose.
-`JAVA-BUGS.md` is the record: 84 entries, about seventy of them carried in the
-Go deliberately, each with a comment at the site saying so.
+`JAVA-BUGS.md` is the record, and it carries the count: every entry was carried
+in the Go deliberately, with a comment at the site saying so.
 
 **`track/java-bug-fixes` fixes them in the Go.** It is the only branch that
 makes the Go behave differently from the reference, and its task file
@@ -150,7 +150,7 @@ by reading the Java — an answer that stops working the moment the Go is allowe
 to differ on purpose. Finishing the port first keeps that answer cheap for as
 long as it is needed.
 
-Its first task is a triage of all 84 entries into fix, keep, not-carried and
+Its first task is a triage of every entry into fix, keep, not-carried and
 test-only, written down in `STATUS.md` before any code moves. Fix is the
 default; the four reasons an entry may be kept are enumerated in the task file
 and "it looked risky" is not one of them.
