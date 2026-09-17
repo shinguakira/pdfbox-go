@@ -42,12 +42,25 @@
 .PARAMETER TimeoutSeconds
     Give up on one file after this. Default 20, matching cmd/corpus.
 
+.PARAMETER Pages
+    Write a digest per page instead of a row per file. The table is
+    file, page, text, chars, digest, and `corpus -comparepages` joins it with
+    the one `corpus -pages` writes. Use it over the files a comparison has
+    already named, not over a corpus: it extracts each page in a pass of its
+    own.
+
 .PARAMETER Passwords
-    A table of passwords for encrypted files: one line per file, a path ending,
-    a tab, and the password, in UTF-8 without a byte order mark. Pass the same
-    file to cmd/corpus as -passwords so both sides open the same files with the
-    same passwords. fetch-corpus.ps1 writes one for a suite that publishes its
-    passwords, as _passwords.tsv beside the files.
+    Tables of the ways encrypted files are opened, in UTF-8 without a byte order
+    mark. Each line is one way of opening one file: a path ending, a tab, and the
+    password; or a path ending, the password, a certificate and a private key,
+    tab separated, the two files named relative to the table's directory; or a
+    path ending, a passphrase and a PKCS#12 keystore, for a project that keeps
+    that certificate and key in a store of its own, which is the shape PDFBox
+    reads and is handed to it as it is. A file
+    is opened, and gets a row, once for every line naming it. Pass the same
+    tables to cmd/corpus as -passwords, in the same order, so both sides open the
+    same files the same ways. fetch-corpus.ps1 writes one for a suite that
+    publishes its passwords, as _passwords.tsv beside the files.
 
 .PARAMETER Rebuild
     Recompile even when the classes are already there.
@@ -71,7 +84,12 @@ param(
 
     [int]$TimeoutSeconds = 20,
 
-    [string]$Passwords,
+    [string[]]$Passwords,
+
+    # Write a digest per page rather than a row per file, for narrowing a
+    # disagreement the document digest found to a page. go/cmd/corpus -pages
+    # writes the same table for the port, and -comparepages joins the two.
+    [switch]$Pages,
 
     [switch]$Rebuild,
 
@@ -198,7 +216,7 @@ if (-not $List) {
 
 # Resolved here, against the directory the script was called from, because the
 # run below moves to the repository root.
-if ($Passwords) { $Passwords = (Resolve-Path -LiteralPath $Passwords).Path }
+if ($Passwords) { $Passwords = @($Passwords | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }) }
 
 $total = (Get-Content -LiteralPath $List).Count
 Write-Host "running PDFBox over $total files"
@@ -208,9 +226,19 @@ Write-Host "running PDFBox over $total files"
 Push-Location $RepoRoot
 try {
     $lfArg = if ($Crlf) { 'crlf' } else { 'lf' }
-    $javaArgs = @($List, $TimeoutSeconds, $lfArg)
+    $javaArgs = @($List, $TimeoutSeconds, $lfArg, $(if ($Pages) { "pages" } else { "rows" }))
     if ($Passwords) { $javaArgs += $Passwords }
-    $rows = & java -Xss8m -cp $classpath JavaCorpus @javaArgs
+    # JavaCorpus writes its table in UTF-8, and PowerShell reads what a native
+    # program writes in the console's code page unless told otherwise; a row
+    # named by a password in Arabic came back as question marks.
+    $savedEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+    try {
+        $rows = & java -Xss8m -cp $classpath JavaCorpus @javaArgs
+    }
+    finally {
+        [Console]::OutputEncoding = $savedEncoding
+    }
     if ($LASTEXITCODE -ne 0) { throw "java exited $LASTEXITCODE" }
     Write-NoBom -Path $Out -Lines $rows
 }

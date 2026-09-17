@@ -36,6 +36,7 @@ change it to suit one branch — change the copy.
 | `track/upstream-sync` | [`track-upstream-sync.md`](track-upstream-sync.md) | **merged** — what the Apache merge of 2026-09-07 changed, measured against the frozen snapshot |
 | `track/performance` | — | **carried**, not merged: its two commits rode into `track/testdata-sources` when that branch reopened. `../PERFORMANCE-PLAN.md` is its record |
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
+| `track/testdata-itext` | [`track-testdata-itext.md`](track-testdata-itext.md) | **merged** into `track/testdata-sources` on 2026-09-16 — iText's PDFs against PDFBox, and the text compared by digest |
 
 **The port is merged**, every slice and every track of it, bar the two
 `track/performance` commits that ride in the open branch. What is open is

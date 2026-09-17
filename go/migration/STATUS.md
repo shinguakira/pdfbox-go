@@ -847,6 +847,19 @@ The four glyph hooks join `StreamEngineOverrides`.
 normalisation and the bidi reordering the stripper needs and the Go standard
 library does not carry.
 
+**Two stand-ins for the JDK's Unicode support were wrong, found 2026-09-16 by
+the digest of the text on `track/testdata-itext`.** `handleDirection` wrote a
+word's runs in the logical order `x/text` answers them in, where Java reorders
+them visually; it now asks `go/javatext/bidi`. And
+`TextPosition.VisuallyOrderedUnicode` asked whether a code point belongs to a
+right-to-left script, where Java asks `Character.getDirectionality` for R or AL;
+it now asks the bidi class `x/text` holds, for an assigned code point. That
+leaves one deliberate difference, measured over every code point against JDK 17:
+the 58 right-to-left characters Unicode 14 added, Arabic Extended-B and Old
+Uyghur among them, are right to left here and undefined in a JDK of Unicode 13,
+as `IsDiacritic`'s Go categories are Unicode 15's.
+`pdfbox/text/corpusbidi_test.go` holds PDFBox's answers for both.
+
 ### The loader — slice 1's unfinished half, ported here
 
 `PLAN.md` slice 1 is "open a document" and lists `pdfbox/pdfparser` at 18 files;
@@ -1329,7 +1342,11 @@ writes them, and each file says so at the top:
 
 - **`cms.go`** reads a CMS enveloped-data blob: the key transport recipients,
   their identifiers, and the content once the RSA key has unwrapped it. Only
-  reading; the encrypting half would need an encoder.
+  reading; the encrypting half would need an encoder. **It unwrapped with PKCS#1
+  v1.5 alone until 2026-09-16**, and BouncyCastle also unwraps RSAES-OAEP, with
+  the hash, mask and label its parameters give; four of iText's test PDFs wrap
+  their key that way and did not open. `TestOAEPRecipientUnwraps`; see
+  [`TESTDATA.md`](TESTDATA.md), "iText against the Java".
 - **`pkcs12.go`** reads a PKCS#12 keystore — the RFC 7292 SHA-1 derivation, the
   MAC, 3DES for the shrouded key bags and 40-bit RC2 for the certificate bags,
   which is what the checked-in keystores use.

@@ -18,8 +18,10 @@
     directory is in go/.gitignore, and these carry other projects' licences.
     They are fetched, read as test input, and not redistributed.
 
-    Sizes are the compressed download. `small` suites total well under 100 MB
-    and are what -Suite defaults to; `large` ones are opt-in by name.
+    Sizes are the compressed download, or for a suite fetched with git the size
+    of the files kept. `small` suites total well under 100 MB and are what
+    -Suite defaults to; `large` ones are opt-in by name. The two iText suites
+    need git on PATH.
 
 .PARAMETER Suite
     Which suites to fetch. Defaults to every suite marked small.
@@ -38,6 +40,9 @@
 
 .EXAMPLE
     pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
+
+.EXAMPLE
+    pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-java,itext-dotnet
 #>
 [CmdletBinding()]
 param(
@@ -146,6 +151,110 @@ $suites = @(
     }
 )
 
+# iText's PDFs are 542 MB of a 1.4 GB tree in each of its two repositories, spread
+# through the test resources of every module, so they are fetched by a partial
+# clone and a sparse checkout of the Keep patterns rather than by archive. Each
+# file keeps its path in the repository.
+$gitSuites = @(
+    [pscustomobject]@{
+        Name    = 'itext-java'
+        Size    = 'large'
+        Bytes   = 542MB
+        Licence = 'AGPL-3.0, or commercial from Apryse'
+        Covers  = 'every PDF committed to iText Core for Java, at its path in the repository: 6,897 on develop at 2026-09-14, all in test resources -- layout 2,342, kernel 1,779, svg 1,446, forms 682, sign 386, pdfa 172, barcodes 39, brotli-compressor 20, pdfua 18, webp-image-support 8, pdftest 3, io 2. The inputs its tests read and the cmp_ files they compare their output with; nothing its tests read comes from the network. 234 name an encryption dictionary, and passwords/itext-java.tsv gives the ways its tests open them -- the passwords, and for the 40 encrypted for a certificate the certificate and key, which are fetched too -- written to _passwords.tsv. Not on disk: the PDFs the tests write, which exist only once the Maven build has run them'
+        Exercises = 'everything; kernel and forms reach cos, pdfparser, pdmodel/encryption and pdmodel/interactive/form most directly'
+        Git     = 'https://github.com/itext/itext-java.git'
+        Branch  = 'develop'
+        Keep    = @('*.[pP][dD][fF]')
+        PasswordTable = 'passwords/itext-java.tsv'
+    }
+    [pscustomobject]@{
+        Name    = 'itext-dotnet'
+        Size    = 'large'
+        Bytes   = 545MB
+        Licence = 'AGPL-3.0, or commercial from Apryse'
+        Covers  = 'every PDF committed to iText Core for .NET, at its path in the repository: 6,960 on develop at 2026-09-14, all under itext.tests. The same library ported from the Java, and mostly the same files: 6,678 of its 6,780 distinct contents are in itext-java too, and the other 102 -- 80 of them in itext.sign.tests -- are not. 240 name an encryption dictionary; passwords/itext-dotnet.tsv, as for itext-java'
+        Exercises = 'as itext-java'
+        Git     = 'https://github.com/itext/itext-dotnet.git'
+        Branch  = 'develop'
+        Keep    = @('*.[pP][dD][fF]')
+        PasswordTable = 'passwords/itext-dotnet.tsv'
+    }
+)
+
+# iText's other repositories: the add-ons, the published examples, the books and
+# iText 5. Thirty-two of the forty-five have PDFs, counted from each default
+# branch's tree on 2026-09-16, and they are written as a table rather than as
+# thirty-two blocks because only the name, the branch and the counts differ --
+# every one is fetched the same way itext-java is, a partial clone and a sparse
+# checkout of *.pdf, each file checked against its blob id.
+#
+# They are here because "PDFs iText wrote are all alike" is an argument and not
+# a measurement, and this repository takes measurements. What they scored is in
+# TESTDATA.md, "iText's other repositories".
+$itextOthers = @(
+    @{ Name = 'itext-pdfhtml-dotnet'; Branch = 'develop'; Pdfs = 7649; Bytes = 71MB; What = "pdfHTML for .NET: HTML and CSS in, PDF out, and nearly all of them cmp_ files pdfHTML itself wrote" }
+    @{ Name = 'itext-pdfhtml-java'; Branch = 'develop'; Pdfs = 7630; Bytes = 69MB; What = 'pdfHTML for Java, the same set ported' }
+    @{ Name = 'itext-publications-samples-dotnet'; Branch = 'develop'; Pdfs = 1013; Bytes = 153MB; What = "the published .NET examples' expected output" }
+    @{ Name = 'itextpdf'; Branch = 'develop'; Pdfs = 854; Bytes = 86MB; What = 'iText 5 for Java, the previous generation of the library, with its own test resources -- a different writer from iText Core' }
+    @{ Name = 'itextsharp'; Branch = 'develop'; Pdfs = 849; Bytes = 82MB; What = 'iText 5 for .NET, the same' }
+    @{ Name = 'itext-publications-examples-java'; Branch = 'develop'; Pdfs = 762; Bytes = 80MB; What = "the published Java examples' expected output" }
+    @{ Name = 'i5js-sandbox'; Branch = 'master'; Pdfs = 515; Bytes = 59MB; What = 'iText 5 examples, archived' }
+    @{ Name = 'itext-publications-book-java'; Branch = 'develop'; Pdfs = 331; Bytes = 57MB; What = "the book's examples" }
+    @{ Name = 'itext-pdfsweep-dotnet'; Branch = 'develop'; Pdfs = 254; Bytes = 34MB; What = 'pdfSweep: redaction inputs and the results it compares with' }
+    @{ Name = 'itext-pdfsweep-java'; Branch = 'develop'; Pdfs = 252; Bytes = 34MB; What = 'pdfSweep for Java, the same' }
+    @{ Name = 'itext-pdfocr-dotnet'; Branch = 'develop'; Pdfs = 196; Bytes = 40MB; What = 'pdfOCR: PDFs written from scanned images, with the text layer OCR produced' }
+    @{ Name = 'itext-publications-signatures-java'; Branch = 'develop'; Pdfs = 173; Bytes = 15MB; What = "the signatures book's examples, signed every way iText signs" }
+    @{ Name = 'itext-pdfocr-java'; Branch = 'develop'; Pdfs = 169; Bytes = 37MB; What = 'pdfOCR for Java, the same' }
+    @{ Name = 'itext-publications-highlevel-java'; Branch = 'develop'; Pdfs = 112; Bytes = 13MB; What = "the high-level API book's examples" }
+    @{ Name = 'itext-publications-jumpstart-java'; Branch = 'develop'; Pdfs = 48; Bytes = 49MB; What = "the jumpstart tutorial's examples" }
+    @{ Name = 'i5ns-book'; Branch = 'master'; Pdfs = 18; Bytes = 1MB; What = "iText 5 for .NET, the book's examples, archived" }
+    @{ Name = 'i5js-book'; Branch = 'develop'; Pdfs = 12; Bytes = 1MB; What = "iText 5 for Java, the book's examples, archived" }
+    @{ Name = 'itext-2022-customer-event'; Branch = 'master'; Pdfs = 11; Bytes = 2MB; What = 'a conference demo' }
+    @{ Name = 'rups'; Branch = 'develop'; Pdfs = 10; Bytes = 1MB; What = "RUPS, iText's PDF inspector, and the files its own tests open" }
+    @{ Name = 'itext-android-ui'; Branch = 'develop'; Pdfs = 8; Bytes = 1MB; What = 'an Android UI demo' }
+    @{ Name = 'pdfcop'; Branch = 'main'; Pdfs = 7; Bytes = 3MB; What = 'pdfCop, a validator demo' }
+    @{ Name = 'itext-python-example'; Branch = 'main'; Pdfs = 7; Bytes = 1MB; What = 'a Python interop example' }
+    @{ Name = 'itext-publications-signing-examples-java'; Branch = 'develop'; Pdfs = 7; Bytes = 1MB; What = 'signing examples' }
+    @{ Name = 'GIDS2026'; Branch = 'master'; Pdfs = 5; Bytes = 1MB; What = 'a conference demo' }
+    @{ Name = 'i5js-tutorial'; Branch = 'master'; Pdfs = 4; Bytes = 1MB; What = "iText 5's tutorial, archived" }
+    @{ Name = 'i5ns-tutorial'; Branch = 'master'; Pdfs = 4; Bytes = 1MB; What = "iText 5 for .NET's tutorial, archived" }
+    @{ Name = 'ndi-demo'; Branch = 'master'; Pdfs = 4; Bytes = 1MB; What = 'a demo' }
+    @{ Name = 'i7js-zugferd'; Branch = 'master'; Pdfs = 3; Bytes = 1MB; What = 'ZUGFeRD invoices, which are PDF/A-3 with XML attached' }
+    @{ Name = 'pdfdeserializer'; Branch = 'main'; Pdfs = 3; Bytes = 1MB; What = 'a deserialiser demo' }
+    @{ Name = 'AndroidPdfViewer'; Branch = 'develop'; Pdfs = 1; Bytes = 3MB; What = 'an Android viewer demo' }
+    @{ Name = 'pdfchain'; Branch = 'master'; Pdfs = 1; Bytes = 1MB; What = 'a blockchain demo' }
+    @{ Name = 'wtpdf-demo'; Branch = 'main'; Pdfs = 1; Bytes = 1MB; What = 'a well-tagged PDF demo, archived' }
+)
+$gitSuites += @($itextOthers | ForEach-Object {
+    # Eight of them hold PDFs their own samples and tests open with a password
+    # or a keystore, and each of those keeps its table in passwords/ beside this
+    # script under the suite's name.
+    $table = "passwords/$($_.Name).tsv"
+    $hasTable = Test-Path -LiteralPath (Join-Path (Join-Path $RepoRoot 'go/migration/scripts') $table)
+    $covers = "$($_.Pdfs) PDFs on $($_.Branch) at 2026-09-16 -- $($_.What)"
+    if ($hasTable) {
+        $covers += ". The ways its own classes open its encrypted files are in $table, written to _passwords.tsv; any certificate, key or keystore those lines name is fetched with the PDFs"
+    }
+    # Not $suite: that is this script's own parameter, and PowerShell would
+    # write the last suite over the list of suites to fetch.
+    $entry = [pscustomobject]@{
+        Name    = $_.Name
+        Size    = 'large'
+        Bytes   = $_.Bytes
+        Licence = 'AGPL-3.0, or commercial from Apryse'
+        Covers  = $covers
+        Exercises = 'whatever wrote them: these are read as input, and what any of iText`s tools believed about them decides nothing'
+        Git     = "https://github.com/itext/$($_.Name).git"
+        Branch  = $_.Branch
+        Keep    = @('*.[pP][dD][fF]')
+    }
+    if ($hasTable) {
+        $entry | Add-Member -NotePropertyName PasswordTable -NotePropertyValue $table
+    }
+    $entry
+})
+
 # pdfCabinetOfHorrors is a handful of files inside a 520 MB repository, so it is
 # fetched file by file through the contents API instead of by archive.
 $apiSuites = @(
@@ -160,7 +269,7 @@ $apiSuites = @(
     }
 )
 
-$all = @($suites) + @($apiSuites)
+$all = @($suites) + @($gitSuites) + @($apiSuites)
 
 if ($List) {
     foreach ($s in $all) {
@@ -457,10 +566,14 @@ function Resolve-Links {
 }
 
 # Write-Passwords writes _passwords.tsv for a suite whose project publishes the
-# passwords of its encrypted files: one line per file, the file's path under the
-# corpus root, a tab, and the password, in UTF-8 without a byte order mark. Both
-# drivers match a row against the end of the path they were given, so the table
-# reads the same whether they run from the repository root or from go/.
+# passwords of its encrypted files, in UTF-8 without a byte order mark: one line
+# for each way of opening a file, the file's path under the corpus root, a tab,
+# and the password -- or, for a file encrypted for a certificate, the password,
+# the certificate and the private key, tab separated, those two relative to the
+# suite, or the passphrase and the project's own PKCS#12 keystore where it keeps
+# the two in one file. Both drivers match a line against the end of the path
+# they were given, so the table reads the same whether they run from the
+# repository root or from go/.
 function Write-Passwords {
     param([object]$S, [string]$Dest)
 
@@ -493,9 +606,166 @@ function Write-Passwords {
         }
         $lines.Add("$($S.Name)/$file`t$($table[$file])")
     }
+
+    # A suite whose tests open files more than one way, or with certificates,
+    # keeps its table in passwords/ beside this script, one line for each way of
+    # opening a file, paths relative to the suite. The lines are copied with the
+    # suite's name in front of each file, and every file a line names -- the PDF,
+    # and the certificate and key of a certificate line -- has to be there.
+    $opened = @{}
+    if ($S.PSObject.Properties.Name -contains 'PasswordTable') {
+        foreach ($line in (Read-PasswordTable -S $S)) {
+            if ($line.StartsWith('#') -or -not $line.Trim()) {
+                $lines.Add($line)
+                continue
+            }
+            $fields = $line -split "`t"
+            foreach ($named in @($fields[0]) + @($fields | Select-Object -Skip 2)) {
+                if (-not (Test-Path -LiteralPath (Join-Path $Dest $named))) {
+                    throw "$($S.Name): the passwords table names $named, which is not in the suite -- if the suite was fetched before the table named it, fetch it again with -Force"
+                }
+            }
+            $opened[$fields[0]] = $true
+            $lines.Add("$($S.Name)/$line")
+        }
+    }
+
     $path = Join-Path $Dest '_passwords.tsv'
     [System.IO.File]::WriteAllLines($path, $lines, (New-Object System.Text.UTF8Encoding $false))
-    Write-Host "$($S.Name) -- passwords for $($lines.Count) encrypted files; see $path"
+    Write-Host "$($S.Name) -- passwords for $($table.Count + $opened.Count) encrypted files; see $path"
+}
+
+# Read-PasswordTable answers the lines of a suite's committed passwords table.
+function Read-PasswordTable {
+    param([object]$S)
+
+    $path = Join-Path (Join-Path $RepoRoot 'go/migration/scripts') $S.PasswordTable
+    $lines = [System.IO.File]::ReadAllLines($path, (New-Object System.Text.UTF8Encoding $false))
+    foreach ($line in $lines) {
+        if ($line.StartsWith('#') -or -not $line.Trim()) { continue }
+        $count = ($line -split "`t").Count
+        if ($count -ne 2 -and $count -ne 3 -and $count -ne 4) {
+            throw "$path`: a line that is none of a file and a password, a file, a passphrase and a keystore, and a file, a password, a certificate and a key: $line"
+        }
+    }
+    return $lines
+}
+
+# Get-TableKeys answers the certificates and keys a suite's passwords table
+# names, which the sparse checkout has to bring as well as the PDFs.
+function Get-TableKeys {
+    param([object]$S)
+
+    if ($S.PSObject.Properties.Name -notcontains 'PasswordTable') { return @() }
+    $keys = [ordered]@{}
+    foreach ($line in (Read-PasswordTable -S $S)) {
+        if ($line.StartsWith('#') -or -not $line.Trim()) { continue }
+        $fields = $line -split "`t"
+        foreach ($named in ($fields | Select-Object -Skip 2)) { $keys[$named] = $true }
+    }
+    return @($keys.Keys)
+}
+
+# Get-GitSuite fetches a suite whose files are scattered through a repository
+# much larger than they are: iText keeps its PDFs in the test resources of a
+# dozen modules, beside more than their size again in fonts, images and
+# sources. A partial clone brings the tree without the contents, a sparse
+# checkout of the suite's Keep patterns brings the contents of those files
+# alone, and each file keeps its path in the repository.
+#
+# Nothing is converted on the way out, whatever the repository's attributes say
+# about line endings, and every file is then checked against the blob id the
+# repository records for it: a file that is not byte for byte what is committed,
+# or a committed file that did not arrive, fails the run. _revision.txt records
+# the commit the files are from.
+function Get-GitSuite {
+    param([object]$S, [string]$Dest)
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw 'git is not on PATH; it is needed to fetch this suite'
+    }
+
+    # Staged and moved into place, as the archive suites are.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("corpus-" + [guid]::NewGuid().ToString('N'))
+    $config = @('-c', 'core.autocrlf=false', '-c', 'core.eol=lf', '-c', 'core.longpaths=true', '-c', 'core.quotepath=false')
+    # git writes paths in UTF-8, and PowerShell reads a native program's output
+    # in the console's code page unless told otherwise.
+    $savedConsole = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+    try {
+        # The Keep patterns, and each certificate and key the suite's passwords
+        # table names, anchored to the root.
+        $patterns = @($S.Keep) + @(Get-TableKeys -S $S | ForEach-Object { "/$_" })
+        & git @config clone --quiet --filter=blob:none --no-checkout --depth 1 --branch $S.Branch $S.Git $tmp
+        if ($LASTEXITCODE -ne 0) { throw "git clone exited $LASTEXITCODE" }
+        & git @config -C $tmp sparse-checkout set --no-cone @($patterns)
+        if ($LASTEXITCODE -ne 0) { throw "git sparse-checkout exited $LASTEXITCODE" }
+        & git @config -C $tmp checkout --quiet $S.Branch
+        if ($LASTEXITCODE -ne 0) { throw "git checkout exited $LASTEXITCODE" }
+
+        # "H <path>" is an entry the sparse checkout kept, "S <path>" one it
+        # left out; -s gives each entry's blob id, in the same order.
+        $tags = @(& git @config -C $tmp ls-files -t)
+        $stages = @(& git @config -C $tmp ls-files -s)
+        if ($LASTEXITCODE -ne 0 -or $tags.Count -ne $stages.Count) { throw 'git ls-files did not list the index' }
+        $expected = [ordered]@{}
+        for ($i = 0; $i -lt $tags.Count; $i++) {
+            if ($tags[$i].StartsWith('H ')) {
+                $fields = $stages[$i] -split "`t", 2
+                $expected[$fields[1]] = ($fields[0] -split ' ')[1]
+            }
+        }
+        $paths = @($expected.Keys)
+        if ($paths.Count -eq 0) { throw "nothing in $($S.Git) matches $($S.Keep -join ', ')" }
+
+        # A blob id is the SHA-1 of "blob <length>", a NUL, and the bytes, so
+        # hashing the bytes on disk gives the id only if checkout wrote the
+        # committed bytes unchanged. Hashed here rather than by git hash-object,
+        # because Windows PowerShell puts a byte order mark in front of
+        # anything it pipes to a native program.
+        $sha1 = [System.Security.Cryptography.SHA1]::Create()
+        $buffer = New-Object byte[] (1MB)
+        $wrong = @(foreach ($path in $paths) {
+            $full = Join-Path $tmp $path
+            if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { $path; continue }
+            $stream = [System.IO.File]::OpenRead($full)
+            try {
+                $sha1.Initialize()
+                $header = [System.Text.Encoding]::ASCII.GetBytes("blob $($stream.Length)`0")
+                [void]$sha1.TransformBlock($header, 0, $header.Length, $null, 0)
+                while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                    [void]$sha1.TransformBlock($buffer, 0, $read, $null, 0)
+                }
+                [void]$sha1.TransformFinalBlock($buffer, 0, 0)
+            }
+            finally {
+                $stream.Dispose()
+            }
+            $id = -join ($sha1.Hash | ForEach-Object { $_.ToString('x2') })
+            if ($id -ne $expected[$path]) { $path }
+        })
+        if ($wrong.Count -gt 0) {
+            throw "$($wrong.Count) files are missing or not the bytes committed, the first $($wrong[0])"
+        }
+
+        $commit = (& git -C $tmp rev-parse HEAD).Trim()
+        $when = (& git -C $tmp log -1 --format=%cI HEAD).Trim()
+        Remove-Item -LiteralPath (Join-Path $tmp '.git') -Recurse -Force
+        [System.IO.File]::WriteAllLines((Join-Path $tmp '_revision.txt'),
+            [string[]]@("$($S.Git) $($S.Branch) $commit $when", "$($paths.Count) files, each checked against its blob id: those matching $($S.Keep -join ' '), and $($patterns.Count - @($S.Keep).Count) certificates, keys and keystores the passwords table names"),
+            (New-Object System.Text.UTF8Encoding $false))
+
+        if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Dest) | Out-Null
+        Move-Item -LiteralPath $tmp -Destination $Dest
+        Write-Host "$($S.Name) -- $($paths.Count) files at $commit, every one the bytes committed"
+    }
+    finally {
+        [Console]::OutputEncoding = $savedConsole
+        if (Test-Path -LiteralPath $tmp) {
+            Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Get-ApiSuite {
@@ -532,7 +802,7 @@ foreach ($name in $Suite) {
     $s = $all | Where-Object { $_.Name -eq $name } | Select-Object -First 1
     $dest = Join-Path $corpusRoot $name
     $hasLinks = $s.PSObject.Properties.Name -contains 'LinkManifest'
-    $hasPasswords = @($s.PSObject.Properties.Name | Where-Object { $_ -in 'PasswordManifest', 'Passwords' }).Count -gt 0
+    $hasPasswords = @($s.PSObject.Properties.Name | Where-Object { $_ -in 'PasswordManifest', 'Passwords', 'PasswordTable' }).Count -gt 0
 
     if ((Test-Path -LiteralPath $dest) -and -not $Force) {
         $have = (Get-ChildItem -LiteralPath $dest -Recurse -File -Filter *.pdf -ErrorAction SilentlyContinue).Count
@@ -551,6 +821,9 @@ foreach ($name in $Suite) {
     "$name -- fetching ~$([math]::Round($s.Bytes / 1MB)) MB ..."
     if ($s.PSObject.Properties.Name -contains 'Api') {
         Get-ApiSuite -S $s -Dest $dest
+    }
+    elseif ($s.PSObject.Properties.Name -contains 'Git') {
+        Get-GitSuite -S $s -Dest $dest
     }
     else {
         Get-ArchiveSuite -S $s -Dest $dest

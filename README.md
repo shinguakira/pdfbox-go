@@ -49,24 +49,29 @@ PDFBox itself is the oracle, and it is run rather than consulted.
 in this repository and puts it over the same documents, and `cmd/corpus -oracle`
 reports every disagreement.
 
-Over **5,090 documents** — PDFBox's own regression files, veraPDF's ISO clause
-tests, qpdf's damaged files, the SafeDocs parser traps, and every PDF pdf.js
-tests with:
+Over **18,947 documents** — PDFBox's own regression files, veraPDF's ISO clause
+tests, qpdf's damaged files, the SafeDocs parser traps, every PDF pdf.js tests
+with, and every PDF iText keeps as test data in its Java and its .NET repository,
+the encrypted ones opened with the passwords and certificates iText's tests use.
+The text is compared by length and by a digest of its characters:
 
 ```
-open    both 5037, neither 53, behind 0, ahead 0
+18947 files, opened 19201 ways
+open    both 19094, neither 107, behind 0, ahead 0
 pages   0 disagree
-text    both 5032, neither 5, behind 0, ahead 0
-chars   5030 the same length, 2 not
+text    both 19085, neither 9, behind 0, ahead 0
+chars   19083 the same length, 2 not
+digest  19083 of the same length the same text, 0 not
 
-2 of 5090 files disagree (0.04%)
+2 of 18947 files disagree (0.01%)
 ```
 
-There is no document in that corpus PDFBox reads and this port does not. The two
-that disagree are two bugs in the Java that this port fixes on purpose.
-That run is of 2026-09-15; [`go/migration/TESTDATA.md`](go/migration/TESTDATA.md)
-is where the corpus, the commands that produce this table, the current result
-and both of those disagreements live.
+There is no document in that corpus PDFBox reads and this port does not, and no
+text of the same length that differs. The two that disagree are two bugs in the
+Java that this port fixes on purpose. That run is of 2026-09-16;
+[`go/migration/TESTDATA.md`](go/migration/TESTDATA.md) is where the corpus, the
+commands that produce this table, the current result and both of those
+disagreements live.
 
 Speed and memory
 ----------------
