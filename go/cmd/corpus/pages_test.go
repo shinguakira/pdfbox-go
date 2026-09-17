@@ -47,7 +47,7 @@ func TestComparePagesReportsThePageThatDiffers(t *testing.T) {
 	}
 }
 
-func TestComparePagesTellsTheFourAnswersApart(t *testing.T) {
+func TestComparePagesTellsTheAnswersApart(t *testing.T) {
 	java := writeTable(t, "java.tsv",
 		"same.pdf\t1\tok\t10\taaaaaaaaaaaaaaaa",
 		"length.pdf\t1\tok\t10\taaaaaaaaaaaaaaaa",
@@ -67,8 +67,54 @@ func TestComparePagesTellsTheFourAnswersApart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if differ != 3 {
-		t.Errorf("comparePages = %d, want 3: the length, the content and the failure", differ)
+	if differ != 5 {
+		t.Errorf("comparePages = %d, want 5: the length, the content, the failure, and a file each table holds alone", differ)
+	}
+}
+
+func TestComparePagesCountsAFileOneSideCouldNotOpen(t *testing.T) {
+	// Both drivers write a file they could not open as a single row for page 0.
+	// The pages the other side read must not be dropped for having no partner:
+	// that would compare nothing and call it agreement.
+	java := writeTable(t, "java.tsv",
+		"a.pdf\t1\tok\t10\taaaaaaaaaaaaaaaa",
+		"a.pdf\t2\tok\t20\tbbbbbbbbbbbbbbbb",
+		"a.pdf\t3\tok\t30\tcccccccccccccccc",
+		"b.pdf\t0\tIOException: Missing root object specification in trailer.\t0\t-",
+		"c.pdf\t1\tok\t10\taaaaaaaaaaaaaaaa",
+	)
+	mine := writeTable(t, "go.tsv",
+		"a.pdf\t0\tpdfparser: end of file\t0\t-",
+		"b.pdf\t0\tpdfparser: Missing root object specification in trailer.\t0\t-",
+		"c.pdf\t0\tpanic: nil map\t0\t-",
+	)
+
+	differ, err := comparePages(java, mine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if differ != 2 {
+		t.Errorf("comparePages = %d, want 2: a.pdf and c.pdf once each, as files the port did not open, and b.pdf not at all -- neither side opened it, and the two drivers word the same failure differently", differ)
+	}
+}
+
+func TestComparePagesCountsAPageOnlyOneTableHas(t *testing.T) {
+	java := writeTable(t, "java.tsv",
+		"a.pdf\t1\tok\t10\taaaaaaaaaaaaaaaa",
+		"a.pdf\t2\tok\t20\tbbbbbbbbbbbbbbbb",
+		"a.pdf\t3\tok\t30\tcccccccccccccccc",
+	)
+	mine := writeTable(t, "go.tsv",
+		"a.pdf\t1\tok\t10\taaaaaaaaaaaaaaaa",
+		"a.pdf\t2\tok\t20\tbbbbbbbbbbbbbbbb",
+	)
+
+	differ, err := comparePages(java, mine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if differ != 1 {
+		t.Errorf("comparePages = %d, want 1: page 3, which the port's table does not have", differ)
 	}
 }
 

@@ -119,6 +119,12 @@ func pageOf(document *pdmodel.PDDocument, path, label string, page int) (row pag
 
 // comparePages joins two page tables and reports every page the two disagree
 // on. The first is PDFBox's, the second the port's.
+//
+// Both tables are walked, not one of them. A file one side opened and the
+// other did not, a page one table has and the other does not, and a file only
+// one table holds are each a disagreement: joining on the pages both tables
+// hold would compare nothing for a document the port cannot open, and report
+// that as agreement.
 func comparePages(javaPath, goPath string) (int, error) {
 	java, err := readPages(javaPath)
 	if err != nil {
@@ -128,41 +134,110 @@ func comparePages(javaPath, goPath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	javaFiles, goFiles := byFile(java), byFile(mine)
 
-	keys := make([]string, 0, len(mine))
-	for key := range mine {
-		if _, known := java[key]; known {
-			keys = append(keys, key)
+	names := make([]string, 0, len(javaFiles)+len(goFiles))
+	for name := range javaFiles {
+		names = append(names, name)
+	}
+	for name := range goFiles {
+		if _, known := javaFiles[name]; !known {
+			names = append(names, name)
 		}
 	}
-	sort.Strings(keys)
+	sort.Strings(names)
 
 	var compared, differ int
-	for _, key := range keys {
-		them, now := java[key], mine[key]
-		compared++
+	for _, name := range names {
+		them, now := javaFiles[name], goFiles[name]
 		switch {
-		case them.text != now.text:
+		case len(them) == 0:
 			differ++
-			fmt.Printf("  TEXT   %s page %d\n           go:   %s\n           java: %s\n",
-				now.path+now.label, now.page, now.text, them.text)
-		case them.chars != now.chars:
+			fmt.Printf("  MISSING %s: in the Go table only\n", name)
+			continue
+		case len(now) == 0:
 			differ++
-			fmt.Printf("  CHARS  %s page %d: go %d, java %d\n",
-				now.path+now.label, now.page, now.chars, them.chars)
-		case them.digest != now.digest && them.digest != "" && now.digest != "":
+			fmt.Printf("  MISSING %s: in the PDFBox table only\n", name)
+			continue
+		}
+
+		// Both drivers write a file they could not open as one row for page 0,
+		// holding the error.
+		javaError, javaFailed := them[0]
+		goError, goFailed := now[0]
+		switch {
+		case javaFailed && goFailed:
+			// Neither side opened it: nothing to compare, and nothing disagrees.
+			continue
+		case goFailed:
 			differ++
-			fmt.Printf("  DIGEST %s page %d: %d characters on both sides, and not the same ones\n",
-				now.path+now.label, now.page, now.chars)
+			fmt.Printf("  OPEN   behind %s\n           go:   %s\n           java: ok, %d pages\n",
+				name, goError.text, len(them))
+			continue
+		case javaFailed:
+			differ++
+			fmt.Printf("  OPEN   ahead  %s\n           go:   ok, %d pages\n           java: %s\n",
+				name, len(now), javaError.text)
+			continue
+		}
+
+		pages := make([]int, 0, len(them)+len(now))
+		for page := range them {
+			pages = append(pages, page)
+		}
+		for page := range now {
+			if _, known := them[page]; !known {
+				pages = append(pages, page)
+			}
+		}
+		sort.Ints(pages)
+
+		for _, page := range pages {
+			j, inJava := them[page]
+			g, inGo := now[page]
+			switch {
+			case !inGo:
+				differ++
+				fmt.Printf("  PAGE   %s page %d: in the PDFBox table only\n", name, page)
+				continue
+			case !inJava:
+				differ++
+				fmt.Printf("  PAGE   %s page %d: in the Go table only\n", name, page)
+				continue
+			}
+			compared++
+			switch {
+			case j.text != g.text:
+				differ++
+				fmt.Printf("  TEXT   %s page %d\n           go:   %s\n           java: %s\n",
+					name, page, g.text, j.text)
+			case j.chars != g.chars:
+				differ++
+				fmt.Printf("  CHARS  %s page %d: go %d, java %d\n", name, page, g.chars, j.chars)
+			case j.digest != g.digest && j.digest != "" && g.digest != "":
+				differ++
+				fmt.Printf("  DIGEST %s page %d: %d characters on both sides, and not the same ones\n",
+					name, page, g.chars)
+			}
 		}
 	}
 
 	fmt.Printf("\n%d pages compared, %d disagree\n", compared, differ)
-	onlyOne := len(mine) - compared
-	if onlyOne > 0 {
-		fmt.Printf("%d pages the other table does not have\n", onlyOne)
-	}
 	return differ, nil
+}
+
+// byFile groups a page table's rows by the file and label they belong to, and
+// within that by page.
+func byFile(rows map[string]pageRow) map[string]map[int]pageRow {
+	files := map[string]map[int]pageRow{}
+	for _, row := range rows {
+		name := row.path + row.label
+		if files[name] == nil {
+			files[name] = map[int]pageRow{}
+		}
+		files[name][row.page] = row
+	}
+	return files
 }
 
 // readPages reads a page table, keyed by the file, the label and the page.

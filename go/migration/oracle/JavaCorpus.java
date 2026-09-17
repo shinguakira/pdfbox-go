@@ -74,10 +74,13 @@ import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo;
  * are files, named relative to the table's directory -- PEM or DER, the key
  * PKCS#8 and, when encrypted, encrypted with the password -- and they are put
  * into a one-entry PKCS#12 keystore protected by the same password, which is
- * what PDFBox reads. A file whose path ends that way is opened once for every
- * line naming it, and a row is written for each; when there is more than one,
- * each row's file is followed by the line after its path ending, in brackets,
- * its fields joined by " | ". A file no line names is opened with no password.
+ * what PDFBox reads. A line of three fields -- a path ending, a passphrase and
+ * a PKCS#12 keystore -- names a project's own keystore, holding that
+ * certificate and key already, and it is read as it is. A file whose path ends
+ * that way is opened once for every line naming it, and a row is written for
+ * each; when there is more than one, each row's file is followed by the line
+ * after its path ending, in brackets, its fields joined by " | ". A file no
+ * line names is opened with no password.
  * go/cmd/corpus reads the same tables the same way.
  *
  * <p>Usage: {@code java JavaCorpus <listfile> [timeoutSeconds] [lf|crlf]
@@ -101,14 +104,17 @@ public class JavaCorpus {
         /** The certificate and private key, or null for a password line. */
         final Path certificate;
         final Path key;
+        /** The project's own PKCS#12 keystore, or null for any other line. */
+        final Path keystore;
         /** The line after its path ending, which tells two opens of one file apart. */
         final String label;
 
-        Open(String ending, String password, Path certificate, Path key, String label) {
+        Open(String ending, String password, Path certificate, Path key, Path keystore, String label) {
             this.ending = ending;
             this.password = password;
             this.certificate = certificate;
             this.key = key;
+            this.keystore = keystore;
             this.label = label;
         }
     }
@@ -143,12 +149,15 @@ public class JavaCorpus {
             String ending = fields[0].replace('\\', '/');
             String label = String.join(" | ", Arrays.asList(fields).subList(1, fields.length));
             if (fields.length == 2 && !ending.isEmpty()) {
-                OPENS.add(new Open(ending, fields[1], null, null, label));
+                OPENS.add(new Open(ending, fields[1], null, null, null, label));
+            } else if (fields.length == 3 && !ending.isEmpty()) {
+                OPENS.add(new Open(ending, fields[1], null, null, dir.resolve(fields[2]), label));
             } else if (fields.length == 4 && !ending.isEmpty()) {
-                OPENS.add(new Open(ending, fields[1], dir.resolve(fields[2]), dir.resolve(fields[3]), label));
+                OPENS.add(new Open(ending, fields[1], dir.resolve(fields[2]), dir.resolve(fields[3]), null, label));
             } else {
-                throw new IllegalArgumentException(table + ": a line that is neither a path ending and a "
-                        + "password nor a path ending, a password, a certificate and a key: " + line);
+                throw new IllegalArgumentException(table + ": a line that is none of a path ending and a "
+                        + "password, a path ending, a passphrase and a keystore, and a path ending, a "
+                        + "password, a certificate and a key: " + line);
             }
         }
     }
@@ -158,9 +167,14 @@ public class JavaCorpus {
 
     /**
      * The one-entry PKCS#12 keystore a certificate line describes, as the
-     * bytes PDFBox's loader reads, protected by the line's password.
+     * bytes PDFBox's loader reads, protected by the line's password -- or, for a
+     * keystore line, the project's own store, as it is.
      */
     static InputStream keyStoreFor(Open open) throws Exception {
+        if (open.keystore != null) {
+            // The project's own store, in the shape PDFBox's loader reads.
+            return new ByteArrayInputStream(Files.readAllBytes(open.keystore));
+        }
         Certificate certificate = certificate(open.certificate);
         PrivateKey key = privateKey(open.key, open.password);
         KeyStore store = KeyStore.getInstance("PKCS12");
@@ -296,7 +310,7 @@ public class JavaCorpus {
         if (open == null) {
             return Loader.loadPDF(new File(path));
         }
-        if (open.certificate == null) {
+        if (open.certificate == null && open.keystore == null) {
             return Loader.loadPDF(new File(path), open.password);
         }
         // The keystore is built inside the fence, so a key that cannot be read

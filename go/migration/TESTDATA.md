@@ -648,11 +648,20 @@ wrong character, or the right characters in the wrong order, that length alone
 passes. A PDFBox table written before the column existed is compared on length
 alone.
 
+`-oracle` walks PDFBox's table as well as the run's own rows. A row the table has
+under one of the directories the run was given, and the run has no row for, is
+reported as `MISSING` and counted as behind, so a file the port never answered
+for cannot pass as a clean comparison. Rows outside those directories are left
+alone: the table is usually the whole corpus's, and a run is often one suite.
+
 **Narrowing one of those to a page.** The digest says a document's text differs;
 it does not say where. Both drivers write a page table on request — one row per
 page per way of opening a file, with that page's text digested the same way —
-and `corpus -comparepages` joins them. Run it over the files the comparison
-named, not over a corpus: each page is extracted in a pass of its own.
+and `corpus -comparepages` joins them. Both tables are walked: a file one side
+opened and the other did not is one `OPEN` line, a page only one table has is a
+`PAGE` line, and a file only one table holds is a `MISSING` line, each counted as
+a disagreement. Run it over the files the comparison named, not over a corpus:
+each page is extracted in a pass of its own.
 
 ```bash
 printf 'go/testdata/corpus/pdfjs/bug1175962.pdf\n' > narrow.txt

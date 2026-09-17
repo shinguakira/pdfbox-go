@@ -229,7 +229,7 @@ func main() {
 	}
 
 	if *oracle != "" {
-		behind, err := compareOracle(*oracle, results)
+		behind, err := compareOracle(*oracle, flag.Args(), results)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "corpus:", err)
 			os.Exit(1)
@@ -630,7 +630,14 @@ func rootRelative(p string) string {
 // characters in the wrong order; a table JavaCorpus wrote before it wrote
 // digests is compared on length alone. Run the oracle with -Crlf once to see why
 // either needs the separators forced equal.
-func compareOracle(path string, results []result) (int, error) {
+//
+// PDFBox's table is walked as well as this run's rows. A row it has under one
+// of the directories this run was given, and this run has no row for, is a
+// document the port never answered for, and counts as behind: joining on this
+// run's rows alone would count it nowhere and call the comparison clean. A row
+// outside those directories is not reported, because the table is usually wider
+// than one run -- the whole corpus, compared a suite at a time.
+func compareOracle(path string, roots []string, results []result) (int, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -682,14 +689,20 @@ func compareOracle(path string, results []result) (int, error) {
 		lines = append(lines, fmt.Sprintf(format, args...))
 	}
 
+	answered := map[string]bool{}
 	for _, now := range results {
-		them, known := java[rootRelative(now.path)+now.label]
+		// Both maps of files are keyed the way PDFBox's table names a file, so
+		// that a file this run answered one way and not another counts once.
+		file := rootRelative(now.path)
+		key := file + now.label
+		answered[key] = true
+		them, known := java[key]
 		if !known {
 			notInOracle++
 			continue
 		}
 		compared++
-		files[now.path] = true
+		files[file] = true
 		name := now.path + now.label
 
 		goOpened, javaOpened := now.open == "ok", them.open == "ok"
@@ -700,10 +713,10 @@ func compareOracle(path string, results []result) (int, error) {
 			openNeither++
 		case javaOpened:
 			openBehind++
-			note(now.path, "  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", name, now.open, them.pages)
+			note(file, "  OPEN   behind %s\n           go: %s\n           java: ok, %d pages", name, now.open, them.pages)
 		default:
 			openAhead++
-			note(now.path, "  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", name, now.pages, them.open)
+			note(file, "  OPEN   ahead  %s\n           go: ok, %d pages\n           java: %s", name, now.pages, them.open)
 		}
 		if !goOpened || !javaOpened {
 			continue
@@ -711,7 +724,7 @@ func compareOracle(path string, results []result) (int, error) {
 
 		if now.pages != them.pages {
 			pageDiff++
-			note(now.path, "  PAGES  %s: go %d, java %d", name, now.pages, them.pages)
+			note(file, "  PAGES  %s: go %d, java %d", name, now.pages, them.pages)
 		}
 
 		goText, javaText := now.text == "ok", them.text == "ok"
@@ -727,22 +740,45 @@ func compareOracle(path string, results []result) (int, error) {
 						contentSame++
 					} else {
 						contentDiff++
-						note(now.path, "  DIGEST %s: %d chars on both sides, not the same ones", name, now.chars)
+						note(file, "  DIGEST %s: %d chars on both sides, not the same ones", name, now.chars)
 					}
 				}
 			} else {
 				charsDiff++
-				note(now.path, "  CHARS  %s: go %d, java %d", name, now.chars, them.chars)
+				note(file, "  CHARS  %s: go %d, java %d", name, now.chars, them.chars)
 			}
 		case !goText && !javaText:
 			textNeither++
 		case javaText:
 			textBehind++
-			note(now.path, "  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", name, now.text, them.chars)
+			note(file, "  TEXT   behind %s\n           go: %s\n           java: ok, %d chars", name, now.text, them.chars)
 		default:
 			textAhead++
-			note(now.path, "  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", name, now.chars, them.text)
+			note(file, "  TEXT   ahead  %s\n           go: ok, %d chars\n           java: %s", name, now.chars, them.text)
 		}
+	}
+
+	// The rows PDFBox answered under the directories this run was given and
+	// this run did not.
+	covered := make([]string, 0, len(roots))
+	for _, root := range roots {
+		covered = append(covered, rootRelative(root))
+	}
+	unanswered := make([]string, 0)
+	for key := range java {
+		if !answered[key] && underAny(fileOf(key), covered) {
+			unanswered = append(unanswered, key)
+		}
+	}
+	sort.Strings(unanswered)
+	absent := map[string]bool{}
+	for _, key := range unanswered {
+		file := fileOf(key)
+		if !files[file] {
+			absent[file] = true
+		}
+		them := java[key]
+		note(file, "  MISSING %s\n           go: no row\n           java: %s, %d pages", key, them.open, them.pages)
 	}
 
 	out := os.Stderr
@@ -752,6 +788,9 @@ func compareOracle(path string, results []result) (int, error) {
 	}
 	if notInOracle > 0 {
 		fmt.Fprintf(out, ", %d not in the oracle's table", notInOracle)
+	}
+	if len(unanswered) > 0 {
+		fmt.Fprintf(out, "; %d rows of the oracle's table under the directories given have none here", len(unanswered))
 	}
 	fmt.Fprintf(out, "\n\n  open    both %d, neither %d, behind %d, ahead %d\n",
 		openBoth, openNeither, openBehind, openAhead)
@@ -766,14 +805,36 @@ func compareOracle(path string, results []result) (int, error) {
 	// Files, not mismatches: a document whose page count and character count both
 	// differ is one file that disagrees, and summing the counters above would
 	// call it two.
-	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", len(disagreed), len(files),
-		percent(len(disagreed), len(files)))
+	all := len(files) + len(absent)
+	fmt.Fprintf(out, "\n  %d of %d files disagree (%.2f%%)\n", len(disagreed), all,
+		percent(len(disagreed), all))
 
 	sort.Strings(lines)
 	for _, line := range lines {
 		fmt.Fprintln(out, line)
 	}
-	return openBehind + textBehind, nil
+	return openBehind + textBehind + len(unanswered), nil
+}
+
+// fileOf answers the file a row of either table names, without the passwords
+// line a label adds after it: "go/testdata/corpus/a.pdf [secret]" is
+// "go/testdata/corpus/a.pdf".
+func fileOf(key string) string {
+	if i := strings.Index(strings.ToLower(key), ".pdf ["); i >= 0 && strings.HasSuffix(key, "]") {
+		return key[:i+len(".pdf")]
+	}
+	return key
+}
+
+// underAny reports whether a file, named the way PDFBox's table names it, is
+// one of the roots or lies under one.
+func underAny(file string, roots []string) bool {
+	for _, root := range roots {
+		if file == root || strings.HasPrefix(file, root+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // passwordsPaths are the -passwords tables, in the order given, handed on to
