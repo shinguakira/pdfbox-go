@@ -350,7 +350,7 @@ func main() {
 	}
 
 	if *oracle != "" {
-		behind, err := compareOracle(*oracle, flag.Args(), results)
+		behind, err := compareOracle(*oracle, roots, results)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "corpus:", err)
 			os.Exit(1)

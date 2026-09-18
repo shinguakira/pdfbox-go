@@ -82,6 +82,10 @@ over the whole corpus, not only PoDoFo -- found nine, all fixed here with tests
 whose expected values are PDFBox's. `migration/STATUS.md` has the table and
 `migration/TESTDATA.md` the run.
 
+The review of that work found one more: the renderer drew every stroke at its
+72 dpi width whatever the resolution, which a comparison at 72 dpi cannot show.
+`migration/STATUS.md` has it, under the review of the comparison.
+
 ## Tooling changed on this branch
 
 - `cmd/corpus` gained the facet, write and render modes: `-facets`,
@@ -121,3 +125,10 @@ that far out. The page's own text says what right looks like: "The two blue boxe
 should match" and "text should stay visible". Nothing else in the render
 comparison is beyond 16 levels, so this is one document's worth of
 backdrop-and-blend arithmetic, measured and not yet run down.
+
+**Java2D's thin strokes.** A stroke at most an eighth of a pixel wide in device
+space is drawn an eighth of a pixel wide when anti-aliased, and one of a pixel or
+less is drawn by a separate one-pixel pipeline when not. The port draws both at
+their own width. The first happens only at 36 dpi and below, the second on every
+`BINARY` page. Found while fixing the stroke width at other resolutions, which
+the review of pull request #39 led to; `migration/STATUS.md` has both.

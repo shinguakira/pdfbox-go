@@ -1,4 +1,12 @@
-# Porting status
+# Porting status**Three of the twelve documents `PDAcroFormFlattenTest` renders differ after
+flattening**, and Java passes all twelve, so this is the port's `Flatten` doing
+something the Java's does not. There were four: `test-2586.pdf` differed in 322
+pixels until 2026-09-19, when strokes began to be drawn at the width the
+resolution gives them -- the test renders at 96 dpi -- and it went to 0. See the
+review of the comparison, at the end of this file.
+
+| File | Pixels differing after flattening |
+| --- | ---: |
 
 Hand maintained. Update the row for a package in the same commit that ports it.
 
@@ -179,22 +187,24 @@ because the JBIG2 row covers one file and the JPX row three.
 
 ### Still open
 
-**Four of the twelve documents `PDAcroFormFlattenTest` renders differ after
+**Three of the twelve documents `PDAcroFormFlattenTest` renders differ after
 flattening**, and Java passes all twelve, so this is the port's `Flatten` doing
-something the Java's does not.
+something the Java's does not. There were four: `test-2586.pdf` differed in 322
+pixels until 2026-09-19, when strokes began to be drawn at the width the
+resolution gives them -- the test renders at 96 dpi -- and it went to 0. See the
+review of the comparison, at the end of this file.
 
 | File | Pixels differing after flattening |
 | --- | ---: |
-| `test-2586.pdf` | 322 |
 | `PDFBOX-5225.pdf` | 51, over two pages |
 | `PDFBOX-4955.pdf` | 4 |
 | `Signed-Document-1.pdf` | 2 |
 
-No content appears, disappears or moves: on all four the differing pixels are
+No content appears, disappears or moves: on all three the differing pixels are
 one to five levels of grey along an edge inside a region a few hundred pixels
 across, and the test asserts that too — no channel may be more than 8 levels
-out, and none is. A save-and-reload without flattening changes zero pixels on
-all four, so the writer is not what does it, and the two flattened content
+out, and none is. A save-and-reload without flattening changed zero pixels on
+each of them, so the writer is not what does it, and the two flattened content
 streams agree operator for operator. Two explanations were tried and are wrong:
 Java's `resolveTransformationMatrix` works in double and rounds once where the
 port narrowed to float32 first, and making the port match changed nothing; and
@@ -5216,3 +5226,61 @@ bytes are identical on both sides. Nothing in the standard library makes its
 decoder lenient, so matching PDFBox here means a JPEG decoder of our own; that
 is a decision to take rather than a fix to make, and it is recorded in
 [`tasks/track-testdata-podofo.md`](tasks/track-testdata-podofo.md).
+
+### The review of the comparison, 2026-09-19
+
+The review of that work on pull request #39 raised five points, and all five
+were right.
+
+- **A keyed-out pixel lost its colour under a soft mask.** `applyMask` read the
+  image premultiplied on the way into the mask, and a pixel a colour key took
+  out has an alpha of 0, which premultiplies to black. PDFBox composes the mask
+  into the keyed `TYPE_INT_ARGB` image as it is, so the pixel keeps its colour;
+  only where the image is smaller than the mask does `scaleImage` draw it onto a
+  transparent image first, and there it is black. `toRGBA` reads straight colour
+  and takes the two paths Java takes. `graphics/image/keyedsoftmask_test.go`,
+  whose expected values are PDFBox's `getRGB`.
+- **The stroke's padding was in a different space from the stroke.** The
+  compositor's bound for a stroke put the width through the transform, and the
+  stroker drew it in device space as it came. Looking at which of the two was
+  wrong found a port defect, below. `rendering/raster/bounds_test.go` draws each
+  case through `Draw` and over the whole surface and holds the two to the same
+  pixels; with the pad removed, all four stroke cases fail.
+- **`run-oracle.ps1` did not rebuild a cache from before xmpbox.** The compile of
+  the Java trees was guarded by `JavaCorpus.class` alone, and `JavaFacets` needs
+  xmpbox. The guard now also looks for one class out of each tree.
+- **`-comparefacets` passed two tables with different facets.** A facet in one
+  table only was printed and not counted. It is counted now.
+  `cmd/corpus/facetcompare_test.go`.
+- **`-oracle` ignored the files `-list` named.** The rows PDFBox answered that
+  this run did not were looked for under the directories on the command line
+  only. `cmd/corpus/oracle_test.go`.
+
+**The port drew every stroke at its 72 dpi width, whatever the resolution.**
+`PageDrawer.getStroke` puts the line width and the dashes through the CTM and
+not through the transform of the Graphics2D, which is the page's own: the scale
+the page is rendered at, and its rotation and flip. Marlin puts the stroke
+through that transform with the path, so PDFBox draws a line twice as wide at
+144 dpi as at 72; `rendering/raster/stroke.go` transformed the path and stroked
+it at the width it was given. At 72 dpi every transform the renderer installs
+scales by exactly 1, so no page of the corpus comparison could show it; at 144
+dpi, 8,335 pixels of 160,000 on the package's own test page were more than a
+quarter of a channel out. `pen` is the transform half of
+`DMarlinRenderingEngine.strokeTo`: nothing is stroked through a transform that
+flattens the plane, a uniform scale multiplies the width, the dashes and the
+phase, and any other transform strokes in user space and transforms the
+outline. Five cases in `java2d_test.go` hold it to Java2D, and
+`TestAPageAtTwiceTheScaleRendersAsPDFBoxRendersIt` holds the page to PDFBox at
+144 dpi: 6,770 pixels differ, 6,601 of them by one unit, none by more than a
+quarter of a channel. `PDAcroFormFlattenTest` renders at 96 dpi, and with the
+fix `test-2586.pdf` renders the same before and after flattening, where it
+differed in 322 pixels; its row is gone from `differingAfterFlatten`, and
+"Still open" above has three files left.
+
+What is still not modelled is Java2D's thin stroke. `SunGraphics2D` calls a
+stroke thin when it is at most an eighth of a pixel wide in device space with
+anti-aliasing, or a pixel without it. An anti-aliased thin stroke is drawn an
+eighth of a pixel wide, and a thin stroke without anti-aliasing is drawn by a
+different pipeline, one pixel wide. PDFBox's minimum line width of 0.25 confines
+the first to 36 dpi and below; the second is every stroke of a pixel or less on a
+`BINARY` page. Neither was touched here.

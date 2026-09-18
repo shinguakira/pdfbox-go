@@ -20,6 +20,12 @@ import org.apache.pdfbox.rendering.PDFRenderer;
  *
  *   javac -cp <pdfbox classes>;<commons-logging>;<log4j-api> -d . RenderDrv.java
  *   java -cp .;<same> RenderDrv
+ *
+ * The arguments are the PDF, the PNG, the image type and the scale, and each
+ * defaults to what the first comparison used. graphics-2x-java.png is the same
+ * page at a scale of 2, 144 dpi:
+ *
+ *   java -cp .;<same> RenderDrv graphics.pdf graphics-2x-java.png RGB 2
  */
 public class RenderDrv
 {
@@ -35,7 +41,12 @@ public class RenderDrv
             {
                 type = ImageType.valueOf(args[2]);
             }
-            BufferedImage image = renderer.renderImage(0, 1, type);
+            float scale = 1;
+            if (args.length > 3)
+            {
+                scale = Float.parseFloat(args[3]);
+            }
+            BufferedImage image = renderer.renderImage(0, scale, type);
             ImageIO.write(image, "png", png);
             System.out.printf("%s %dx%d%n", png, image.getWidth(), image.getHeight());
         }

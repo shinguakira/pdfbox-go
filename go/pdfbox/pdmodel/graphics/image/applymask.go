@@ -136,10 +136,24 @@ func toGray(img goimage.Image, width, height int, interpolate bool) *goimage.Gra
 // alpha below 255 would be read back divided by it -- wrapping past 255 for a
 // half-transparent pixel and lost outright for a transparent one. image.NRGBA
 // is the straight one, and what this answers.
+//
+// The colour is read straight too, and where it is kept depends on the path
+// Java takes. An image that already is TYPE_INT_ARGB -- *image.NRGBA here, as
+// a colour key makes one -- and is the size asked for has the mask composed
+// into it as it is, so every pixel keeps its colour whatever its alpha: a pixel
+// the key took out comes back in its own colour under a soft mask. Anything
+// else goes through scaleImage, which draws it onto a new transparent
+// TYPE_INT_ARGB image, and a pixel with an alpha of 0 draws nothing there and
+// is left black.
 func toRGBA(img goimage.Image, width, height int, interpolate bool) *goimage.NRGBA {
+	_, isARGB := img.(*goimage.NRGBA)
+	asItIs := isARGB && img.Bounds().Dx() == width && img.Bounds().Dy() == height
 	out := goimage.NewNRGBA(goimage.Rect(0, 0, width, height))
 	scaleInto(img, out.Bounds(), interpolate, func(x, y int, c goimagecolor.Color) {
-		r, g, b, _ := c.RGBA()
+		r, g, b, a := straight(c)
+		if a == 0 && !asItIs {
+			return
+		}
 		out.SetNRGBA(x, y, goimagecolor.NRGBA{
 			R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255,
 		})

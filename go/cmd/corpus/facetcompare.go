@@ -68,11 +68,15 @@ func compareFacets(javaPath, goPath string) (int, error) {
 	for i, name := range mine.names {
 		column[name] = i
 	}
+	// Each such facet is counted as a disagreement too, so that two tables
+	// written by different versions of the drivers do not compare clean.
 	var shared []string
+	unshared := 0
 	for _, name := range java.names {
 		if _, ok := column[name]; ok {
 			shared = append(shared, name)
 		} else {
+			unshared++
 			fmt.Printf("  FACET  %s: in PDFBox's table only, not compared\n", name)
 		}
 	}
@@ -82,6 +86,7 @@ func compareFacets(javaPath, goPath string) (int, error) {
 	}
 	for _, name := range mine.names {
 		if _, ok := javaColumn[name]; !ok {
+			unshared++
 			fmt.Printf("  FACET  %s: in this program's table only, not compared\n", name)
 		}
 	}
@@ -146,11 +151,14 @@ func compareFacets(javaPath, goPath string) (int, error) {
 	}
 
 	fmt.Printf("\n%d rows compared, %d in one table only\n", rows, missing)
+	if unshared > 0 {
+		fmt.Printf("  %d facets in one table only, not compared\n", unshared)
+	}
 	fmt.Printf("  open        both %d, neither %d, behind %d, ahead %d\n", openBoth, openNeither, openBehind, openAhead)
 	for _, name := range shared {
 		fmt.Printf("  %-11s %d the same, %d not\n", name, tallies[name].same, tallies[name].differ)
 	}
-	return differ + missing + openBehind + openAhead, nil
+	return differ + missing + openBehind + openAhead + unshared, nil
 }
 
 // cellAt answers a row's cell for a facet, the open cell being the row's first.

@@ -41,6 +41,14 @@ func comparePage(t *testing.T, name string) (differing, beyond int) {
 func comparePageOfType(t *testing.T, reference, page string,
 	imageType rendering.ImageType) (differing, beyond int) {
 	t.Helper()
+	return comparePageAtScale(t, reference, page, imageType, 1)
+}
+
+// comparePageAtScale is comparePageOfType for a page rendered at a scale other
+// than 1, which is 72 dpi.
+func comparePageAtScale(t *testing.T, reference, page string,
+	imageType rendering.ImageType, scale float32) (differing, beyond int) {
+	t.Helper()
 	referenceImage := readPNG(t, "testdata/"+reference+"-java.png")
 
 	document, err := pdfbox.LoadPDF("testdata/" + page + ".pdf")
@@ -49,7 +57,7 @@ func comparePageOfType(t *testing.T, reference, page string,
 	}
 	defer document.Close()
 
-	rendered, err := raster.RenderPage(document, 0, 1, imageType)
+	rendered, err := raster.RenderPage(document, 0, scale, imageType)
 	if err != nil {
 		t.Fatalf("rendering %s: %v", page, err)
 	}
@@ -112,6 +120,33 @@ func TestAPageRendersAsPDFBoxRendersIt(t *testing.T) {
 		beyondEdges     = 0
 	)
 	differing, beyond := comparePage(t, "graphics")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}
+
+// TestAPageAtTwiceTheScaleRendersAsPDFBoxRendersIt is the same page at a scale
+// of 2, which is 144 dpi.
+//
+// At a scale of 1 the page's own transform does not change a line width, so
+// the page above cannot tell whether a stroke is widened by it. At 2, PDFBox
+// draws every stroke twice as wide -- Marlin scales the width, the dashes and
+// the dash phase along with the path -- and the port drew each of them at its
+// 72 dpi width: 13371 pixels differed, 8335 of them by more than a quarter of
+// a channel. The reference is PDFBox's, graphics-2x-java.png, which
+// RenderDrv.java writes.
+//
+// What is left is what the page above has, over edges twice as long: 6601 of
+// the 6770 pixels are one unit out, and none is more than a quarter of a
+// channel.
+func TestAPageAtTwiceTheScaleRendersAsPDFBoxRendersIt(t *testing.T) {
+	const (
+		differingPixels = 6770
+		beyondEdges     = 0
+	)
+	differing, beyond := comparePageAtScale(t, "graphics-2x", "graphics", rendering.RGB, 2)
 	if differing != differingPixels || beyond != beyondEdges {
 		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
 			"than a quarter of a channel; it was %d and %d",

@@ -180,8 +180,19 @@ $classpath = (@($classes) +
 
 # ------------------------------------------------------------------ the compile
 
+# One class out of each tree the compile below covers. A cache built before a
+# tree was added to it -- xmpbox came with the facets, which JavaFacets reads
+# XMP with -- holds the drivers and not that tree, and the drivers would then
+# fail to compile against it; so a cache missing any of them is rebuilt.
 $driver = Join-Path $classes 'JavaCorpus.class'
-if ($Rebuild -or -not (Test-Path -LiteralPath $driver)) {
+$treeMarkers = @(
+    'org/apache/pdfbox/io/RandomAccessRead.class'
+    'org/apache/fontbox/FontBoxFont.class'
+    'org/apache/pdfbox/pdmodel/PDDocument.class'
+    'org/apache/xmpbox/xml/DomXmpParser.class'
+) | ForEach-Object { Join-Path $classes $_ }
+$missingTree = @($treeMarkers | Where-Object { -not (Test-Path -LiteralPath $_) })
+if ($Rebuild -or -not (Test-Path -LiteralPath $driver) -or $missingTree.Count -gt 0) {
     $sourceList = Join-Path $cache 'sources.txt'
     $sources = Get-ChildItem -Path @(
         (Join-Path $RepoRoot 'io/src/main/java'),

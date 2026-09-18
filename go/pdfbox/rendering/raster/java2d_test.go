@@ -144,6 +144,49 @@ var java2dCases = []java2dCase{
 			path.CurveTo(4, 4, 28, 4, 28, 26)
 			must(i.Draw(path))
 		}},
+	// A stroke through a transform is widened by it, as everything else is.
+	// PageDrawer.getStroke has put the width through the CTM, and what is in
+	// force here is the page's own transform, the scale it is rendered at, so
+	// a page at 144 dpi strokes twice as wide as one at 72.
+	{name: "strokeScaled", width: 24, height: 20, antiAliasing: true,
+		normDiffering: 44, normWorst: 1, draw: func(i *Image) {
+			i.SetTransform(geom.NewAffineTransform(2, 0, 0, 2, 0, 0))
+			i.SetStroke(&rendering.Stroke{LineWidth: 4, MiterLimit: 10})
+			must(i.Draw(lineShape(2, 5, 10, 5)))
+		}},
+	{name: "strokeShrunk", width: 24, height: 20, antiAliasing: true,
+		normDiffering: 44, normWorst: 1, draw: func(i *Image) {
+			i.SetTransform(geom.NewAffineTransform(0.5, 0, 0, 0.5, 0, 0))
+			i.SetStroke(&rendering.Stroke{LineWidth: 8, MiterLimit: 10})
+			must(i.Draw(lineShape(4, 20, 44, 20)))
+		}},
+	// The dashes and the phase are scaled with the width: this draws the
+	// pixels of dashedPhase.
+	{name: "dashedScaled", width: 24, height: 12, draw: func(i *Image) {
+		i.SetTransform(geom.NewAffineTransform(2, 0, 0, 2, 0, 0))
+		i.SetStroke(&rendering.Stroke{LineWidth: 2, MiterLimit: 10,
+			DashArray: []float32{2, 2}, DashPhase: 1})
+		must(i.Draw(lineShape(0, 3, 12, 3)))
+	}},
+	// A scale that is not the same both ways, through which the pen is an
+	// ellipse: the horizontal arm is 4 pixels thick and the vertical one 8.
+	{name: "strokeNonUniform", width: 32, height: 28, antiAliasing: true,
+		normDiffering: 83, normWorst: 64, draw: func(i *Image) {
+			i.SetTransform(geom.NewAffineTransform(2, 0, 0, 1, 0, 0))
+			i.SetStroke(&rendering.Stroke{LineWidth: 4, MiterLimit: 10})
+			path := geom.NewPathDouble()
+			path.MoveTo(2, 6)
+			path.LineTo(12, 6)
+			path.LineTo(12, 24)
+			must(i.Draw(path))
+		}},
+	// A transform that flattens everything onto a line, through which Marlin
+	// strokes nothing at all.
+	{name: "strokeSingular", width: 20, height: 20, antiAliasing: true, draw: func(i *Image) {
+		i.SetTransform(geom.NewAffineTransform(1, 0, 0, 0, 0, 0))
+		i.SetStroke(&rendering.Stroke{LineWidth: 4, MiterLimit: 10})
+		must(i.Draw(lineShape(2, 10, 18, 10)))
+	}},
 }
 
 // must fails a case that cannot draw at all, which is a bug in the backend and
@@ -270,16 +313,17 @@ func differenceFrom(t *testing.T, grid [][]uint8, i *Image) (differing, worst in
 
 // TestAgainstJava2D holds every case to the pixels Java2D produced for it.
 //
-// Eleven of the seventeen match exactly, and they are the ones that decide
+// Sixteen of the twenty-two match exactly, and they are the ones that decide
 // whether the port is right: the fills, the clip, the transform, both winding
-// rules, the butt and square caps, the miter join, and the dashes with and
-// without a phase.
+// rules, the butt and square caps, the miter join, the dashes with and without
+// a phase, and the strokes drawn through a transform -- a scale up, a scale
+// down, a scale that differs each way, and one that flattens everything.
 //
 // The other six differ, and only along edges that are neither horizontal nor
 // vertical. Two rasterisers are at work -- Java2D's is Marlin, which samples a
 // pixel on an 8x8 subpixel grid and truncates the count to a byte, and this
 // backend's is freetype's, which integrates the area exactly. On an
-// exactly-half-covered pixel Marlin gives 0x7f and freetype 0x80, and that one
+// exactly-half-covered pixel Marlin gives 0x80 and freetype 0x7f, and that one
 // unit is all of fillHalfAA and all of joinBevel. Where an edge is curved the
 // flatteners also disagree about where to place their line segments, which is
 // the rest: joinRound, capRound and strokeCurve. In every one of the six the
@@ -302,7 +346,7 @@ func TestAgainstJava2D(t *testing.T) {
 	}
 }
 
-// TestAgainstJava2DNormalized is the same seventeen under the other value of
+// TestAgainstJava2DNormalized is the same twenty-two under the other value of
 // KEY_STROKE_CONTROL, which is the one PDFBox actually renders under.
 //
 // `createDefaultRenderingHints` sets three hints and not this one, so a page
@@ -313,7 +357,7 @@ func TestAgainstJava2D(t *testing.T) {
 // `SetStrokeNormalization` is the hint.
 //
 // Holding the port to both grids is what says the port is right rather than
-// merely close: the same seventeen shapes, drawn twice, against a Java2D told
+// merely close: the same twenty-two shapes, drawn twice, against a Java2D told
 // to do each thing.
 func TestAgainstJava2DNormalized(t *testing.T) {
 	grids := java2dGrids(t)

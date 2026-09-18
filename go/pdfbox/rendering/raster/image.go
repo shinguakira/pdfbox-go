@@ -254,20 +254,24 @@ func (i *Image) Draw(shape geom.Shape) error {
 		return nil
 	}
 	bounds := i.dst.Bounds()
-	// A stroke puts paint half its width either side of the path, and a dash
-	// phase or a miter join can reach a little further, so the pad is the whole
-	// width rather than half of it.
-	width := float64(i.stroke.LineWidth)
-	if i.transform != nil {
-		width *= math.Max(math.Abs(i.transform.ScaleX()), math.Abs(i.transform.ScaleY())) +
-			math.Max(math.Abs(i.transform.ShearX()), math.Abs(i.transform.ShearY()))
+	mask := strokeCoverage(shape, i.transform, i.stroke,
+		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization)
+	if mask == nil {
+		// a transform that flattens everything, through which Marlin strokes
+		// nothing
+		return nil
 	}
+	// A stroke puts paint half its width either side of the path, and a square
+	// cap's corner or a miter join reaches further, so the pad is the whole
+	// width rather than half of it, times the miter limit. The width is the one
+	// the stroker drew in device space: penThrough multiplies it by the
+	// transform, and never by more than the most the transform lengthens
+	// anything.
+	width := float64(i.stroke.LineWidth) * maximumScale(i.transform)
 	if miter := float64(i.stroke.MiterLimit); miter > 1 {
 		width *= miter
 	}
-	return i.composeWithin(strokeCoverage(shape, i.transform, i.stroke,
-		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization),
-		i.deviceBounds(shape, width))
+	return i.composeWithin(mask, i.deviceBounds(shape, width))
 }
 
 // compose puts the current paint onto the destination through a coverage mask
