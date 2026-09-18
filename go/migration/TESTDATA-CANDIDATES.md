@@ -35,7 +35,7 @@ checked 2026-09-16. PDFBox's own are tiers 0 and 1 of
 | iText's [other 45 repositories](https://github.com/itext) | **20,913** | 32 of the 45; see below | AGPL / commercial | **all fetched** 2026-09-16, with the passwords and keystores eight of them open 28 encrypted files with |
 | [qpdf](https://github.com/qpdf/qpdf) | 717 | `qpdf/qtest/qpdf` 639, `qpdf/qtest/storage` 2, and 76 more | Apache-2.0 | **639 fetched**, 78 not |
 | [pdfium](https://github.com/chromium/pdfium) | **301** | `testing/resources` | BSD-3-Clause | not fetched |
-| [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | not fetched |
+| [podofo-resources](https://github.com/podofo/podofo-resources) | **102** | a flat root, plus six directories | none declared | **all fetched** 2026-09-17, with the passwords PoDoFo's tests open 19 of them with |
 | [mupdf](https://github.com/ArtifexSoftware/mupdf) | **0** | — see below | AGPL-3.0 | n/a |
 
 Two of those numbers are worth stopping on.
@@ -152,7 +152,9 @@ plus `Corrupted/`, `ParserTests/` (7), `TechDocs/` (28, mostly XMP),
 `FontsTTC/`, `FontsType1/`, `Std14Fonts/`, `Charmaps/` for fonts.
 
 A file per failure mode, which is the shape the tier-2 suites already have. **The
-cheapest addition to `fetch-corpus.ps1` of anything here.**
+cheapest addition to `fetch-corpus.ps1` of anything here.** Taken on 2026-09-17:
+every file opens on both sides, and the one text that differs is JAVA-BUGS 23;
+see [`TESTDATA.md`](TESTDATA.md), "PoDoFo against the Java".
 
 ### PDFium
 
@@ -163,10 +165,10 @@ renderer leans.
 
 ## Order to take them in
 
-PoDoFo first, the cheapest addition of anything here; then qpdf's remaining 78,
-which is a path change to a suite already there; then PDFium, BSD and bringing
-expected images with it; and MuPDF's `tests.git` only when a renderer question
-needs it. Each is an open task in
+PoDoFo was first, the cheapest addition of anything here, and was taken on
+2026-09-17. Then qpdf's remaining 78, which is a path change to a suite already
+there; then PDFium, BSD and bringing expected images with it; and MuPDF's
+`tests.git` only when a renderer question needs it. Each is an open task in
 [`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md). iText was
 fourth on that list and is no longer on it: it was taken whole, both languages,
 on 2026-09-16.

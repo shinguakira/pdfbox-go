@@ -87,3 +87,25 @@ func TestCompareOracleIsCleanWhenEveryRowIsAnswered(t *testing.T) {
 		t.Errorf("compareOracle = %d, want 0: t/b.pdf is outside the directories given", behind)
 	}
 }
+
+func TestCompareOracleCountsAListedFileThisRunHasNone(t *testing.T) {
+	// The files come from -list, one path each, and no directory is given.
+	// Each listed file is a root of its own, so a listed file PDFBox answered
+	// for and this run did not is counted -- and a file the list does not name
+	// is not, though it sits in the same directory.
+	table := writeOracle(t,
+		"go/testdata/corpus/s/a.pdf\tok\t1\tok\t10\taaaaaaaaaaaaaaaa",
+		"go/testdata/corpus/s/b.pdf\tok\t1\tok\t10\taaaaaaaaaaaaaaaa",
+		"go/testdata/corpus/s/c.pdf\tok\t1\tok\t10\taaaaaaaaaaaaaaaa",
+	)
+	results := []result{agreeing("testdata/corpus/s/a.pdf", "")}
+
+	listed := []string{"testdata/corpus/s/a.pdf", "testdata/corpus/s/b.pdf"}
+	behind, err := compareOracle(table, listed, results)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if behind != 1 {
+		t.Errorf("compareOracle = %d, want 1: b.pdf is listed and has no row; c.pdf is not listed", behind)
+	}
+}

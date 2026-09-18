@@ -56,9 +56,17 @@ func (r *PDResources) ColorSpaceOfName(name *cos.Name, wasDefault bool) (color.P
 
 	// we can't cache PDPattern, because it holds page resources, see PDFBOX-2370
 	//
-	// PDPattern is slice 9 and colour space creation reports it as not ported,
-	// so nothing reaches this line holding one.
-	r.CacheColorSpace(indirect, colorSpace)
+	// It holds the resources it was built from and looks a pattern name up in
+	// them, so another page handed it from the cache looks the name up in this
+	// page's resources and does not find it. The line used to say /Pattern was
+	// not ported and could not reach here; slice 9 ported it. See
+	// patterncache_test.go.
+	// Java tests `colorSpace instanceof PDPattern`; graphics/pattern is above
+	// this package and cannot be imported here, and the only colour space whose
+	// name is /Pattern is that one.
+	if colorSpace.Name() != cos.Pattern.Name() {
+		r.CacheColorSpace(indirect, colorSpace)
+	}
 	return colorSpace, nil
 }
 

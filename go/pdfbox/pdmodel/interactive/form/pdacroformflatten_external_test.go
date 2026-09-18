@@ -42,16 +42,20 @@ const flattenDPI = 96
 // **These are not expectations. They are a defect, pinned.** Java's own
 // assertion is that the two renderings are byte-identical, and it passes on
 // these same twelve files, so the port's Flatten is doing something the Java's
-// is not. Eight of the twelve already match exactly; the four below do not.
+// is not. Nine of the twelve match exactly; the three below do not.
+// `test-2586.pdf` was a fourth, at 322 pixels, until 2026-09-19, when strokes
+// began to be drawn at the width the resolution gives them -- this test
+// renders at 96 dpi, and the port drew every stroke at its 72 dpi width -- and
+// it went to 0.
 //
 // What the difference is *not*: content appearing, disappearing or moving. On
-// every one of the four the pixels that differ are a level or two of grey along
+// every one of them the pixels that differ are a level or two of grey along
 // an edge, inside a region a few hundred pixels across, and maxDeltaAfterFlatten
 // holds that. It is anti-aliasing landing one step over, which is what happens
 // when an appearance stream is composed onto the page through a transform that
 // differs in the last bit.
 //
-// A save-and-reload without flattening was run as a control on all four and
+// A save-and-reload without flattening was run as a control on the four and
 // changed nothing, so the writer is not what does it.
 //
 // Fixing it means finding where Flatten composes the widget's appearance, and
@@ -59,7 +63,6 @@ const flattenDPI = 96
 // change that raises one is a regression, and a change that drops one to 0 is
 // the fix and should delete the row.
 var differingAfterFlatten = map[string]int{
-	"test-2586.pdf":         322,
 	"Signed-Document-1.pdf": 2,
 	"PDFBOX-4955.pdf":       4,
 	"PDFBOX-5225.pdf":       51,

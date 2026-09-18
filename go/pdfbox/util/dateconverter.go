@@ -494,6 +494,13 @@ func loadZone(name string) (*time.Location, bool) {
 	if mapped, isLegacy := javaLegacyZones[name]; isLegacy {
 		name = mapped
 	}
+	if name == "" || name == "Local" {
+		// LoadLocation answers UTC for the empty name and the local zone for
+		// "Local"; TimeZone knows neither, and answers GMT, which parseTZoffset
+		// takes for no zone. What is left after a date trims to the empty name
+		// where it is a line feed or a tab.
+		return nil, false
+	}
 	loaded, err := time.LoadLocation(name)
 	if err != nil {
 		return nil, false

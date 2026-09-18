@@ -91,6 +91,30 @@ param(
     # writes the same table for the port, and -comparepages joins the two.
     [switch]$Pages,
 
+    # Write a digest per facet of each document beyond its text -- positions,
+    # document information, XMP, outline, page labels, page boxes, structure
+    # tree, annotations, form fields, images -- instead of the row table.
+    # go/cmd/corpus -facets writes the same table, and -comparefacets joins them.
+    [switch]$Facets,
+
+    # Write every line the facet digests are made of, for narrowing a facet two
+    # tables disagree on. Run it over the files a comparison named.
+    [switch]$FacetLines,
+
+    # Write what PDFBox writes, read back: save, incremental save, encryption on
+    # saving, split, merge, overlay and an external signature, each summarised
+    # as the page count and text digest of what it wrote (JavaWrites).
+    # go/cmd/corpus -writes writes the same table, and -comparefacets joins them.
+    [switch]$Writes,
+
+    # Write every line the write digests are made of.
+    [switch]$WriteLines,
+
+    # Render every page at 72 dpi and write its size, a digest of its pixels and
+    # a 16 by 16 grid of mean brightness (JavaRender). go/cmd/corpus -render
+    # writes the same table, and -comparerender joins them.
+    [switch]$Render,
+
     [switch]$Rebuild,
 
     # Windows PowerShell leaves $PSScriptRoot empty while binding parameters.
@@ -156,13 +180,25 @@ $classpath = (@($classes) +
 
 # ------------------------------------------------------------------ the compile
 
+# One class out of each tree the compile below covers. A cache built before a
+# tree was added to it -- xmpbox came with the facets, which JavaFacets reads
+# XMP with -- holds the drivers and not that tree, and the drivers would then
+# fail to compile against it; so a cache missing any of them is rebuilt.
 $driver = Join-Path $classes 'JavaCorpus.class'
-if ($Rebuild -or -not (Test-Path -LiteralPath $driver)) {
+$treeMarkers = @(
+    'org/apache/pdfbox/io/RandomAccessRead.class'
+    'org/apache/fontbox/FontBoxFont.class'
+    'org/apache/pdfbox/pdmodel/PDDocument.class'
+    'org/apache/xmpbox/xml/DomXmpParser.class'
+) | ForEach-Object { Join-Path $classes $_ }
+$missingTree = @($treeMarkers | Where-Object { -not (Test-Path -LiteralPath $_) })
+if ($Rebuild -or -not (Test-Path -LiteralPath $driver) -or $missingTree.Count -gt 0) {
     $sourceList = Join-Path $cache 'sources.txt'
     $sources = Get-ChildItem -Path @(
         (Join-Path $RepoRoot 'io/src/main/java'),
         (Join-Path $RepoRoot 'fontbox/src/main/java'),
-        (Join-Path $RepoRoot 'pdfbox/src/main/java')
+        (Join-Path $RepoRoot 'pdfbox/src/main/java'),
+        (Join-Path $RepoRoot 'xmpbox/src/main/java')
     ) -Recurse -Filter *.java -File | ForEach-Object { $_.FullName }
 
     # Not Set-Content: Windows PowerShell writes UTF-8 with a byte order mark,
@@ -180,14 +216,17 @@ if ($Rebuild -or -not (Test-Path -LiteralPath $driver)) {
 # class is missing or older than its source -- not only when the tree is. A
 # driver compiled once and never again would go on running the old code after
 # an edit, with nothing to say so.
-foreach ($name in 'JavaCorpus', 'JavaBench') {
-    $source = Join-Path $RepoRoot "go/migration/oracle/$name.java"
+# JavaCorpus and JavaFacets name each other, so each is compiled with the
+# directory as its source path and javac finds the other.
+$oracleSources = Join-Path $RepoRoot 'go/migration/oracle'
+foreach ($name in 'JavaCorpus', 'JavaFacets', 'JavaWrites', 'JavaRender', 'JavaBench') {
+    $source = Join-Path $oracleSources "$name.java"
     $class = Join-Path $classes "$name.class"
     $stale = $Rebuild -or -not (Test-Path -LiteralPath $class) -or
         ((Get-Item -LiteralPath $source).LastWriteTimeUtc -gt (Get-Item -LiteralPath $class).LastWriteTimeUtc)
     if ($stale) {
         Write-Host "compiling $name"
-        & javac -nowarn -encoding UTF-8 -d $classes -cp $classpath $source
+        & javac -nowarn -encoding UTF-8 -d $classes -cp $classpath -sourcepath $oracleSources $source
         if ($LASTEXITCODE -ne 0) { throw "javac exited $LASTEXITCODE on $name" }
     }
 }
@@ -226,7 +265,8 @@ Write-Host "running PDFBox over $total files"
 Push-Location $RepoRoot
 try {
     $lfArg = if ($Crlf) { 'crlf' } else { 'lf' }
-    $javaArgs = @($List, $TimeoutSeconds, $lfArg, $(if ($Pages) { "pages" } else { "rows" }))
+    $mode = if ($Pages) { "pages" } elseif ($FacetLines) { "facetlines" } elseif ($Facets) { "facets" } elseif ($WriteLines) { "writelines" } elseif ($Writes) { "writes" } elseif ($Render) { "render" } else { "rows" }
+    $javaArgs = @($List, $TimeoutSeconds, $lfArg, $mode)
     if ($Passwords) { $javaArgs += $Passwords }
     # JavaCorpus writes its table in UTF-8, and PowerShell reads what a native
     # program writes in the console's code page unless told otherwise; a row

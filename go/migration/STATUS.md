@@ -1,4 +1,12 @@
-# Porting status
+# Porting status**Three of the twelve documents `PDAcroFormFlattenTest` renders differ after
+flattening**, and Java passes all twelve, so this is the port's `Flatten` doing
+something the Java's does not. There were four: `test-2586.pdf` differed in 322
+pixels until 2026-09-19, when strokes began to be drawn at the width the
+resolution gives them -- the test renders at 96 dpi -- and it went to 0. See the
+review of the comparison, at the end of this file.
+
+| File | Pixels differing after flattening |
+| --- | ---: |
 
 Hand maintained. Update the row for a package in the same commit that ports it.
 
@@ -179,22 +187,24 @@ because the JBIG2 row covers one file and the JPX row three.
 
 ### Still open
 
-**Four of the twelve documents `PDAcroFormFlattenTest` renders differ after
+**Three of the twelve documents `PDAcroFormFlattenTest` renders differ after
 flattening**, and Java passes all twelve, so this is the port's `Flatten` doing
-something the Java's does not.
+something the Java's does not. There were four: `test-2586.pdf` differed in 322
+pixels until 2026-09-19, when strokes began to be drawn at the width the
+resolution gives them -- the test renders at 96 dpi -- and it went to 0. See the
+review of the comparison, at the end of this file.
 
 | File | Pixels differing after flattening |
 | --- | ---: |
-| `test-2586.pdf` | 322 |
 | `PDFBOX-5225.pdf` | 51, over two pages |
 | `PDFBOX-4955.pdf` | 4 |
 | `Signed-Document-1.pdf` | 2 |
 
-No content appears, disappears or moves: on all four the differing pixels are
+No content appears, disappears or moves: on all three the differing pixels are
 one to five levels of grey along an edge inside a region a few hundred pixels
 across, and the test asserts that too — no channel may be more than 8 levels
-out, and none is. A save-and-reload without flattening changes zero pixels on
-all four, so the writer is not what does it, and the two flattened content
+out, and none is. A save-and-reload without flattening changed zero pixels on
+each of them, so the writer is not what does it, and the two flattened content
 streams agree operator for operator. Two explanations were tried and are wrong:
 Java's `resolveTransformationMatrix` works in double and rounds once where the
 port narrowed to float32 first, and making the port match changed nothing; and
@@ -2825,9 +2835,22 @@ Where the two differ, and what the port does:
   the message differs, and no test compares it, because Java's comes from
   Xerces. A DOCTYPE declaration is refused here the way
   `disallow-doctype-decl` refuses it there.
-- **Encoding.** Java's parser sniffs the encoding declaration; the port reads
-  UTF-8, which is what every XMP packet in the corpus is and what the
-  specification requires.
+- **Encoding.** Xerces settles the encoding before it reads any markup: the
+  first four bytes, then the XML declaration. `encoding/xml` reads UTF-8 alone,
+  so `entity.go` ports that — `getEncodingInfo`, the byte order marks
+  `setupCurrentEntity` skips, `createReader` and `setEncoding` — and hands
+  `encoding/xml` the document transcoded to UTF-8, one byte at a time so that a
+  declaration changes the encoding right after its `?>`. Where Xerces falls back
+  on a Java reader for a declared encoding, the port looks the name up in
+  `golang.org/x/text`'s IANA index. The port used to read UTF-8 only, and the
+  corpus disagreed with that: 56 veraPDF packets start with a UTF-8 byte order
+  mark and 13 are written in UTF-16 or UCS-4. `encoding_test.go` pins eighteen
+  byte sequences against PDFBox's answers.
+- **Characters XML does not allow.** `encoding/xml` refuses them in text and
+  attribute values and reads a processing instruction or a comment through
+  without looking; Xerces refuses them anywhere. `Parse` checks those two
+  itself. `characters_test.go` pins it, from
+  `cabinet-of-horrors/balloon_a1b_jp2k.pdf`, whose packet header carries a NUL.
 
 The serializer's output was checked against Java's, not against the port's own:
 every fixture in `DeserializationTest` serializes byte-for-byte identically once
@@ -3031,6 +3054,23 @@ Ten Java bugs came out of this track: JAVA-BUGS.md 52 to 61.
 - **`caseName` numbered subtests with `string(rune('1'+i))`**, which stops being
   a digit past nine rounds; `strconv.Itoa` now. No row carries more than two
   values today, so it could not bite yet.
+
+Found later by the corpus comparison of XMP schemas (2026-09-17), which parses
+every packet on both sides and compares the schemas read: 72 files disagreed,
+and all 72 agree now.
+
+- **The parser read UTF-8 only** — 69 packets. See the DOM section above.
+- **A NUL in a processing instruction was read** — one packet. See the DOM
+  section above.
+- **`fromISO8601` refused an offset of hours alone.** `DATE_TIME_FORMATTER`
+  reads its "+HH:MM" leniently, which java.time reads as "+HH:mm:ss": "+03" and
+  "+03:00:00" are offsets, an hour past 23 or a minute past 59 is not read, and
+  "Z" is matched without regard to case. The port parsed the offset with Go's
+  layouts, which take none of the first two and take "+03:60". Two veraPDF
+  PDF/A-4 packets write xmp:CreateDate as "2022-11-18T11:54:39.000+03", and the
+  whole packet failed with it. `lenientOffset` ports the parser;
+  `dateconverter_offset_test.go` pins thirty strings against PDFBox's answers,
+  including JDK 17's GMT for an offset with seconds.
 
 ### Still open
 
@@ -5101,3 +5141,146 @@ and 2.94 ms without.
 
 Nothing from this sync. The next one starts from `3d024173c`.
 
+
+## The comparison of 2026-09-17, and the thirteen defects it found
+
+Until this run the corpus comparison scored five things per file: whether it
+opened, how many pages it has, the text, the character count and a digest of the
+text. Everything else the port answers was unmeasured against PDFBox. `cmd/corpus
+-facets` and `migration/oracle/JavaFacets.java` add twelve facets per opening —
+text positions, document information, the XMP bytes, the XMP schemas, the
+outline, page labels, the page boxes and rotation, the structure tree,
+annotations, form fields, each image's description with its decoded bytes, and
+each image's pixels — over the 40,255 ways the 39,962 files open. `-writes` and
+`migration/oracle/JavaWrites.java` add the seven write paths: an ordinary save,
+an incremental save, a 256-bit encryption, a split, a merge of the document with
+itself, an overlay of the document on itself and an external signature, each read
+back for its page count and the digest of its text, and `-renderpages` with
+`JavaRender.java` rasterise every page at 72 dpi and compare the sizes, the
+pixels and a 16 by 16 grid of mean brightness. See [`TESTDATA.md`](TESTDATA.md)
+for the runs and their numbers.
+
+Thirteen defects came out of it. Each is fixed with a test whose expected value is
+PDFBox's own answer, printed by a scratch program against the same bytes.
+
+| What the comparison saw | Where the defect was | The fix |
+| --- | --- | --- |
+| `podofo/TestImage1.pdf`, whose image reads the same decoded bytes on both sides and different pixels wherever its alpha is below 255 | `pdmodel/graphics/image`: `applyMask` and the stencil and colour key masks built an `image.RGBA`, which is premultiplied, where Java's `TYPE_INT_ARGB` holds straight colour, and `LosslessFactory` read pixels back through the premultiplied `RGBA()` | the masked images are `image.NRGBA`, and `LosslessFactory` reads straight colour with `straight`. `graphics/image/softmaskcolour_test.go`, `graphics/image/losslessfactory_test.go` |
+| `pdfjs/issue9285.pdf` died of a stack overflow where PDFBox reads every image | `pdmodel/graphics/color/iccbased.go`, `alternateColorSpaceOf` built the /Alternate **with** the resources, and `/DefaultRGB` was that same ICCBased space | `createAlternateColorSpace` is Java's `getAlternateColorSpace`: it wraps a name in an array and builds it with no resources, and `checkArray` is ported with it. `pdmodel/pdresources_colorspace_test.go`, `graphics/color/colorspaces_test.go` |
+| 69 veraPDF packets PDFBox parses and the port did not | `xmpbox/xml/dom.go` read UTF-8 only; 56 packets start with a byte order mark and 13 are UTF-16 or UCS-4 | `xmpbox/xml/entity.go`, the encoding half of Xerces's `setupCurrentEntity`, `createReader` and `setEncoding`. `xmpbox/xml/encoding_test.go` |
+| `cabinet-of-horrors/balloon_a1b_jp2k.pdf`, whose `<?xpacket begin="\0"` PDFBox refuses | `encoding/xml` checks XML's Char production in text and attribute values, not in a processing instruction or a comment | `checkCharacters` in `xmpbox/xml/dom.go`. `xmpbox/xml/characters_test.go` |
+| two veraPDF PDF/A-4 packets whose `xmp:CreateDate` is `2022-11-18T11:54:39.000+03` | `xmpbox/xmptype/dateconverter.go` read the offset with Go's layouts, which take neither `+03` nor `+03:00:00` and do take `+03:60` | `lenientOffset`, java.time's lenient `"+HH:MM"`. `xmpbox/dateconverter_offset_test.go` |
+| `pdfjs/poppler-742-0-fuzzed.pdf`, whose /Title is UTF-16 of odd length | `cos/string.go` dropped the odd byte and kept the unit after an unpaired high surrogate | `decodeUTF16` is `sun.nio.cs.UnicodeDecoder` with the replacement `CharsetDecoder` makes. `cos/string_utf16_test.go` |
+| `pdfjs/issue3903.pdf`, whose /CreationDate ends with a line feed | `util/dateconverter.go`: `time.LoadLocation` answers UTC for the empty zone name and the local zone for "Local", where `TimeZone.getTimeZone` knows neither and `parseTZoffset` takes its GMT for no zone at all | `loadZone` refuses both names. `util/dateconverter_zonename_test.go` |
+| `pdfjs/issue18765.pdf`, whose trailer /Info is its XMP stream | `pdmodel/pddocument.go` asked `GetCOSDictionary`, which answers nil for a stream where Java's answers the stream, and replaced the /Info with an empty dictionary | `DocumentInformation` reads it with `asResourceDictionary`. `pdmodel/pddocument_infostream_test.go` |
+| every JPX image's bits per component, `-1` in PDFBox and `0` in the port | `pdmodel/graphics/image/pdimagexobject.go` defaulted /BitsPerComponent to 0 where `getInt(BITS_PER_COMPONENT, BPC)` defaults to -1, which `pdinlineimage.go` already did | the default is -1. `graphics/image/bitspercomponent_test.go` |
+| `itext-java`'s `GetImageBytesTest/RGBFlateF0.pdf`, a Separation whose tint transform answers -1 for the alternate DeviceRGB's first component | `awt/image/raster.go` held every sample as a uint16, so a TYPE_BYTE raster kept -255 as 65281 where Java's byte array keeps 1 | `truncate` casts a sample to the raster's data type in every setter. `awt/image/raster_test.go` |
+| `itext-dotnet`'s `PdfReaderTest/PagesDocument.pdf`, whose /Count says three and whose three kids have no /Type, split into three parts where PDFBox makes none | `multipdf/splitter.go`, `processPages`, walked the pages by index; Java walks the page tree's iterator, which hands out a leaf only where its /Type is /Page | the port walks the same iterator. `multipdf/splituntyped_test.go` |
+| `pdfjs/nonisolated_blend_smask.pdf`, a page PDFBox draws and the port crashed on | `rendering/softmask.go`: Java renders a soft mask's group while the state that named the mask is current, and `processSoftMask` reads the mask off that state; the port's paints draw the mask when they are first used, which inside a non-isolated group is after that state was restored | the mask the caller handed over goes back on the state around `ProcessSoftMask`. `rendering/softmasklazy_test.go` |
+| 37 pages of `itextsharp`'s `PdfCopyTest/cmp_copyLargeFile.pdf` failed with "pattern COSName{P1} was not found", and only after an earlier page had been drawn | `pdmodel/pdresources_colorspace.go` put the /Pattern colour space in the resource cache; it carries the resources it was built from and looks a pattern name up in them, so a later page was handed one bound to the first page's resources. Java skips that one colour space in that cache, PDFBOX-2370, and the port's comment beside the line still said /Pattern was not ported | the colour space named /Pattern is not cached. `pdmodel/patterncache_test.go` |
+
+What the comparison did **not** find is as much of the result: the text
+positions agree on every file but the two `JAVA-BUGS.md` 23 and 30 are
+deliberate, and the outline, page labels, page boxes, structure tree,
+annotations and form fields agree on all 40,124 openings both sides read.
+
+The image differences that are left are the deviations this file already
+records, and the comparison measures them for the first time:
+
+- **The DCT decoder** differs in the last place or two on most JPEG images, and
+  by more where the colour space is CMYK or ICC based. Measured over a sample of
+  images: a grey JPEG differs on 6 pixels of 2.1 million by one level, an RGB one
+  within 3 levels on 98% of its pixels.
+- **`PDICCBased` takes the /Alternate**, so an image whose profile is not sRGB
+  differs by as much as the profile does — one level on a veraPDF file whose
+  profile is sRGB-like, 255 on `itextsharp`'s `cmp_pngColorProfileImage.pdf`,
+  whose profile is not an RGB profile at all.
+- **`PDDeviceCMYK` converts naively**, which the comparison puts at up to 115
+  levels on a photograph, and reaches through a Separation, a DeviceN or an
+  ICCBased space whose alternate is CMYK.
+- **`convXYZtoRGB` is written out rather than handed to LittleCMS**: 1 to 2
+  levels on the two CalRGB images in the corpus that have a custom gamma.
+- **A truncated sample stream is tolerated** where `MemoryCacheImageInputStream`
+  throws: `itext-java`'s `calRgb16bpc.pdf` is 16 bits per component over
+  DCT-decoded 8-bit data, so PDFBox answers `EOFException` and the port answers
+  the image.
+
+
+The comparison also found where the renderer spends its time, which no test
+would have. `rendering/raster`'s compositor walked every pixel of the surface for
+every fill, stroke and image, through `image.(*Alpha).AlphaAt` and
+`image.(*RGBA).RGBAAt` -- accessors that test the bounds and compute the offset
+on every call. A profile of `pdfjs/issue8078.pdf`, one page with twenty tiling
+patterns, put 95% of the render there. `compose` now reads the coverage rows out
+of `Pix` and runs over the shape's transformed bounding box rather than the whole
+surface, and `drawSampled` allocates its scratch buffer and walks only where the
+image lands. Three of the four files the port could not render inside 600 seconds
+now render in 119, 203 and 85 seconds, `raster`'s own suite went from 27 seconds
+to 17, and nothing about what is drawn changed.
+
+One difference is neither a defect of the port nor a deviation it chose.
+`image/jpeg` refuses a JPEG that `libjpeg` decodes with a warning: `pdfjs/bug1130815.pdf`
+("bad Huffman code") and `pdfjs/issue9679.pdf` ("missing 0xff00 sequence") are
+the two files of 40,255 where PDFBox reads an image the port cannot. The raw
+bytes are identical on both sides. Nothing in the standard library makes its
+decoder lenient, so matching PDFBox here means a JPEG decoder of our own; that
+is a decision to take rather than a fix to make, and it is recorded in
+[`tasks/track-testdata-podofo.md`](tasks/track-testdata-podofo.md).
+
+### The review of the comparison, 2026-09-19
+
+The review of that work on pull request #39 raised five points, and all five
+were right.
+
+- **A keyed-out pixel lost its colour under a soft mask.** `applyMask` read the
+  image premultiplied on the way into the mask, and a pixel a colour key took
+  out has an alpha of 0, which premultiplies to black. PDFBox composes the mask
+  into the keyed `TYPE_INT_ARGB` image as it is, so the pixel keeps its colour;
+  only where the image is smaller than the mask does `scaleImage` draw it onto a
+  transparent image first, and there it is black. `toRGBA` reads straight colour
+  and takes the two paths Java takes. `graphics/image/keyedsoftmask_test.go`,
+  whose expected values are PDFBox's `getRGB`.
+- **The stroke's padding was in a different space from the stroke.** The
+  compositor's bound for a stroke put the width through the transform, and the
+  stroker drew it in device space as it came. Looking at which of the two was
+  wrong found a port defect, below. `rendering/raster/bounds_test.go` draws each
+  case through `Draw` and over the whole surface and holds the two to the same
+  pixels; with the pad removed, all four stroke cases fail.
+- **`run-oracle.ps1` did not rebuild a cache from before xmpbox.** The compile of
+  the Java trees was guarded by `JavaCorpus.class` alone, and `JavaFacets` needs
+  xmpbox. The guard now also looks for one class out of each tree.
+- **`-comparefacets` passed two tables with different facets.** A facet in one
+  table only was printed and not counted. It is counted now.
+  `cmd/corpus/facetcompare_test.go`.
+- **`-oracle` ignored the files `-list` named.** The rows PDFBox answered that
+  this run did not were looked for under the directories on the command line
+  only. `cmd/corpus/oracle_test.go`.
+
+**The port drew every stroke at its 72 dpi width, whatever the resolution.**
+`PageDrawer.getStroke` puts the line width and the dashes through the CTM and
+not through the transform of the Graphics2D, which is the page's own: the scale
+the page is rendered at, and its rotation and flip. Marlin puts the stroke
+through that transform with the path, so PDFBox draws a line twice as wide at
+144 dpi as at 72; `rendering/raster/stroke.go` transformed the path and stroked
+it at the width it was given. At 72 dpi every transform the renderer installs
+scales by exactly 1, so no page of the corpus comparison could show it; at 144
+dpi, 8,335 pixels of 160,000 on the package's own test page were more than a
+quarter of a channel out. `pen` is the transform half of
+`DMarlinRenderingEngine.strokeTo`: nothing is stroked through a transform that
+flattens the plane, a uniform scale multiplies the width, the dashes and the
+phase, and any other transform strokes in user space and transforms the
+outline. Five cases in `java2d_test.go` hold it to Java2D, and
+`TestAPageAtTwiceTheScaleRendersAsPDFBoxRendersIt` holds the page to PDFBox at
+144 dpi: 6,770 pixels differ, 6,601 of them by one unit, none by more than a
+quarter of a channel. `PDAcroFormFlattenTest` renders at 96 dpi, and with the
+fix `test-2586.pdf` renders the same before and after flattening, where it
+differed in 322 pixels; its row is gone from `differingAfterFlatten`, and
+"Still open" above has three files left.
+
+What is still not modelled is Java2D's thin stroke. `SunGraphics2D` calls a
+stroke thin when it is at most an eighth of a pixel wide in device space with
+anti-aliasing, or a pixel without it. An anti-aliased thin stroke is drawn an
+eighth of a pixel wide, and a thin stroke without anti-aliasing is drawn by a
+different pipeline, one pixel wide. PDFBox's minimum line width of 0.25 confines
+the first to 36 dpi and below; the second is every stroke of a pixel or less on a
+`BINARY` page. Neither was touched here.

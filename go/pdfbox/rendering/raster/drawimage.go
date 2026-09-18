@@ -108,17 +108,27 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 		return nil
 	}
 
-	// Sample into a scratch buffer the size of the destination rather than
-	// onto the destination itself: what comes out has to go through the clip,
-	// the alpha constant and the blend mode, and x/image/draw knows about none
-	// of them.
+	// Sample into a scratch buffer rather than onto the destination itself:
+	// what comes out has to go through the clip, the alpha constant and the
+	// blend mode, and x/image/draw knows about none of them.
 	// Premultiplied, because that is what x/image/draw writes and what
 	// image.RGBA means. unpremultiply below turns each sample into the
 	// straight colour the rest of this package speaks.
-	sampled := goimage.NewRGBA(i.dst.Bounds())
-	i.interpolator().Transform(sampled,
-		aff3Of(i.imageTransform(at, bounds.Dx(), bounds.Dy())),
-		source, bounds, xdraw.Src, nil)
+	//
+	// The buffer and the loop cover where the image lands, not the whole
+	// surface: a page of small images used to allocate and walk a page-sized
+	// buffer for each of them, and the rows are read out of Pix rather than
+	// through RGBAAt, which tests the bounds and works out the offset on every
+	// call. What is drawn does not change.
+	transform := i.imageTransform(at, bounds.Dx(), bounds.Dy())
+	area := i.dst.Bounds().Intersect(paddedRect(transformedRect(transform,
+		geom.NewRectangle2D(float64(bounds.Min.X), float64(bounds.Min.Y),
+			float64(bounds.Dx()), float64(bounds.Dy())))))
+	if area.Empty() {
+		return nil
+	}
+	sampled := goimage.NewRGBA(area)
+	i.interpolator().Transform(sampled, aff3Of(transform), source, bounds, xdraw.Src, nil)
 
 	var stencil paintSource
 	if paint != nil {
@@ -130,21 +140,31 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 	}
 
 	clip := i.clipCoverage()
-	dstBounds := i.dst.Bounds()
-	for y := dstBounds.Min.Y; y < dstBounds.Max.Y; y++ {
-		for x := dstBounds.Min.X; x < dstBounds.Max.X; x++ {
-			c := sampled.RGBAAt(x, y)
-			if c.A == 0 {
+	if clip != nil {
+		area = area.Intersect(clip.Bounds())
+	}
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		row := sampled.Pix[sampled.PixOffset(area.Min.X, y):][:4*area.Dx()]
+		var clipRow []uint8
+		if clip != nil {
+			clipRow = clip.Pix[clip.PixOffset(area.Min.X, y):][:area.Dx()]
+		}
+		for offset := 0; offset+3 < len(row); offset += 4 {
+			alpha := row[offset+3]
+			if alpha == 0 {
 				continue
 			}
-			coverage := float64(c.A) / 255
-			if clip != nil {
-				coverage *= float64(clip.AlphaAt(x, y).A) / 255
-				if coverage == 0 {
+			coverage := float64(alpha) / 255
+			if clipRow != nil {
+				if clipRow[offset/4] == 0 {
 					continue
 				}
+				coverage *= float64(clipRow[offset/4]) / 255
 			}
-			colour := unpremultiply(c)
+			x := area.Min.X + offset/4
+			colour := unpremultiply(goimagecolor.RGBA{
+				R: row[offset], G: row[offset+1], B: row[offset+2], A: alpha,
+			})
 			if stencil != nil {
 				painted := false
 				if colour, painted = stencil.colorAt(x, y); !painted {

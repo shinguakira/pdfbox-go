@@ -96,6 +96,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -List
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-java,itext-dotnet   # ~1.1 GB, needs git
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-pdfhtml-java,itextpdf,rups   # and iText's other repositories, one name each
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite podofo   # ~25 MB, needs git
 ```
 
 | Suite | PDFs | Licence | What it is, and what it reaches |
@@ -110,6 +111,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-pdfhtml-java,itextpdf,ru
 | [`itext-java`](https://github.com/itext/itext-java) | 6,897, `-Suite itext-java` | AGPL-3.0 or commercial | Every PDF committed to iText Core for Java, taken from `develop` as it was on 2026-09-14, each at its path in the repository and each checked against the blob id git records for it. All are test resources: `layout` 2,342, `kernel` 1,779, `svg` 1,446, `forms` 682, `sign` 386, `pdfa` 172, and six smaller modules. They are the inputs iText's tests read and the `cmp_` files the tests compare their output with. 234 name an encryption dictionary. [`scripts/passwords/itext-java.tsv`](scripts/passwords/itext-java.tsv) lists the ways the tests open them, and the 25 certificate and key files it names are fetched with the PDFs. **Not on disk:** the PDFs the tests write, which exist only after iText's Maven build has run them. See "iText against the Java" |
 | [`itext-dotnet`](https://github.com/itext/itext-dotnet) | 6,960, `-Suite itext-dotnet` | AGPL-3.0 or commercial | The same for iText Core for .NET, under `itext.tests`. The library is ported from the Java and so are its tests: 6,678 of its 6,780 distinct contents are also in `itext-java`, and the other 102 are not, 80 of them in `itext.sign.tests`. 240 name an encryption dictionary; [`scripts/passwords/itext-dotnet.tsv`](scripts/passwords/itext-dotnet.tsv) |
 | iText's other 32 repositories | 20,913, one `-Suite` name each | AGPL-3.0 or commercial | Everything else in [github.com/itext](https://github.com/itext) that holds a PDF: pdfHTML 15,279, the published examples and the books 2,446, iText 5 for Java and for .NET 1,703, its archived sandbox 515, pdfSweep 506, pdfOCR 365, and sixteen smaller repositories 99. Each is a suite of its own, fetched the way iText Core is. They are here because "PDFs iText wrote are all alike" is an argument and not a measurement; see "iText's other repositories" below for what measuring them said |
+| [`podofo`](https://github.com/podofo/podofo-resources) | 102, `-Suite podofo` | none declared | PoDoFo's test documents, a repository of their own, one file per failure mode: every RC4 key length and AESV2 and AESV3R6 each with a key-length-violation twin, xref recovery, an image whose length lies, a malformed annotation action, encrypted strings needing escapes, text extraction and rotations, YCCK and YCbCr JPEGs; and under `TechDocs/` 28 Adobe and ISO reference documents. 32 name an encryption dictionary; [`scripts/passwords/podofo.tsv`](scripts/passwords/podofo.tsv) opens the 19 PoDoFo's tests open with a password, and the other 13 open with none. See "PoDoFo against the Java" |
 
 ## Tier 3 — bulk
 
@@ -232,35 +234,38 @@ Go differ from the Java on purpose.
 
 Everything on disk outside the repository — the 3,646 of the first run, pdf.js's
 1,443, `PDFBOX-4131-0.pdf`, which the 2026-09-12 PDFBox table was missing,
-iText Core's 13,857 and iText's other 20,913 — with `run-oracle.ps1`'s default
-list and all eleven passwords tables on both sides. Measured 2026-09-16:
+iText Core's 13,857, iText's other 20,913 and PoDoFo's 102 — with
+`run-oracle.ps1`'s default list and all twelve passwords tables on both sides.
+The 39,860 were scored on 2026-09-16 and PoDoFo's 102 on 2026-09-17, each file
+on its own row, and the tables joined in both directions with no row on one side
+only:
 
 ```
-39860 files, opened 40136 ways, 27 of them encrypted and skipped
-  open    both 40008, neither 125, behind 0, ahead 3
+39962 files, opened 40255 ways, 27 of them encrypted and skipped
+  open    both 40127, neither 125, behind 0, ahead 3
   pages   0 disagree
-  text    both 39999, neither 9, behind 0, ahead 0
-  chars   39997 the same length, 2 not
-  digest  39997 of the same length the same text, 0 not
+  text    both 40118, neither 9, behind 0, ahead 0
+  chars   40115 the same length, 3 not
+  digest  40115 of the same length the same text, 0 not
 
-  5 of 39860 files disagree (0.01%)
+  6 of 39962 files disagree (0.02%)
 ```
 
-"Opened 40,136 ways" is 39,860 files, 244 of which a passwords table opens more
-than one way — with a password, with a certificate or with a keystore — for 276
-openings beyond the first; "iText against the Java" and "iText's other
-repositories", below, say which.
+"Opened 40,255 ways" is 39,962 files, 261 of which a passwords table opens more
+than one way — with a password, with a certificate or with a keystore — for 293
+openings beyond the first; "iText against the Java", "iText's other
+repositories" and "PoDoFo against the Java", below, say which.
 
 **There is no document in the corpus that PDFBox reads and the port does not.**
-Not one, at either stage. No page count disagrees anywhere, and of the five files
+Not one, at either stage. No page count disagrees anywhere, and of the six files
 in that last line, three are files PDFBox did not finish inside its 20-second
 limit and the port did: `manyAppendModeUpdates.pdf`,
 `background-size-near-zero-svg.pdf` and pdf.js's `issue1721.pdf`. Given five
 minutes PDFBox reads all three, and its text is the port's to the digest — 4,216
-characters, 1 and 2,036,568. The other two are the deliberate Java-bug fixes,
-JAVA-BUGS 15 and 30: the only two texts in 39,997 that differ.
+characters, 1 and 2,036,568. The other three are the deliberate Java-bug fixes,
+JAVA-BUGS 15, 23 and 30: the only three texts in 40,115 that differ.
 
-The run before it, of the same day and over the 18,947 files that were on disk
+The run before it, of 2026-09-16 and over the 18,947 files that were on disk
 before iText's other repositories, was the first to compare the text by a digest
 of its characters as well as by its length:
 
@@ -280,6 +285,11 @@ PDFBox downloads, whose passwords are in qpdf's test scripts and PDFBox's Java
 tests and not yet in a table. Until they are, both sides are compared only on
 refusing them; how far finding them has got is
 [`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md) U8.
+
+Those five columns are the text and nothing else. Twelve more facets --
+positions, information, XMP, the outline, labels, boxes, the structure tree,
+annotations, fields, images and their pixels -- are compared in "Twelve facets
+against the Java", below.
 
 ## iText against the Java, 2026-09-16
 
@@ -595,6 +605,298 @@ root object — `itextpdf` and `itextsharp`'s `endArrayClosingBracketInsteadOfEn
 and `endDicClosingBracketInsideTheDic.pdf`, which iText 5's own
 `CompressionTest` expects to fail. Both sides refuse each of them with the same
 reason.
+
+## PoDoFo against the Java, 2026-09-17
+
+`podofo-resources` is PoDoFo's test documents, kept in a repository of their own:
+102 PDFs on `master` at `92034ab82`, 63 at the root and `TechDocs/` 28,
+`ParserTests/` 7, `PQC/` 2, `PDFUA-Reference/` 1 and `Corrupted/` 1, fetched by
+partial clone and checked against their blob ids like iText's.
+
+```bash
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite podofo
+pwsh go/migration/scripts/run-oracle.ps1 -List <the 102 paths> -Out java-podofo.tsv `
+    -Passwords go/testdata/corpus/podofo/_passwords.tsv
+cd go && go run ./cmd/corpus -passwords testdata/corpus/podofo/_passwords.tsv `
+    -oracle ../java-podofo.tsv ./testdata/corpus/podofo
+```
+
+**Encrypted files.** 32 name an encryption dictionary. PoDoFo's tests open 19 of
+them with a password, and [`scripts/passwords/podofo.tsv`](scripts/passwords/podofo.tsv)
+gives each the way its test does: the seven RC4 and AES documents and their seven
+key-length-violation twins with `userpass` and `ownerpass`
+(`test/unit/EncryptTest.cpp`), the two `/EncryptMetadata false` documents with
+`userpass`, the two escaped-string documents with `userpass` and with none
+(`StringTest.cpp`), and `owner_user.pdf` with `user` and `owner`
+(`Permissions.cpp`). The other 13 are Adobe and ISO reference documents under
+`TechDocs/` that open with no password, and no test opens them with one. Run
+with every candidate — no password, `userpass`, `ownerpass`, `user`, `owner` —
+on all 32, 160 openings, both sides accepted the same 49 and refused the same
+111.
+
+```
+102 files compared in 119 rows, the passwords tables opening some more than one way
+
+  open    both 119, neither 0, behind 0, ahead 0
+  pages   0 disagree
+  text    both 119, neither 0, behind 0, ahead 0
+  chars   118 the same length, 1 not
+  digest  118 of the same length the same text, 0 not
+
+  1 of 102 files disagree (0.98%)
+  CHARS  testdata/corpus/podofo/TechDocs/adobe_supplement_iso32000_1.pdf: go 14681, java 14683
+```
+
+Every file opens on both sides, every encrypted one included, and every page
+count agrees.
+
+**The one disagreement is [`JAVA-BUGS.md`](JAVA-BUGS.md) 23, fixed in the Go on
+purpose.** `corpus -comparepages` puts it on page 7, 2,000 characters against
+2,002. Both CambriaMath subsets on that page, `HKOGAZ+CambriaMath` and
+`RHMOKF+CambriaMath`, carry a ToUnicode CMap with the line `<0001> <>`: code 1
+maps to nothing. PDFBox's `CMapStrings.getMapping` reads the empty destination as
+the two-byte code 0 and extracts a NUL for each such glyph, twice on that page;
+the Go answers nothing, as `track/java-bug-fixes` decided. It is the first
+document found that reaches entry 23 — the entry had supposed only a
+hand-written CMap would.
+
+## Twelve facets against the Java, 2026-09-18
+
+Everything above compares five things per opening: whether it opened, the page
+count, the text, its length and its digest. Everything else the port answers was
+unmeasured. These twelve facets are the rest of what a reader is asked for, one
+digest per facet per opening, over the same 40,255 openings of the same 39,962
+files:
+
+| Facet | What it digests |
+| --- | --- |
+| `positions` | every `TextPosition` the stripper visits: the unicode, the code, x, y, width, height, font size and font name, each float as its raw bits |
+| `info` | the document information dictionary, every key sorted, and the two dates as parsed |
+| `xmp` | the catalog's metadata stream, byte for byte |
+| `xmpschemas` | the namespaces `DomXmpParser` reads out of that stream |
+| `outline` | the outline tree walked depth first: depth, title, open, destination, action |
+| `labels` | the page labels, one per page |
+| `boxes` | each page's media, crop, bleed, trim and art boxes and its rotation |
+| `struct` | the structure tree walked: depth, type, actual text, alternate description |
+| `annots` | every annotation: subtype, rectangle, contents, name, flags, appearance state, appearance stream |
+| `fields` | every form field: fully qualified name, type, flags, kind, widget count, value |
+| `images` | every image XObject of every page and form: width, height, bits per component, colour space, filters, stencil, and a digest of its decoded bytes |
+| `imagepixels` | the same images as pixels — the ARGB of each, which is the whole decode path, colour space and masks included |
+
+```bash
+pwsh go/migration/scripts/run-oracle.ps1 -List <the 40255 paths> -Facets `
+    -Out java-facets.tsv -TimeoutSeconds 120 -Passwords <the tables>
+cd go && go run ./cmd/corpus <the -passwords tables> -facets go-facets.tsv `
+    -workers 1 -timeout 120s ./testdata/corpus ../pdfbox/target/pdfs ../examples/target/pdfs
+go run ./cmd/corpus -comparefacets ../java-facets.tsv ../go-facets.tsv
+```
+
+`-facetlines` writes the lines themselves rather than a digest, on either side,
+which is how a disagreement is read afterwards.
+
+PDFBox's side was run on 2026-09-17 and the port's on 2026-09-18, after the ten
+defects the first run found were fixed — [`STATUS.md`](STATUS.md) has the table
+of them. What the two runs say, before and after those fixes:
+
+```
+40255 rows compared, 0 in one table only
+                 before          after
+  open           behind 4        behind 1, ahead 1
+  positions      2 not           2 not
+  info           3 not           0 not
+  xmp            0 not           0 not
+  xmpschemas     72 not          0 not
+  outline        0 not           0 not
+  labels         0 not           0 not
+  boxes          0 not           0 not
+  struct         0 not           0 not
+  annots         0 not           0 not
+  fields         0 not           0 not
+  images         2376 not        2346 not
+  imagepixels    2779 not        2503 not
+```
+
+**Six of the twelve facets agree on every one of the 40,127 openings both sides
+read**: the outline, the page labels, the page boxes and rotation, the structure
+tree, the annotations and the form fields. So do the XMP bytes, and after the
+fixes so do the XMP schemas and the document information.
+
+**The two `positions` differences are the deliberate Java-bug fixes**, the same
+two the text comparison reports: `JAVA-BUGS.md` 23 on
+`podofo/TechDocs/adobe_supplement_iso32000_1.pdf` and 30 on
+`pdfjs/poppler-90-0-fuzzed.pdf`.
+
+**One file each side does not read.** `itext-dotnet`'s 32 MB
+`PdfReaderTest/pdfReferenceUpdated.pdf` does not finish the twelve facets inside
+120 seconds in the port — measured at 757 seconds with the machine busy — and
+PDFBox does not finish `pdfjs/issue10880.pdf` inside its own. PDFBox reads the
+identical copy of `pdfReferenceUpdated.pdf` in `itext-java` no faster: it timed
+out on that one and read this one, at the same limit.
+
+**The image differences are the deviations [`STATUS.md`](STATUS.md) records**, and
+this is the first run that measures them. Classified over a sample of 313 of the
+files that differ, with the lines of both sides read back by `-facetlines`: the
+decoded bytes differ on 2,112 DCT images and nowhere else; the pixels differ on
+those and on images whose colour space is CMYK, ICC based, CalRGB, or a
+Separation or DeviceN over CMYK. Two files are neither a deviation nor a defect:
+`pdfjs/bug1130815.pdf` and `pdfjs/issue9679.pdf` carry JPEG data that `libjpeg`
+decodes with a warning and `image/jpeg` refuses, from identical stream bytes on
+both sides. [`tasks/track-testdata-podofo.md`](tasks/track-testdata-podofo.md)
+carries that decision.
+
+
+### The write paths, 2026-09-18
+
+Seven writes per opening, each read back and summarised as its page count and the
+digest of its text: an ordinary save, an incremental save with a /Title set and
+marked for update, a 256-bit standard encryption reloaded with the user
+password, a split into single pages, a merge of the document with itself, an
+overlay of the document on itself, and an external signature — `saveIncremental
+ForExternalSigning`, the bytes handed over, a placeholder signature set, and the
+/ByteRange and signed content read back out.
+
+The port wrote all 40,255 openings in 4h09m. PDFBox's side is compared over every
+sixteenth opening of the list, 2,513 of the 40,255, which it wrote in six
+minutes. The sample was taken on an estimate that turned out wrong: the first
+full run wrote 2,300 openings in its first five minutes and 96 in the next
+eleven, and those eleven minutes were read as the rate for the whole list. What
+slowed them was `PdfReaderTest/exponentialXObjectLoop.pdf`, iText's document of
+exponentially nested form XObjects, whose text every write path extracts again;
+it is as slow in the port as in PDFBox. The sample:
+
+```bash
+java -Xss8m -cp <classpath> JavaCorpus <every sixteenth path> 600 lf writes <the tables> > java-writes.tsv
+cd go && go run ./cmd/corpus <the -passwords tables> -writes go-writes.tsv -workers 1 -timeout 600s <the roots>
+go run ./cmd/corpus -comparefacets ../java-writes.tsv ../go-writes.tsv
+```
+
+```
+2513 rows compared, 0 in one table only
+  open        both 2506, neither 7, behind 0, ahead 0
+  save        2506 the same, 0 not
+  incremental 2506 the same, 0 not
+  encrypt     2506 the same, 0 not
+  split       2505 the same, 1 not
+  merge       2506 the same, 0 not
+  overlay     2506 the same, 0 not
+  sign        2506 the same, 0 not
+```
+
+Every write path agrees on every opening but one, and that one is a
+defect [`STATUS.md`](STATUS.md) lists: `itext-dotnet`'s
+`PdfReaderTest/PagesDocument.pdf` splits into no parts in PDFBox, because its
+three page dictionaries carry no /Type and the page tree's iterator skips them,
+and into three in the port, which walked the pages by index. Fixed, and the file
+now answers `parts=0` on both sides.
+
+The seven openings neither side reads are encrypted files no passwords table has.
+
+**For a run this long, call the driver rather than `run-oracle.ps1`.** The script
+collects the driver's rows in memory and writes the table when the JVM is done,
+and it saves and restores `[Console]::OutputEncoding` around the JVM. When the
+shell that started it was stopped, the restore threw "No process is on the other
+end of the pipe" and took every row with it. The command above calls `java` and
+redirects the rows, which the driver flushes one opening at a time, so a run
+that stops keeps what it had done.
+
+
+### The rendered pages, 2026-09-18
+
+Every page of a document rasterised at 72 dpi as RGB, and the row per page says
+its size, a digest of its pixels, and a 16 by 16 grid of the mean brightness of
+each cell. The digest says whether two rasterisers agree to the last bit, which
+they rarely do at the edges of what they draw; the grid says how far apart they
+are where they do not, and a cell is a mean over a sixteenth of the page each
+way, so antialiasing washes out of it and a missing glyph, a wrong colour or a
+shifted image does not.
+
+PDFBox rendered all 40,255 openings, 134,308 pages, in 2h11m. When this was run
+the port was five to six times slower a page — 84 pages of `AndroidPdfViewer`'s
+`sample.pdf` in 107 seconds against PDFBox's 19, JVM start included — so its side
+is every sixteenth opening of the list, 2,513 of them, and PDFBox's table is
+filtered to the same files. The compositor fix below brought the same file to 12
+seconds against PDFBox's 6:
+
+```bash
+java -Xss8m -cp <classpath> JavaCorpus <the list> 600 lf render <the tables> > java-render.tsv
+cd go && go run ./cmd/corpus <the -passwords tables> -list <every sixteenth path> `
+    -renderpages go-render.tsv -workers 2 -timeout 600s
+go run ./cmd/corpus -comparerender ../java-render.tsv ../go-render.tsv
+```
+
+```
+7604 pages compared, 0 in one table only, 4 files one side did not open
+  identical to the last bit   443
+  within 1 level a cell       7074
+  within 4 levels a cell      71
+  within 16 levels a cell     12
+  further apart               0
+  a different size            0
+  one side failed             1
+  both sides failed           3
+```
+
+**No page is further apart than sixteen levels a cell, and no page comes out a
+different size.** 93% are within one level, which for a mean over a sixteenth of
+the page is the two rasterisers' antialiasing and nothing else.
+
+What the pages beyond that are, worst first, and each traced to a deviation this
+file already records:
+
+| Page | Apart | What it is |
+| --- | --- | --- |
+| `pdfjs/function_based_shading_cmyk.pdf` 1–2 | 11.9 and 4.9 | nine ShadingType 1 shadings in DeviceCMYK: `PDDeviceCMYK` converts naively |
+| `itext-java`'s `GetImageBytesTest/dRgbFlate1bit.pdf` 1 | 9.6 | one image, whose decoded bytes **and** pixels agree exactly; the page differs because the image is scaled to the page, and Java scales with `AffineTransformOp` |
+| `itext-dotnet`'s `ImagePdfBytesInfoTest/undefinedInCSArray.pdf` 1 | 9.1 | two images whose pixels differ: the colour space array carries an undefined name |
+| `itext-pdfhtml-dotnet`'s `BorderRadiusTest/cmp_borderRadiusTest12A.pdf` 1–8 | 7.0 down to 2 | no images at all: curves, clips and their coverage |
+| `pdfjs/issue20433.pdf` 1 | 6.5 | one image, pixels identical, scaled |
+
+**The page PDFBox drew and the port could not is a defect**
+[`STATUS.md`](STATUS.md) lists, and it is fixed: `pdfjs/nonisolated_blend_smask.pdf`
+crashed on a soft mask whose paint was used after the graphics state that named
+it was restored. The page now draws at PDFBox's 320 by 240, and what it draws is
+still 23.3 levels a cell away from PDFBox's: the compositing of a non-isolated
+group under a Multiply blend is a second difference behind the first, measured
+here for the first time and not yet run down.
+
+**Four files the port did not finish in 600 seconds and PDFBox did**, and three
+of them now do:
+`itextsharp`'s `PdfCopyTest/cmp_copyLargeFile.pdf` (958 pages),
+`pdfjs/ecma262.pdf` (258 pages), `itextsharp`'s
+`PdfReaderTest/readCompressedPdfTest1.pdf` (6 pages) and `pdfjs/issue8078.pdf`
+(one page, 1701 by 2409). The first two looked like the port's five-to-six-fold cost a page and the last
+two did not; all four were the same thing, and what it was is below.
+
+The three pages both sides failed are in documents neither reads.
+
+**Two of the four became three lines of the compositor.** The port walked every
+pixel of the surface for every fill, every stroke and every image, and asked
+`AlphaAt` or `RGBAAt` for each one -- accessors that test the bounds and work out
+the offset on every call. A profile of `pdfjs/issue8078.pdf`, one page 1701 by
+2409 with twenty tiling patterns, put 95% of the render in
+`raster.(*Image).compose` and its accessors. Now the coverage rows are read out
+of `Pix`, the loop is clamped to the shape's transformed bounding box, and
+`drawSampled` allocates and walks where the image lands rather than the whole
+page. Nothing about what is drawn changed -- `rendering` and `rendering/raster`
+pass unchanged, and the pages the run had already compared still compare the
+same -- and:
+
+| Page | Before | After |
+| --- | --- | --- |
+| `pdfjs/issue8078.pdf`, 1 page | over 600s | 119s, and within a level of PDFBox |
+| `itextsharp`'s `readCompressedPdfTest1.pdf`, 6 pages | over 600s | 203s |
+| `pdfjs/ecma262.pdf`, 258 pages | over 600s | 85s, 257 pages within a level and one within 16 |
+| `raster`'s own test suite | 27s | 17s |
+
+The fourth, `itextsharp`'s `cmp_copyLargeFile.pdf` at 958 pages, renders in 379
+seconds now -- and rendering it turned up another defect. 37 of its pages
+failed with "pattern COSName{P1} was not found", and only after an earlier page
+had been drawn: `PDResources` was caching the /Pattern colour space, which
+carries the resources it was built from, so a later page looked its own pattern
+up in the first page's resources. Java skips exactly that one colour space in
+exactly that cache. With it fixed the document compares clean: 942 pages within
+a level, 15 within four, one within sixteen, none further, none failed.
+
 
 ## Scoring a corpus
 

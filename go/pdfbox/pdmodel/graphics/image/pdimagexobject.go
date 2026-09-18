@@ -253,7 +253,7 @@ func (x *PDImageXObject) BitsPerComponent() int {
 		return 1
 	}
 	x.initJPXValues()
-	return x.COSDictionary().GetInt2(cos.BitsPerComponent, cos.BPC, 0)
+	return x.COSDictionary().GetInt2(cos.BitsPerComponent, cos.BPC, -1)
 }
 
 // SetBitsPerComponent sets how many bits one sample takes.

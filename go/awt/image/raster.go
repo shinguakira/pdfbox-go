@@ -28,7 +28,9 @@ const (
 //
 // Samples are held as uint16 whatever the data type, because a TYPE_BYTE
 // raster holds 0 to 255 and a TYPE_USHORT one 0 to 65535, and Java's
-// getPixel/setPixel pass both as int.
+// getPixel/setPixel pass both as int. Java holds them in an array of the data
+// type, so every setter casts a value outside its range down to it -- (byte)
+// -255 is 1 -- and truncate does that here.
 type Raster struct {
 	width    int
 	height   int
@@ -97,6 +99,15 @@ func (r *Raster) Samples() []uint16 { return r.samples }
 
 func (r *Raster) offset(x, y int) int { return (y*r.width + x) * r.numBands }
 
+// truncate casts a sample to the raster's data type, which is what writing it
+// into Java's byte or short array does.
+func (r *Raster) truncate(value int) uint16 {
+	if r.dataType == TypeByte {
+		return uint16(byte(value))
+	}
+	return uint16(value)
+}
+
 // GetPixel writes the samples of one pixel into out and returns it.
 //
 // Java's getPixel(int, int, int[]) allocates when handed null; the port takes
@@ -123,7 +134,7 @@ func (r *Raster) SetPixel(x, y int, values []int) {
 	}
 	base := r.offset(x, y)
 	for b := 0; b < r.numBands; b++ {
-		r.samples[base+b] = uint16(values[b])
+		r.samples[base+b] = r.truncate(values[b])
 	}
 }
 
@@ -172,7 +183,7 @@ func (r *Raster) SetPixels(x, y, w, h int, values []int) {
 	for row := y; row < y+h; row++ {
 		base := r.offset(x, row)
 		for j := 0; j < w*r.numBands; j++ {
-			r.samples[base+j] = uint16(values[i])
+			r.samples[base+j] = r.truncate(values[i])
 			i++
 		}
 	}
@@ -185,7 +196,7 @@ func (r *Raster) SetSamples(x, y, w, h, band int, values []int) {
 	i := 0
 	for row := y; row < y+h; row++ {
 		for col := x; col < x+w; col++ {
-			r.samples[r.offset(col, row)+band] = uint16(values[i])
+			r.samples[r.offset(col, row)+band] = r.truncate(values[i])
 			i++
 		}
 	}

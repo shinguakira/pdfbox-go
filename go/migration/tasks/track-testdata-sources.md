@@ -275,7 +275,10 @@ purge and has not been measured again; that is T10.
 
 ### Not yet done
 
-- [ ] **T1.** Fetch PoDoFo's 102 and score them against PDFBox.
+- [x] **T1.** Fetch PoDoFo's 102 and score them against PDFBox. Done 2026-09-17
+  on `track/testdata-podofo`: every file opens on both sides, the 19 PoDoFo's
+  tests open with a password among them, and the one text that differs is
+  JAVA-BUGS 23. See [`track-testdata-podofo.md`](track-testdata-podofo.md).
 - [ ] **T2.** Fetch qpdf's remaining 78.
 - [x] **T3.** Fetch pdf.js's test PDFs and score them. Done 2026-09-15: 1,443 on
   disk, all compared; the eight of U7 are not on disk.

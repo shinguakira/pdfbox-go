@@ -3,7 +3,7 @@ package raster
 // The two coordinate roundings, and the shape of what they are applied to.
 //
 // What normalize.go does end to end is measured by TestAgainstJava2DNormalized,
-// which draws all seventeen shapes under VALUE_STROKE_NORMALIZE and holds them
+// which draws all twenty-two shapes under VALUE_STROKE_NORMALIZE and holds them
 // to a JDK that was told to do the same. This is the arithmetic underneath,
 // asserted on its own so that a wrong rounding says so in one line rather than
 // as a pixel count.

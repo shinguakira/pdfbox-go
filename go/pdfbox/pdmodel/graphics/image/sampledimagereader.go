@@ -32,13 +32,13 @@ func getStencilImage(pdImage PDImage, paint goimagecolor.Color) (goimage.Image, 
 	width := pdImage.Width()
 	height := pdImage.Height()
 
-	// compose to ARGB
-	masked := goimage.NewRGBA(goimage.Rect(0, 0, width, height))
-	r, g, b, a := paint.RGBA()
-	fill := goimagecolor.RGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8)}
+	// compose to ARGB -- straight colour, as TYPE_INT_ARGB holds it, so that a
+	// pixel whose alpha is cleared below keeps the paint's colour.
+	masked := goimage.NewNRGBA(goimage.Rect(0, 0, width, height))
+	fill := goimagecolor.NRGBAModel.Convert(paint).(goimagecolor.NRGBA)
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			masked.SetRGBA(x, y, fill)
+			masked.SetNRGBA(x, y, fill)
 		}
 	}
 
@@ -76,7 +76,7 @@ func getStencilImage(pdImage PDImage, paint goimagecolor.Color) (goimage.Image, 
 					shift--
 				}
 				if bit == value {
-					masked.SetRGBA(x, y, goimagecolor.RGBA{})
+					masked.SetNRGBA(x, y, goimagecolor.NRGBA{})
 				}
 				x++
 				if x == width {
@@ -613,13 +613,14 @@ func applyColorKeyMask(img goimage.Image, mask *goimage.Gray) goimage.Image {
 	width := bounds.Dx()
 	height := bounds.Dy()
 
-	// compose to ARGB
-	masked := goimage.NewRGBA(goimage.Rect(0, 0, width, height))
+	// compose to ARGB -- straight colour, as TYPE_INT_ARGB holds it, so that a
+	// keyed-out pixel keeps its colour.
+	masked := goimage.NewNRGBA(goimage.Rect(0, 0, width, height))
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			r, g, b, _ := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
 			alphaPixel := mask.GrayAt(x, y).Y
-			masked.SetRGBA(x, y, goimagecolor.RGBA{
+			masked.SetNRGBA(x, y, goimagecolor.NRGBA{
 				R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8),
 				A: 255 - alphaPixel,
 			})

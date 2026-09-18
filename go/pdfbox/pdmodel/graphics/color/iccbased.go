@@ -1,6 +1,8 @@
 package color
 
 import (
+	"errors"
+	"fmt"
 	goimage "image"
 	"log/slog"
 
@@ -50,23 +52,35 @@ func NewPDICCBasedOfStream(stream *cos.Stream) *PDICCBased {
 //
 // Port of the static PDICCBased.create together with the constructor; Java's
 // create looks in the resource cache first, which the port does one level up in
-// createFromCOSObject, because only an indirect reference is cacheable.
+// createFromCOSObject, because only an indirect reference is cacheable. The
+// resources are for that cache only: the alternate colour space is built
+// without them, as Java builds it.
 func NewPDICCBased(iccArray *cos.Array, resources ResourcesLike) (*PDICCBased, error) {
-	c := &PDICCBased{array: iccArray}
-	stream, ok := iccArray.GetObject(1).(*cos.Stream)
-	if ok {
-		c.stream = common.NewPDStream(stream)
+	if err := checkArray(iccArray); err != nil {
+		return nil, err
 	}
-	if err := c.loadICCProfile(resources); err != nil {
+	c := &PDICCBased{array: iccArray}
+	c.stream = common.NewPDStream(iccArray.GetObject(1).(*cos.Stream))
+	if err := c.loadICCProfile(); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
 
+func checkArray(iccArray *cos.Array) error {
+	if iccArray.Size() < 2 {
+		return errors.New("ICCBased colorspace array must have two elements")
+	}
+	if _, ok := iccArray.GetObject(1).(*cos.Stream); !ok {
+		return errors.New("ICCBased colorspace array must have a stream as second element")
+	}
+	return nil
+}
+
 // loadICCProfile takes the alternate colour space, which is what Java's
 // fallbackToAlternateColorSpace does.
-func (c *PDICCBased) loadICCProfile(resources ResourcesLike) error {
-	alternate, err := c.alternateColorSpaceOf(resources)
+func (c *PDICCBased) loadICCProfile() error {
+	alternate, err := c.createAlternateColorSpace()
 	if err != nil {
 		return err
 	}
@@ -81,60 +95,39 @@ func (c *PDICCBased) loadICCProfile(resources ResourcesLike) error {
 	return nil
 }
 
-// alternateColorSpaceOf is Java's getAlternateColorSpace, which reads the
-// /Alternate entry and falls back to the device space the /N entry implies.
-func (c *PDICCBased) alternateColorSpaceOf(resources ResourcesLike) (PDColorSpace, error) {
-	alternate := c.array.GetObject(1)
-	if stream, ok := alternate.(*cos.Stream); ok {
-		if entry := stream.GetDictionaryObject(cos.Alternate); entry != nil {
-			if array, ok := entry.(*cos.Array); !ok || !array.IsEmpty() {
-				return CreateWithResources(entry, resources, false)
-			}
-		}
-		// no alternate color space, use the color space with the correct
-		// number of components
-		switch c.NumberOfComponents() {
+// createAlternateColorSpace is Java's getAlternateColorSpace: the /Alternate
+// entry, or the device space the /N entry implies where there is none.
+//
+// Java wraps a name in an array and builds the array with the one-argument
+// PDColorSpace.create, which has no resources, so a name here is a device space
+// or an error and is never looked up. Looking it up can lead back to this same
+// space: where the resources map /DefaultRGB to an ICCBased space whose
+// alternate is /DeviceRGB, /DeviceRGB resolves to that ICCBased space again, and
+// round without end.
+func (c *PDICCBased) createAlternateColorSpace() (PDColorSpace, error) {
+	var alternateArray *cos.Array
+	switch alternate := c.stream.Stream().GetDictionaryObject(cos.Alternate).(type) {
+	case nil:
+		alternateArray = cos.NewArray()
+		switch numComponents := c.NumberOfComponents(); numComponents {
 		case 1:
-			return DeviceGray, nil
+			alternateArray.Add(cos.DeviceGray)
 		case 3:
-			return DeviceRGB, nil
+			alternateArray.Add(cos.DeviceRGB)
 		case 4:
-			return DeviceCMYK, nil
+			alternateArray.Add(cos.DeviceCMYK)
+		default:
+			return nil, fmt.Errorf("Unknown color space number of components:%d", numComponents)
 		}
+	case *cos.Array:
+		alternateArray = alternate
+	case *cos.Name:
+		alternateArray = cos.NewArray()
+		alternateArray.Add(alternate)
+	default:
+		return nil, fmt.Errorf("Error: expected COSArray or COSName and not %T", alternate)
 	}
-	// PDFBOX-4801: the /N entry is missing or wrong; Java's getNumberOfComponents
-	// reads it the same way and its switch has no default, which leaves the
-	// alternate null and throws later. The port reports it here instead.
-	return nil, cosNumberOfComponentsError(c.NumberOfComponents())
-}
-
-func cosNumberOfComponentsError(n int) error {
-	return &numberOfComponentsError{n}
-}
-
-type numberOfComponentsError struct{ n int }
-
-func (e *numberOfComponentsError) Error() string {
-	return "Invalid /N value in ICC based colour space: " + itoa(e.n)
-}
-
-func itoa(v int) string {
-	if v == 0 {
-		return "0"
-	}
-	negative := v < 0
-	if negative {
-		v = -v
-	}
-	var digits []byte
-	for v > 0 {
-		digits = append([]byte{byte('0' + v%10)}, digits...)
-		v /= 10
-	}
-	if negative {
-		return "-" + string(digits)
-	}
-	return string(digits)
+	return Create(alternateArray)
 }
 
 // COSObject returns the array below this colour space.

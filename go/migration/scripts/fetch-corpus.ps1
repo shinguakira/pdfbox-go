@@ -180,6 +180,21 @@ $gitSuites = @(
         Keep    = @('*.[pP][dD][fF]')
         PasswordTable = 'passwords/itext-dotnet.tsv'
     }
+    # PoDoFo keeps its test documents in a repository of their own. At 25 MB it
+    # would fit the small set, but it is fetched with git like iText, and the
+    # small set is the one that needs nothing but PowerShell.
+    [pscustomobject]@{
+        Name    = 'podofo'
+        Size    = 'large'
+        Bytes   = 25MB
+        Licence = 'none declared in the repository'
+        Covers  = "every PDF in PoDoFo's test resources, podofo-resources on master at 2026-09-17: 102 files, 63 at the root and TechDocs 28, ParserTests 7, PQC 2, PDFUA-Reference 1, Corrupted 1. Named after what they break -- every RC4 key length and AESV2 and AESV3R6 each with a key-length-violation twin, xref recovery, an image whose length lies, a malformed annotation action, encrypted strings needing escapes, text extraction and rotations, a predefined CMap, YCCK and YCbCr JPEGs, inline images. PoDoFo's own tests open the encrypted ones with the passwords its test sources hold"
+        Exercises = 'pdfparser and cos for the damaged ones, pdmodel/encryption for every RC4 and AES variant, text and pdmodel/font for extraction'
+        Git     = 'https://github.com/podofo/podofo-resources.git'
+        Branch  = 'master'
+        Keep    = @('*.[pP][dD][fF]')
+        PasswordTable = 'passwords/podofo.tsv'
+    }
 )
 
 # iText's other repositories: the add-ons, the published examples, the books and

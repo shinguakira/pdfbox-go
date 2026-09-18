@@ -203,5 +203,55 @@ public class Java2DDrv
             p.curveTo(4, 4, 28, 4, 28, 26);
             g.draw(p);
         });
+
+        // 13. a stroke through a scale of 2, which widens it with everything
+        // else: the line is 8 pixels thick. This is a page rendered at 144 dpi.
+        both("strokeScaled", 24, 20, true, g ->
+        {
+            g.scale(2, 2);
+            g.setStroke(new BasicStroke(4, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10));
+            g.draw(line(2, 5, 10, 5));
+        });
+
+        // 14. and through a scale of a half, 4 pixels thick
+        both("strokeShrunk", 24, 20, true, g ->
+        {
+            g.scale(0.5, 0.5);
+            g.setStroke(new BasicStroke(8, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10));
+            g.draw(line(4, 20, 44, 20));
+        });
+
+        // 15. the dashes of case 10 at half their size through a scale of 2,
+        // which scales the dashes and the phase as well as the width
+        both("dashedScaled", 24, 12, false, g ->
+        {
+            g.scale(2, 2);
+            g.setStroke(new BasicStroke(2, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10,
+                    new float[] { 2, 2 }, 1));
+            g.draw(line(0, 3, 12, 3));
+        });
+
+        // 16. a scale that is not the same both ways, through which the pen is
+        // an ellipse: the horizontal arm is 4 pixels thick and the vertical one
+        // 8 pixels wide
+        both("strokeNonUniform", 32, 28, true, g ->
+        {
+            g.scale(2, 1);
+            g.setStroke(new BasicStroke(4, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10));
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(2, 6);
+            p.lineTo(12, 6);
+            p.lineTo(12, 24);
+            g.draw(p);
+        });
+
+        // 17. a transform that flattens everything to a line, through which
+        // nothing is stroked
+        both("strokeSingular", 20, 20, true, g ->
+        {
+            g.scale(1, 0);
+            g.setStroke(new BasicStroke(4, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10));
+            g.draw(line(2, 10, 18, 10));
+        });
     }
 }

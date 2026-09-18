@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 )
 
 // The two namespaces XML gives a fixed meaning.
@@ -422,10 +423,21 @@ func (s scope) resolve(prefix string) string {
 //
 // Port of DocumentBuilder.parse(InputStream) as DomXmpParser configures it: a
 // namespace-aware builder that keeps comments, expands no entity but the five
-// XML declares, and refuses a document type declaration.
+// XML declares, and refuses a document type declaration. It reads the document
+// in the encoding Xerces would: see entity.go.
 func Parse(input io.Reader) (*Document, error) {
-	decoder := xml.NewDecoder(input)
+	text, err := newEntity(input)
+	if err != nil {
+		return nil, err
+	}
+	decoder := xml.NewDecoder(text)
 	decoder.Strict = true
+	// The entity applies the encoding the XML declaration names, below, and
+	// for "UTF-8" too, which encoding/xml does not ask about; what the text
+	// reaches encoding/xml as is UTF-8 whatever the declaration says.
+	decoder.CharsetReader = func(_ string, input io.Reader) (io.Reader, error) {
+		return input, nil
+	}
 
 	document := NewDocument()
 	// open is the elements the parser is inside, innermost last, and
@@ -481,13 +493,24 @@ func Parse(input io.Reader) (*Document, error) {
 			appendTo(document, open, &Text{data: string(token)})
 
 		case xml.Comment:
+			if err := checkCharacters(token, "comment"); err != nil {
+				return nil, err
+			}
 			appendTo(document, open, &Comment{data: string(token)})
 
 		case xml.ProcInst:
 			// The XML declaration is not a processing instruction, and a
 			// DOM does not hold one.
 			if first && token.Target == "xml" {
+				if encoding := declaredEncoding(string(token.Inst)); encoding != "" {
+					if err := text.setEncoding(encoding); err != nil {
+						return nil, err
+					}
+				}
 				break
+			}
+			if err := checkCharacters(token.Inst, "processing instruction"); err != nil {
+				return nil, err
 			}
 			appendTo(document, open,
 				&ProcessingInstruction{target: token.Target, data: string(token.Inst)})
@@ -511,6 +534,36 @@ func Parse(input io.Reader) (*Document, error) {
 		return nil, fmt.Errorf("premature end of file")
 	}
 	return document, nil
+}
+
+// checkCharacters refuses a character outside XML's Char production, and bytes
+// that are not UTF-8.
+//
+// encoding/xml checks both in text and in attribute values, and reads a
+// processing instruction or a comment through without looking; Xerces's
+// scanner looks everywhere, and says where it found one. The entity has made
+// the document UTF-8 by the time encoding/xml reads it, so a character that was
+// not allowed in UTF-16 reaches this as UTF-8 too.
+func checkCharacters(data []byte, where string) error {
+	for len(data) > 0 {
+		r, size := utf8.DecodeRune(data)
+		if r == utf8.RuneError && size <= 1 {
+			return fmt.Errorf("Invalid UTF-8 sequence in the %s.", where)
+		}
+		if !isXMLChar(r) {
+			return fmt.Errorf("An invalid XML character (Unicode: 0x%x) was found in the %s.", r, where)
+		}
+		data = data[size:]
+	}
+	return nil
+}
+
+// isXMLChar is XML 1.0's Char production.
+func isXMLChar(r rune) bool {
+	return r == 0x09 || r == 0x0A || r == 0x0D ||
+		r >= 0x20 && r <= 0xD7FF ||
+		r >= 0xE000 && r <= 0xFFFD ||
+		r >= 0x10000 && r <= 0x10FFFF
 }
 
 // declarationsOf reads the namespace declarations an element carries.

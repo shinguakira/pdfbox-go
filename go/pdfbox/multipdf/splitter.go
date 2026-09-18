@@ -89,12 +89,18 @@ func (s *Splitter) Split(document *pdmodel.PDDocument) ([]*pdmodel.PDDocument, e
 
 // processPages walks the source pages and hands the ones in range to
 // processPage.
+// Java walks the page tree's iterator, not its /Count: the iterator hands out a
+// leaf only where its /Type is /Page, so a kid written without one is skipped
+// and a document whose /Count counts it splits into fewer parts, or into none.
+// Walking by index instead answered /Count many parts. See
+// splituntyped_test.go.
 func (s *Splitter) processPages() error {
-	for i := 0; i < s.sourceDocument.NumberOfPages(); i++ {
-		page := s.sourceDocument.Page(i)
+	var failed error
+	for page := range s.sourceDocument.Pages().All {
 		if s.currentPageNumber+1 >= s.startPage && s.currentPageNumber+1 <= s.endPage {
 			if err := s.processPage(page); err != nil {
-				return err
+				failed = err
+				break
 			}
 			s.currentPageNumber++
 		} else {
@@ -104,7 +110,7 @@ func (s *Splitter) processPages() error {
 			s.currentPageNumber++
 		}
 	}
-	return nil
+	return failed
 }
 
 // createNewDocumentIfNecessary is a helper method for creating new documents at

@@ -1186,9 +1186,14 @@ string.
 UTF-16BE arm gives and what the two-byte table is not being asked about.
 
 **Why it matters** a CMap with an empty destination maps its code to U+0000
-instead of to nothing, so the extracted text carries a NUL. It needs a
-hand-written CMap to reach — no producer writes `<>` on purpose — which is why
-it has gone unnoticed.
+instead of to nothing, so the extracted text carries a NUL. It was supposed to
+need a hand-written CMap to reach, which is why it has gone unnoticed. **A real
+document reaches it:** `TechDocs/adobe_supplement_iso32000_1.pdf` in PoDoFo's
+test documents, Adobe's own supplement to ISO 32000, whose two CambriaMath
+subsets on page 7 each carry `<0001> <>` in their ToUnicode CMap. PDFBox
+extracts a NUL for each of the two glyphs, 2,002 characters on that page where
+the Go extracts 2,000; found 2026-09-17 by the corpus comparison, and see
+`TESTDATA.md`, "PoDoFo against the Java".
 
 **Where the Go carries it** `go/fontbox/cmap/cmapstrings.go`, `GetMapping`,
 which falls through to the two-byte table for a zero-length code exactly as Java
@@ -4899,3 +4904,81 @@ with the same exception at the same line.
 
 **Confidence** certain. Both sides were run on the four files, and on the
 rewritten PDFBox test file.
+
+---
+
+## 90. `PDStream.getFilters` hands back an unresolved reference as a `COSName`
+
+**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDStream.java`,
+`getFilters`, against `COSArray.toList` and `COSStream.getFilterList` in
+`pdfbox/src/main/java/org/apache/pdfbox/cos/`.
+
+```java
+public List<COSName> getFilters()
+{
+    COSBase filters = stream.getFilters();
+    if (filters instanceof COSName)
+    {
+        return Collections.singletonList((COSName) filters);
+    } 
+    else if (filters instanceof COSArray)
+    {
+        return (List<COSName>)((COSArray) filters).toList();
+    }
+    return Collections.emptyList();
+}
+```
+
+`toList` answers `new ArrayList<>(objects)` — the array's entries as they were
+parsed, so an entry written as an indirect reference is a `COSObject`. The cast
+to `List<COSName>` is unchecked, so nothing fails here: the caller fails, at the
+first `getName()`, with `ClassCastException: class org.apache.pdfbox.cos.COSObject
+cannot be cast to class org.apache.pdfbox.cos.COSName`. It is an unchecked
+exception, where every other refusal of a stream's filters is an `IOException`.
+
+**What it does** `/Filter` may be written as an indirect reference — nothing in
+the stream dictionary's definition forbids one — and qpdf keeps a document for
+exactly that, `indirect-filter-out-0.pdf`, whose image XObject carries
+`/Filter [ 7 0 R ]` with `7 0 obj /DCTDecode endobj`. PDFBox cannot read that
+image either way, and the two ways fail differently:
+
+- `COSStream.getFilterList`, which decoding goes through, reads the entry with
+  `filterArray.get(i)` rather than `getObject(i)` and refuses it with
+  `IOException: Forbidden type in filter array: org.apache.pdfbox.cos.COSObject`.
+- `PDStream.getFilters`, which is public API and which callers use to ask what a
+  stream is encoded with, hands the `COSObject` out as a `COSName`.
+
+So a document PDFBox will not decode also breaks a caller that only asked what
+the filters are, and breaks it with an unchecked exception thrown inside the
+caller's own code rather than inside PDFBox.
+
+**What correct would be** reading each entry with `getObject(i)`, which resolves
+a reference, in both places — that is what everything else that reads a name out
+of a COS array does, `PDColorSpace.create` and `PDFont.getSubtype` among them.
+Refusing an entry that is still not a name belongs in `getFilterList`, where the
+refusal already is, and `getFilters` should skip it rather than claim it is a
+name.
+
+**Where the Go carries it** `go/pdfbox/cos/stream.go`, `filterList`, reproduces
+the refusal as it is written, `Get(i)` and all: the corpus comparison shows the
+same document failing to decode on both sides, PDFBox with "Forbidden type in
+filter array: org.apache.pdfbox.cos.COSObject" and the port with "cos: forbidden
+type in filter array at 0: *cos.Object".
+
+`go/pdfbox/pdmodel/common/pdstream.go`, `Filters`, does **not** carry the second
+half: it reads each entry with `GetObject(i)`, so an indirect `/DCTDecode`
+answers as `DCTDecode`. A Go slice of `*cos.Name` cannot hold a `*cos.Object` at
+all — the unchecked cast has no equivalent — and the choice was between
+answering the name and answering a nil entry that panics when the caller reads
+it. The port answers the name. Pinned by
+`TestFiltersResolveAnIndirectName` in
+`go/pdfbox/pdmodel/common/javabug90_test.go`.
+
+**Why it matters** it is the difference between "this document uses DCTDecode"
+and a `ClassCastException` out of the caller's own line, on a document written
+the way the specification allows. Found by the corpus comparison of images:
+`go/testdata/corpus/qpdf/indirect-filter-out-0.pdf` is the only file of 40,255
+whose images facet PDFBox cannot describe at all.
+
+**Confidence** certain. Both sides were run on the qpdf document, and both
+messages above are theirs.
