@@ -63,7 +63,7 @@ func applyMask(img, mask goimage.Image, interpolateMask, isSoft bool, matte []fl
 
 // applyMatte is the third arm of Java's applyMask, comment and arithmetic
 // intact.
-func applyMatte(argb *goimage.RGBA, grayMask *goimage.Gray, matte []float32, width, height int) {
+func applyMatte(argb *goimage.NRGBA, grayMask *goimage.Gray, matte []float32, width, height int) {
 	// Original code is to clamp component and alpha to [0f, 1f] as matte is,
 	// and later expand to [0; 255] again (with rounding).
 	// component = 255f * ((component / 255f - matte) / (alpha / 255f) + matte)
@@ -129,11 +129,18 @@ func toGray(img goimage.Image, width, height int, interpolate bool) *goimage.Gra
 }
 
 // toRGBA returns the image as an ARGB image of the given size.
-func toRGBA(img goimage.Image, width, height int, interpolate bool) *goimage.RGBA {
-	out := goimage.NewRGBA(goimage.Rect(0, 0, width, height))
+//
+// Java's TYPE_INT_ARGB holds straight colour: the alpha the mask is about to
+// write does not scale the colour beside it, and getRGB answers the colour as
+// stored. Go's image.RGBA is premultiplied, so the colour of a pixel with an
+// alpha below 255 would be read back divided by it -- wrapping past 255 for a
+// half-transparent pixel and lost outright for a transparent one. image.NRGBA
+// is the straight one, and what this answers.
+func toRGBA(img goimage.Image, width, height int, interpolate bool) *goimage.NRGBA {
+	out := goimage.NewNRGBA(goimage.Rect(0, 0, width, height))
 	scaleInto(img, out.Bounds(), interpolate, func(x, y int, c goimagecolor.Color) {
 		r, g, b, _ := c.RGBA()
-		out.SetRGBA(x, y, goimagecolor.RGBA{
+		out.SetNRGBA(x, y, goimagecolor.NRGBA{
 			R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255,
 		})
 	}, img.Bounds())

@@ -1,0 +1,57 @@
+# The ways PoDoFo's tests open the encrypted PDFs of podofo-resources, one
+# line for each way of opening one file, read from the test sources named
+# above each group. fetch-corpus.ps1 writes these lines to _passwords.tsv with
+# the suite's name in front of each file.
+#
+# A line gives a password the test source holds that PDFBox opens the file
+# with, and an empty one besides where the file also opens with none. Thirteen
+# of the documents under TechDocs/ name an encryption dictionary too; they
+# open with no password, and no test opens them with one, so no line names
+# them.
+
+# test/unit/EncryptTest.cpp, TEST_CASE("TestEncryptedPDFs"): each
+# is loaded with "userpass" and with "ownerpass"
+RC4V2-40.pdf	userpass
+RC4V2-40.pdf	ownerpass
+RC4V2-56.pdf	userpass
+RC4V2-56.pdf	ownerpass
+RC4V2-80.pdf	userpass
+RC4V2-80.pdf	ownerpass
+RC4V2-96.pdf	userpass
+RC4V2-96.pdf	ownerpass
+RC4V2-128.pdf	userpass
+RC4V2-128.pdf	ownerpass
+AESV2-128.pdf	userpass
+AESV2-128.pdf	ownerpass
+AESV3R6-256.pdf	userpass
+AESV3R6-256.pdf	ownerpass
+RC4V2-40_KeyLength41Violation.pdf	userpass
+RC4V2-40_KeyLength41Violation.pdf	ownerpass
+RC4V2-56_KeyLength57Violation.pdf	userpass
+RC4V2-56_KeyLength57Violation.pdf	ownerpass
+RC4V2-80_KeyLength81Violation.pdf	userpass
+RC4V2-80_KeyLength81Violation.pdf	ownerpass
+RC4V2-96_KeyLength97Violation.pdf	userpass
+RC4V2-96_KeyLength97Violation.pdf	ownerpass
+RC4V2-128_KeyLength129Violation.pdf	userpass
+RC4V2-128_KeyLength129Violation.pdf	ownerpass
+AESV2-128_KeyLength129Violation.pdf	userpass
+AESV2-128_KeyLength129Violation.pdf	ownerpass
+AESV3R6-256_KeyLength257Violation.pdf	userpass
+AESV3R6-256_KeyLength257Violation.pdf	ownerpass
+
+# test/unit/EncryptTest.cpp, TEST_CASE("TestEncryptMetadataFalse"): loaded with
+# "userpass"; the source's other password, "ownerpass", does not open them
+EncryptMetadataFalseCrypt.pdf	userpass
+EncryptMetadataFalseNoCrypt.pdf	userpass
+
+# test/unit/StringTest.cpp, TEST_CASE("TestEncryptedStringsEscaped"): loaded with
+# "userpass"; both open with no password as well
+TestEncryptedStringsEscaped.pdf	
+TestEncryptedStringsEscaped.pdf	userpass
+TestEncryptedStringsEscaped2.pdf	
+TestEncryptedStringsEscaped2.pdf	userpass
+
+# test/unit/Permissions.cpp: loaded with "user" and with "owner"
+owner_user.pdf	user
+owner_user.pdf	owner

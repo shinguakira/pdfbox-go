@@ -18,6 +18,7 @@ import (
 	"errors"
 	goimage "image"
 	goimagecolor "image/color"
+	"math"
 
 	xdraw "golang.org/x/image/draw"
 
@@ -196,7 +197,48 @@ func (i *Image) SetInterpolation(interpolation rendering.Interpolation) {
 // Fill fills the given shape with the current paint.
 func (i *Image) Fill(shape geom.Shape) error {
 	bounds := i.dst.Bounds()
-	return i.compose(coverageOf(shape, i.transform, bounds.Dx(), bounds.Dy(), i.antiAliasing))
+	return i.composeWithin(coverageOf(shape, i.transform, bounds.Dx(), bounds.Dy(), i.antiAliasing),
+		i.deviceBounds(shape, 0))
+}
+
+// deviceBounds answers where on the surface a shape can put anything down: its
+// bounding box through the current transform, grown by pad and then by one
+// pixel each way for the antialiasing at its edge.
+//
+// The coverage mask is the size of the whole surface, and a page is mostly made
+// of fills that cover a little of it, so this is what keeps compose from walking
+// every pixel of the page for every one of them. It is only a bound: what it
+// answers is never smaller than where the mask is not zero.
+func (i *Image) deviceBounds(shape geom.Shape, pad float64) goimage.Rectangle {
+	box := shape.Bounds2D()
+	if box == nil {
+		return i.dst.Bounds()
+	}
+	if i.transform != nil {
+		box = transformedRect(i.transform, box)
+	}
+	return paddedRect(geom.NewRectangle2D(box.X-pad, box.Y-pad,
+		box.Width+2*pad, box.Height+2*pad))
+}
+
+// transformedRect answers the bounding box of a rectangle through a transform.
+func transformedRect(at *geom.AffineTransform, r *geom.Rectangle2D) *geom.Rectangle2D {
+	corners := []float64{
+		r.X, r.Y,
+		r.X + r.Width, r.Y,
+		r.X + r.Width, r.Y + r.Height,
+		r.X, r.Y + r.Height,
+	}
+	at.TransformDoubles(corners, 0, corners, 0, 4)
+	minX, minY := corners[0], corners[1]
+	maxX, maxY := minX, minY
+	for at := 2; at < len(corners); at += 2 {
+		minX = math.Min(minX, corners[at])
+		maxX = math.Max(maxX, corners[at])
+		minY = math.Min(minY, corners[at+1])
+		maxY = math.Max(maxY, corners[at+1])
+	}
+	return geom.NewRectangle2D(minX, minY, maxX-minX, maxY-minY)
 }
 
 // Draw strokes the outline of the given shape with the current paint and
@@ -212,13 +254,36 @@ func (i *Image) Draw(shape geom.Shape) error {
 		return nil
 	}
 	bounds := i.dst.Bounds()
-	return i.compose(strokeCoverage(shape, i.transform, i.stroke,
-		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization))
+	// A stroke puts paint half its width either side of the path, and a dash
+	// phase or a miter join can reach a little further, so the pad is the whole
+	// width rather than half of it.
+	width := float64(i.stroke.LineWidth)
+	if i.transform != nil {
+		width *= math.Max(math.Abs(i.transform.ScaleX()), math.Abs(i.transform.ScaleY())) +
+			math.Max(math.Abs(i.transform.ShearX()), math.Abs(i.transform.ShearY()))
+	}
+	if miter := float64(i.stroke.MiterLimit); miter > 1 {
+		width *= miter
+	}
+	return i.composeWithin(strokeCoverage(shape, i.transform, i.stroke,
+		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization),
+		i.deviceBounds(shape, width))
 }
 
 // compose puts the current paint onto the destination through a coverage mask
 // and the clip.
+// The coverage of a fill is a mask the size of the whole surface, and a page
+// holds many fills that cover a little of it, so the loop reads the mask's rows
+// straight out of its Pix slice rather than asking AlphaAt for a pixel at a
+// time: AlphaAt tests the bounds and works out the offset on every call, and on
+// a page of tiling patterns that was 95% of the time a render took. What is
+// composed does not change.
 func (i *Image) compose(mask *goimage.Alpha) error {
+	return i.composeWithin(mask, i.dst.Bounds())
+}
+
+// composeWithin is compose over the part of the surface a shape can reach.
+func (i *Image) composeWithin(mask *goimage.Alpha, within goimage.Rectangle) error {
 	source, paintAlpha, err := i.sourceOf(i.paint)
 	if err != nil {
 		return err
@@ -229,19 +294,28 @@ func (i *Image) compose(mask *goimage.Alpha) error {
 		return nil
 	}
 
-	bounds := i.dst.Bounds()
+	bounds := i.dst.Bounds().Intersect(mask.Bounds()).Intersect(within)
+	if clip != nil {
+		bounds = bounds.Intersect(clip.Bounds())
+	}
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			coverage := float64(mask.AlphaAt(x, y).A) / 255
-			if coverage == 0 {
+		row := mask.Pix[mask.PixOffset(bounds.Min.X, y):][:bounds.Dx()]
+		var clipRow []uint8
+		if clip != nil {
+			clipRow = clip.Pix[clip.PixOffset(bounds.Min.X, y):][:bounds.Dx()]
+		}
+		for offset, alpha := range row {
+			if alpha == 0 {
 				continue
 			}
-			if clip != nil {
-				coverage *= float64(clip.AlphaAt(x, y).A) / 255
-				if coverage == 0 {
+			coverage := float64(alpha) / 255
+			if clipRow != nil {
+				if clipRow[offset] == 0 {
 					continue
 				}
+				coverage *= float64(clipRow[offset]) / 255
 			}
+			x := bounds.Min.X + offset
 			c, painted := source.colorAt(x, y)
 			if !painted {
 				continue
@@ -335,4 +409,15 @@ func (i *Image) DrawSurface(surface rendering.Backend) error {
 		}
 	}
 	return nil
+}
+
+// paddedRect answers the integer rectangle that holds a real one, with a pixel
+// each way for what antialiasing puts at its edge.
+func paddedRect(r *geom.Rectangle2D) goimage.Rectangle {
+	return goimage.Rect(
+		int(math.Floor(r.X))-1,
+		int(math.Floor(r.Y))-1,
+		int(math.Ceil(r.X+r.Width))+2,
+		int(math.Ceil(r.Y+r.Height))+2,
+	)
 }

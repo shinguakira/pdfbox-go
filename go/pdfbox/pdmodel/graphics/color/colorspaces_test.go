@@ -239,6 +239,83 @@ func TestICCBasedConstructor(t *testing.T) {
 
 // From here on the tests are written from the source.
 
+// TestICCBasedAlternate checks each branch of Java's getAlternateColorSpace.
+//
+// The expected values are PDFBox's, printed for these streams with bytes that
+// are not a profile, so that Java falls back to the alternate as the Go version
+// always does. The messages are Java's; PDFBox prints the integer's class as
+// org.apache.pdfbox.cos.COSInteger, where the Go version names its own type.
+// The loop through the resources that the alternate must not look up is tested
+// in pdmodel, which has the resources.
+func TestICCBasedAlternate(t *testing.T) {
+	iccBased := func(n int, alternate cos.Base) *cos.Array {
+		stream := cos.NewStream(nil)
+		stream.SetInt(cos.N, n)
+		if alternate != nil {
+			stream.SetItem(cos.Alternate, alternate)
+		}
+		array := cos.NewArray()
+		array.Add(cos.ICCBased)
+		array.Add(stream)
+		return array
+	}
+	arrayOf := func(entries ...cos.Base) *cos.Array {
+		array := cos.NewArray()
+		for _, entry := range entries {
+			array.Add(entry)
+		}
+		return array
+	}
+
+	for _, c := range []struct {
+		what      string
+		space     *cos.Array
+		alternate PDColorSpace
+		err       string
+	}{
+		{what: "no /Alternate and /N 1", space: iccBased(1, nil), alternate: DeviceGray},
+		{what: "no /Alternate and /N 3", space: iccBased(3, nil), alternate: DeviceRGB},
+		{what: "no /Alternate and /N 4", space: iccBased(4, nil), alternate: DeviceCMYK},
+		{what: "no /Alternate and /N 2", space: iccBased(2, nil),
+			err: "Unknown color space number of components:2"},
+		{what: "/Alternate /DeviceRGB", space: iccBased(3, cos.DeviceRGB), alternate: DeviceRGB},
+		{what: "/Alternate [/DeviceRGB]", space: iccBased(3, arrayOf(cos.DeviceRGB)), alternate: DeviceRGB},
+		{what: "/Alternate []", space: iccBased(3, arrayOf()), err: "Colorspace array is empty"},
+		{what: "/Alternate 5", space: iccBased(3, cos.GetInteger(5)),
+			err: "Error: expected COSArray or COSName and not "},
+	} {
+		got, err := Create(c.space)
+		if c.err != "" {
+			if err == nil || !strings.Contains(err.Error(), c.err) {
+				t.Errorf("%s gave %v, %v; want the error %q", c.what, got, err, c.err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", c.what, err)
+			continue
+		}
+		icc, ok := got.(*PDICCBased)
+		if !ok {
+			t.Errorf("%s gave %T", c.what, got)
+			continue
+		}
+		if icc.AlternateColorSpace() != c.alternate {
+			t.Errorf("%s has the alternate %v, want %v", c.what, icc.AlternateColorSpace(), c.alternate)
+		}
+	}
+
+	// Java's checkArray
+	if _, err := Create(arrayOf(cos.ICCBased)); err == nil ||
+		!strings.Contains(err.Error(), "ICCBased colorspace array must have two elements") {
+		t.Errorf("[/ICCBased] gave %v", err)
+	}
+	if _, err := Create(arrayOf(cos.ICCBased, cos.NewDictionary())); err == nil ||
+		!strings.Contains(err.Error(), "ICCBased colorspace array must have a stream as second element") {
+		t.Errorf("[/ICCBased <<>>] gave %v", err)
+	}
+}
+
 // TestDeviceColorSpaces pins what each device space says about itself.
 func TestDeviceColorSpaces(t *testing.T) {
 	cases := []struct {

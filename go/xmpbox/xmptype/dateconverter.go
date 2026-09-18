@@ -249,23 +249,9 @@ func ToISO8601Millis(cal time.Time, printMillis bool) string {
 	return out.String()
 }
 
-// isoLayouts are the forms fromISO8601 accepts, in the order it tries them.
-//
-// Java builds a DateTimeFormatter of ISO_LOCAL_DATE_TIME plus a lenient
-// "+HH:MM" or "Z" offset, and falls back to ISO_LOCAL_DATE_TIME alone read as
-// UTC. ISO_LOCAL_DATE_TIME makes the seconds and the fraction optional, which
-// is why there is a layout per shape rather than one.
-var isoLayouts = []string{
-	"2006-01-02T15:04:05.999999999Z07:00",
-	"2006-01-02T15:04:05Z07:00",
-	"2006-01-02T15:04Z07:00",
-	"2006-01-02T15:04:05.999999999-07:00",
-	"2006-01-02T15:04:05-07:00",
-	"2006-01-02T15:04-07:00",
-}
-
-// localIsoLayouts are the same forms without an offset, which Java reads as
-// UTC.
+// localIsoLayouts are the forms ISO_LOCAL_DATE_TIME reads. It makes the seconds
+// and the fraction optional, which is why there is a layout per shape rather
+// than one.
 var localIsoLayouts = []string{
 	"2006-01-02T15:04:05.999999999",
 	"2006-01-02T15:04:05",
@@ -316,26 +302,110 @@ func clampDayOfMonth(dateString string) (string, bool) {
 // fromISO8601 parses the ISO 8601 form.
 //
 // Port of the private fromISO8601, whose DateTimeParseException becomes an
-// error.
+// error. Java parses with DATE_TIME_FORMATTER, which is ISO_LOCAL_DATE_TIME and
+// then an offset, and falls back to ISO_LOCAL_DATE_TIME alone read as UTC; the
+// fallback reads only a string with no offset, because the formatter wants the
+// whole string read. The offset is read by lenientOffset, the way java.time
+// reads it, rather than by Go's parser, which takes neither "+03" nor
+// "+03:00:00" and takes "+03:60".
 func fromISO8601(dateString string) (time.Time, error) {
 	if clamped, wasClamped := clampDayOfMonth(dateString); wasClamped {
 		dateString = clamped
 	}
-	for _, layout := range isoLayouts {
-		if parsed, err := time.Parse(layout, dateString); err == nil {
-			if _, offset := parsed.Zone(); !isZoneOffset(offset) {
-				// Java's ZoneOffset refuses one outside this range, and the
-				// DateTimeParseException it raises is what the caller reports;
-				// Go's parser takes any two-digit hour.
-				break
-			}
-			return parsed, nil
+	local, offset := dateString, ""
+	// Nothing ISO_LOCAL_TIME reads is a sign or a Z, so the first after the T
+	// is where the offset starts.
+	if len(dateString) > 11 {
+		if at := strings.IndexAny(dateString[11:], "+-Zz"); at >= 0 {
+			local, offset = dateString[:11+at], dateString[11+at:]
 		}
 	}
+	zone := time.UTC
+	offsetSeconds := 0
+	if offset != "" {
+		var ok bool
+		if offsetSeconds, ok = lenientOffset(offset); !ok {
+			return time.Time{}, errors.New("Text '" + dateString + "' could not be parsed")
+		}
+		zone = calendarZone(offsetSeconds)
+	}
 	for _, layout := range localIsoLayouts {
-		if parsed, err := time.ParseInLocation(layout, dateString, time.UTC); err == nil {
-			return parsed, nil
+		if parsed, err := time.ParseInLocation(layout, local, time.UTC); err == nil {
+			return parsed.Add(-time.Duration(offsetSeconds) * time.Second).In(zone), nil
 		}
 	}
 	return time.Time{}, errors.New("Text '" + dateString + "' could not be parsed")
+}
+
+// lenientOffset reads an offset the way DATE_TIME_FORMATTER does, and answers
+// it in seconds.
+//
+// Port of java.time's OffsetIdPrinterParser.parse for the pattern "+HH:MM" with
+// "Z" for no offset, in lenient mode, which reads "+HH:MM" as "+HH:mm:ss": the
+// hour is two digits and not past 23, the minutes and then the seconds may each
+// be left off, each is two digits after a colon and not past 59, and "Z" is
+// matched without regard to case because the formatter parses case
+// insensitively. Whatever is left unread refuses the string, and so does an
+// offset ZoneOffset will not take.
+func lenientOffset(text string) (int, bool) {
+	if strings.EqualFold(text, "Z") {
+		return 0, true
+	}
+	if text[0] != '+' && text[0] != '-' {
+		return 0, false
+	}
+	twoDigits := func(at int) (int, bool) {
+		if at+2 > len(text) || text[at] < '0' || text[at] > '9' || text[at+1] < '0' || text[at+1] > '9' {
+			return 0, false
+		}
+		value := int(text[at]-'0')*10 + int(text[at+1]-'0')
+		return value, value <= 59
+	}
+	hours, ok := twoDigits(1)
+	if !ok || hours > 23 {
+		return 0, false
+	}
+	minutes, seconds, at := 0, 0, 3
+	if at < len(text) && text[at] == ':' {
+		if minutes, ok = twoDigits(at + 1); ok {
+			at += 3
+			if at < len(text) && text[at] == ':' {
+				if seconds, ok = twoDigits(at + 1); ok {
+					at += 3
+				} else {
+					seconds = 0
+				}
+			}
+		} else {
+			minutes = 0
+		}
+	}
+	if at != len(text) {
+		return 0, false
+	}
+	total := hours*3600 + minutes*60 + seconds
+	if text[0] == '-' {
+		total = -total
+	}
+	return total, isZoneOffset(total)
+}
+
+// calendarZone is the zone of the calendar Java builds from a parsed offset.
+//
+// GregorianCalendar.from asks TimeZone.getTimeZone for the zone the offset
+// names: "UTC" for none, "GMT+03:00" for three hours. JDK 17's TimeZone reads
+// no seconds in a custom zone, so for an offset with seconds, "GMT+03:00:30",
+// it answers GMT; the instant is still the one the offset gave.
+func calendarZone(offsetSeconds int) *time.Location {
+	switch {
+	case offsetSeconds == 0:
+		return time.UTC
+	case offsetSeconds%60 != 0:
+		return time.FixedZone("GMT", 0)
+	}
+	sign, magnitude := '+', offsetSeconds
+	if offsetSeconds < 0 {
+		sign, magnitude = '-', -offsetSeconds
+	}
+	return time.FixedZone(fmt.Sprintf("GMT%c%02d:%02d", sign, magnitude/3600, magnitude%3600/60), offsetSeconds)
 }

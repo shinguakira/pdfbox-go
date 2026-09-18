@@ -182,7 +182,17 @@ func (d *PageDrawer) DrawSoftMask(softMask *state.PDSoftMask,
 	d.backend = backend
 	d.setRenderingHints()
 
+	// Java's processSoftMask reads the mask off the graphics state, because
+	// applySoftMaskToPaint builds the mask's picture there and then, while the
+	// state that named the mask is still the current one. The port builds a
+	// paint that draws the mask when the paint is first used, which for a paint
+	// inside a non-isolated group is when the group is composited, after that
+	// state was restored -- so the mask goes back on the state here, the one the
+	// caller handed over. See softmasklazy_test.go.
+	d.SaveGraphicsState()
+	d.GraphicsState().SetSoftMask(softMask)
 	err = d.ProcessSoftMask(group)
+	d.RestoreGraphicsState()
 
 	// Java restores these in a finally, so they go back on the error path too.
 	d.backend = savedBackend

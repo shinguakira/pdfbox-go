@@ -35,10 +35,12 @@ func checkIdent(t *testing.T, expected goimage.Image, ximage *PDImageXObject) {
 	if got.Bounds().Dx() != bounds.Dx() || got.Bounds().Dy() != bounds.Dy() {
 		t.Fatalf("the image is %v, want %v", got.Bounds(), bounds)
 	}
+	// Java's checkIdentRGB compares getRGB(x, y) & 0xFFFFFF of the two images:
+	// straight colour on both sides, whatever the alpha.
 	for y := 0; y < bounds.Dy(); y++ {
 		for x := 0; x < bounds.Dx(); x++ {
-			er, eg, eb, _ := unpremultiply(expected.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA())
-			ar, ag, ab, _ := got.At(got.Bounds().Min.X+x, got.Bounds().Min.Y+y).RGBA()
+			er, eg, eb, _ := straight(expected.At(bounds.Min.X+x, bounds.Min.Y+y))
+			ar, ag, ab, _ := straight(got.At(got.Bounds().Min.X+x, got.Bounds().Min.Y+y))
 			if er>>8 != ar>>8 || eg>>8 != ag>>8 || eb>>8 != ab>>8 {
 				t.Fatalf("pixel (%d,%d) = (%d,%d,%d), want (%d,%d,%d)",
 					x, y, ar>>8, ag>>8, ab>>8, er>>8, eg>>8, eb>>8)

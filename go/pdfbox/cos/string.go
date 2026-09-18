@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // ErrInvalidHexString is returned by ParseHexString for a string containing a
@@ -197,16 +199,53 @@ func (s *StringObj) Value() string {
 	return pdfDocEncodingToString(s.bytes)
 }
 
+// decodeUTF16 is Java's new String(bytes, UTF_16BE) or UTF_16LE, which decodes
+// through a CharsetDecoder that replaces what it cannot read with U+FFFD.
+//
+// Port of sun.nio.cs.UnicodeDecoder.decodeLoop and the end of input
+// CharsetDecoder.decode reports. A high surrogate and the unit after it are one
+// malformed sequence of four bytes when that unit is not a low surrogate, so the
+// unit is lost with it; a low surrogate on its own is two malformed bytes; and
+// whatever is left when the input ends, an odd byte or a high surrogate with
+// nothing after it, is one malformed sequence. utf16.Decode, which the port used
+// before, keeps the unit after an unpaired high surrogate, and the odd last byte
+// never reached it.
 func decodeUTF16(b []byte, bigEndian bool) string {
-	units := make([]uint16, 0, len(b)/2)
-	for i := 0; i+1 < len(b); i += 2 {
+	unit := func(at int) rune {
 		if bigEndian {
-			units = append(units, uint16(b[i])<<8|uint16(b[i+1]))
-		} else {
-			units = append(units, uint16(b[i+1])<<8|uint16(b[i]))
+			return rune(b[at])<<8 | rune(b[at+1])
 		}
+		return rune(b[at+1])<<8 | rune(b[at])
 	}
-	return string(utf16.Decode(units))
+	var out strings.Builder
+	at := 0
+	for len(b)-at > 1 {
+		c := unit(at)
+		if !utf16.IsSurrogate(c) {
+			out.WriteRune(c)
+			at += 2
+			continue
+		}
+		if c <= 0xDBFF {
+			if len(b)-at < 4 {
+				break
+			}
+			if c2 := unit(at + 2); c2 >= 0xDC00 && c2 <= 0xDFFF {
+				out.WriteRune(utf16.DecodeRune(c, c2))
+			} else {
+				out.WriteRune(utf8.RuneError)
+			}
+			at += 4
+			continue
+		}
+		// Unpaired low surrogate
+		out.WriteRune(utf8.RuneError)
+		at += 2
+	}
+	if at < len(b) {
+		out.WriteRune(utf8.RuneError)
+	}
+	return out.String()
 }
 
 // ASCII decodes the string as US-ASCII.

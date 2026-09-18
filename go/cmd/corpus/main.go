@@ -124,6 +124,22 @@ func main() {
 		pages    = flag.String("pages", "", "instead of scoring, write a digest per page of the files given, for narrowing a disagreement the document digest found to a page")
 		cmpPages = flag.Bool("comparepages", false, "compare two page tables, PDFBox's first and this program's second, and report every page they disagree on")
 		openLine = flag.Int("open", -1, "with -one, open the file as the line of this index in the passwords tables says, counting from 0 across them in order")
+		listFile = flag.String("list", "", "read the paths to score from this file, one per line, as well as the ones named on the command line; a command line long enough to hold forty thousand of them is not portable")
+
+		facetsOut     = flag.String("facets", "", "instead of scoring, write a digest per facet of each document beyond its text -- positions, information, XMP, outline, labels, boxes, structure, annotations, fields, images -- for comparing with run-oracle.ps1 -Facets")
+		facetLinesOut = flag.String("facetlines", "", "instead of scoring, write every line the facet digests are made of, for narrowing a facet two tables disagree on")
+		cmpFacets     = flag.Bool("comparefacets", false, "compare two facet tables, PDFBox's first and this program's second, and report every facet they disagree on")
+		workers       = flag.Int("workers", 1, "with -facets or -facetlines, how many files to compute at once")
+		oneFacets     = flag.Bool("onefacets", false, "compute exactly one file's facets and print them; how -facets re-enters this program")
+		keepLines     = flag.Bool("keeplines", false, "with -onefacets or -onewrites, print the lines rather than the digests")
+
+		writesOut     = flag.String("writes", "", "instead of scoring, write what each document reads back as after the port writes it -- save, incremental save, encryption, split, merge, overlay, an external signature -- for comparing with run-oracle.ps1 -Writes")
+		writeLinesOut = flag.String("writelines", "", "instead of scoring, write every line the write digests are made of")
+		oneWrites     = flag.Bool("onewrites", false, "run exactly one file's writes and print them; how -writes re-enters this program")
+
+		renderOut = flag.String("renderpages", "", "instead of scoring, render every page at 72 dpi and write its size, a digest of its pixels and a 16 by 16 grid of mean brightness, for comparing with run-oracle.ps1 -Render")
+		cmpRender = flag.Bool("comparerender", false, "compare two render tables, PDFBox's first and this program's second, and report how far apart each page is")
+		oneRender = flag.Bool("onerender", false, "render exactly one file's pages and print them; how -renderpages re-enters this program")
 	)
 	flag.Func("passwords", "a table of the ways a source project opens its encrypted documents: <path ending>\\t<password>, <path ending>\\t<password>\\t<certificate>\\t<private key>, or <path ending>\\t<passphrase>\\t<PKCS#12 keystore>; may be given more than once, and each file is opened once for every line naming it", func(table string) error {
 		passwordsPaths = append(passwordsPaths, table)
@@ -144,6 +160,83 @@ func main() {
 		return
 	}
 
+	if *oneRender {
+		if flag.NArg() != 1 {
+			fmt.Fprintln(os.Stderr, "corpus: -onerender takes exactly one file")
+			os.Exit(2)
+		}
+		if *openLine < -1 || *openLine >= len(openings) {
+			fmt.Fprintln(os.Stderr, "corpus: -open names no line of the passwords tables")
+			os.Exit(2)
+		}
+		for _, line := range renderNow(jobFor(flag.Arg(0), *openLine)) {
+			fmt.Println(line)
+		}
+		return
+	}
+
+	if *cmpRender {
+		if flag.NArg() != 2 {
+			fmt.Fprintln(os.Stderr, "corpus: -comparerender takes two tables, PDFBox's first")
+			os.Exit(2)
+		}
+		differ, err := compareRender(flag.Arg(0), flag.Arg(1))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		if differ > 0 {
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *oneWrites {
+		if flag.NArg() != 1 {
+			fmt.Fprintln(os.Stderr, "corpus: -onewrites takes exactly one file")
+			os.Exit(2)
+		}
+		if *openLine < -1 || *openLine >= len(openings) {
+			fmt.Fprintln(os.Stderr, "corpus: -open names no line of the passwords tables")
+			os.Exit(2)
+		}
+		for _, line := range writesNow(jobFor(flag.Arg(0), *openLine), *keepLines) {
+			fmt.Println(line)
+		}
+		return
+	}
+
+	if *oneFacets {
+		if flag.NArg() != 1 {
+			fmt.Fprintln(os.Stderr, "corpus: -onefacets takes exactly one file")
+			os.Exit(2)
+		}
+		if *openLine < -1 || *openLine >= len(openings) {
+			fmt.Fprintln(os.Stderr, "corpus: -open names no line of the passwords tables")
+			os.Exit(2)
+		}
+		for _, line := range facetsNow(jobFor(flag.Arg(0), *openLine), *keepLines) {
+			fmt.Println(line)
+		}
+		return
+	}
+
+	if *cmpFacets {
+		if flag.NArg() != 2 {
+			fmt.Fprintln(os.Stderr, "corpus: -comparefacets takes two tables, PDFBox's first")
+			os.Exit(2)
+		}
+		differ, err := compareFacets(flag.Arg(0), flag.Arg(1))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		if differ > 0 {
+			os.Exit(1)
+		}
+		return
+	}
+
 	if *cmpPages {
 		if flag.NArg() != 2 {
 			fmt.Fprintln(os.Stderr, "corpus: -comparepages takes two tables, PDFBox's first")
@@ -160,19 +253,28 @@ func main() {
 		return
 	}
 
-	if flag.NArg() == 0 {
+	roots := flag.Args()
+	if *listFile != "" {
+		listed, err := readList(*listFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		roots = append(roots, listed...)
+	}
+	if len(roots) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: corpus [flags] <directory>...")
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
 
-	files, err := collect(flag.Args())
+	files, err := collect(roots)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "corpus:", err)
 		os.Exit(1)
 	}
 	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "corpus: no PDFs under", strings.Join(flag.Args(), " "))
+		fmt.Fprintln(os.Stderr, "corpus: no PDFs under", strings.Join(roots, " "))
 		os.Exit(1)
 	}
 
@@ -189,6 +291,25 @@ func main() {
 	}
 
 	jobs := jobsFor(files)
+
+	if *facetsOut != "" || *facetLinesOut != "" || *writesOut != "" || *writeLinesOut != "" || *renderOut != "" {
+		g, out, keep := facetGroup, *facetsOut, false
+		switch {
+		case *renderOut != "":
+			g, out = renderGroup, *renderOut
+		case *facetLinesOut != "":
+			out, keep = *facetLinesOut, true
+		case *writesOut != "":
+			g, out = writeGroup, *writesOut
+		case *writeLinesOut != "":
+			g, out, keep = writeGroup, *writeLinesOut, true
+		}
+		if err := writeFacets(jobs, out, g, keep, *workers, *timeout); err != nil {
+			fmt.Fprintln(os.Stderr, "corpus:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *pages != "" {
 		if err := writePages(jobs, *pages); err != nil {
@@ -952,4 +1073,25 @@ func openDocument(j job) (*pdmodel.PDDocument, error) {
 		return nil, err
 	}
 	return pdfbox.LoadPDFWithKeyStore(j.path, o.password, bytes.NewReader(store), "")
+}
+
+// readList reads the paths of a list file, one per line, ignoring blank lines
+// and the byte order mark PowerShell writes.
+//
+// run-oracle.ps1 takes its list the same way, and for the same reason: forty
+// thousand paths do not fit on a command line, and a shell that splits them into
+// batches would have each batch overwrite the table the one before it wrote.
+func readList(path string) ([]string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	text := strings.TrimPrefix(string(raw), string(rune(0xFEFF)))
+	var paths []string
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			paths = append(paths, line)
+		}
+	}
+	return paths, nil
 }

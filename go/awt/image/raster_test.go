@@ -102,3 +102,62 @@ func TestBandedRasterRefusesMoreThanOneBand(t *testing.T) {
 	}()
 	NewBandedRaster(TypeByte, 2, 2, 3)
 }
+
+// TestSamplesAreTruncatedToTheDataType checks what a raster keeps of a sample
+// outside the range of its data type.
+//
+// Java holds a TYPE_BYTE raster's samples in a byte array and a TYPE_USHORT
+// one's in a short array, and every setter casts: (byte) -255 is 1 and
+// (byte) 300 is 44. The port holds both as uint16, so a byte raster kept the
+// whole value.
+//
+// Found by the corpus comparison of image pixels:
+// itext-java's GetImageBytesTest/RGBFlateF0.pdf paints a Separation whose tint
+// transform has the /Range [-1 2 -3 6 0 3] and answers -1 for the first
+// component of the alternate DeviceRGB. PDSeparation.tintTransform multiplies by
+// 255 and writes -255 into a TYPE_BYTE raster, where Java keeps 1; the port kept
+// 65281, which came out as 255. PDFBox's answers, printed by setPixel and
+// getPixel on both kinds of raster, are the expected values here.
+func TestSamplesAreTruncatedToTheDataType(t *testing.T) {
+	bytes := NewInterleavedRaster(TypeByte, 2, 2, 3)
+	shorts := NewInterleavedRaster(TypeUShort, 2, 2, 3)
+
+	for _, c := range []struct {
+		raster *Raster
+		what   string
+		values []int
+		want   []int
+	}{
+		{bytes, "byte", []int{-255, 300, 128}, []int{1, 44, 128}},
+		{bytes, "byte", []int{-1, 256, 255}, []int{255, 0, 255}},
+		{bytes, "byte", []int{-256, 511, -129}, []int{0, 255, 127}},
+		{shorts, "ushort", []int{-255, 70000, 65535}, []int{65281, 4464, 65535}},
+		{shorts, "ushort", []int{-1, 65536, 32768}, []int{65535, 0, 32768}},
+	} {
+		c.raster.SetPixel(0, 0, c.values)
+		got := c.raster.GetPixel(0, 0, make([]int, 3))
+		for band := range c.want {
+			if got[band] != c.want[band] {
+				t.Errorf("a %s raster kept %d of %d in band %d, want PDFBox's %d",
+					c.what, got[band], c.values[band], band, c.want[band])
+			}
+		}
+	}
+
+	// the other setters truncate the same way
+	bytes.SetPixels(1, 1, 1, 1, []int{-255, 300, 128})
+	if got := bytes.GetPixel(1, 1, make([]int, 3)); got[0] != 1 || got[1] != 44 {
+		t.Errorf("SetPixels kept %v, want [1 44 128]", got)
+	}
+	bytes.SetSamples(0, 1, 2, 1, 0, []int{-255, 300})
+	if got, want := bytes.GetPixel(0, 1, make([]int, 3))[0], 1; got != want {
+		t.Errorf("SetSamples kept %d of -255, want %d", got, want)
+	}
+	if got, want := bytes.GetPixel(1, 1, make([]int, 3))[0], 44; got != want {
+		t.Errorf("SetSamples kept %d of 300, want %d", got, want)
+	}
+	shorts.SetSamples(0, 1, 1, 1, 0, []int{-255})
+	if got, want := shorts.GetPixel(0, 1, make([]int, 3))[0], 65281; got != want {
+		t.Errorf("SetSamples on a ushort raster kept %d of -255, want %d", got, want)
+	}
+}

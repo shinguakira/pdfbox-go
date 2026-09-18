@@ -123,7 +123,7 @@ func createFromRGBImage(img goimage.Image, document DocumentLike) (*PDImageXObje
 	transparent := false
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			r, g, b, a := unpremultiply(img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA())
+			r, g, b, a := straight(img.At(bounds.Min.X+x, bounds.Min.Y+y))
 			imageData = append(imageData, byte(r>>8), byte(g>>8), byte(b>>8))
 			// we have the alpha right here, so no need to do it separately
 			// as done prior April 2018
@@ -149,13 +149,25 @@ func createFromRGBImage(img goimage.Image, document DocumentLike) (*PDImageXObje
 	return pdImage, nil
 }
 
-// unpremultiply divides the alpha back out of Go's premultiplied channels,
-// because a PDF holds the colour and the soft mask apart.
-func unpremultiply(r, g, b, a uint32) (uint32, uint32, uint32, uint32) {
-	if a == 0 || a == 0xffff {
-		return r, g, b, a
+// straight answers a colour's components as straight, not premultiplied, 16 bit
+// values: what Java's getRGB answers for an ARGB image, whose colour does not
+// depend on its alpha.
+//
+// Reading the premultiplied RGBA() and dividing by the alpha, as this used to,
+// cannot give that back: a transparent pixel's colour is gone once it has been
+// multiplied by zero, and a nearly transparent one's has lost all but a few bits.
+// A straight colour is read as it is. Go's model conversions go through RGBA()
+// even between two straight types, so only a colour that is not straight --
+// whose colour really is gone -- is converted.
+func straight(c goimagecolor.Color) (r, g, b, a uint32) {
+	switch n := c.(type) {
+	case goimagecolor.NRGBA:
+		return uint32(n.R) * 0x101, uint32(n.G) * 0x101, uint32(n.B) * 0x101, uint32(n.A) * 0x101
+	case goimagecolor.NRGBA64:
+		return uint32(n.R), uint32(n.G), uint32(n.B), uint32(n.A)
 	}
-	return r * 0xffff / a, g * 0xffff / a, b * 0xffff / a, a
+	n := goimagecolor.NRGBA64Model.Convert(c).(goimagecolor.NRGBA64)
+	return uint32(n.R), uint32(n.G), uint32(n.B), uint32(n.A)
 }
 
 // prepareImageXObject deflates the samples and wraps them in an image XObject.
@@ -358,7 +370,7 @@ func (e *predictorEncoder) readRow(bounds goimage.Rectangle, rowNum int, transfe
 			continue
 		}
 
-		r, g, b, a := unpremultiply(at.RGBA())
+		r, g, b, a := straight(at)
 		switch {
 		case e.colorSpace == color.PDColorSpace(color.DeviceGray):
 			e.putComponent(transferRow, base, r)

@@ -120,7 +120,10 @@ func (d *PDDocument) SetResourceCache(cache ResourceCache) { d.resourceCache = c
 func (d *PDDocument) DocumentInformation() *PDDocumentInformation {
 	if d.documentInformation == nil {
 		trailer := d.document.Trailer()
-		infoDic := trailer.GetCOSDictionary(cos.Info)
+		// Java's getCOSDictionary answers a COSStream too, which is a
+		// COSDictionary; GetCOSDictionary does not, and an /Info that is a
+		// stream would be replaced with an empty dictionary below.
+		infoDic, _ := asResourceDictionary(trailer.GetDictionaryObject(cos.Info))
 		if infoDic == nil {
 			infoDic = cos.NewDictionary()
 			trailer.SetItem(cos.Info, infoDic)

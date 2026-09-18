@@ -363,6 +363,23 @@ public class JavaCorpus {
         return new String[] { result, String.valueOf(pages), text, String.valueOf(chars), digest };
     }
 
+    /** The row a job that timed out or threw gets, in the shape of the table being written. */
+    static String[] failedRow(boolean perPage, int columns, boolean lines, String why) {
+        if (perPage) {
+            return new String[] { "0", why, "0", "-" };
+        }
+        if (lines) {
+            return new String[] { "open", why };
+        }
+        if (columns > 0) {
+            String[] row = new String[columns + 1];
+            java.util.Arrays.fill(row, "-");
+            row[0] = why;
+            return row;
+        }
+        return new String[] { why, "0", "-", "0", "-" };
+    }
+
     public static void main(String[] args) throws Exception {
         List<String> files = Files.readAllLines(Paths.get(args[0]));
         files.removeIf(String::isBlank);
@@ -371,9 +388,23 @@ public class JavaCorpus {
         long timeoutSeconds = args.length > 1 ? Long.parseLong(args[1]) : 20;
         LF = args.length > 2 && args[2].equals("lf");
         // args[3] says which table to write: "rows", the one row per file the
-        // oracle joins, or "pages", a digest per page for narrowing one of its
-        // findings to a page. The passwords tables follow it.
-        boolean perPage = args.length > 3 && args[3].equals("pages");
+        // oracle joins; "pages", a digest per page for narrowing one of its
+        // findings to a page; "facets", a digest per facet of the document
+        // beyond its text (JavaFacets); or "facetlines", every line those
+        // digests are made of, for narrowing a facet that differs. The
+        // passwords tables follow it.
+        String mode = args.length > 3 ? args[3] : "rows";
+        boolean perPage = mode.equals("pages");
+        boolean facets = mode.equals("facets");
+        boolean facetLines = mode.equals("facetlines");
+        // "writes" and "writelines" are the same for JavaWrites: what PDFBox writes,
+        // read back.
+        boolean writes = mode.equals("writes");
+        boolean writeLines = mode.equals("writelines");
+        int columns = facets ? JavaFacets.NAMES.length : writes ? JavaWrites.NAMES.length : 0;
+        boolean lines = facetLines || writeLines;
+        // "render" draws every page, JavaRender.
+        boolean render = mode.equals("render");
         for (int t = 4; t < args.length; t++) {
             readTable(args[t]);
         }
@@ -405,7 +436,12 @@ public class JavaCorpus {
         // is named by its file and by the password line that opened it, and
         // either can be written in any script.
         PrintStream table = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
-        table.println(perPage ? "file\tpage\ttext\tchars\tdigest" : "file\topen\tpages\ttext\tchars\tdigest");
+        table.println(render ? "file\tpage\tstatus\twidth\theight\texact\tgrid"
+                : perPage ? "file\tpage\ttext\tchars\tdigest"
+                : facets ? "file\topen\t" + String.join("\t", JavaFacets.NAMES)
+                : writes ? "file\topen\t" + String.join("\t", JavaWrites.NAMES)
+                : lines ? "file\tfacet\tline"
+                : "file\topen\tpages\ttext\tchars\tdigest");
         List<Future<List<String[]>>> stuck = new ArrayList<>();
         for (int i = 0; i < jobs.size(); i++) {
             String path = paths.get(i);
@@ -420,19 +456,23 @@ public class JavaCorpus {
             List<String[]> rows;
             Future<List<String[]>> future = null;
             try {
-                future = pool.submit(perPage
+                future = pool.submit(render
+                        ? (Callable<List<String[]>>) () -> JavaRender.renderOf(path, open)
+                        : perPage
                         ? (Callable<List<String[]>>) () -> pagesOf(path, open)
+                        : facets || facetLines
+                        ? (Callable<List<String[]>>) () -> JavaFacets.facetsOf(path, open, facetLines)
+                        : writes || writeLines
+                        ? (Callable<List<String[]>>) () -> JavaWrites.writesOf(path, open, writeLines)
                         : (Callable<List<String[]>>) () -> List.<String[]>of(score(path, open)));
                 rows = future.get(timeoutSeconds, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
-                rows = List.<String[]>of(perPage
-                        ? new String[] { "0", "timeout", "0", "-" }
-                        : new String[] { "timeout", "0", "-", "0", "-" });
+                rows = List.<String[]>of(render ? new String[] { "0", "timeout", "0", "0", "-", "-" }
+                        : failedRow(perPage, columns, lines, "timeout"));
                 stuck.add(future);
             } catch (Throwable t) {
-                rows = List.<String[]>of(perPage
-                        ? new String[] { "0", shorten(t), "0", "-" }
-                        : new String[] { shorten(t), "0", "-", "0", "-" });
+                rows = List.<String[]>of(render ? new String[] { "0", shorten(t), "0", "0", "-", "-" }
+                        : failedRow(perPage, columns, lines, shorten(t)));
             } finally {
                 pool.shutdownNow();
             }
