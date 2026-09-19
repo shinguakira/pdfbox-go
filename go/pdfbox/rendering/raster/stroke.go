@@ -18,7 +18,6 @@ import (
 	"image"
 	"math"
 
-	"github.com/golang/freetype/raster"
 	"github.com/srwiley/rasterx"
 	"golang.org/x/image/math/fixed"
 
@@ -114,9 +113,20 @@ func (o *outlineRecorder) Clear() {
 	o.first = true
 }
 
-// rasterize fills the collected polygons into an alpha mask, nonzero.
+// rasterize fills the collected polygons into an alpha mask for a surface of
+// the given size, nonzero.
+//
+// The mask covers the part of the surface the outline reaches, as coverageOf's
+// does, and for the same reason the outline is rasterised where it is.
 func (o *outlineRecorder) rasterize(width, height int, antiAliasing bool) *image.Alpha {
-	r := raster.NewRasterizer(width, height)
+	var area image.Rectangle
+	if !o.first {
+		area = reachOf(float64(o.extent.Min.X)/64, float64(o.extent.Min.Y)/64,
+			float64(o.extent.Max.X)/64, float64(o.extent.Max.Y)/64, width, height)
+	}
+
+	r := borrowRasterizer(width, height)
+	defer rasterizers.Put(r)
 	r.UseNonZeroWinding = true
 	// The pieces are not closed one by one. rasterx emits a stroke outline as
 	// a stream of separate segments -- the two sides, the caps and the joins,
@@ -131,13 +141,7 @@ func (o *outlineRecorder) rasterize(width, height int, antiAliasing bool) *image
 			r.Add1(point)
 		}
 	}
-	mask := image.NewAlpha(image.Rect(0, 0, width, height))
-	var painter raster.Painter = raster.NewAlphaSrcPainter(mask)
-	if !antiAliasing {
-		painter = raster.NewMonochromePainter(painter)
-	}
-	r.Rasterize(painter)
-	return mask
+	return rasterizeInto(r.Rasterizer, area, antiAliasing)
 }
 
 // capFunc is `J`: 0 butt, 1 round, 2 square.

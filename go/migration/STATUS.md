@@ -5284,3 +5284,33 @@ eighth of a pixel wide, and a thin stroke without anti-aliasing is drawn by a
 different pipeline, one pixel wide. PDFBox's minimum line width of 0.25 confines
 the first to 36 dpi and below; the second is every stroke of a pixel or less on a
 `BINARY` page. Neither was touched here.
+
+## Rendering speed, 2026-09-19
+
+Issue #40, on `track/render-performance`; the task file is
+[`tasks/track-render-performance.md`](tasks/track-render-performance.md).
+
+The profiles named three causes, and two of them are fixed without changing a
+pixel. Every fill and every stroke allocated and cleared a coverage mask the
+size of the page -- 4.1 MB a shape on `pdfjs/issue8078.pdf`, one page of 222,868
+strokes -- and now makes one over what the shape reaches. The compositor made
+two heap allocations for every pixel it wrote, because the nonseparable blend
+branch handed out slices of its arrays, and now makes none; an opaque pixel in
+Normal is written as the source, which the arithmetic comes to for every byte.
+
+Two things about freetype's rasteriser shaped the first fix and are recorded at
+`coverageOf`. It decides how finely to split a cubic from `a-3(b+c)+d`, which
+depends on where the curve is, so a shape is rasterised where it is and not
+moved to the corner of its mask; moving it changed 646 of 2,256 pages. And it
+finds a pixel by truncating toward zero, so a shape between -1 and 0 draws on
+row or column 0.
+
+Over 998 files, every page is the same as before the change, 2,256 of 2,256,
+and the list renders in 67 seconds rather than 298. `sample.pdf` takes 7.7
+seconds against PDFBox's 5.6, from 12.0; `issue8078.pdf` 6.4 against PDFBox's
+6.9, from 59.3.
+
+What is left is images: CatmullRom scales a large image drawn small at the cost
+of its whole source, where PDFBox shrinks it first with
+`getScaledInstance(SCALE_SMOOTH)`. That port changes what is drawn and is
+waiting on a decision; the task file says what it takes.

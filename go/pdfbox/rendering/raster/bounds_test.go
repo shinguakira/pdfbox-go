@@ -14,7 +14,9 @@ package raster
 // the rasteriser covered; the bound is this backend's own.
 
 import (
+	goimage "image"
 	"math"
+	"strconv"
 	"testing"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
@@ -133,4 +135,79 @@ func sharpAngle() geom.Shape {
 	path.LineTo(6, 0)
 	path.LineTo(-6, 2)
 	return path
+}
+
+// TestACoverageMaskHoldsWhatTheWholeSurfaceWould holds the masks coverageOf and
+// strokeCoverage make, which cover only what a shape reaches, to the mask the
+// same rasteriser makes over the whole surface.
+//
+// Two things about freetype's rasteriser decide the bound, and each has a case
+// here. It finds a coordinate's pixel by dividing by 64 with Go's truncating
+// division, so a shape a fraction of a pixel off the top or the left edge
+// still draws on the first row or column. And it decides how finely to split
+// a cubic from where the curve is on the surface, not only from its shape,
+// which is why the shape is rasterised where it is and never moved to the
+// corner of its mask: moved, the circles below draw different edges.
+func TestACoverageMaskHoldsWhatTheWholeSurfaceWould(t *testing.T) {
+	const width, height = 64, 48
+	shapes := map[string]geom.Shape{
+		"offTheTop":   geom.NewRectangle2D(10.25, -0.75, 20, 0.5),
+		"offTheLeft":  geom.NewEllipse2D(-0.9, 10.5, 0.8, 12),
+		"pastTheEdge": geom.NewEllipse2D(50.3, 30.7, 30, 30),
+		"acrossAll":   geom.NewRectangle2D(-10.5, -10.5, 90.25, 70.25),
+		"offTheRight": geom.NewRectangle2D(64.5, 10, 5, 5),
+	}
+	for n := 0; n < 40; n++ {
+		// circles at many places and sizes, for the cubics
+		x := 3.1 + float64(n*37%53) + float64(n)/7
+		y := 2.7 + float64(n*23%41) + float64(n)/11
+		shapes["circle"+strconv.Itoa(n)] = geom.NewEllipse2D(x, y, 1.5+float64(n%9), 1.2+float64(n%7))
+	}
+	stroke := &rendering.Stroke{LineWidth: 1.7, LineCap: 1, LineJoin: 1, MiterLimit: 10}
+
+	for name, shape := range shapes {
+		path := walkShape(shape, nil)
+		r := borrowRasterizer(width, height)
+		path.addTo(r.Rasterizer)
+		r.UseNonZeroWinding = path.rule == geom.WindNonZero
+		whole := rasterizeInto(r.Rasterizer, goimage.Rect(0, 0, width, height), true)
+		rasterizers.Put(r)
+		walkedPaths.Put(path)
+		sameCoverage(t, name+" filled", coverageOf(shape, nil, width, height, true), whole)
+
+		recorder := newOutlineRecorder(nil)
+		pen := penThrough(nil, stroke)
+		dasher := newDasherFor(recorder, width, height, stroke, pen)
+		addShapeToAdder(dasher, shape, nil, newNormalizer(true, true), nil)
+		dasher.Draw()
+		r = borrowRasterizer(width, height)
+		r.UseNonZeroWinding = true
+		for _, polygon := range recorder.polygons {
+			r.Start(polygon[0])
+			for _, point := range polygon[1:] {
+				r.Add1(point)
+			}
+		}
+		whole = rasterizeInto(r.Rasterizer, goimage.Rect(0, 0, width, height), true)
+		rasterizers.Put(r)
+		sameCoverage(t, name+" stroked",
+			strokeCoverage(shape, nil, stroke, width, height, true, true), whole)
+	}
+}
+
+// sameCoverage fails unless the bounded mask answers what the whole one does at
+// every pixel of the surface.
+func sameCoverage(t *testing.T, what string, bounded, whole *goimage.Alpha) {
+	t.Helper()
+	differing := 0
+	for y := whole.Rect.Min.Y; y < whole.Rect.Max.Y; y++ {
+		for x := whole.Rect.Min.X; x < whole.Rect.Max.X; x++ {
+			if bounded.AlphaAt(x, y) != whole.AlphaAt(x, y) {
+				differing++
+			}
+		}
+	}
+	if differing != 0 {
+		t.Errorf("%s: %d pixels of the bounded mask are not the whole surface's", what, differing)
+	}
 }
