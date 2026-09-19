@@ -71,6 +71,10 @@ type Image struct {
 	// alpha-only surface the innermost one is drawn onto in parallel.
 	groups    []groupFrame
 	secondary *goimage.NRGBA
+
+	// blendScratch is the source, the destination and the result a
+	// nonseparable blend mode is handed; see blendNonSeparable.
+	blendScratch [3][3]float32
 }
 
 var _ rendering.Backend = (*Image)(nil)

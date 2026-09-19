@@ -14,6 +14,7 @@ import (
 	goimage "image"
 	goimagecolor "image/color"
 
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/blend"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 )
 
@@ -139,16 +140,45 @@ func (i *Image) blendPixel(x, y int, src goimagecolor.NRGBA, srcAlpha float64) {
 }
 
 // blendInto is the compose of one pixel onto one surface.
+//
+// An opaque source in Normal replaces the pixel, which is what mix comes to
+// for it: TestAnOpaqueNormalCompositeIsTheSource runs mix over every source,
+// destination and destination alpha byte and gets the source back every time.
+// It is most of the pixels of a page -- the inside of every fill, stroke and
+// glyph -- and the arithmetic is left for the edges.
 func (i *Image) blendInto(dst *goimage.NRGBA, x, y int, src goimagecolor.NRGBA,
 	srcAlpha float64) {
 	offset := dst.PixOffset(x, y)
 	pix := dst.Pix[offset : offset+4 : offset+4]
 
+	if srcAlpha == 1 && i.normalBlend() {
+		pix[0], pix[1], pix[2], pix[3] = src.R, src.G, src.B, 0xFF
+	} else if !i.mix(pix, src, srcAlpha) {
+		return
+	}
+
+	// What the surface can hold. A group is drawn onto ARGB whatever the page
+	// asked for, exactly as Java makes its TransparencyGroup image, so nothing
+	// inside one is quantized until it is composited back.
+	if len(i.groups) == 0 {
+		i.quantize(pix)
+	}
+}
+
+// normalBlend reports whether the blend mode in force is Normal, whose channel
+// function answers the source.
+func (i *Image) normalBlend() bool {
+	return i.blendMode == nil || i.blendMode == blend.Normal
+}
+
+// mix composes a source colour onto one pixel's four bytes, and answers false
+// where the result has no alpha and the pixel was cleared.
+func (i *Image) mix(pix []uint8, src goimagecolor.NRGBA, srcAlpha float64) bool {
 	dstAlpha := float64(pix[3]) / 255
 	resultAlpha := dstAlpha + srcAlpha - srcAlpha*dstAlpha
 	if resultAlpha <= 0 {
 		pix[0], pix[1], pix[2], pix[3] = 0, 0, 0, 0
-		return
+		return false
 	}
 	srcAlphaRatio := srcAlpha / resultAlpha
 
@@ -156,20 +186,17 @@ func (i *Image) blendInto(dst *goimage.NRGBA, x, y int, src goimagecolor.NRGBA,
 	dest := [3]float32{float32(pix[0]) / 255, float32(pix[1]) / 255, float32(pix[2]) / 255}
 
 	// blended is what the mode makes of the two, before either is mixed back
-	// in by the alphas.
+	// in by the alphas. Normal's is the source, without a call per channel to
+	// say so.
 	blended := source
-	if mode := i.blendMode; mode != nil {
+	if mode := i.blendMode; !i.normalBlend() {
 		if mode.IsSeparableBlendMode() {
 			channel := mode.BlendChannelFunction()
 			for k := 0; k < 3; k++ {
 				blended[k] = channel(source[k], dest[k])
 			}
 		} else {
-			// A nonseparable mode reads all three channels at once, and Java
-			// computes it in RGB, which is what these already are.
-			result := make([]float32, 3)
-			mode.BlendFunction()(source[:], dest[:], result)
-			copy(blended[:], result)
+			blended = i.blendNonSeparable(mode, source, dest)
 		}
 	}
 
@@ -179,11 +206,22 @@ func (i *Image) blendInto(dst *goimage.NRGBA, x, y int, src goimagecolor.NRGBA,
 		pix[k] = clampToByte(value)
 	}
 	pix[3] = uint8(resultAlpha*255 + 0.5)
+	return true
+}
 
-	// What the surface can hold. A group is drawn onto ARGB whatever the page
-	// asked for, exactly as Java makes its TransparencyGroup image, so nothing
-	// inside one is quantized until it is composited back.
-	if len(i.groups) == 0 {
-		i.quantize(pix)
-	}
+// blendNonSeparable is what a nonseparable mode makes of a source and a
+// destination colour.
+//
+// A nonseparable mode reads all three channels at once, and Java computes it in
+// RGB, which is what these already are. Its function takes slices, and handing
+// it slices of blendInto's own arrays made the compiler put those arrays on the
+// heap for every pixel of every composite, whatever the mode: two allocations a
+// pixel. The slices are of the backend's own scratch instead, and the result is
+// zeroed first, as the make it replaces was.
+func (i *Image) blendNonSeparable(mode *blend.BlendMode, source, dest [3]float32) [3]float32 {
+	i.blendScratch[0] = source
+	i.blendScratch[1] = dest
+	i.blendScratch[2] = [3]float32{}
+	mode.BlendFunction()(i.blendScratch[0][:], i.blendScratch[1][:], i.blendScratch[2][:])
+	return i.blendScratch[2]
 }
