@@ -156,6 +156,8 @@ func TestACoverageMaskHoldsWhatTheWholeSurfaceWould(t *testing.T) {
 		"pastTheEdge": geom.NewEllipse2D(50.3, 30.7, 30, 30),
 		"acrossAll":   geom.NewRectangle2D(-10.5, -10.5, 90.25, 70.25),
 		"offTheRight": geom.NewRectangle2D(64.5, 10, 5, 5),
+		"noWidth":     geom.NewRectangle2D(20, 20, 0, 10),
+		"noPoints":    geom.NewPathDouble(),
 	}
 	for n := 0; n < 40; n++ {
 		// circles at many places and sizes, for the cubics
@@ -209,5 +211,22 @@ func sameCoverage(t *testing.T, what string, bounded, whole *goimage.Alpha) {
 	}
 	if differing != 0 {
 		t.Errorf("%s: %d pixels of the bounded mask are not the whole surface's", what, differing)
+	}
+}
+
+// TestAnEmptyShapeHasAnEmptyMask is a shape with no segments -- a rectangle of
+// no width iterates as none -- which covers nothing, and whose mask must not
+// be the size of the surface. The whole surface was what a path with no points
+// answered as its reach, which put back the page-sized allocation for exactly
+// the shapes that draw nothing.
+func TestAnEmptyShapeHasAnEmptyMask(t *testing.T) {
+	for name, shape := range map[string]geom.Shape{
+		"a rectangle of no width": geom.NewRectangle2D(20, 20, 0, 10),
+		"a path with no points":   geom.NewPathDouble(),
+	} {
+		mask := coverageOf(shape, nil, 640, 480, true)
+		if !mask.Rect.Empty() || len(mask.Pix) != 0 {
+			t.Errorf("%s: the mask is %v, %d bytes, where nothing is covered", name, mask.Rect, len(mask.Pix))
+		}
 	}
 }

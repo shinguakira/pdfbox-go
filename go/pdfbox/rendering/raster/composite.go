@@ -28,6 +28,15 @@ type paintSource interface {
 	colorAt(x, y int) (goimagecolor.NRGBA, bool)
 }
 
+// requestedSource is a paint whose colours depend on where Java2D's rectangle
+// for them began: getRaster(x, y, w, h), whose corner request is told before
+// any pixel inside it is asked for. A texture is one; see texturepaint.go and
+// requests.go.
+type requestedSource interface {
+	paintSource
+	request(x, y int)
+}
+
 // solidSource is a java.awt.Color: the same colour everywhere.
 type solidSource struct {
 	color goimagecolor.NRGBA
@@ -71,6 +80,14 @@ func (i *Image) sourceOf(paint rendering.Paint) (paintSource, float64, error) {
 		// A tiling pattern carries no alpha of its own either; the tile does,
 		// per pixel, and colorAt answers it.
 		source, err := i.cachedTilingSource(p)
+		if err != nil {
+			return nil, 0, err
+		}
+		return source, 1, nil
+
+	case rendering.ImagePaint:
+		// The same TexturePaint, with the image for the tile.
+		source, err := i.newImageSource(p)
 		if err != nil {
 			return nil, 0, err
 		}

@@ -65,12 +65,19 @@ type Image struct {
 	// tiles is the tiling patterns rendered so far, which is Java's
 	// TilingPaintFactory. It is shared with every copy Create makes, the way
 	// Java's is a field of the one PageDrawer.
-	tiles map[tilingKey]*tilingSource
+	tiles map[tilingKey]*textureContext
 
 	// groups is the stack of open transparency groups, and secondary the
 	// alpha-only surface the innermost one is drawn onto in parallel.
 	groups    []groupFrame
 	secondary *goimage.NRGBA
+
+	// renderingQuality is KEY_RENDERING, true for VALUE_RENDER_QUALITY, and
+	// downscalingThreshold PDFRenderer's imageDownscalingOptimizationThreshold.
+	// Both decide whether an image is shrunk before it is drawn; see
+	// drawBufferedImage.
+	renderingQuality     bool
+	downscalingThreshold float32
 
 	// blendScratch is the source, the destination and the result a
 	// nonseparable blend mode is handed; see blendNonSeparable.
@@ -99,6 +106,9 @@ func NewImage(width, height int, imageType rendering.ImageType) *Image {
 		alphaConstant:       1,
 		antiAliasing:        true,
 		strokeNormalization: true,
+		// PDFRenderer's defaults, which PageDrawer sets again.
+		renderingQuality:     true,
+		downscalingThreshold: 0.5,
 	}
 	if imageType != rendering.ARGB {
 		fillOpaqueWhite(dst)
@@ -193,6 +203,15 @@ func (i *Image) SetAntiAliasing(on bool) { i.antiAliasing = on }
 // a page rendered by PDFBox goes through.
 func (i *Image) SetStrokeNormalization(on bool) { i.strokeNormalization = on }
 
+// SetRenderingQuality is KEY_RENDERING: true for VALUE_RENDER_QUALITY.
+func (i *Image) SetRenderingQuality(quality bool) { i.renderingQuality = quality }
+
+// SetImageDownscalingThreshold is the scale below which an image is shrunk
+// before it is drawn.
+func (i *Image) SetImageDownscalingThreshold(threshold float32) {
+	i.downscalingThreshold = threshold
+}
+
 // SetInterpolation chooses how a scaled image is sampled.
 func (i *Image) SetInterpolation(interpolation rendering.Interpolation) {
 	i.interpolation = interpolation
@@ -200,9 +219,20 @@ func (i *Image) SetInterpolation(interpolation rendering.Interpolation) {
 
 // Fill fills the given shape with the current paint.
 func (i *Image) Fill(shape geom.Shape) error {
+	mask, within, requests := i.fillParts(shape)
+	return i.composeWithin(mask, within, requests)
+}
+
+// fillParts is what a fill composes: the shape's coverage, where on the
+// surface it can reach, and how Java2D asks the paint for its pixels.
+func (i *Image) fillParts(shape geom.Shape) (*goimage.Alpha, goimage.Rectangle, javaRequests) {
 	bounds := i.dst.Bounds()
-	return i.composeWithin(coverageOf(shape, i.transform, bounds.Dx(), bounds.Dy(), i.antiAliasing),
-		i.deviceBounds(shape, 0))
+	path := walkShape(shape, i.transform)
+	defer walkedPaths.Put(path)
+	requests := i.fillRequests(shape, path)
+	path.adjust(i.fillAdjustmentOf())
+	mask := path.coverage(bounds.Dx(), bounds.Dy(), i.antiAliasing)
+	return mask, i.deviceBounds(shape, 0), requests
 }
 
 // deviceBounds answers where on the surface a shape can put anything down: its
@@ -257,14 +287,25 @@ func (i *Image) Draw(shape geom.Shape) error {
 		// an all-zero dash array, which Adobe draws as nothing: PDFBOX-5168
 		return nil
 	}
-	bounds := i.dst.Bounds()
-	mask := strokeCoverage(shape, i.transform, i.stroke,
-		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization)
+	mask, within, requests := i.strokeParts(shape)
 	if mask == nil {
 		// a transform that flattens everything, through which Marlin strokes
 		// nothing
 		return nil
 	}
+	return i.composeWithin(mask, within, requests)
+}
+
+// strokeParts is fillParts for a stroke, and a nil mask where the transform
+// flattens everything.
+func (i *Image) strokeParts(shape geom.Shape) (*goimage.Alpha, goimage.Rectangle, javaRequests) {
+	bounds := i.dst.Bounds()
+	outline := strokeOutline(shape, i.transform, i.stroke,
+		bounds.Dx(), bounds.Dy(), i.antiAliasing, i.strokeNormalization)
+	if outline == nil {
+		return nil, goimage.Rectangle{}, javaRequests{}
+	}
+	mask := outline.rasterize(bounds.Dx(), bounds.Dy(), i.antiAliasing)
 	// A stroke puts paint half its width either side of the path, and a square
 	// cap's corner or a miter join reaches further, so the pad is the whole
 	// width rather than half of it, times the miter limit. The width is the one
@@ -275,7 +316,7 @@ func (i *Image) Draw(shape geom.Shape) error {
 	if miter := float64(i.stroke.MiterLimit); miter > 1 {
 		width *= miter
 	}
-	return i.composeWithin(mask, i.deviceBounds(shape, width))
+	return mask, i.deviceBounds(shape, width), i.strokeRequests(outline.polygons)
 }
 
 // compose puts the current paint onto the destination through a coverage mask
@@ -287,20 +328,38 @@ func (i *Image) Draw(shape geom.Shape) error {
 // a page of tiling patterns that was 95% of the time a render took. What is
 // composed does not change.
 func (i *Image) compose(mask *goimage.Alpha) error {
-	return i.composeWithin(mask, i.dst.Bounds())
+	return i.composeWithin(mask, i.dst.Bounds(), javaRequests{})
 }
 
-// composeWithin is compose over the part of the surface a shape can reach.
-func (i *Image) composeWithin(mask *goimage.Alpha, within goimage.Rectangle) error {
+// composeWithin is compose over the part of the surface a shape can reach,
+// asking the paint for its pixels the way Java2D asks for them.
+func (i *Image) composeWithin(mask *goimage.Alpha, within goimage.Rectangle,
+	requests javaRequests) error {
 	source, paintAlpha, err := i.sourceOf(i.paint)
 	if err != nil {
 		return err
 	}
+	return i.composeSource(mask, within, requests, source, paintAlpha)
+}
+
+// composeSource is composeWithin with the paint already made.
+//
+// A paint that walks from the corner of each rectangle it is asked for -- a
+// texture, or one seen through a soft mask -- is told each corner as the loop
+// reaches a pixel in a new one. The loop visits pixels a row at a time from the
+// left, which is the order requestWalker needs to find where a span begins.
+func (i *Image) composeSource(mask *goimage.Alpha, within goimage.Rectangle,
+	requests javaRequests, source paintSource, paintAlpha float64) error {
 	clip := i.clipCoverage()
 	constant := paintAlpha * i.alphaConstant
 	if constant <= 0 {
 		return nil
 	}
+
+	asked, asks := source.(requestedSource)
+	walker := requestWalker{requests: requests, clip: clip}
+	var corner goimage.Point
+	cornered := false
 
 	bounds := i.dst.Bounds().Intersect(mask.Bounds()).Intersect(within)
 	if clip != nil {
@@ -324,6 +383,16 @@ func (i *Image) composeWithin(mask *goimage.Alpha, within goimage.Rectangle) err
 				coverage *= float64(clipRow[offset]) / 255
 			}
 			x := bounds.Min.X + offset
+			if asks {
+				clipAlpha := uint8(0xFF)
+				if clipRow != nil {
+					clipAlpha = clipRow[offset]
+				}
+				if next := walker.cornerOf(x, y, clipAlpha); !cornered || next != corner {
+					corner, cornered = next, true
+					asked.request(corner.X, corner.Y)
+				}
+			}
 			c, painted := source.colorAt(x, y)
 			if !painted {
 				continue

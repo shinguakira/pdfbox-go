@@ -16,6 +16,7 @@ package rendering
 
 import (
 	"errors"
+	goimage "image"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -40,9 +41,10 @@ var ErrNoBackend = errors.New("rendering: no raster backend is installed")
 //
 // Port of the java.awt.Paint values PageDrawer.getPaint answers. Java's Paint
 // is a factory for a PaintContext that produces pixels; the port's is a
-// description of what was decided, which a Backend turns into pixels. The four
-// implementations below are the four arms of getPaint, plus the soft mask
-// wrapper applySoftMaskToPaint adds.
+// description of what was decided, which a Backend turns into pixels. The
+// implementations below are the four arms of getPaint, the image
+// drawBufferedImage paints with under a soft mask, and the soft mask wrapper
+// applySoftMaskToPaint adds.
 type Paint interface {
 	isPaint()
 }
@@ -98,6 +100,28 @@ type TilingPaint struct {
 }
 
 func (TilingPaint) isPaint() {}
+
+// ImagePaint is an image as a paint: its pixels, one to a unit of user space,
+// repeated.
+//
+// Port of the java.awt.TexturePaint PageDrawer.drawBufferedImage makes of an
+// image it draws under the graphics state's soft mask, `new TexturePaint(image,
+// new Rectangle2D.Float(0, 0, width, height))`, which it fills over that
+// rectangle with the image's own transform in force.
+type ImagePaint struct {
+	Image goimage.Image
+
+	// Fill is nil for an image. For a stencil it is the paint the stencil is
+	// filled with, and Image is the stencil, opaque where it paints: Java's
+	// drawImage hands drawBufferedImage getStencilImage(paint), which fills a
+	// BufferedImage of the stencil's size with the paint and clears it where
+	// the stencil does not paint. The paint is filled in that image's own
+	// pixels, so a soft mask in it is read there and not where the image
+	// lands on the page.
+	Fill Paint
+}
+
+func (ImagePaint) isPaint() {}
 
 // SoftMaskedPaint is another paint seen through a soft mask.
 //
@@ -188,6 +212,16 @@ type Backend interface {
 
 	// SetInterpolation chooses how a scaled image is sampled.
 	SetInterpolation(interpolation Interpolation)
+
+	// SetRenderingQuality is KEY_RENDERING: true for VALUE_RENDER_QUALITY,
+	// false for VALUE_RENDER_SPEED.
+	SetRenderingQuality(quality bool)
+
+	// SetImageDownscalingThreshold is PDFRenderer's
+	// imageDownscalingOptimizationThreshold: the scale below which
+	// drawBufferedImage shrinks an image with getScaledInstance before it
+	// draws it, under the quality and bicubic hints.
+	SetImageDownscalingThreshold(threshold float32)
 
 	// Fill fills the given shape with the current paint.
 	Fill(shape geom.Shape) error

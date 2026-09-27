@@ -204,6 +204,14 @@ func adjustMask(gray *goimage.Alpha, layer *rendering.SoftMaskLayer) *goimage.Al
 }
 
 // colorAt answers the masked colour under a device pixel.
+// request tells the paint underneath where Java2D's rectangle begins: the
+// SoftMask context asks its parent for the same rectangle it is asked for.
+func (s *softMaskSource) request(x, y int) {
+	if under, asks := s.under.(requestedSource); asks {
+		under.request(x, y)
+	}
+}
+
 func (s *softMaskSource) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	c, painted := s.under.colorAt(x, y)
 	if !painted {

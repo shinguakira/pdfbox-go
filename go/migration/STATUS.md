@@ -1,12 +1,4 @@
-# Porting status**Three of the twelve documents `PDAcroFormFlattenTest` renders differ after
-flattening**, and Java passes all twelve, so this is the port's `Flatten` doing
-something the Java's does not. There were four: `test-2586.pdf` differed in 322
-pixels until 2026-09-19, when strokes began to be drawn at the width the
-resolution gives them -- the test renders at 96 dpi -- and it went to 0. See the
-review of the comparison, at the end of this file.
-
-| File | Pixels differing after flattening |
-| --- | ---: |
+# Porting status
 
 Hand maintained. Update the row for a package in the same commit that ports it.
 
@@ -187,20 +179,24 @@ because the JBIG2 row covers one file and the JPX row three.
 
 ### Still open
 
-**Three of the twelve documents `PDAcroFormFlattenTest` renders differ after
+**Two of the twelve documents `PDAcroFormFlattenTest` renders differ after
 flattening**, and Java passes all twelve, so this is the port's `Flatten` doing
-something the Java's does not. There were four: `test-2586.pdf` differed in 322
+something the Java's does not. There were four. `test-2586.pdf` differed in 322
 pixels until 2026-09-19, when strokes began to be drawn at the width the
-resolution gives them -- the test renders at 96 dpi -- and it went to 0. See the
-review of the comparison, at the end of this file.
+resolution gives them -- the test renders at 96 dpi -- and it went to 0; see the
+review of the comparison, below. `Signed-Document-1.pdf` differed in 2 until the
+same day: `Path2D.Float`'s bounds were taken in double, so `processAnnotation`
+drew its signature image through a scale of 81.91999 where the flattened page
+has 81.92, and PDFBox has 81.92 both times; see Rendering speed, at the end of
+this file. That is a cause of the kind this paragraph has been looking for, and
+the two left may have one like it.
 
 | File | Pixels differing after flattening |
 | --- | ---: |
 | `PDFBOX-5225.pdf` | 51, over two pages |
 | `PDFBOX-4955.pdf` | 4 |
-| `Signed-Document-1.pdf` | 2 |
 
-No content appears, disappears or moves: on all three the differing pixels are
+No content appears, disappears or moves: on both the differing pixels are
 one to five levels of grey along an edge inside a region a few hundred pixels
 across, and the test asserts that too — no channel may be more than 8 levels
 out, and none is. A save-and-reload without flattening changed zero pixels on
@@ -4747,8 +4743,10 @@ it** line that says the port does not carry it and why.
 - **A tiling pattern's tile was sampled with one texel where Java blends
   four.** `TexturePaintContext.getContext` takes its `filter` flag from
   `KEY_INTERPOLATION` and `PDFRenderer.createDefaultRenderingHints` sets that
-  to BICUBIC, so every page PDFBox renders has it on. The four-texel blend is
-  `tilingSource.blend` in `go/pdfbox/rendering/raster/tiling.go`, and the flag
+  to BICUBIC, so every page PDFBox renders has it on. The four-texel blend was
+  `tilingSource.blend` in `go/pdfbox/rendering/raster/tiling.go`, and is
+  `textureBlend` in `texturepaint.go` since the walk was ported (see
+  "TexturePaintContext's walk"), and the flag
   is in the tile cache key because the source bakes it in;
   `TestAScaledTilingPatternRendersAsThePortMeansTo`. This was a port defect in
   merged work rather than an entry of `JAVA-BUGS.md`, taken here because
@@ -4782,26 +4780,44 @@ page's 7,200 pixels:
 | before the four-texel blend | 852 | 634 |
 | with the blend, `JAVA-BUGS.md` 85 reverted | 550 | 327 |
 | both, as merged | 1250 | 600 |
+| the walk ported, 85 reverted (2026-09-19) | 540 | 327 |
+| the walk ported, 85 reverted, PDFBox's own tile (2026-09-19) | 0 | 0 |
+| the walk ported, as merged (2026-09-19) | 1250 | 600 |
 
 The two halves do not subtract, because the rounding changes the raster the
 sampler then reads. What is left is inside `TexturePaintContext.Any`: it walks
-the texture with a 16.16 fixed-point accumulator, stepping `xerr` and `yerr`
-along each row, and quantises both blend weights to twelve bits before
-multiplying them. Float weights from an inverse transform do not land in the
-same places. Two readings were ruled out by measurement rather than by reading:
+the texture in 31-bit fixed point, `fractAsInt` scaling each fraction by
+`Integer.MAX_VALUE`, stepping `xerr` and `yerr` along each row, and quantises
+both blend weights to twelve bits before multiplying them. Float weights from
+an inverse transform do not land in the same places. Two readings were ruled
+out by measurement rather than by reading:
 a sweep over every quarter-pixel offset in both axes puts the best fit at
 exactly (0, 0) — 550 differing pixels there against 604 a quarter down, 723 a
 quarter up and over 1,000 for any offset in x — and both renders put a tile
 boundary every 13.7 pixels and start the first at the same place, agreeing
 exactly along a row except at the edges of what a tile draws.
 
+**Corrected 2026-09-19.** The paragraph above has the wrong class and the
+wrong cause. PDFBox's tile is a TYPE_INT_ARGB image, so its context is
+`TexturePaintContext.Int`, not `Any`, and the pixels left are not the
+sampling. The walk is ported now and matches the JDK's pixel for pixel, and
+given PDFBox's own tile at Java's 13 pixels the port draws this page with no
+pixel out, where the tile it renders itself left 540. The difference was in
+the tile: its three rectangles are filled with antialiasing off, which Java2D
+does in native code that does not keep to the pixel-centre rule. See
+"TexturePaintContext's walk", and "Java2D's fill with antialiasing off", which
+ports that rule and leaves the tile PDFBox's pixel for pixel: this fixture is
+pinned at 1008 and 370 now, all of it `JAVA-BUGS.md` 85.
+
 ### Still open
 
 - `JAVA-BUGS.md` 39 and 55 are each fixed as far as the entry's own "what
   correct would be" goes; the remainder of each is new functionality, and the
   entry says what it would take.
-- The 550 pixels above. Matching them means transliterating
-  `TexturePaintContext.Any` rather than porting what PDFBox does with it.
+- The 550 pixels above. ~~Matching them means transliterating
+  `TexturePaintContext.Any` rather than porting what PDFBox does with it.~~
+  The context is transliterated, and they are the tile's own pixels; see
+  "TexturePaintContext's walk".
 
 ## Track `raster` — what draws
 
@@ -5305,12 +5321,209 @@ moved to the corner of its mask; moving it changed 646 of 2,256 pages. And it
 finds a pixel by truncating toward zero, so a shape between -1 and 0 draws on
 row or column 0.
 
-Over 998 files, every page is the same as before the change, 2,256 of 2,256,
-and the list renders in 67 seconds rather than 298. `sample.pdf` takes 7.7
-seconds against PDFBox's 5.6, from 12.0; `issue8078.pdf` 6.4 against PDFBox's
-6.9, from 59.3.
+Over 998 files, every page is the same as before those changes, 2,256 of
+2,256, and the list renders in 67 seconds rather than 298.
 
-What is left is images: CatmullRom scales a large image drawn small at the cost
-of its whole source, where PDFBox shrinks it first with
-`getScaledInstance(SCALE_SMOOTH)`. That port changes what is drawn and is
-waiting on a decision; the task file says what it takes.
+**The third cause was images, and fixing it meant drawing them as Java2D
+does.** The port scaled every image with `x/image/draw`'s CatmullRom, which
+widens its kernel by the shrink factor, so an image drawn small cost its whole
+source -- and drew a different picture from PDFBox's, as much as 146 levels out
+on an image at 0.6 of its size. Java2D draws an image one to one on whole pixels
+as a copy and everything else through TransformHelper, the one piece of Java's
+image drawing that is C in the JDK: a 32.32 fixed-point walk of the inverse
+transform, a 4 by 4 block at every scale, a 256-step integer table of Keys'
+cubic. `rendering/raster/transformhelper.go` is both, from `DrawImage.java`,
+`TransformHelper.c` and `LoopMacros.h`. Below half size PDFBox shrinks the image
+first with `getScaledInstance(SCALE_SMOOTH)`, and `areaaverage.go` is that:
+`AreaAveragingScaleFilter` in Java's float arithmetic, `OffScreenImageSource`'s
+colour models -- a `TYPE_BYTE_GRAY` image goes through `getRGB`'s linear to sRGB
+table on the way in -- and `ImageRepresentation`'s choice of result type. The
+Go `PageDrawer` kept `imageDownscalingOptimizationThreshold` and never read it;
+the backend is now told it, and `KEY_RENDERING`, which it also reads.
+
+Seven of the eight new Java2D image cases are Java2D's pixel for pixel; the
+eighth, a partly transparent image, is 30 pixels 2 levels out, from compositing
+a premultiplied colour with different arithmetic. The shrink filter matches
+the JDK on all six probed cases, and a page of images at a fifth, nearly a
+half and more than a half of their size, a one-bit grey image and a stencil,
+`downscale.pdf`, is PDFBox's but for 76 pixels one level out, where it was 5752
+pixels out. Over the 998 files, 179 pages are PDFBox's to the last bit, where
+174 were, and no page moved into a worse bucket.
+
+**The pinned flatten numbers found one more port defect.** Java2D's fixed-point
+walk made visible a transform the old sampling blurred: before flattening,
+`Signed-Document-1.pdf` drew its signature image with a scale of 81.91999 where
+PDFBox's is 81.92. `geom.Path2D.Bounds2D` took a single-precision path's width
+in double, where `Path2D.Float.getBounds2D` subtracts in float, and
+`processAnnotation` divides by exactly that width. With it fixed the file renders
+the same before and after flattening, where it differed in 2 pixels.
+`awt/geom/path_test.go`, `TestAFloatPathsBoundsAreFloat`.
+
+`sample.pdf` renders in 5.2 seconds against PDFBox's 5.6, from 12.0;
+`issue8078.pdf` in 5.6 against 6.9, from 59.3; the 998 files in 42 seconds, from
+298, with four workers. What is left is recorded in the task file: compositing
+a partly transparent image with Java2D's MUL8 arithmetic and Java2D's
+nearest-neighbour ScaledBlit. The fixed-point walk of TexturePaintContext,
+which the next section runs into, is ported in the one after it.
+
+### The graphics state's soft mask on an image
+
+PDFBox's `drawBufferedImage` has two arms, and the port had one. Where the
+graphics state has a soft mask and the image has neither a `/Mask` nor an
+`/SMask` of its own -- the key being there is enough, PDFBOX-5307 -- Java does
+not call `drawImage`: it makes the image a `TexturePaint`, seen through the mask
+with `applySoftMaskToPaint`, and fills the image's rectangle with the image's
+transform in force. The Go `PageDrawer` always called `DrawImage`, so an image
+under a soft mask was drawn as though there were none. It now takes the same
+arm and hands the backend a new paint, `rendering.ImagePaint`, which the raster
+backend paints through the texture it already had for tiling patterns.
+
+**A stencil filled with a colour reaches the same arm, and PDFBox masks it
+twice.** `drawImage` hands `drawBufferedImage`
+`getStencilImage(getNonStrokingPaint())`, and that paint already carries the
+soft mask. `getStencilImage` fills it in the stencil's own pixels, so the mask
+is read at the top left of the page, and then the arm masks the stencil again
+where it lands. The port does the same: `ImagePaint.Fill` is the paint a
+stencil's texture is filled with, and the raster backend fills it in the
+stencil's pixels. A stencil with a mask of its own takes the other arm and is
+filled the same way; the port had read the mask only where the stencil landed.
+
+`rendering/raster/testdata/softmaskimage.pdf` is seven images under one
+luminosity ramp, with PDFBox's rendering of it: a plain image at one to one and
+at one and a half, one with an `/SMask`, one with a colour key `/Mask`, a
+stencil, a stencil with an `/SMask` key, and a plain image with no soft mask.
+It was 5944 pixels out, 2598 of them by more than a quarter of a channel, and
+with the arm ported it was 3884 and 433. Six of the seven images were within 2
+levels of PDFBox; the image at one and a half had all 433, every one in every
+third column or row, which was `TexturePaintContext`'s walk, ported next. It is
+now 2983 and 0, and every image is within 2 levels.
+`TestImagesUnderASoftMaskRenderAsPDFBoxRendersThem`, and
+`TestAnImageUnderASoftMaskIsFilledAsATexture` for the arm each image takes.
+
+### TexturePaintContext's walk
+
+`java.awt.TexturePaintContext` is how Java2D paints a `TexturePaint`, and PDFBox
+paints two things with one: a tiling pattern, whose `TilingPaint` hands on a
+`TexturePaint` over one rendered tile, and an image under the graphics state's
+soft mask. The port mapped each device pixel back into the texture in floating
+point. The JDK does not. Java2D asks the context for a rectangle at a time,
+`getRaster(x, y, w, h)`. The context maps the rectangle's corner back in double
+precision, and from there it walks a pixel at a time in 31-bit fixed point,
+`fractAsInt` scaling each fraction by `Integer.MAX_VALUE`, one short of 2^31.
+So a step that should land exactly on a texel boundary takes the texel before,
+and the walk starts again in every rectangle. The blend of the four texels
+round a point takes the top twelve bits of each fraction. A filtered one-bit
+grey image, the one `TYPE_BYTE_GRAY` image PDFBox makes, goes through the
+`Any` subclass, which blends in sRGB through the image's colour model and
+stores the result back as a linear grey.
+
+Both halves are ported. `rendering/raster/texturepaint.go` is the context:
+the walk, the blend, and the grey arm with the colour model's two tables.
+`rendering/raster/requests.go` is where Java2D asks, which is the JDK's pipes
+and not PDFBox's. PDFBox's paints are custom paints to Java2D, and every
+request of one ends in `AlphaPaintPipe`, 32 by 32 at most:
+
+- antialiased, from the corner of the box Marlin puts round the shape,
+  x in 1/256ths and y in eighths, no less than the clip's bounds, each tile
+  shrunk by `SpanClipRenderer` to the part of a clip that is not a rectangle;
+- not antialiased, a row at a time from where each span begins;
+- not antialiased, a `Rectangle2D` through an upright transform, one box with
+  its corners truncated to ints.
+
+The expected values are the JDK's. `testdata/TexturePaintDrv.java` prints the
+context's pixels for nine textures, transforms and hints, and the rectangles
+Java2D asks for while it fills or strokes eleven shapes, through a recording
+`Paint` that Java2D treats as a custom paint, as it treats PDFBox's. It also
+prints the grey colour model's two tables. All nine textures are the JDK's
+pixel for pixel, and so are both tables in full. Seven of the eleven shapes are
+asked for from Java2D's corners exactly. Two cover a row or a column Java2D
+does not paint. The other two are under an elliptical clip, which the port
+holds as antialiased coverage where Java2D holds a `Region` of whole pixels
+flattened within a pixel. `TestATexturePaintContextAnswersWhatTheJDKsDoes`,
+`TestTheRectanglesAreTheOnesJava2DAsksFor`, `TestTheGreyTablesAreTheJDKs`.
+Which pipe asks, and where, was read off PDFBox itself first: a copy of the
+JDK's class with one logging line, put in place with `--patch-module` for a
+scratch run, rendered `softmaskimage.pdf` to the same PNG and logged every
+request.
+
+`softmaskimage.pdf` went from 3884 pixels out, 433 of them far out, to 2983
+and 0. The scaled tiling fixture did not move, 1250 and 600: given PDFBox's
+own tile it was PDFBox's to the pixel, and the port's own tile was not. That
+was the next section's work, after which the fixture is 1008 and 370. See the
+correction under "The scaled tiling fixture". The walk costs 9 ns a pixel,
+31 filtered, where it was 36 and 64 before the next pixel along a row took one
+step from the last instead of the whole walk again.
+
+Two things this leaves open, both Java2D's and not PDFBox's:
+
+- ~~**Java2D's non-antialiased fill.**~~ Ported; see "Java2D's fill with
+  antialiasing off" below. It was what was left of the scaled tiling fixture,
+  and the fixture is now PDFBox's but for `JAVA-BUGS.md` 85.
+- **The clip as a Region.** Java2D's clip is a `Region` that
+  `ShapeSpanIterator` builds, with curves flattened within a pixel and pixels
+  held whole; the port's clip is antialiased coverage of the exact curve.
+
+### Java2D's fill with antialiasing off
+
+PDFBox fills every rectangular path with antialiasing off -- PDFBOX-2302, to
+keep a row of solid fills from showing seams -- so this decides the edge of
+most filled rectangles in a PDF. The port took a pixel where the shape covered
+half of it. Java2D does not measure coverage at all: it samples one point of
+each pixel, and which point depends on two things.
+
+Which filler runs depends on the stroke in force, of all things.
+`sun.java2d.pipe.LoopPipe.fill` sends the shape to `FillPath` when
+SunGraphics2D's `strokeState` is `STROKE_THIN`, and to a `ShapeSpanIterator`
+otherwise -- so a page that strokes a wide line and then fills a rectangle
+fills it by the other rule, and so does any page rendered above 72 dpi, where
+the default pen is wide. Both fillers are native and neither is in the JDK's
+`src.zip`; they were read from OpenJDK's `ProcessPath.c` and
+`ShapeSpanIterator.c`.
+
+- `FillPath` is `ProcessPath.c`, whose own comment says it supports "pixels at
+  centers" and "pixels at corners", that corners are the default and mean
+  "straightforward mapping (x,y) --> (x,y)", and that `VALUE_STROKE_PURE`
+  takes half a pixel off every coordinate. Its spans bear it out: a row for
+  each whole y, from `ceil(xLeft)` to `ceil(xRight) - 1`.
+- `ShapeSpanIterator.c` samples pixel centres, `ceil(y - 0.5)`, and unless the
+  hint is PURE it first rounds every coordinate to the nearest quarter,
+  `floor(v + 0.25) + 0.25`. A curve's control points move with the endpoints
+  either side of them, and the JDK's macro moves a quadratic's control point
+  in x by the *y* of the new adjustment, which the port carries.
+
+`rendering/raster/fillrule.go` is that choice -- the stroke state is
+`SunGraphics2D.validateBasicStroke`, dashes and the transform's largest scale
+included -- and turns it into what is done to the path: half a pixel down and
+to the right, the rounding, or nothing under PURE.
+`rendering/raster/sampled.go` is the other half. Quantising coverage was right
+except on the ties, and once a path is moved half a pixel every rectangle
+lands on one: a shape ending exactly at a pixel's centre covers half of it,
+and Java2D fills the pixel whose centre the shape reaches and not the one it
+ends at. So a fill with antialiasing off is scan-converted here instead --
+crossings of each scanline through the centres, the winding rule the path
+asked for, pixels from `ceil(from - 0.5)` to `ceil(to - 0.5) - 1`.
+
+Eight cases in `testdata/java2d.txt`, named `fillFractional`, are Java2D's own
+answers: a rectangle at the identity, one offset by 0.3, the same with a wide
+stroke set and with a dashed one, the tile of `patternscale.pdf` at 1.37 with
+a wide pen and with a thin one, a triangle and a curve. The port matches every
+one of them pixel for pixel, under both stroke controls.
+
+**What it was hiding.** `patternscale.pdf`'s tile is three rectangles filled
+with antialiasing off. The port's tile had bands 4, 4 and 5 rows deep and 10,
+7 and 4 wide; PDFBox's are 5, 4 and 4 deep and 10, 7 and 5 wide. They are
+PDFBox's now, pixel for pixel, and given Java's tile width as well the page
+comes out exactly as PDFBox draws it. The fixture is pinned at 1008 and 370,
+from 1250 and 600, and what is left of it is `JAVA-BUGS.md` 85 alone -- the
+port rasterizes a 13.7-pixel tile 14 pixels wide where Java truncates to 13.
+The `imageNoAntiAlias` case of `TestTheRectanglesAreTheOnesJava2DAsksFor` went
+from 45 pixels outside Java2D's rectangles to none. No other page moved.
+
+Two things near it are still not Java2D's. A stroke drawn with antialiasing
+off is not a filled outline there: `LoopPipe.draw` hands a thin one to
+`doDrawPath`, a line algorithm of its own, and the port fills the outline as
+it does for an antialiased stroke. And a `Rectangle2D` filled with a custom
+paint and antialiasing off goes to `SpanShapeRenderer.renderRect`, which
+truncates the rectangle's corners to whole pixels rather than sampling either
+point; the port covers what the rule above gives, which for the case measured
+is the same pixels.

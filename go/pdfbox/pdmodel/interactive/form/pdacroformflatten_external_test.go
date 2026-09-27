@@ -42,11 +42,15 @@ const flattenDPI = 96
 // **These are not expectations. They are a defect, pinned.** Java's own
 // assertion is that the two renderings are byte-identical, and it passes on
 // these same twelve files, so the port's Flatten is doing something the Java's
-// is not. Nine of the twelve match exactly; the three below do not.
-// `test-2586.pdf` was a fourth, at 322 pixels, until 2026-09-19, when strokes
+// is not. Ten of the twelve match exactly; the two below do not.
+// `test-2586.pdf` was a third, at 322 pixels, until 2026-09-19, when strokes
 // began to be drawn at the width the resolution gives them -- this test
 // renders at 96 dpi, and the port drew every stroke at its 72 dpi width -- and
-// it went to 0.
+// it went to 0. `Signed-Document-1.pdf` was a fourth, at 2, until the same
+// day: Path2D.Float's bounds were taken in double, so the width
+// processAnnotation divides by was a few millionths off, and the image in the
+// signature's appearance was drawn through a transform a last bit away from
+// the one flattening writes. See TestAFloatPathsBoundsAreFloat.
 //
 // What the difference is *not*: content appearing, disappearing or moving. On
 // every one of them the pixels that differ are a level or two of grey along
@@ -63,9 +67,8 @@ const flattenDPI = 96
 // change that raises one is a regression, and a change that drops one to 0 is
 // the fix and should delete the row.
 var differingAfterFlatten = map[string]int{
-	"Signed-Document-1.pdf": 2,
-	"PDFBOX-4955.pdf":       4,
-	"PDFBOX-5225.pdf":       51,
+	"PDFBOX-4955.pdf": 4,
+	"PDFBOX-5225.pdf": 51,
 }
 
 // maxDeltaAfterFlatten is how far out a single channel may be. Anything above

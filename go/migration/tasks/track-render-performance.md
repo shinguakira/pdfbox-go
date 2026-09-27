@@ -44,32 +44,74 @@ The three causes the profiles named in #40:
   pixel, which is what the arithmetic comes to for every byte;
   `TestAnOpaqueNormalCompositeIsTheSource` runs all 16.7 million cases. Normal
   also no longer calls its channel function to answer the source.
-- [ ] **Resampling that grows with the source image.** Not started; see Open.
+- [x] **Resampling that grows with the source image.** `x/image/draw`'s
+  CatmullRom widens its kernel by the shrink factor, so an image drawn small
+  cost its whole source, and it drew a different picture from PDFBox's. Images
+  are now drawn as Java2D draws them: `transformhelper.go` is `DrawImage`'s
+  copy-or-transform choice and `TransformHelper.c`'s bicubic, fixed-point walk
+  and edge rules included, and `areaaverage.go` is PDFBox's shrink below half
+  size -- `getScaledInstance(SCALE_SMOOTH)`, which is `AreaAveragingScaleFilter`
+  fed as `OffScreenImageSource` feeds it, a `TYPE_BYTE_GRAY` image through
+  `getRGB`'s linear to sRGB table. `PageDrawer` now tells the backend the
+  threshold and `KEY_RENDERING`. Eight Java2D image cases in `java2d_test.go`,
+  six probed shrinks in `areaaverage_test.go`, and `downscale.pdf` against
+  PDFBox's render of it.
 
-Result, all three together: every one of the 2,256 pages is identical to the
-build before, and the whole list renders in 67 seconds against 298.
+Results. The first three changed nothing that is drawn: every one of the 2,256
+pages is identical to the build before them. The fourth changes what images
+look like, towards PDFBox: on `downscale.pdf` 76 pixels are one level out of
+PDFBox's, where 5752 were out by as much as 146, and over the 998 files 179
+pages are PDFBox's to the last bit, where 174 were, with no page in a worse
+bucket.
 
 | File | PDFBox | Go, before | Go, after |
-| --- | --- | --- | --- |
-| `AndroidPdfViewer`'s `sample.pdf`, 84 pages | 5.6 s | 12.0 s | 7.7 s |
-| `pdfjs/issue8078.pdf`, 1 page of 222,868 strokes | 6.9 s | 59.3 s | 6.4 s |
+| --- | ---: | ---: | ---: |
+| the 998 files, 4 workers | -- | 298 s | 42 s |
+| `AndroidPdfViewer`'s `sample.pdf`, 84 pages | 5.6 s | 12.0 s | 5.2 s |
+| `pdfjs/issue8078.pdf`, 1 page of 222,868 strokes | 6.9 s | 59.3 s | 5.6 s |
+| `pdfjs/ecma262.pdf`, 258 pages | 9.3 s | 85 s | 9.7 s |
+| `itextsharp`'s `readCompressedPdfTest1.pdf`, 6 pages | 4.8 s | 203 s | 7.1 s |
+| `itextsharp`'s `cmp_copyLargeFile.pdf`, 958 pages | 26.7 s | 379 s | 49.5 s |
 
 Each is one run of one file, start to finish, on an otherwise idle machine:
 `corpus -renderpages` for the Go version, `JavaCorpus ... render` for PDFBox,
-whose time includes starting the JVM.
+whose time includes starting the JVM. The "before" of the last three is the
+run `TESTDATA.md` records, after the compositor fix of 2026-09-18.
+
+**One port defect came out of it.** Java2D's fixed-point walk made visible a
+transform the old sampling blurred: `geom.Path2D.Bounds2D` took a
+single-precision path's width in double where `Path2D.Float` subtracts in
+float, and `processAnnotation` divides by that width, so an annotation's
+appearance was drawn through a transform a last bit off. `PDAcroFormFlattenTest`
+had pinned it: `Signed-Document-1.pdf` differed in 2 pixels after flattening,
+256 once images were drawn as Java2D draws them, and 0 with the bounds fixed.
+`TestAFloatPathsBoundsAreFloat`.
 
 ## Open
 
-**The image path.** On `sample.pdf` drawing images is now 73% of the time, and
-`x/image/draw`'s CatmullRom 49%: it widens its kernel by the shrink factor, so an
-image drawn small costs its whole source. PDFBox does something else below half
-size: `drawBufferedImage` takes `getScaledInstance(w, h, SCALE_SMOOTH)` -- the
-JDK's `AreaAveragingScaleFilter` -- and draws that with bicubic. The Go
-`PageDrawer` keeps `imageDownscalingOptimizationThreshold` and never reads it.
-Porting it changes what is drawn, towards PDFBox, and means porting the chain
-behind `getScaledInstance`, not only the filter: how `OffScreenImageSource`
-sends each image type, `ColorModel.getRGB`, and the conversion back to an image
-`drawImage` can use. The second is not neutral: PDFBox makes a one-bit
-DeviceGray image -- a scan -- as `TYPE_BYTE_GRAY`, whose `getRGB` converts a
-linear grey to sRGB, 128 to 188, and the filter averages what that answers.
-That is a decision to take before the work, and it is waiting on one.
+- **Compositing a partly transparent image.** The sampling is Java2D's, but the
+  result goes onto the page through the backend's compositing, in floats, where
+  Java2D's SrcOver MaskBlit is MUL8 bytes: `imageAlpha` is 30 pixels 2 levels
+  out, `downscale.pdf`'s masked image 76 pixels 1 level.
+- ~~**TexturePaintContext's walk of a texture.**~~ Ported, with where Java2D
+  asks for each rectangle; see STATUS.md, "TexturePaintContext's walk".
+  `softmaskimage.pdf` went from 3884 pixels out, 433 far out, to 2983 and 0.
+- ~~**Java2D's non-antialiased fill.**~~ Ported: the two native fillers, which
+  of them the stroke state picks, and the point each samples; see STATUS.md,
+  "Java2D's fill with antialiasing off". The scaled tiling fixture fell from
+  1250 pixels out, 600 far out, to 1008 and 370, and what is left of it is
+  `JAVA-BUGS.md` 85 alone.
+- **A stroke drawn with antialiasing off.** Java2D hands a thin one to
+  `doDrawPath`, a line algorithm of its own; the port fills the outline. Only
+  a page rendered with antialiasing off throughout reaches it, since PDFBox
+  turns it off for fills alone.
+- **The clip as a Region.** Java2D's clip is a `Region` built by
+  `ShapeSpanIterator`, curves flattened within a pixel and pixels held whole;
+  the port's is antialiased coverage of the exact curve. Along a curved clip
+  it moves where a texture's rectangles begin, and it is how every clipped
+  pixel differs.
+- **Nearest neighbour.** An image scaled up with `/Interpolate false` is still
+  sampled by `x/image/draw`; Java2D's is ScaledBlit, which this branch did not
+  port.
+- **The two flatten differences left**, `PDFBOX-4955.pdf` and
+  `PDFBOX-5225.pdf`, may have a cause like `Signed-Document-1.pdf`'s.

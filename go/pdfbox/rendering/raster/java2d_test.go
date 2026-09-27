@@ -19,11 +19,18 @@ package raster
 //	name       VALUE_STROKE_PURE, the geometry as given
 //	nameNorm   VALUE_STROKE_NORMALIZE, the JDK default, and so PDFBox's
 //
-// This backend renders the geometry as given, so `name` is what it is held to.
-// What `nameNorm` would cost is measured in TestTheStrokeNormalizationCost,
-// which is the only place that difference lives.
+// The backend is held to both, under the hint each was drawn with: it takes
+// the hint for a stroke, where it normalizes the path as Marlin does, and for
+// a fill with antialiasing off, where the hint decides whether a pixel is
+// taken at its centre or its corner (fillrule.go). It is only a stroke drawn
+// with antialiasing on that the backend leaves as given whatever the hint
+// says, and what that costs is each case's normDiffering and normWorst, which
+// TestAgainstJava2DNormalized holds it to.
 
 import (
+	goimage "image"
+	goimagecolor "image/color"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -186,6 +193,90 @@ var java2dCases = []java2dCase{
 		i.SetTransform(geom.NewAffineTransform(1, 0, 0, 0, 0, 0))
 		i.SetStroke(&rendering.Stroke{LineWidth: 4, MiterLimit: 10})
 		must(i.Draw(lineShape(2, 10, 18, 10)))
+	}},
+	// Fills whose edges fall between pixel centres, with antialiasing off,
+	// which is how PDFBox fills every rectangular path. Java2D puts them on
+	// different pixels depending on the stroke that happens to be set, and
+	// under VALUE_STROKE_PURE on different pixels again; see fillrule.go.
+	{name: "fillFractional", width: 16, height: 16, draw: func(i *Image) {
+		must(i.Fill(pdfRect(0, 0, 9.59, 4.11)))
+	}},
+	{name: "fillFractionalOffset", width: 16, height: 16, draw: func(i *Image) {
+		must(i.Fill(pdfRect(0.3, 0.3, 4.41, 4.41)))
+	}},
+	{name: "fillFractionalWide", width: 16, height: 16, draw: func(i *Image) {
+		i.SetStroke(&rendering.Stroke{LineWidth: 3, MiterLimit: 10})
+		must(i.Fill(pdfRect(0.3, 0.3, 4.41, 4.41)))
+	}},
+	{name: "fillFractionalDashed", width: 16, height: 16, draw: func(i *Image) {
+		i.SetStroke(&rendering.Stroke{LineWidth: 1, MiterLimit: 10,
+			DashArray: []float32{4, 4}})
+		must(i.Fill(pdfRect(0.3, 0.3, 4.41, 4.41)))
+	}},
+	{name: "fillFractionalScaled", width: 16, height: 16, draw: func(i *Image) {
+		i.SetTransform(geom.NewAffineTransform(1.37, 0, 0, 1.37, 0, 0))
+		must(i.Fill(pdfRect(0, 0, 7, 3)))
+	}},
+	{name: "fillFractionalScaledThin", width: 16, height: 16, draw: func(i *Image) {
+		i.SetStroke(&rendering.Stroke{LineWidth: 0.5, MiterLimit: 10})
+		i.SetTransform(geom.NewAffineTransform(1.37, 0, 0, 1.37, 0, 0))
+		must(i.Fill(pdfRect(0, 0, 7, 3)))
+	}},
+	{name: "fillFractionalTriangle", width: 16, height: 16, draw: func(i *Image) {
+		path := geom.NewPathDouble()
+		path.MoveTo(1.3, 1.2)
+		path.LineTo(13.8, 4.4)
+		path.LineTo(4.6, 14.1)
+		path.ClosePath()
+		must(i.Fill(path))
+	}},
+	{name: "fillFractionalCurve", width: 16, height: 16, draw: func(i *Image) {
+		path := geom.NewPathDouble()
+		path.MoveTo(2.4, 13.6)
+		path.CurveTo(2.4, 2.2, 13.7, 2.2, 13.7, 13.6)
+		path.ClosePath()
+		must(i.Fill(path))
+	}},
+	// Images through drawImage(image, transform, null), under the bicubic hint.
+	// Java2D copies one that lands one to one on whole pixels and sends every
+	// other through TransformHelper; see transformhelper.go.
+	{name: "imageCopy", width: 20, height: 20, antiAliasing: true, draw: func(i *Image) {
+		drawImageThrough(i, patternImage(8, 6, "rgb"), geom.NewAffineTransform(1, 0, 0, 1, 3, 4))
+	}},
+	{name: "imageOffset", width: 20, height: 20, antiAliasing: true, draw: func(i *Image) {
+		drawImageThrough(i, patternImage(8, 6, "rgb"), geom.NewAffineTransform(1, 0, 0, 1, 3.4, 4.6))
+	}},
+	{name: "imageScaled", width: 24, height: 20, antiAliasing: true, draw: func(i *Image) {
+		drawImageThrough(i, patternImage(8, 6, "rgb"), geom.NewAffineTransform(1.7, 0, 0, 1.7, 2.3, 3.1))
+	}},
+	{name: "imageShrunk", width: 20, height: 20, antiAliasing: true, draw: func(i *Image) {
+		drawImageThrough(i, patternImage(16, 12, "rgb"), geom.NewAffineTransform(0.7, 0, 0, 0.7, 1.5, 2.25))
+	}},
+	{name: "imageRotated", width: 24, height: 24, antiAliasing: true, draw: func(i *Image) {
+		// AffineTransform.getRotateInstance(toRadians(30), 12, 12), written the
+		// way setToRotation writes it.
+		sin, cos := math.Sincos(30 * (math.Pi / 180))
+		at := geom.NewAffineTransform(cos, sin, -sin, cos, 12*(1-cos)+12*sin, 12*(1-cos)-12*sin)
+		at.Translate(6.5, 7.25)
+		at.Scale(1.2, 1.2)
+		drawImageThrough(i, patternImage(8, 6, "rgb"), at)
+	}},
+	// The one case that differs, and only where the image is partly
+	// transparent: the sampling is exact, and the two composite a premultiplied
+	// colour onto the page with different arithmetic -- Java2D's SrcOver
+	// MaskBlit in MUL8 bytes, this backend in floats.
+	{name: "imageAlpha", width: 20, height: 20, antiAliasing: true,
+		differing: 30, worst: 2, normDiffering: 30, normWorst: 2, draw: func(i *Image) {
+			drawImageThrough(i, patternImage(6, 5, "argb"), geom.NewAffineTransform(1.6, 0, 0, 1.6, 2.2, 2.7))
+		}},
+	{name: "imageGray", width: 20, height: 20, antiAliasing: true, draw: func(i *Image) {
+		drawImageThrough(i, patternImage(12, 10, "gray"), geom.NewAffineTransform(0.75, 0, 0, 0.75, 3.3, 2.1))
+	}},
+	// The way PageDrawer draws one: the page's transform flips y, and the
+	// image's own transform flips it back.
+	{name: "imageFlipped", width: 20, height: 20, antiAliasing: true, draw: func(i *Image) {
+		i.SetTransform(geom.NewAffineTransform(1, 0, 0, -1, 0, 20))
+		drawImageThrough(i, patternImage(8, 6, "rgb"), geom.NewAffineTransform(1.5, 0, 0, -1.5, 2.4, 16.3))
 	}},
 }
 
@@ -372,4 +463,60 @@ func TestAgainstJava2DNormalized(t *testing.T) {
 			}
 		})
 	}
+}
+
+// drawImageThrough draws an image as Graphics2D.drawImage(image, m, null)
+// does under the bicubic hint, with the backend's own transform standing for
+// the Graphics2D's.
+//
+// The backend is handed images as PageDrawer hands them, with the transform
+// that takes the unit square to where the image goes; this is m written that
+// way.
+func drawImageThrough(i *Image, img goimage.Image, m *geom.AffineTransform) {
+	// PDFRenderer's hint, which Java2DDrv sets.
+	i.SetInterpolation(rendering.Bicubic)
+	w, h := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
+	at := m.Clone()
+	at.Translate(0, h)
+	at.Scale(w, -h)
+	must(i.drawSampled(img, at, nil))
+}
+
+// patternImage is Java2DDrv.pattern: every pixel differs from its neighbours.
+// "rgb" is TYPE_INT_RGB, which the port holds as an opaque image.RGBA;
+// "argb" is TYPE_INT_ARGB, an image.NRGBA; "gray" is TYPE_BYTE_GRAY, an
+// image.Gray.
+func patternImage(w, h int, kind string) goimage.Image {
+	bounds := goimage.Rect(0, 0, w, h)
+	rgba := goimage.NewRGBA(bounds)
+	nrgba := goimage.NewNRGBA(bounds)
+	gray := goimage.NewGray(bounds)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			r, g, b := uint8(x*37+y*11), uint8(x*x+y*51), uint8((x^y)*29)
+			rgba.SetRGBA(x, y, goimagecolor.RGBA{R: r, G: g, B: b, A: 0xFF})
+			nrgba.SetNRGBA(x, y, goimagecolor.NRGBA{R: r, G: g, B: b, A: uint8(64 + (x*40+y*13)&0xbf)})
+			gray.SetGray(x, y, goimagecolor.Gray{Y: uint8(x*31 + y*47)})
+		}
+	}
+	switch kind {
+	case "argb":
+		return nrgba
+	case "gray":
+		return gray
+	}
+	return rgba
+}
+
+// pdfRect is a rectangle as PDFBox builds one, four lines and a close, in a
+// float path: Java2D fills a Rectangle2D through a third filler again, so the
+// shape's class is part of the case.
+func pdfRect(x0, y0, x1, y1 float32) geom.Shape {
+	path := geom.NewPathFloat()
+	path.MoveTo(float64(x0), float64(y0))
+	path.LineTo(float64(x1), float64(y0))
+	path.LineTo(float64(x1), float64(y1))
+	path.LineTo(float64(x0), float64(y1))
+	path.ClosePath()
+	return path
 }

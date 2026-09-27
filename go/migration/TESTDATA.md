@@ -897,6 +897,24 @@ up in the first page's resources. Java skips exactly that one colour space in
 exactly that cache. With it fixed the document compares clean: 942 pages within
 a level, 15 within four, one within sixteen, none further, none failed.
 
+**Measured again on 2026-09-19**, after `track/render-performance` (issue #40):
+coverage masks the size of a shape rather than the page, no allocation per
+composited pixel, and images drawn as Java2D draws them, PDFBox's shrink below
+half size included. The timings above are superseded by these, each one run of
+one file on an otherwise idle machine, PDFBox's including the start of its JVM:
+
+| File | PDFBox | Go |
+| --- | ---: | ---: |
+| `AndroidPdfViewer`'s `sample.pdf`, 84 pages | 5.6 s | 5.2 s |
+| `pdfjs/issue8078.pdf`, 1 page | 6.9 s | 5.6 s |
+| `pdfjs/ecma262.pdf`, 258 pages | 9.3 s | 9.7 s |
+| `itextsharp`'s `readCompressedPdfTest1.pdf`, 6 pages | 4.8 s | 7.1 s |
+| `itextsharp`'s `cmp_copyLargeFile.pdf`, 958 pages | 26.7 s | 49.5 s |
+
+Nothing in the port now takes minutes where PDFBox takes seconds, so the render
+comparison no longer needs the sample of every sixteenth opening; running it
+over the whole list is what issue #40 has left.
+
 
 ## Scoring a corpus
 

@@ -175,6 +175,17 @@ func joinMode(lineJoin int) rasterx.JoinMode {
 // nil where the transform lets nothing be drawn.
 func strokeCoverage(shape geom.Shape, at *geom.AffineTransform, stroke *rendering.Stroke,
 	width, height int, antiAliasing, normalize bool) *image.Alpha {
+	recorder := strokeOutline(shape, at, stroke, width, height, antiAliasing, normalize)
+	if recorder == nil {
+		return nil
+	}
+	return recorder.rasterize(width, height, antiAliasing)
+}
+
+// strokeOutline strokes a shape into device space and answers the outline,
+// or nil through a transform that flattens everything.
+func strokeOutline(shape geom.Shape, at *geom.AffineTransform, stroke *rendering.Stroke,
+	width, height int, antiAliasing, normalize bool) *outlineRecorder {
 	pen := penThrough(at, stroke)
 	if pen == nil {
 		return nil
@@ -183,7 +194,7 @@ func strokeCoverage(shape geom.Shape, at *geom.AffineTransform, stroke *renderin
 	dasher := newDasherFor(recorder, width, height, stroke, pen)
 	addShapeToAdder(dasher, shape, at, newNormalizer(normalize, antiAliasing), pen.inward)
 	dasher.Draw()
-	return recorder.rasterize(width, height, antiAliasing)
+	return recorder
 }
 
 // pen is a stroke as the stroker is handed it.

@@ -153,10 +153,14 @@ func (p *walkedPath) addTo(r *raster.Rasterizer) {
 
 // reach answers the part of a width by height surface the path can put
 // anything on: the box of its points, control points included, a pixel wider
-// before and two after, as paddedRect pads. A path with a coordinate that is
-// not a finite number reaches the whole surface.
+// before and two after, as paddedRect pads. A path with no points reaches
+// nothing -- a rectangle of no width iterates as no segments at all -- and a
+// path with a coordinate that is not a finite number reaches the whole surface.
 func (p *walkedPath) reach(width, height int) image.Rectangle {
-	if len(p.coords) == 0 || !finite(p.minX, p.minY, p.maxX, p.maxY) {
+	if len(p.coords) == 0 {
+		return image.Rectangle{}
+	}
+	if !finite(p.minX, p.minY, p.maxX, p.maxY) {
 		return image.Rect(0, 0, width, height)
 	}
 	return reachOf(p.minX, p.minY, p.maxX, p.maxY, width, height)
@@ -246,10 +250,12 @@ func rasterizeInto(r *raster.Rasterizer, area image.Rectangle, antiAliasing bool
 	if !area.Empty() {
 		var painter raster.Painter = raster.NewAlphaSrcPainter(mask)
 		if !antiAliasing {
-			// Java turns anti-aliasing off for an axis-aligned rectangle and
-			// for an image scaled up, and what it means by off is that a pixel
-			// is in or out. That is what a MonochromePainter does to the spans
-			// on their way through.
+			// A pixel is in or out, which is what a MonochromePainter does to
+			// the spans on their way through: it keeps a pixel that is covered
+			// half or more. That is a stroke's outline here and nothing else --
+			// a fill with antialiasing off is sampled at a point instead, the
+			// way Java2D's own fillers do it, and does not come through here.
+			// See sampled.go.
 			painter = raster.NewMonochromePainter(painter)
 		}
 		r.Rasterize(painter)
@@ -273,7 +279,17 @@ func coverageOf(shape geom.Shape, at *geom.AffineTransform, width, height int,
 	antiAliasing bool) *image.Alpha {
 	path := walkShape(shape, at)
 	defer walkedPaths.Put(path)
+	return path.coverage(width, height, antiAliasing)
+}
+
+// coverage is coverageOf for a path already walked.
+func (path *walkedPath) coverage(width, height int, antiAliasing bool) *image.Alpha {
 	area := path.reach(width, height)
+	if !antiAliasing {
+		// A pixel is in or out, and which is decided at a point, not by how
+		// much of the pixel is covered; see sampled.go.
+		return path.sampledCoverage(area)
+	}
 
 	r := borrowRasterizer(width, height)
 	defer rasterizers.Put(r)
