@@ -371,7 +371,7 @@ func (s *argbPreSource) bicubic(xlong, ylong int64) uint32 {
 // bicubicInterp is BicubicInterp's body for one pixel, with the integer
 // arithmetic TransformHelper is compiled with: BICUBIC_USE_INT_MATH.
 func bicubicInterp(block *[16]uint32, xfactor, yfactor int32) uint32 {
-	table := bicubicTable()
+	table := bicubicCoefficients
 	accumA, accumR, accumG, accumB := int32(1<<15), int32(1<<15), int32(1<<15), int32(1<<15)
 	xc := [4]int32{xfactor + 256, xfactor, 256 - xfactor, 512 - xfactor}
 	yc := [4]int32{yfactor + 256, yfactor, 256 - yfactor, 512 - yfactor}
@@ -405,15 +405,14 @@ func saturate(v, limit int32) int32 {
 	return v
 }
 
-// bicubicCoefficients is bicubic_coeff, built once.
-var bicubicCoefficients *[513]int32
-
-// bicubicTable is init_bicubic_table(-0.5), with BC_DblToCoeff truncating to
-// 256ths as the integer build does.
-func bicubicTable() *[513]int32 {
-	if bicubicCoefficients != nil {
-		return bicubicCoefficients
-	}
+// bicubicCoefficients is bicubic_coeff: init_bicubic_table(-0.5), with
+// BC_DblToCoeff truncating to 256ths as the integer build does.
+//
+// It is built at load, as mul8Table below is. Building it on first use would
+// be a write to a package variable, and this is a library: two pages rendered
+// at once in one process would race on it, which the race detector proves in
+// TestTwoPagesRenderAtOnce.
+var bicubicCoefficients = func() *[513]int32 {
 	var table [513]int32
 	const a = -0.5
 	i := 0
@@ -433,9 +432,8 @@ func bicubicTable() *[513]int32 {
 	for i++; i <= 512; i++ {
 		table[i] = 256 - (table[512-i] + table[i-256] + table[768-i])
 	}
-	bicubicCoefficients = &table
-	return bicubicCoefficients
-}
+	return &table
+}()
 
 // mul8Table is AlphaMath.c's mul8table.
 var mul8Table = func() *[256][256]uint8 {

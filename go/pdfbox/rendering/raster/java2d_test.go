@@ -520,3 +520,25 @@ func pdfRect(x0, y0, x1, y1 float32) geom.Shape {
 	path.ClosePath()
 	return path
 }
+
+// tablesAtLoad is whether the tables this package keeps between renders were
+// built before any test ran. A test file's variables are initialised after the
+// package's own, so this is the state at load and not after something in a
+// test has touched them.
+var tablesAtLoad = bicubicCoefficients != nil && mul8Table != nil
+
+// TestThePackageTablesAreBuiltAtLoad holds the tables to being built at load
+// rather than on first use.
+//
+// They are read by every image drawn and every pixel composited, and this
+// package is a library: two pages rendered at once in one process would race
+// on a table that the first of them built. The race is not hypothetical --
+// building the bicubic coefficients on first use was reported by the race
+// detector, which is what put this here -- and it cannot be caught by a test
+// that renders anything first, because the table is built by then.
+func TestThePackageTablesAreBuiltAtLoad(t *testing.T) {
+	if !tablesAtLoad {
+		t.Error("a table this package keeps is built on first use, which two " +
+			"renders at once would race on; build it at load")
+	}
+}

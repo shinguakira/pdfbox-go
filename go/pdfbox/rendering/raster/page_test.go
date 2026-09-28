@@ -20,9 +20,11 @@ import (
 	goimage "image"
 	_ "image/png"
 	"os"
+	"sync"
 	"testing"
 
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering/raster"
 )
@@ -443,4 +445,79 @@ func TestAScaledTilingPatternRendersAsThePortMeansTo(t *testing.T) {
 			"than a quarter of a channel; it was %d and %d",
 			differing, beyond, differingPixels, beyondEdges)
 	}
+}
+
+// TestTwoPagesRenderAtOnce renders two pages at the same time, which nothing
+// stops a caller of this library doing.
+//
+// The pixels are compared with the same pages rendered one at a time: state
+// shared between two renders by accident would change them. Run under the race
+// detector it says more, though not everything -- what this package holds
+// between renders is built at load, and the pages here are rendered once
+// before the goroutines start, so a table built lazily would already be built.
+// TestThePackageTablesAreBuiltAtLoad is what holds them to being built at load.
+//
+// Both pages are parsed, and rendered once, before the two goroutines start.
+// Parsing two documents at once is a race of PDFBox's own, which the port
+// carries: a name is interned and shared, and the parser writes the "direct"
+// flag on it. Java does the same -- its map is a ConcurrentHashMap, which
+// guards the map and not the name in it -- and nothing reads that flag for a
+// name, so nothing comes of it. See migration/STATUS.md.
+func TestTwoPagesRenderAtOnce(t *testing.T) {
+	// downscale.pdf goes through the bicubic coefficients and the shrink
+	// filter, patternscale.pdf through a texture and its tile.
+	pages := []string{"downscale", "patternscale"}
+	documents := make([]*pdmodel.PDDocument, len(pages))
+	alone := make([]goimage.Image, len(pages))
+	for k, page := range pages {
+		document, err := pdfbox.LoadPDF("testdata/" + page + ".pdf")
+		if err != nil {
+			t.Fatalf("loading %s: %v", page, err)
+		}
+		defer document.Close()
+		documents[k] = document
+		alone[k] = renderAgain(t, document, page)
+	}
+
+	together := make([]goimage.Image, len(pages))
+	var wg sync.WaitGroup
+	for k, page := range pages {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			together[k] = renderAgain(t, documents[k], page)
+		}()
+	}
+	wg.Wait()
+
+	for k, page := range pages {
+		if !samePixels(alone[k], together[k]) {
+			t.Errorf("%s renders differently beside another page", page)
+		}
+	}
+}
+
+// renderAgain renders a page of an open document at 72 dpi.
+func renderAgain(t *testing.T, document *pdmodel.PDDocument, page string) goimage.Image {
+	t.Helper()
+	rendered, err := raster.RenderPage(document, 0, 1, rendering.RGB)
+	if err != nil {
+		t.Fatalf("rendering %s: %v", page, err)
+	}
+	return rendered
+}
+
+// samePixels reports whether two renders are the same image.
+func samePixels(a, b goimage.Image) bool {
+	if a.Bounds() != b.Bounds() {
+		return false
+	}
+	for y := a.Bounds().Min.Y; y < a.Bounds().Max.Y; y++ {
+		for x := a.Bounds().Min.X; x < a.Bounds().Max.X; x++ {
+			if a.At(x, y) != b.At(x, y) {
+				return false
+			}
+		}
+	}
+	return true
 }

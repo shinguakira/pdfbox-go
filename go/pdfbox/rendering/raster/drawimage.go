@@ -267,8 +267,11 @@ func (i *Image) drawThrough(source goimage.Image, transform *geom.AffineTransfor
 				R: row[offset], G: row[offset+1], B: row[offset+2], A: alpha,
 			})
 			if stencil != nil {
+				// Each pixel on its own: Java paints a stencil's pattern into
+				// an image of its own and masks that, so there is no rectangle
+				// of Java2D's to follow here. See colorAlone.
 				painted := false
-				if colour, painted = stencil.colorAt(x, y); !painted {
+				if colour, painted = colorAlone(stencil, x, y); !painted {
 					continue
 				}
 			}

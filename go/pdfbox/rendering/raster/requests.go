@@ -44,6 +44,7 @@ import (
 	"slices"
 
 	"github.com/shinguakira/pdfbox-go/go/awt/geom"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -398,4 +399,16 @@ func renderRectRequests(rect *geom.Rectangle2D, at *geom.AffineTransform,
 	x0, y0 := math.Min(corners[0], corners[2]), math.Min(corners[1], corners[3])
 	corner := goimage.Pt(max(javaIntOf(x0), clip.Min.X), max(javaIntOf(y0), clip.Min.Y))
 	return javaRequests{mode: requestTiles, corner: corner}
+}
+
+// needsRequests reports whether a paint reads the rectangle it is asked in.
+// A texture does, and nothing else: see texturepaint.go.
+func needsRequests(paint rendering.Paint) bool {
+	switch p := paint.(type) {
+	case rendering.TilingPaint, rendering.ImagePaint:
+		return true
+	case rendering.SoftMaskedPaint:
+		return needsRequests(p.Paint)
+	}
+	return false
 }

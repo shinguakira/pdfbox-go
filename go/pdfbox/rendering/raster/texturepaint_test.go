@@ -305,6 +305,10 @@ func TestTheRectanglesAreTheOnesJava2DAsksFor(t *testing.T) {
 			}
 			i := NewImage(c.width, c.height, rendering.RGB)
 			i.SetAntiAliasing(c.antiAliasing)
+			// The recorder below stands in for the texture's own source, but
+			// the paint has to be a texture all the same: a fill works out the
+			// rectangles Java2D would ask in only for a paint that reads them.
+			i.SetPaint(rendering.ImagePaint{Image: textureOf(argbTexture, 4, 4)})
 			if c.clip != nil {
 				i.SetClip(geom.NewAreaOfShape(c.clip))
 			}

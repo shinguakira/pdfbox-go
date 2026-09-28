@@ -903,13 +903,30 @@ composited pixel, and images drawn as Java2D draws them, PDFBox's shrink below
 half size included. The timings above are superseded by these, each one run of
 one file on an otherwise idle machine, PDFBox's including the start of its JVM:
 
-| File | PDFBox | Go |
-| --- | ---: | ---: |
-| `AndroidPdfViewer`'s `sample.pdf`, 84 pages | 5.6 s | 5.2 s |
-| `pdfjs/issue8078.pdf`, 1 page | 6.9 s | 5.6 s |
-| `pdfjs/ecma262.pdf`, 258 pages | 9.3 s | 9.7 s |
-| `itextsharp`'s `readCompressedPdfTest1.pdf`, 6 pages | 4.8 s | 7.1 s |
-| `itextsharp`'s `cmp_copyLargeFile.pdf`, 958 pages | 26.7 s | 49.5 s |
+| File | PDFBox, 2026-09-19 | Go, 2026-09-19 | Go, 2026-09-28 |
+| --- | ---: | ---: | ---: |
+| `AndroidPdfViewer`'s `sample.pdf`, 84 pages | 5.6 s | 5.2 s | 5.3 s |
+| `pdfjs/issue8078.pdf`, 1 page | 6.9 s | 5.6 s | 6.0 s |
+| `pdfjs/ecma262.pdf`, 258 pages | 9.3 s | 9.7 s | 8.9 s |
+| `itextsharp`'s `readCompressedPdfTest1.pdf`, 6 pages | 4.8 s | 7.1 s | 5.7 s |
+| `itextsharp`'s `cmp_copyLargeFile.pdf`, 958 pages | 26.7 s | 49.5 s | 44.5 s |
+
+The last column was measured after the soft mask on an image,
+`TexturePaintContext`'s walk and the fill with antialiasing off were ported. It
+is the median of three runs of each file rather than one, which matters: a
+first run of one of these is half a second to a second slower than the next,
+so the middle column reads a little high as well. The machine is slower in
+this sitting than in that one -- `pdfjs/issue8078.pdf` draws no image, so
+nothing between the two builds touches it, and commit `f91107d97` renders it
+in 6.5 s today where the middle column has 5.6.
+
+`cmp_copyLargeFile.pdf` is the one file here the port is well behind PDFBox
+on, and a profile of its 958 pages says where: compositing is 49% of the
+render and rasterising coverage 21%. Java2D composites in native loops chosen
+for the paint, the composite and the surface together -- a span at a time, and
+a memory fill where the paint is an opaque colour over full coverage -- and
+the port walks the covered pixels one at a time, asking the paint for each
+one. Nothing on that page is unusual; it is 958 pages of the ordinary case.
 
 Nothing in the port now takes minutes where PDFBox takes seconds, so the render
 comparison no longer needs the sample of every sixteenth opening; running it

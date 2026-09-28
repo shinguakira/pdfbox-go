@@ -115,3 +115,18 @@ had pinned it: `Signed-Document-1.pdf` differed in 2 pixels after flattening,
   port.
 - **The two flatten differences left**, `PDFBOX-4955.pdf` and
   `PDFBOX-5225.pdf`, may have a cause like `Signed-Document-1.pdf`'s.
+
+## Raised in review and declined
+
+- **The two setters added to `rendering.Backend`.** `SetRenderingQuality` and
+  `SetImageDownscalingThreshold` are new methods on an exported interface, and
+  the review asked for them as optional capability interfaces instead, so that
+  an implementation written against the old shape still compiles. Declined.
+  `Backend` is this port's own boundary, `java.awt.Graphics2D` as `PageDrawer`
+  uses it, and `PageDrawer` sets both of these where Java sets the hints they
+  stand for: a backend that answers a page and ignores `KEY_RENDERING` draws
+  the wrong picture quietly, which an optional interface would hide. Nothing
+  outside this module implements it -- `raster.Image` and the two recording
+  backends in the tests are all of them -- the module is not released, and
+  every earlier slice added to `Backend` the same way as `PageDrawer` reached
+  further into Graphics2D.

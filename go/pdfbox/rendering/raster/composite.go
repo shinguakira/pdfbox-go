@@ -37,6 +37,20 @@ type requestedSource interface {
 	request(x, y int)
 }
 
+// colorAlone asks a paint for one pixel as a rectangle of its own, for a
+// caller that does not know how Java2D would have asked for it.
+//
+// A texture walks from the corner of the rectangle it was last told about, so
+// without this it answers from wherever the walk of the pixel before left off,
+// and a tile kept in the cache carries that from one fill into the next. What
+// this asks for instead is the mapping of that one pixel.
+func colorAlone(source paintSource, x, y int) (goimagecolor.NRGBA, bool) {
+	if asked, asks := source.(requestedSource); asks {
+		asked.request(x, y)
+	}
+	return source.colorAt(x, y)
+}
+
 // solidSource is a java.awt.Color: the same colour everywhere.
 type solidSource struct {
 	color goimagecolor.NRGBA

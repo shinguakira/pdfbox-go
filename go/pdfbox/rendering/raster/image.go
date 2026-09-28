@@ -229,7 +229,13 @@ func (i *Image) fillParts(shape geom.Shape) (*goimage.Alpha, goimage.Rectangle, 
 	bounds := i.dst.Bounds()
 	path := walkShape(shape, i.transform)
 	defer walkedPaths.Put(path)
-	requests := i.fillRequests(shape, path)
+	// Where Java2D would ask for its pixels is worked out only for a paint
+	// that reads it, which is a texture and nothing else: the box round the
+	// path is not free, and most fills are a colour.
+	var requests javaRequests
+	if needsRequests(i.paint) {
+		requests = i.fillRequests(shape, path)
+	}
 	path.adjust(i.fillAdjustmentOf())
 	mask := path.coverage(bounds.Dx(), bounds.Dy(), i.antiAliasing)
 	return mask, i.deviceBounds(shape, 0), requests
@@ -316,7 +322,11 @@ func (i *Image) strokeParts(shape geom.Shape) (*goimage.Alpha, goimage.Rectangle
 	if miter := float64(i.stroke.MiterLimit); miter > 1 {
 		width *= miter
 	}
-	return mask, i.deviceBounds(shape, width), i.strokeRequests(outline.polygons)
+	var requests javaRequests
+	if needsRequests(i.paint) {
+		requests = i.strokeRequests(outline.polygons)
+	}
+	return mask, i.deviceBounds(shape, width), requests
 }
 
 // compose puts the current paint onto the destination through a coverage mask

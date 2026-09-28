@@ -5361,7 +5361,9 @@ the same before and after flattening, where it differed in 2 pixels.
 
 `sample.pdf` renders in 5.2 seconds against PDFBox's 5.6, from 12.0;
 `issue8078.pdf` in 5.6 against 6.9, from 59.3; the 998 files in 42 seconds, from
-298, with four workers. What is left is recorded in the task file: compositing
+298, with four workers. TESTDATA.md carries those five files again after the
+three sections below, measured on a slower day and unchanged within it. What
+is left is recorded in the task file: compositing
 a partly transparent image with Java2D's MUL8 arithmetic and Java2D's
 nearest-neighbour ScaledBlit. The fixed-point walk of TexturePaintContext,
 which the next section runs into, is ported in the one after it.

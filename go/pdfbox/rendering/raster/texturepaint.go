@@ -168,9 +168,10 @@ func (t *textureContext) request(x, y int) {
 // colorAt answers the texture's colour at a device pixel, walked to from the
 // corner of the rectangle last asked for.
 //
-// A pixel above or to the left of that corner is not in the rectangle, and is
-// taken as a rectangle of its own, which is how a caller that knows nothing of
-// Java2D's rectangles gets each pixel mapped on its own.
+// A pixel above or to the left of that corner cannot be in the rectangle, so
+// it starts one of its own rather than walking backwards. That is a guard and
+// not a way to sample: a caller with no rectangle of Java2D's to follow asks
+// through colorAlone, which gives each pixel one.
 func (t *textureContext) colorAt(x, y int) (goimagecolor.NRGBA, bool) {
 	if t.bWidth == 0 || t.bHeight == 0 {
 		return goimagecolor.NRGBA{}, false
