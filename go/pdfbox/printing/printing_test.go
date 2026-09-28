@@ -465,6 +465,10 @@ func (b *recordingBackend) SetInterpolation(interpolation rendering.Interpolatio
 	b.interpolation = interpolation
 }
 
+func (b *recordingBackend) SetRenderingQuality(bool) {}
+
+func (b *recordingBackend) SetImageDownscalingThreshold(float32) {}
+
 func (b *recordingBackend) Fill(geom.Shape) error { return nil }
 
 func (b *recordingBackend) DrawImage(image.PDImage, *geom.AffineTransform, int) error {

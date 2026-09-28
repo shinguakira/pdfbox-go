@@ -253,5 +253,143 @@ public class Java2DDrv
             g.setStroke(new BasicStroke(4, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10));
             g.draw(line(2, 10, 18, 10));
         });
+
+        // 18. images, drawn with drawImage(image, transform, null) under
+        // PDFRenderer's bicubic hint. What Java2D does with one depends on the
+        // transform: an image that lands one to one on whole pixels is copied,
+        // and anything else goes through TransformHelper, which steps the
+        // inverse transform in 32.32 fixed point and interpolates a 4 by 4
+        // block around each pixel centre, whatever the scale.
+        BufferedImage rgb = pattern(8, 6, BufferedImage.TYPE_INT_RGB);
+        both("imageCopy", 20, 20, true, g ->
+            g.drawImage(rgb, AffineTransform.getTranslateInstance(3, 4), null));
+        both("imageOffset", 20, 20, true, g ->
+            g.drawImage(rgb, AffineTransform.getTranslateInstance(3.4, 4.6), null));
+        both("imageScaled", 24, 20, true, g ->
+            g.drawImage(rgb, new AffineTransform(1.7, 0, 0, 1.7, 2.3, 3.1), null));
+        both("imageShrunk", 20, 20, true, g ->
+            g.drawImage(pattern(16, 12, BufferedImage.TYPE_INT_RGB),
+                    new AffineTransform(0.7, 0, 0, 0.7, 1.5, 2.25), null));
+        both("imageRotated", 24, 24, true, g ->
+        {
+            AffineTransform at = AffineTransform.getRotateInstance(Math.toRadians(30), 12, 12);
+            at.translate(6.5, 7.25);
+            at.scale(1.2, 1.2);
+            g.drawImage(rgb, at, null);
+        });
+        both("imageAlpha", 20, 20, true, g ->
+            g.drawImage(pattern(6, 5, BufferedImage.TYPE_INT_ARGB),
+                    new AffineTransform(1.6, 0, 0, 1.6, 2.2, 2.7), null));
+        both("imageGray", 20, 20, true, g ->
+            g.drawImage(pattern(12, 10, BufferedImage.TYPE_BYTE_GRAY),
+                    new AffineTransform(0.75, 0, 0, 0.75, 3.3, 2.1), null));
+        // The way PageDrawer draws one: the page's transform flips y, and the
+        // image's own transform flips it back.
+        both("imageFlipped", 20, 20, true, g ->
+        {
+            g.translate(0, 20);
+            g.scale(1, -1);
+            g.drawImage(rgb, new AffineTransform(1.5, 0, 0, -1.5, 2.4, 16.3), null);
+        });
+
+        // 21. fills whose edges fall between pixel centres, with antialiasing
+        // off, which is how PDFBox fills every rectangular path (PDFBOX-2302).
+        // Java2D fills those in native code, and which of two native fillers
+        // runs depends on the stroke in force, so each shape is filled with a
+        // thin stroke set and again with a wide or a dashed one:
+        //
+        //   thin (strokeState STROKE_THIN)  ProcessPath.c, whose default is
+        //                                   "pixels at corners", (x,y) -> (x,y),
+        //                                   and whose PURE mode takes half a
+        //                                   pixel off to put them at centres
+        //   otherwise                       ShapeSpanIterator.c, which samples
+        //                                   pixel centres and, unless PURE,
+        //                                   first rounds every coordinate to
+        //                                   the nearest quarter, floor(v+0.25)+0.25
+        //
+        // The rectangles are built as PDFBox builds them, a path of four
+        // lines, because a Rectangle2D goes to a third filler again.
+        both("fillFractional", 16, 16, false, g -> g.fill(rect(0, 0, 9.59f, 4.11f)));
+        both("fillFractionalOffset", 16, 16, false, g -> g.fill(rect(0.3f, 0.3f, 4.41f, 4.41f)));
+        both("fillFractionalWide", 16, 16, false, g ->
+        {
+            g.setStroke(new BasicStroke(3));
+            g.fill(rect(0.3f, 0.3f, 4.41f, 4.41f));
+        });
+        both("fillFractionalDashed", 16, 16, false, g ->
+        {
+            g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10,
+                    new float[] { 4, 4 }, 0));
+            g.fill(rect(0.3f, 0.3f, 4.41f, 4.41f));
+        });
+        // The tile of patternscale.pdf: 7 by 3 pattern units at 1.37, which
+        // the default stroke makes wide, and a thin stroke leaves thin.
+        both("fillFractionalScaled", 16, 16, false, g ->
+        {
+            g.scale(1.37, 1.37);
+            g.fill(rect(0, 0, 7, 3));
+        });
+        both("fillFractionalScaledThin", 16, 16, false, g ->
+        {
+            g.setStroke(new BasicStroke(0.5f));
+            g.scale(1.37, 1.37);
+            g.fill(rect(0, 0, 7, 3));
+        });
+        // Edges that are not axis-aligned, where a sample at a point and a
+        // coverage of half a pixel are not the same test.
+        both("fillFractionalTriangle", 16, 16, false, g ->
+        {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(1.3, 1.2);
+            p.lineTo(13.8, 4.4);
+            p.lineTo(4.6, 14.1);
+            p.closePath();
+            g.fill(p);
+        });
+        both("fillFractionalCurve", 16, 16, false, g ->
+        {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(2.4, 13.6);
+            p.curveTo(2.4, 2.2, 13.7, 2.2, 13.7, 13.6);
+            p.closePath();
+            g.fill(p);
+        });
+    }
+
+    /** A rectangle as PDFBox builds one: four lines and a close. */
+    static Path2D.Float rect(float x0, float y0, float x1, float y1)
+    {
+        Path2D.Float p = new Path2D.Float();
+        p.moveTo(x0, y0);
+        p.lineTo(x1, y0);
+        p.lineTo(x1, y1);
+        p.lineTo(x0, y1);
+        p.closePath();
+        return p;
+    }
+
+    /** An image whose every pixel differs from its neighbours, of the given type. */
+    static BufferedImage pattern(int w, int h, int type)
+    {
+        BufferedImage image = new BufferedImage(w, h, type);
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int r = (x * 37 + y * 11) & 0xff;
+                int g = (x * x + y * 51) & 0xff;
+                int b = ((x ^ y) * 29) & 0xff;
+                int a = type == BufferedImage.TYPE_INT_ARGB ? 64 + ((x * 40 + y * 13) & 0xbf) : 0xff;
+                if (type == BufferedImage.TYPE_BYTE_GRAY)
+                {
+                    image.getRaster().setSample(x, y, 0, (x * 31 + y * 47) & 0xff);
+                }
+                else
+                {
+                    image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
+                }
+            }
+        }
+        return image;
     }
 }

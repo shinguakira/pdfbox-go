@@ -37,11 +37,14 @@ change it to suit one branch — change the copy.
 | `track/performance` | — | **carried**, not merged: its two commits rode into `track/testdata-sources` when that branch reopened. `../PERFORMANCE-PLAN.md` is its record |
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
 | `track/testdata-itext` | [`track-testdata-itext.md`](track-testdata-itext.md) | **merged** into `track/testdata-sources` on 2026-09-16 — iText's PDFs against PDFBox, and the text compared by digest |
-| `track/testdata-podofo` | [`track-testdata-podofo.md`](track-testdata-podofo.md) | open — made 2026-09-17 from `migration-base`; PoDoFo's test documents against PDFBox |
+| `track/testdata-podofo` | [`track-testdata-podofo.md`](track-testdata-podofo.md) | **merged** 2026-09-19, pull request #39 — PoDoFo's test documents against PDFBox, and the twelve facets, the write paths and rendering compared |
+| `track/render-performance` | [`track-render-performance.md`](track-render-performance.md) | open — made 2026-09-19 from `migration-base` at the user's request; issue #40, the renderer's speed against PDFBox's |
 
 **The port is merged**, every slice and every track of it, bar the two
 `track/performance` commits that ride in the open branch. What is open is
-`track/testdata-sources`, whose subject is [`../TESTDATA.md`](../TESTDATA.md).
+`track/testdata-sources`, whose subject is [`../TESTDATA.md`](../TESTDATA.md),
+and `track/render-performance`, which makes the renderer faster without
+changing what it draws except where that brings it closer to PDFBox.
 
 The order the branches were taken in, the dependency graph and the argument for
 each edge are in [`../BRANCHING.md`](../BRANCHING.md).

@@ -254,6 +254,12 @@ func (p *Path2D) Bounds2D() *Rectangle2D {
 		y1 = math.Min(y1, p.coords[i+1])
 		y2 = math.Max(y2, p.coords[i+1])
 	}
+	if p.singlePrecision {
+		// Path2D.Float answers new Rectangle2D.Float(x1, y1, x2 - x1, y2 - y1),
+		// so the width and the height are float subtractions.
+		return NewRectangle2D(x1, y1,
+			float64(float32(x2)-float32(x1)), float64(float32(y2)-float32(y1)))
+	}
 	return NewRectangle2D(x1, y1, x2-x1, y2-y1)
 }
 

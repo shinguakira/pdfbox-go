@@ -20,9 +20,11 @@ import (
 	goimage "image"
 	_ "image/png"
 	"os"
+	"sync"
 	"testing"
 
 	pdfbox "github.com/shinguakira/pdfbox-go/go/pdfbox"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/rendering/raster"
 )
@@ -147,6 +149,77 @@ func TestAPageAtTwiceTheScaleRendersAsPDFBoxRendersIt(t *testing.T) {
 		beyondEdges     = 0
 	)
 	differing, beyond := comparePageAtScale(t, "graphics-2x", "graphics", rendering.RGB, 2)
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}
+
+// TestDownscaledImagesRenderAsPDFBoxRendersThem is images drawn smaller than
+// they are, which PDFBox draws in two steps below half size:
+// getScaledInstance(SCALE_SMOOTH) averages the image down to its size on the
+// page, and drawImage puts that down. See areaaverage.go and
+// transformhelper.go.
+//
+// The RGB image at a fifth, at nearly a half and at more than a half, the
+// one-bit grey image and the stencil are PDFBox's pixel for pixel. What is left
+// is the image with a soft mask, 76 pixels one unit out, where it is partly
+// transparent: the two composite a premultiplied colour with different
+// arithmetic, as imageAlpha in java2d_test.go shows on its own. Before the
+// port the page was 5752 pixels out, 86 of them by more than a quarter of a
+// channel, and the image at more than a half by as much as 146.
+func TestDownscaledImagesRenderAsPDFBoxRendersThem(t *testing.T) {
+	const (
+		differingPixels = 76
+		beyondEdges     = 0
+	)
+	differing, beyond := comparePage(t, "downscale")
+	if differing != differingPixels || beyond != beyondEdges {
+		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
+			"than a quarter of a channel; it was %d and %d",
+			differing, beyond, differingPixels, beyondEdges)
+	}
+}
+
+// TestImagesUnderASoftMaskRenderAsPDFBoxRendersThem is images drawn while the
+// graphics state has a soft mask, which PageDrawer.drawBufferedImage draws as a
+// TexturePaint seen through the mask unless the image has a mask of its own,
+// and stencils filled with a colour, which drawImage hands to the same arm.
+// See gensoftmaskimage.go.
+//
+// Before the port drew the mask, the page was 5944 pixels out, 2598 of them by
+// more than a quarter of a channel: the images under the mask were drawn at
+// full strength, and both stencils were seen through the mask only where they
+// landed. What is left is compositing, and no pixel is more than 2 levels out:
+//
+//	1:1 under the mask         292 pixels, by 1: the compositing of a partly
+//	                           transparent colour, as masks.pdf and imageAlpha
+//	1.5 under the mask        1109 pixels, up to 2
+//	its own /SMask             860 pixels, up to 2: compositing, as imageAlpha
+//	its own /Mask                0
+//	stencil under the mask     224 pixels, up to 2
+//	stencil, its own /SMask    498 pixels, up to 2
+//	no soft mask                 0
+//
+// Both stencils are filled in their own pixels with a colour that already
+// carries the soft mask, getStencilImage(getNonStrokingPaint()), so the mask
+// is read at the top left of the page as well as where the stencil lands.
+// Reading it only where the stencil lands puts the first 107 out and the
+// second 45.
+//
+// The image at one and a half was 2010 pixels out, 433 of them by more than
+// 64, every one in every third column or row, until TexturePaintContext's walk
+// was ported. It is scaled up with /Interpolate false, so the texture gives the
+// nearest texel, and every third device column and row falls exactly on a
+// texel boundary: Java's walk lands on the texel before, and mapping each pixel
+// in floating point landed on the texel itself. See texturepaint.go.
+func TestImagesUnderASoftMaskRenderAsPDFBoxRendersThem(t *testing.T) {
+	const (
+		differingPixels = 2983
+		beyondEdges     = 0
+	)
+	differing, beyond := comparePage(t, "softmaskimage")
 	if differing != differingPixels || beyond != beyondEdges {
 		t.Errorf("%d of the page's pixels are not PDFBox's, %d of them by more "+
 			"than a quarter of a channel; it was %d and %d",
@@ -339,32 +412,32 @@ func TestStencilsRenderAsPDFBoxRendersThem(t *testing.T) {
 // stretched, a filtered sample lands on a texel corner, and a whole number is
 // its own ceiling.
 //
-// Two things separate the two renderers here, and only one is deliberate:
+// Two things separated the two renderers here, and only one was deliberate.
+// The other is fixed now:
 //
-//	~550 pixels  are what is left of the tile sampling, with the rest of it
-//	             fixed -- the four-texel blend of TexturePaintContext's
-//	             `filter`, which took the gap from 852 pixels to 550 and the
-//	             badly-wrong ones from 634 to 327. What remains is inside that
-//	             class: it walks the texture with a 16.16 fixed-point
-//	             accumulator and quantises its weights to twelve bits, and
-//	             float weights from a transform do not land in the same place.
-//	~700 pixels  are JAVA-BUGS.md 85, on purpose. TilingPaint.ceiling
-//	             truncates, so Java rasterizes a 13.7-pixel tile 13 pixels wide
-//	             and stretches it; the port rounds up, as the method's javadoc
-//	             asks, and rasterizes 14. A tile of a different resolution
-//	             cannot agree pixel for pixel with one of another.
+//	the tile   is PDFBox's, pixel for pixel. Its three rectangles are filled
+//	           with antialiasing off, and Java2D fills those at the pixel's
+//	           corner, not its centre -- see fillrule.go, ported after this
+//	           page showed it. The tile's bands were 4, 4 and 5 rows deep and
+//	           10, 7 and 4 wide where PDFBox's are 5, 4 and 4 deep and 10, 7
+//	           and 5 wide, and now they are PDFBox's. Given Java's own tile
+//	           width as well, this page comes out exactly as PDFBox draws it,
+//	           not one pixel in 7,200 out.
+//	1008 / 370 are JAVA-BUGS.md 85, on purpose, and all that is left.
+//	           TilingPaint.ceiling truncates, so Java rasterizes a 13.7-pixel
+//	           tile 13 pixels wide and stretches it; the port rounds up, as
+//	           the method's javadoc asks, and rasterizes 14. A tile of one
+//	           resolution cannot agree pixel for pixel with one of another.
+//	           It was 1250 and 600 while the tile was the port's own.
 //
-// The two are not separable by subtraction -- the second changes what the
-// first samples -- so what is pinned is the total, and the halves are the two
-// measurements above.
-//
-// Sampling the pixel's centre rather than its corner is **not** part of it: a
-// sweep over every quarter-pixel offset in both axes puts the best fit at
-// exactly (0, 0).
+// The sampling is not part of it: TexturePaintContext's walk and blend are
+// ported in texturepaint.go and match the JDK's pixel for pixel, and a sweep
+// over every quarter-pixel offset in both axes put the best fit at exactly
+// (0, 0).
 func TestAScaledTilingPatternRendersAsThePortMeansTo(t *testing.T) {
 	const (
-		differingPixels = 1250
-		beyondEdges     = 600
+		differingPixels = 1008
+		beyondEdges     = 370
 	)
 	differing, beyond := comparePage(t, "patternscale")
 	if differing != differingPixels || beyond != beyondEdges {
@@ -372,4 +445,79 @@ func TestAScaledTilingPatternRendersAsThePortMeansTo(t *testing.T) {
 			"than a quarter of a channel; it was %d and %d",
 			differing, beyond, differingPixels, beyondEdges)
 	}
+}
+
+// TestTwoPagesRenderAtOnce renders two pages at the same time, which nothing
+// stops a caller of this library doing.
+//
+// The pixels are compared with the same pages rendered one at a time: state
+// shared between two renders by accident would change them. Run under the race
+// detector it says more, though not everything -- what this package holds
+// between renders is built at load, and the pages here are rendered once
+// before the goroutines start, so a table built lazily would already be built.
+// TestThePackageTablesAreBuiltAtLoad is what holds them to being built at load.
+//
+// Both pages are parsed, and rendered once, before the two goroutines start.
+// Parsing two documents at once is a race of PDFBox's own, which the port
+// carries: a name is interned and shared, and the parser writes the "direct"
+// flag on it. Java does the same -- its map is a ConcurrentHashMap, which
+// guards the map and not the name in it -- and nothing reads that flag for a
+// name, so nothing comes of it. See migration/STATUS.md.
+func TestTwoPagesRenderAtOnce(t *testing.T) {
+	// downscale.pdf goes through the bicubic coefficients and the shrink
+	// filter, patternscale.pdf through a texture and its tile.
+	pages := []string{"downscale", "patternscale"}
+	documents := make([]*pdmodel.PDDocument, len(pages))
+	alone := make([]goimage.Image, len(pages))
+	for k, page := range pages {
+		document, err := pdfbox.LoadPDF("testdata/" + page + ".pdf")
+		if err != nil {
+			t.Fatalf("loading %s: %v", page, err)
+		}
+		defer document.Close()
+		documents[k] = document
+		alone[k] = renderAgain(t, document, page)
+	}
+
+	together := make([]goimage.Image, len(pages))
+	var wg sync.WaitGroup
+	for k, page := range pages {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			together[k] = renderAgain(t, documents[k], page)
+		}()
+	}
+	wg.Wait()
+
+	for k, page := range pages {
+		if !samePixels(alone[k], together[k]) {
+			t.Errorf("%s renders differently beside another page", page)
+		}
+	}
+}
+
+// renderAgain renders a page of an open document at 72 dpi.
+func renderAgain(t *testing.T, document *pdmodel.PDDocument, page string) goimage.Image {
+	t.Helper()
+	rendered, err := raster.RenderPage(document, 0, 1, rendering.RGB)
+	if err != nil {
+		t.Fatalf("rendering %s: %v", page, err)
+	}
+	return rendered
+}
+
+// samePixels reports whether two renders are the same image.
+func samePixels(a, b goimage.Image) bool {
+	if a.Bounds() != b.Bounds() {
+		return false
+	}
+	for y := a.Bounds().Min.Y; y < a.Bounds().Max.Y; y++ {
+		for x := a.Bounds().Min.X; x < a.Bounds().Max.X; x++ {
+			if a.At(x, y) != b.At(x, y) {
+				return false
+			}
+		}
+	}
+	return true
 }

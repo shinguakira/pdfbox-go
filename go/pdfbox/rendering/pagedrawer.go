@@ -23,6 +23,7 @@ package rendering
 
 import (
 	"fmt"
+	goimagecolor "image/color"
 	"log/slog"
 	"math"
 
@@ -149,6 +150,10 @@ func (d *PageDrawer) LinePath() *geom.Path2D { return d.linePath }
 func (d *PageDrawer) setRenderingHints() {
 	d.backend.SetAntiAliasing(d.renderingHints.AntiAliasing)
 	d.backend.SetInterpolation(d.renderingHints.Interpolation)
+	d.backend.SetRenderingQuality(d.renderingHints.Quality)
+	// Not a hint in Java but a field drawBufferedImage reads; the port's
+	// drawBufferedImage is the backend's, so the backend is told.
+	d.backend.SetImageDownscalingThreshold(d.imageDownscalingOptimizationThreshold)
 }
 
 // DrawPage draws the page onto the given backend.
@@ -1000,7 +1005,14 @@ func (d *PageDrawer) DrawImage(pdImage image.PDImage) error {
 		if paintErr != nil {
 			return paintErr
 		}
-		err = d.backend.DrawStencil(pdImage, at, paint)
+		if softMask := gs.SoftMask(); softMask != nil && !hasImageMask(pdImage) &&
+			!isPatternSpace(gs.NonStrokingColor().ColorSpace()) {
+			err = d.drawStencilUnderSoftMask(pdImage, at, paint, softMask)
+		} else {
+			err = d.backend.DrawStencil(pdImage, at, paint)
+		}
+	} else if softMask := gs.SoftMask(); softMask != nil && !hasImageMask(pdImage) {
+		err = d.drawImageUnderSoftMask(pdImage, at, subsampling, softMask)
 	} else {
 		err = d.backend.DrawImage(pdImage, at, subsampling)
 	}
@@ -1014,6 +1026,83 @@ func (d *PageDrawer) DrawImage(pdImage image.PDImage) error {
 		d.setRenderingHints()
 	}
 	return nil
+}
+
+// hasImageMask is drawBufferedImage's test for a mask of the image's own:
+// "Either form of mask in the image dictionary shall override the current soft
+// mask in the graphics state", which is PDFBOX-5307 quoting section 11.6.4.3 of
+// the specification. The key being there is enough; Java does not look at what
+// it holds.
+func hasImageMask(pdImage image.PDImage) bool {
+	dictionary := pdImage.COSDictionary()
+	return dictionary.ContainsKey(cos.Mask) || dictionary.ContainsKey(cos.SMask)
+}
+
+// drawImageUnderSoftMask is the first arm of drawBufferedImage: an image drawn
+// while the graphics state has a soft mask, and the image has none of its own,
+// is a TexturePaint seen through the mask, filled over the image's rectangle.
+//
+//	Rectangle2D rectangle = new Rectangle2D.Float(0, 0, width, height);
+//	Paint awtPaint = new TexturePaint(image, rectangle);
+//	awtPaint = applySoftMaskToPaint(awtPaint, softMask);
+//	graphics.setPaint(awtPaint);
+//	graphics.transform(imageTransform);
+//	graphics.fill(rectangle);
+//	graphics.setTransform(originalTransform);
+//
+// Java reaches it with the BufferedImage drawImage read, getImage(null,
+// subsampling); the port reads it here, because the other arm is the
+// backend's DrawImage, which reads its own.
+func (d *PageDrawer) drawImageUnderSoftMask(pdImage image.PDImage, at *geom.AffineTransform,
+	subsampling int, softMask *state.PDSoftMask) error {
+	img, err := pdImage.ImageOfRegion(nil, subsampling)
+	if err != nil {
+		return err
+	}
+	return d.fillUnderSoftMask(ImagePaint{Image: img}, at, softMask)
+}
+
+// drawStencilUnderSoftMask is the same arm reached from a stencil filled with
+// a colour, which drawImage hands to drawBufferedImage as
+// getStencilImage(getNonStrokingPaint()).
+//
+// That paint already carries the soft mask, and getStencilImage fills it in
+// the stencil's own pixels. So PDFBox applies the mask twice: once read at the
+// stencil's pixel coordinates, as though the stencil sat at the top left of
+// the page, and once by the arm, where the stencil lands. The port does the
+// same; see ImagePaint.Fill.
+func (d *PageDrawer) drawStencilUnderSoftMask(pdImage image.PDImage, at *geom.AffineTransform,
+	paint Paint, softMask *state.PDSoftMask) error {
+	stencil, err := pdImage.StencilImage(goimagecolor.NRGBA{A: 0xFF})
+	if err != nil {
+		return err
+	}
+	return d.fillUnderSoftMask(ImagePaint{Image: stencil, Fill: paint}, at, softMask)
+}
+
+// fillUnderSoftMask is the arm itself, for the image the texture is made of.
+func (d *PageDrawer) fillUnderSoftMask(texture ImagePaint, at *geom.AffineTransform,
+	softMask *state.PDSoftMask) error {
+	width := texture.Image.Bounds().Dx()
+	height := texture.Image.Bounds().Dy()
+
+	originalTransform := d.backend.Transform()
+	imageTransform := at.Clone()
+	imageTransform.Scale(1.0/float64(width), -1.0/float64(height))
+	imageTransform.Translate(0, -float64(height))
+
+	rectangle := geom.NewRectangle2D(0, 0, float64(float32(width)), float64(float32(height)))
+	paint, err := d.applySoftMaskToPaint(texture, softMask)
+	if err != nil {
+		return err
+	}
+	d.backend.SetPaint(paint)
+	transform := originalTransform.Clone()
+	transform.Concatenate(imageTransform)
+	d.backend.SetTransform(transform)
+	err = d.backend.Fill(rectangle)
+	d.backend.SetTransform(originalTransform)
+	return err
 }
 
 // absRound is Java's `Math.abs(Math.round(x))`.

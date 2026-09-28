@@ -34,6 +34,9 @@ type recordingBackend struct {
 	alphaConstant float64
 	antiAliasing  bool
 	interpolation Interpolation
+
+	// fillTransforms is the transform in force at each fill, in order.
+	fillTransforms []*geom.AffineTransform
 }
 
 var _ Backend = (*recordingBackend)(nil)
@@ -104,7 +107,12 @@ func (b *recordingBackend) SetInterpolation(interpolation Interpolation) {
 	b.interpolation = interpolation
 }
 
+func (b *recordingBackend) SetRenderingQuality(bool) {}
+
+func (b *recordingBackend) SetImageDownscalingThreshold(float32) {}
+
 func (b *recordingBackend) Fill(shape geom.Shape) error {
+	b.fillTransforms = append(b.fillTransforms, b.transform.Clone())
 	b.record("fill %s paint=%s", boundsOf(shape), describePaint(b.paint))
 	return nil
 }
@@ -162,6 +170,12 @@ func describePaint(paint Paint) string {
 			return "tiling(colored)"
 		}
 		return fmt.Sprintf("tiling(uncolored, %s)", p.ColorSpace.Name())
+	case ImagePaint:
+		bounds := p.Image.Bounds()
+		if p.Fill != nil {
+			return fmt.Sprintf("stencil(%dx%d, %s)", bounds.Dx(), bounds.Dy(), describePaint(p.Fill))
+		}
+		return fmt.Sprintf("image(%dx%d)", bounds.Dx(), bounds.Dy())
 	case SoftMaskedPaint:
 		return fmt.Sprintf("softMask(%s, %s)", p.Mask.SubType().Name(), describePaint(p.Paint))
 	}

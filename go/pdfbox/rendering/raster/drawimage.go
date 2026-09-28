@@ -12,6 +12,7 @@ package raster
 import (
 	goimage "image"
 	goimagecolor "image/color"
+	"math"
 
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/math/f64"
@@ -57,12 +58,38 @@ func (i *Image) imageTransform(at *geom.AffineTransform, width, height int) *geo
 // Java's KEY_INTERPOLATION takes VALUE_INTERPOLATION_NEAREST_NEIGHBOR or
 // VALUE_INTERPOLATION_BICUBIC, and PageDrawer sets the first for an image
 // scaled up with /Interpolate false. CatmullRom is the bicubic of
-// x/image/draw.
+// x/image/draw, which DrawSurface still samples with; an image's bicubic is
+// Java2D's own, drawImageJava2D.
 func (i *Image) interpolator() xdraw.Interpolator {
 	if i.interpolation == rendering.NearestNeighbor {
 		return xdraw.NearestNeighbor
 	}
 	return xdraw.CatmullRom
+}
+
+// javaClipBounds is the bounds of the clip region Java2D makes of the clip in
+// force: the clip's box in device space with each side at the first pixel
+// centre inside it, which is Region.clipRound, ceil(v - 0.5). TransformHelper
+// starts stepping at its top left corner. Without a clip it is the surface.
+func (i *Image) javaClipBounds() goimage.Rectangle {
+	surface := i.dst.Bounds()
+	if i.clip == nil {
+		return surface
+	}
+	box := i.clip.Bounds2D()
+	if box == nil {
+		return surface
+	}
+	if i.clipTransform != nil {
+		box = transformedRect(i.clipTransform, box)
+	}
+	return goimage.Rect(clipRound(box.X), clipRound(box.Y),
+		clipRound(box.X+box.Width), clipRound(box.Y+box.Height)).Intersect(surface)
+}
+
+// clipRound is Region.clipRound.
+func clipRound(v float64) int {
+	return javaIntOf(math.Ceil(v - 0.5))
 }
 
 // DrawImage draws the given image through the given transform.
@@ -72,7 +99,7 @@ func (i *Image) DrawImage(pdImage pdimage.PDImage, at *geom.AffineTransform,
 	if err != nil {
 		return err
 	}
-	return i.drawSampled(source, at, nil)
+	return i.drawBufferedImage(source, at, nil)
 }
 
 // DrawStencil draws the given stencil mask filled with the given paint.
@@ -94,14 +121,84 @@ func (i *Image) DrawStencil(pdImage pdimage.PDImage, at *geom.AffineTransform,
 	if err != nil {
 		return err
 	}
+	switch p := paint.(type) {
+	case rendering.ColorPaint:
+		// A stencil filled with a colour is drawn as any other image is --
+		// getStencilImage(paint), then drawBufferedImage -- and a stencil filled
+		// with a pattern is not: Java renders the pattern and scales the mask
+		// by a route of its own.
+		return i.drawBufferedImage(mask, at, paint)
+	case rendering.SoftMaskedPaint:
+		if _, isColour := p.Paint.(rendering.ColorPaint); isColour {
+			// The same, with the colour seen through the graphics state's soft
+			// mask. PageDrawer draws a stencil under a soft mask as a texture
+			// unless the stencil has a /Mask or an /SMask of its own; this is
+			// the one that has, and getStencilImage fills it in its own pixels.
+			filled, err := i.filledStencil(mask, paint)
+			if err != nil {
+				return err
+			}
+			return i.drawBufferedImage(filled, at, nil)
+		}
+	}
 	return i.drawSampled(mask, at, paint)
 }
 
-// drawSampled maps a source image onto the destination and composites it.
+// filledStencil is getStencilImage(paint) for any paint: an image of the
+// stencil's size filled with the paint, and clear where the stencil does not
+// paint. stencil is opaque where it paints, as StencilImage makes it.
+//
+// Java fills it through the BufferedImage's own Graphics2D, whose device space
+// is the image's pixels, so the paint is asked for its colour at (x, y) of the
+// image, wherever the image is drawn afterwards. For a colour seen through a
+// soft mask, which is what getNonStrokingPaint answers under one, that reads
+// the mask at the top left of the page.
+//
+// A pixel the paint gives no alpha stays clear, as a SrcOver of nothing onto
+// the clear BufferedImage leaves it.
+func (i *Image) filledStencil(stencil goimage.Image, fill rendering.Paint) (*goimage.NRGBA, error) {
+	source, alpha, err := i.sourceOf(fill)
+	if err != nil {
+		return nil, err
+	}
+	bounds := stencil.Bounds()
+	filled := goimage.NewNRGBA(goimage.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	for y := 0; y < bounds.Dy(); y++ {
+		for x := 0; x < bounds.Dx(); x++ {
+			if _, _, _, a := stencil.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA(); a == 0 {
+				continue
+			}
+			c, painted := source.colorAt(x, y)
+			if !painted {
+				continue
+			}
+			c.A = uint8(math.Round(float64(c.A) * alpha))
+			if c.A == 0 {
+				continue
+			}
+			filled.SetNRGBA(x, y, c)
+		}
+	}
+	return filled, nil
+}
+
+// drawSampled maps a source image onto the destination through the transform
+// that takes the unit square to where it goes, and composites it.
 //
 // Where paint is nil the source's own colours are drawn; where it is not, the
 // source is a stencil and its coverage picks out where the paint shows.
 func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
+	paint rendering.Paint) error {
+	bounds := source.Bounds()
+	if bounds.Dx() == 0 || bounds.Dy() == 0 {
+		return nil
+	}
+	return i.drawThrough(source, i.imageTransform(at, bounds.Dx(), bounds.Dy()), paint)
+}
+
+// drawThrough is drawSampled with the transform from the image's pixels to the
+// device already worked out.
+func (i *Image) drawThrough(source goimage.Image, transform *geom.AffineTransform,
 	paint rendering.Paint) error {
 	bounds := source.Bounds()
 	if bounds.Dx() == 0 || bounds.Dy() == 0 {
@@ -120,7 +217,6 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 	// buffer for each of them, and the rows are read out of Pix rather than
 	// through RGBAAt, which tests the bounds and works out the offset on every
 	// call. What is drawn does not change.
-	transform := i.imageTransform(at, bounds.Dx(), bounds.Dy())
 	area := i.dst.Bounds().Intersect(paddedRect(transformedRect(transform,
 		geom.NewRectangle2D(float64(bounds.Min.X), float64(bounds.Min.Y),
 			float64(bounds.Dx()), float64(bounds.Dy())))))
@@ -128,7 +224,12 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 		return nil
 	}
 	sampled := goimage.NewRGBA(area)
-	i.interpolator().Transform(sampled, aff3Of(transform), source, bounds, xdraw.Src, nil)
+	if i.interpolation == rendering.NearestNeighbor {
+		xdraw.NearestNeighbor.Transform(sampled, aff3Of(transform), source, bounds, xdraw.Src, nil)
+	} else {
+		// Java2D's own bicubic drawImage; see transformhelper.go.
+		drawImageJava2D(sampled, source, transform, i.javaClipBounds())
+	}
 
 	var stencil paintSource
 	if paint != nil {
@@ -166,8 +267,11 @@ func (i *Image) drawSampled(source goimage.Image, at *geom.AffineTransform,
 				R: row[offset], G: row[offset+1], B: row[offset+2], A: alpha,
 			})
 			if stencil != nil {
+				// Each pixel on its own: Java paints a stencil's pattern into
+				// an image of its own and masks that, so there is no rectangle
+				// of Java2D's to follow here. See colorAlone.
 				painted := false
-				if colour, painted = stencil.colorAt(x, y); !painted {
+				if colour, painted = colorAlone(stencil, x, y); !painted {
 					continue
 				}
 			}

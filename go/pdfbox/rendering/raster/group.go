@@ -99,8 +99,14 @@ func (i *Image) groupClip(bbox *common.PDRectangle) *goimage.Alpha {
 	if clip == nil {
 		return box
 	}
-	for index := range box.Pix {
-		box.Pix[index] = uint8(int(box.Pix[index]) * int(clip.Pix[index]) / 255)
+	// Each mask covers only what its shape reaches, so the two are multiplied
+	// where they are on the surface rather than index by index; outside the
+	// clip's mask the clip is 0, which is what AlphaAt answers there.
+	for y := box.Rect.Min.Y; y < box.Rect.Max.Y; y++ {
+		for x := box.Rect.Min.X; x < box.Rect.Max.X; x++ {
+			offset := box.PixOffset(x, y)
+			box.Pix[offset] = uint8(int(box.Pix[offset]) * int(clip.AlphaAt(x, y).A) / 255)
+		}
 	}
 	return box
 }

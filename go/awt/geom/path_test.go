@@ -281,3 +281,36 @@ func TestPathBounds2DEmpty(t *testing.T) {
 		t.Errorf("Bounds2D of an empty path = %v, want the zero rectangle", got)
 	}
 }
+
+// TestAFloatPathsBoundsAreFloat checks the bounds of a single-precision path.
+//
+// Java's Path2D.Float.getBounds2D keeps its minimum and maximum as floats and
+// answers new Rectangle2D.Float(x1, y1, x2 - x1, y2 - y1): the width is a float
+// subtraction. The port subtracted the same two values in double, and for a
+// rectangle whose edges are not exact in binary the width then came out a few
+// millionths off. PDFStreamEngine.processAnnotation divides an annotation's
+// width by exactly this width; a millionth off made the scale 0.99999994
+// rather than 1, and every image in the appearance was drawn through a
+// transform a last bit away from PDFBox's.
+//
+// Found by PDAcroFormFlattenTest: Signed-Document-1.pdf's annotation, whose
+// /Rect and /BBox are both [125.57946 269.97556 375.57947 349.97556]. The
+// expected values are PDFBox's, printed by a scratch program for
+// bbox.transform(matrix).getBounds2D() of that annotation:
+// Rectangle2D$Float[x=125.57946,y=269.97556,w=250.0,h=80.0].
+func TestAFloatPathsBoundsAreFloat(t *testing.T) {
+	path := NewPathFloat()
+	path.MoveTo(125.57946, 269.97556)
+	path.LineTo(375.57947, 269.97556)
+	path.LineTo(375.57947, 349.97556)
+	path.LineTo(125.57946, 349.97556)
+	path.ClosePath()
+
+	box := path.Bounds2D()
+	if box.X != float64(float32(125.57946)) || box.Y != float64(float32(269.97556)) {
+		t.Errorf("the corner is (%v, %v), and PDFBox's is (125.57946, 269.97556) as floats", box.X, box.Y)
+	}
+	if box.Width != 250 || box.Height != 80 {
+		t.Errorf("the box is %v by %v, and PDFBox's is 250.0 by 80.0", box.Width, box.Height)
+	}
+}

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shinguakira/pdfbox-go/go/pdfbox"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
@@ -442,4 +443,60 @@ func TestTransparencyGroupIsPushedAndPopped(t *testing.T) {
 		"pushGroup [10.00 20.00 30.00 40.00] softMask=false backdrop=false",
 		"fill [20.00 30.00 5.00 5.00] paint=color(0.000 0.000 0.000 1.000)",
 		"popGroup")
+}
+
+// TestAnImageUnderASoftMaskIsFilledAsATexture pins which way drawBufferedImage
+// goes while the graphics state has a soft mask, over the page the raster
+// comparison renders, raster/testdata/softmaskimage.pdf.
+//
+// An image with no mask of its own, and a stencil filled with a colour, become
+// a TexturePaint seen through the mask, filled over the image's rectangle with
+// the image's own transform in force. An image or a stencil that has a /Mask
+// or an /SMask is drawn as it would be without the soft mask -- though the
+// stencil's paint still carries it, because getNonStrokingPaint puts it there.
+// That same paint fills the stencil's texture, so there the mask is twice.
+func TestAnImageUnderASoftMaskIsFilledAsATexture(t *testing.T) {
+	document, err := pdfbox.LoadPDF("raster/testdata/softmaskimage.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer document.Close()
+
+	backend := newRecordingBackend()
+	if err := NewPDFRenderer(document).RenderPageToBackend(0, backend, 1, 1, Export); err != nil {
+		t.Fatal(err)
+	}
+	wantDrawn(t, backend,
+		"fill [0.00 0.00 40.00 30.00] paint=softMask(Luminosity, image(40x30))",
+		"fill [0.00 0.00 40.00 30.00] paint=softMask(Luminosity, image(40x30))",
+		"drawImage 40x30 subsampling=1",
+		"drawImage 40x30 subsampling=1",
+		"fill [0.00 0.00 40.00 30.00] paint=softMask(Luminosity, "+
+			"stencil(40x30, softMask(Luminosity, color(0.800 0.100 0.100 1.000))))",
+		"drawStencil 40x30 paint=softMask(Luminosity, color(0.100 0.300 0.800 1.000))",
+		"drawImage 40x30 subsampling=1")
+
+	// A pixel of the image to a unit of user space, which the page's transform
+	// makes a device pixel, with the image's top left corner where the image
+	// lands: 40 by 30 at (10,80), 60 by 45 at (60,65) and 40 by 30 at (75,20),
+	// on a page 170 high.
+	wantTransforms := [][6]float64{
+		{1, 0, 0, 1, 10, 60},
+		{1.5, 0, 0, 1.5, 60, 60},
+		{1, 0, 0, 1, 75, 120},
+	}
+	if len(backend.fillTransforms) != len(wantTransforms) {
+		t.Fatalf("%d fills, want %d", len(backend.fillTransforms), len(wantTransforms))
+	}
+	for k, want := range wantTransforms {
+		at := backend.fillTransforms[k]
+		got := [6]float64{at.ScaleX(), at.ShearY(), at.ShearX(), at.ScaleY(),
+			at.TranslateX(), at.TranslateY()}
+		for j := range want {
+			if math.Abs(got[j]-want[j]) > 1e-9 {
+				t.Errorf("fill %d is drawn through %v, want %v", k, got, want)
+				break
+			}
+		}
+	}
 }

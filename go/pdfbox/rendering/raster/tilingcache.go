@@ -138,7 +138,7 @@ func (i *Image) cachedTilingSource(paint rendering.TilingPaint) (paintSource, er
 	}
 	if cacheable {
 		if i.tiles == nil {
-			i.tiles = map[tilingKey]*tilingSource{}
+			i.tiles = map[tilingKey]*textureContext{}
 		}
 		i.tiles[key] = source
 	}

@@ -91,7 +91,7 @@ func TestTheSamePatternKeysTheSame(t *testing.T) {
 	}
 
 	// So is the same pattern sampled the other way. The source bakes the
-	// filter in -- see tilingSource.blend -- so one built under
+	// filter in -- see textureContext.colorAt -- so one built under
 	// NEAREST_NEIGHBOR must not be handed to a fill under BICUBIC.
 	unfiltered, _ := tilingKeyOf(paint, identity, false)
 	if first == unfiltered {
@@ -113,8 +113,8 @@ func TestAPatternsTileIsRenderedOnce(t *testing.T) {
 	if !ok {
 		t.Fatal("the paint has no key")
 	}
-	rendered := &tilingSource{}
-	i.tiles = map[tilingKey]*tilingSource{key: rendered}
+	rendered := &textureContext{}
+	i.tiles = map[tilingKey]*textureContext{key: rendered}
 
 	source, err := i.cachedTilingSource(paint)
 	if err != nil {
