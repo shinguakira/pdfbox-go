@@ -5537,7 +5537,7 @@ Issue #33 of #29; the task file is
 in [`TESTDATA.md`](TESTDATA.md), "PDFium against the Java".
 
 341 documents, every PDF PDFium commits, compared five ways: the document
-(opens, page count, text), thirteen facets, the seven write paths, and the render
+(opens, page count, text), twelve facets, the seven write paths, and the render
 page by page. **The documents, the facets bar images, and every write path agree
 exactly** -- the same 322 open, the same 25 are refused, and save, incremental
 save, encryption, split, merge, overlay and an external signature are the same on
@@ -5569,10 +5569,12 @@ one sentinel here**, and this is the only place the port had made two.
 ### What else the renders showed, all of it already recorded
 
 173 of 381 pages are identical to the last bit and 193 more within a level of a
-cell. Six pages differ further, and not one of them is new: three are colour --
-`PDICCBased` taking the `/Alternate` space, and `PDDeviceCMYK` converting naively
--- one is `JAVA-BUGS.md` 85's wider tiling raster, one is a truncated JPEG that
-`image/jpeg` refuses and Java's reader returns a buffer for, and one is a page
+cell. **Five** differ further than that and one more is the page where a side
+fails; the other nine of the 381 are pages both sides fail on, the same way. Not
+one of the six is new: three are colour -- `PDICCBased` taking the `/Alternate`
+space, and `PDDeviceCMYK` converting naively -- one is `JAVA-BUGS.md` 85's wider
+tiling raster, one is a truncated JPEG that `image/jpeg` refuses and Java's
+reader returns a buffer for, and the sixth is the page
 PDFBox aborts on and the port draws: a type 4 function that returns two values
 where its `/Range` asks three, which PDFBox throws from while building a type 6
 shading's pixel table. `TESTDATA.md` has the mechanism of each, and the port's

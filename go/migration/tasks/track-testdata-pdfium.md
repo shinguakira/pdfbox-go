@@ -92,10 +92,10 @@ table makes of them. The numbers and what each difference is made of are in
 | Comparison | Result |
 | --- | --- |
 | document: opens, page count, text | **0 of 341 disagree** — the same 322 open, the same 25 refuse, every page count and every text digest the same |
-| facets: eleven of thirteen | **all 322 the same** — positions, info, XMP, XMP schemas, outline, labels, boxes, structure, annotations, fields |
-| facets: `images` and `imagepixels` | 6 and 7 differ, every one a JPEG |
+| facets: ten of the twelve | **all 322 the same** — positions, info, XMP, XMP schemas, outline, labels, boxes, structure, annotations, fields |
+| facets: `images` and `imagepixels`, the other two | 6 and 7 differ, every one a JPEG |
 | write paths: save, incremental, encrypt, split, merge, overlay, sign | **all 322 the same**, on every one of the seven |
-| render, page by page | 173 identical to the last bit, 193 within a level of a cell, 4 further, 1 page one side fails |
+| render, page by page | of 381: 173 identical to the last bit, 193 within a level of a cell, 5 further than that, 1 where one side fails, 9 where both do |
 
 ## Found in the port
 
