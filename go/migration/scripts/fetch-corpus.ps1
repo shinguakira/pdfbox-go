@@ -195,6 +195,24 @@ $gitSuites = @(
         Keep    = @('*.[pP][dD][fF]')
         PasswordTable = 'passwords/podofo.tsv'
     }
+    # PDFium keeps its test inputs in testing/resources, and every PDF in the
+    # repository is one of them. The set is a renderer's: most files are a few
+    # kilobytes of hand-written PDF aimed at one parser or one drawing path, and
+    # 562 of its inputs are not PDFs at all but .in templates its own Python
+    # tooling expands -- see TESTDATA.md, "PDFium against the Java", for what
+    # those are and why they are left alone here.
+    [pscustomobject]@{
+        Name    = 'pdfium'
+        Size    = 'large'
+        Bytes   = 4MB
+        Licence = 'BSD-3-Clause'
+        Covers  = "every PDF committed to PDFium, at its path in the repository: 341 on main at 2026-09-28, all under testing/resources -- 296 at its root, pixel 24, pixel/xfa_specific 9, xfa 6, javascript/xfa_specific 6. Hand-written files named after what they break: bad xref tables and startxref offsets, a stream whose /Length lies, zero-length and truncated streams, every filter and a few invalid ones, bad fonts and embedded CMaps, annotations and form fields including XFA, JavaScript actions, and the pixel tests' rendering inputs. 237 of them also have the .in template they were expanded from committed beside them, and another 325 inputs exist only as templates, which are not fetched"
+        Exercises = 'pdfparser and cos for the damaged ones, pdmodel/font for the bad fonts and CMaps, pdmodel/interactive/form and annotation for the XFA and field files, rendering for the pixel inputs'
+        Git     = 'https://pdfium.googlesource.com/pdfium'
+        Branch  = 'main'
+        Keep    = @('*.[pP][dD][fF]')
+        PasswordTable = 'passwords/pdfium.tsv'
+    }
 )
 
 # iText's other repositories: the add-ons, the published examples, the books and

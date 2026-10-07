@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
+	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
 )
 
 // ResourcesLike is what a colour space asks of the resource dictionary it was
@@ -33,11 +34,17 @@ type ResourcesLike interface {
 // ErrMissingResource is returned where a colour space names a resource that is
 // not there.
 //
-// Port of java.util.MissingResourceException, which PDColorSpace.create throws
-// and which is unchecked; the port returns it, because every caller of create
-// already handles an error and a panic would be harder to recover from than
-// the IOException beside it.
-var ErrMissingResource = errors.New("color: missing resource")
+// Port of org.apache.pdfbox.pdmodel.MissingResourceException, an IOException of
+// PDFBox's own that PDColorSpace.create throws; the port returns it, because
+// every caller of create already handles an error.
+//
+// It **is** `common.ErrMissingResource`, which `pdmodel.ErrMissingResource`
+// names as well: one class in the Java has to be one sentinel here, or code
+// that recognises the exception recognises half of it. It was two, and
+// PDFStreamEngine.OperatorException knew only pdmodel's, so a page whose colour
+// space was missing ended where PDFBox logs it and walks on. See the comment on
+// the sentinel, and TestAMissingColourSpaceDoesNotEndThePage.
+var ErrMissingResource = common.ErrMissingResource
 
 // ErrColorSpaceNotPorted is returned for a colour space this port cannot build.
 //

@@ -22,6 +22,7 @@ import (
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/common"
+	gcolor "github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/optionalcontent"
 )
 
@@ -498,5 +499,35 @@ func TestAnImageUnderASoftMaskIsFilledAsATexture(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// TestAMissingColourSpaceDoesNotEndThePage pins PDFBox's handling of a content
+// stream that names a colour space its resources do not hold:
+// PDColorSpace.create throws MissingResourceException, and
+// PDFStreamEngine.operatorException logs it and walks on, so the rest of the
+// page still draws.
+//
+// PDFium's testing/resources/bug_481363.pdf is the document that showed the
+// port doing otherwise. It is damaged -- one object will not parse -- so its
+// /CS1 cannot be resolved, and PDFBox renders the page while the port ended it
+// with the error. The cause was the port's own: Java has one
+// MissingResourceException and the port had grown two sentinels for it, one in
+// pdmodel and one in pdmodel/graphics/color, and the engine knew only the first.
+func TestAMissingColourSpaceDoesNotEndThePage(t *testing.T) {
+	backend := renderToRecording(t, 100, 100, "/CS1 cs 0 0 20 20 re f")
+	// The fill still reaches the backend: the colour space failed, not the page.
+	if drawn := backend.Drawn(); len(drawn) == 0 {
+		t.Error("nothing was drawn: the missing colour space ended the page")
+	}
+}
+
+// TestAMissingColourSpaceIsAMissingResource is the same fact one layer down, so
+// that a reader of either package sees it: the colour package's error answers
+// errors.Is for pdmodel's, because in the Java they are one exception class.
+func TestAMissingColourSpaceIsAMissingResource(t *testing.T) {
+	if !errors.Is(gcolor.ErrMissingResource, pdmodel.ErrMissingResource) {
+		t.Error("color.ErrMissingResource is not pdmodel.ErrMissingResource, " +
+			"so PDFStreamEngine.OperatorException cannot recognise it")
 	}
 }

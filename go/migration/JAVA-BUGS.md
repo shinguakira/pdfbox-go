@@ -39,13 +39,15 @@ to reach or how much it costs. This is the second index.
 
 ### By what it takes to reproduce one
 
-The question anyone judging an entry asks first. Every number appears exactly
-once.
+The question anyone judging an entry asks first. Every number it carries appears
+exactly once, but it does not yet carry all of them: **89 and 90 are not placed**,
+and were not when they were written. Whoever places them should correct the count
+below as well; 91 was added to B on `track/testdata-pdfium`.
 
 | | Group | Entries | | What reproducing one takes |
 | --- | --- | --- | ---: | --- |
 | A | parser and filters | 6, 8, 9, 10, 14, 23, 27, 29, 30, 32, 63, 88 | 12 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream, a TIFF predictor with no columns |
-| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86, 87 | 8 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
+| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86, 87, 91 | 9 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
 | C | fonts | 12, 13, 16, 17, 18, 19, 20, 21, 74 | 9 | **a font file, not a PDF.** A CID-keyed CFF with a sheared FontMatrix in both DICTs, a `uniXXXX` name with no cmap, a scan of the system fonts |
 | D | XMP | 56, 57 | 2 | a malformed XMP packet, which a PDF can carry |
 | E | writing, merging, round trip | 33, 35, 40, 43, 44, 45, 48, 79, 82, 83 | 10 | **write it and read it back.** `/Type /BEAD`, `/Reasons` written as strings and read as names, a merge that mixes the destination into itself |
@@ -55,8 +57,8 @@ once.
 | I | a Java test | 4, 46, 78, 81 | 4 | nothing. The library is right and the test is not |
 | J | tools and diagnostics | 75, 76, 77 | 3 | run the command |
 
-So **22 of 88 are reachable by handing PDFBox a file** — A, B and D — and 31 if
-a font counts. The rest need an API call, a race, or cannot be reached at all.
+So **23 of the 89 this table places are reachable by handing PDFBox a file** —
+A, B and D — and 32 if a font counts. The rest need an API call, a race, or cannot be reached at all.
 
 ### By the shape of the mistake
 
@@ -4982,3 +4984,90 @@ whose images facet PDFBox cannot describe at all.
 
 **Confidence** certain. Both sides were run on the qpdf document, and both
 messages above are theirs.
+
+---
+
+## 91. A type 4 function with too few outputs takes the whole page down, not the shading
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType4.java`,
+`eval`.
+
+```java
+//Extract the output values
+int numberOfOutputValues = getNumberOfOutputParameters();
+int numberOfActualOutputValues = context.getStack().size();
+if (numberOfActualOutputValues < numberOfOutputValues)
+{
+    throw new IllegalStateException("The type 4 function returned "
+            + numberOfActualOutputValues
+            + " values but the Range entry indicates that "
+            + numberOfOutputValues + " values be returned.");
+}
+```
+
+The check itself is right: a PostScript calculator function whose program
+leaves fewer values than `/Range` asks for cannot be evaluated. What is wrong is
+the exception it throws. `IllegalStateException` is unchecked, and `eval` is
+reached from a paint context being built:
+
+```
+PDFunctionType4.eval
+PDShading.evalFunction
+TriangleBasedShadingContext.evalFunctionAndConvertToRGB
+TriangleBasedShadingContext.calcPixelTable
+PatchMeshesShadingContext.calcPixelTableArray
+TriangleBasedShadingContext.createPixelTable
+PatchMeshesShadingContext.<init>
+Type6ShadingContext.<init>
+Type6ShadingPaint.createContext
+sun.java2d.pipe.AlphaPaintPipe.startSequence
+```
+
+Nothing on that stack catches it. `eval` declares `throws IOException` and every
+caller handles one, so an `IOException` here would have been logged and the
+shading skipped; the unchecked throw goes past all of them, out of Java2D's
+paint pipe, out of `PageDrawer`, out of `PDFRenderer.renderImage`, and **the
+page is lost** -- not the shading, the page, including everything already drawn
+on it and everything that would have followed.
+
+**Measured**, on PDFium's `testing/resources/pixel/bug_440028542.pdf`, whose
+type 6 shading names a function whose whole program is `{ dup }` against a
+`/Range` of three components: one input in, two values out, three wanted. The
+stack above is that file's, from a JDK 17 run; `PDFRenderer.renderImage(0, 1)`
+throws and returns nothing.
+
+**What correct would be** an `IOException`, which is what the method already
+says it throws and what every caller on that stack is written for. PDFBox's own
+convention for malformed content is one level up and explicit:
+`PDFStreamEngine.operatorException` swallows `MissingResourceException`,
+`MissingOperandException` and `MissingImageReaderException` so that one bad
+operator does not end a page. A function that cannot be evaluated is the same
+kind of defect in the same kind of document, and a shading that cannot paint
+should leave its pixels alone.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/common/function/pdfunctiontype4.go`, `Eval`, panics with the
+Java's message and a comment saying the Java throws `IllegalStateException`,
+which is unchecked -- faithful to the line.
+
+It is **not reached on that document**, though, and the reason is a second
+difference rather than this one: the file's `/Decode` gives the shading's
+parameter a range of plus and minus `FLT_MAX`, and the port's mesh paints no
+pixel at all for it, so the function is never asked and the page comes out
+white where PDFBox's is lost. Evaluating the function directly, on the same
+document, raises the same error on both sides -- measured with a scratch harness
+over object `6 0`. So what is untested is the carry: no document is yet known
+whose mesh the port paints *and* whose function is short, which is what it would
+take to see the port take a page down the way the Java does.
+
+**Why it matters** it is the difference between a page with a hole in it and no
+page. The document is a crash regression PDFium keeps because it once broke
+PDFium, so the file is malformed on purpose; what a library does with it is a
+choice, and PDFBox's is to lose everything on the page.
+
+**Confidence** certain for what the Java does: the stack trace above is
+PDFBox's own, printed from a JDK 17 run of `PDFRenderer.renderImage`, not a
+reading of the source. Uncertain only in scope -- see the paragraph above.
+Found by the comparison in [`TESTDATA.md`](TESTDATA.md), "PDFium against the
+Java", which is the one page of 381 where a side fails and the other does not.

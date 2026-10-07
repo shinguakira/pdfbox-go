@@ -38,13 +38,14 @@ change it to suit one branch — change the copy.
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
 | `track/testdata-itext` | [`track-testdata-itext.md`](track-testdata-itext.md) | **merged** into `track/testdata-sources` on 2026-09-16 — iText's PDFs against PDFBox, and the text compared by digest |
 | `track/testdata-podofo` | [`track-testdata-podofo.md`](track-testdata-podofo.md) | **merged** 2026-09-19, pull request #39 — PoDoFo's test documents against PDFBox, and the twelve facets, the write paths and rendering compared |
-| `track/render-performance` | [`track-render-performance.md`](track-render-performance.md) | open — made 2026-09-19 from `migration-base` at the user's request; issue #40, the renderer's speed against PDFBox's |
+| `track/render-performance` | [`track-render-performance.md`](track-render-performance.md) | **merged** 2026-09-28, pull request #41 — issue #40, the renderer's speed against PDFBox's: faster than PDFBox on every timed file |
+| `track/testdata-pdfium` | [`track-testdata-pdfium.md`](track-testdata-pdfium.md) | open — made 2026-09-29 from `migration-base` at `90e1a7b42` on the user's instruction; issue #33 of #29, PDFium's 341 test documents against PDFBox over the documents, the facets, the write paths and the renders |
 
 **The port is merged**, every slice and every track of it, bar the two
 `track/performance` commits that ride in the open branch. What is open is
 `track/testdata-sources`, whose subject is [`../TESTDATA.md`](../TESTDATA.md),
-and `track/render-performance`, which makes the renderer faster without
-changing what it draws except where that brings it closer to PDFBox.
+and `track/testdata-pdfium`, one of its test-data tracks: PDFium's documents
+against PDFBox.
 
 The order the branches were taken in, the dependency graph and the argument for
 each edge are in [`../BRANCHING.md`](../BRANCHING.md).

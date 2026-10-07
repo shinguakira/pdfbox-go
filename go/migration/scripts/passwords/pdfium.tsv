@@ -1,0 +1,55 @@
+# The ways PDFium's tests open the encrypted PDFs of its testing/resources, one
+# line for each way of opening one file, read from the test sources named above
+# each group. fetch-corpus.ps1 writes these lines to _passwords.tsv with the
+# suite's name in front of each file.
+#
+# A line gives a password the test source holds, and an empty one besides where
+# the file also opens with none. Ten of the 341 files name an encryption
+# dictionary; every one of them is here.
+#
+# **On the two encodings.** PDFium tests each of these passwords twice, once as
+# UTF-8 bytes and once as Latin-1 -- kAgeUTF8 is "\xc3\xa2ge" and kAgeLatin1
+# "\xe2ge", the same "age" with a circumflex on the a. A password here is a
+# string and not a byte sequence, because that is what both PDFBox and the port
+# take, and each of them encodes it the way the revision asks: ISO-8859-1 for
+# revisions 2 to 4, UTF-8 for 5 and 6. So one line covers both of PDFium's
+# cases, and the Latin-1 byte sequence on its own is not writable in a UTF-8
+# table anyway.
+
+# core/fpdfapi/parser/cpdf_security_handler_embeddertest.cpp, UserPassword and
+# OwnerPassword: RC4, opened with the user password and with the owner's.
+# NoPassword and BadPassword expect no password and "tiger" to fail.
+testing/resources/encrypted.pdf	1234
+testing/resources/encrypted.pdf	5678
+
+# The same file, OwnerPasswordVersion5 and UserPasswordVersion5: AESV3 revision
+# 5, the owner password first. NoPasswordVersion5 and BadPasswordVersion5
+# expect no password and "tiger" to fail.
+testing/resources/bug_644.pdf	a
+testing/resources/bug_644.pdf	b
+
+# OwnerPasswordVersion{2,3,5,6}{UTF8,Latin1} and the UserPassword twins of each:
+# the same document encrypted four ways, owner "âge" and user "hôtel".
+testing/resources/encrypted_hello_world_r2.pdf	âge
+testing/resources/encrypted_hello_world_r2.pdf	hôtel
+testing/resources/encrypted_hello_world_r3.pdf	âge
+testing/resources/encrypted_hello_world_r3.pdf	hôtel
+testing/resources/encrypted_hello_world_r5.pdf	âge
+testing/resources/encrypted_hello_world_r5.pdf	hôtel
+testing/resources/encrypted_hello_world_r6.pdf	âge
+testing/resources/encrypted_hello_world_r6.pdf	hôtel
+
+# BadOkeyVersion2 and BadOkeyVersion3, crbug.com/42270437: the /O entry is
+# damaged, and PDFium expects "a" to fail rather than to crash. The line is here
+# because what the two sides do with it is the point, not that it opens.
+testing/resources/encrypted_hello_world_r2_bad_okey.pdf	a
+testing/resources/encrypted_hello_world_r3_bad_okey.pdf	a
+
+# These two open with no password, on both sides, and the test that holds
+# PDFium's password cases -- cpdf_security_handler_embeddertest.cpp, every file
+# above -- does not name them: they are crash regressions that happen to carry
+# an encryption dictionary. Whether some other source mentions them is not
+# known; searching the whole repository needs every blob of a partial clone,
+# which takes hours, and no password of theirs would change what is compared.
+testing/resources/bug_1124998.pdf	
+testing/resources/bug_424613308.pdf	

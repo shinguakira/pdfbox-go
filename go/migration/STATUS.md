@@ -5529,3 +5529,71 @@ paint and antialiasing off goes to `SpanShapeRenderer.renderRect`, which
 truncates the rectangle's corners to whole pixels rather than sampling either
 point; the port covers what the rule above gives, which for the case measured
 is the same pixels.
+
+## Track `testdata-pdfium` — PDFium's documents against PDFBox
+
+Issue #33 of #29; the task file is
+[`tasks/track-testdata-pdfium.md`](tasks/track-testdata-pdfium.md) and the run is
+in [`TESTDATA.md`](TESTDATA.md), "PDFium against the Java".
+
+341 documents, every PDF PDFium commits, compared five ways: the document
+(opens, page count, text), thirteen facets, the seven write paths, and the render
+page by page. **The documents, the facets bar images, and every write path agree
+exactly** -- the same 322 open, the same 25 are refused, and save, incremental
+save, encryption, split, merge, overlay and an external signature are the same on
+all 322.
+
+### The one defect, and why it was the port's own
+
+`bug_481363.pdf` is damaged enough that its `/CS1` colour space cannot be
+resolved. PDFBox logs that and draws the rest of the page: `PDColorSpace.create`
+throws `MissingResourceException` and `PDFStreamEngine.operatorException`
+swallows it, along with a missing operand and a missing image reader. The port
+ended the page with the error.
+
+The cause was a Go-specific split. Java has one `MissingResourceException`; the
+port had two sentinels for it, `pdmodel.ErrMissingResource` and
+`color.ErrMissingResource`, because `pdmodel/graphics/color` cannot import
+`pdmodel` -- `PDColorSpace.create` takes a `PDResources` in the Java, which in Go
+is an import cycle the colour spaces break with an interface of their own. So
+`OperatorException` recognised half of the exception. The sentinel now lives in
+`pdmodel/common`, which both already import, and the two names are that one
+error.
+
+`TestAMissingColourSpaceDoesNotEndThePage` in `pdfbox/rendering` renders a page
+whose colour space is missing and requires the fill to reach the backend anyway;
+`TestAMissingColourSpaceIsAMissingResource` pins the sentinel, so that a reader
+of either package sees why there is only one. **One class in the Java has to be
+one sentinel here**, and this is the only place the port had made two.
+
+### What else the renders showed, all of it already recorded
+
+173 of 381 pages are identical to the last bit and 193 more within a level of a
+cell. Six pages differ further, and not one of them is new: three are colour --
+`PDICCBased` taking the `/Alternate` space, and `PDDeviceCMYK` converting naively
+-- one is `JAVA-BUGS.md` 85's wider tiling raster, one is a truncated JPEG that
+`image/jpeg` refuses and Java's reader returns a buffer for, and one is a page
+PDFBox aborts on and the port draws: a type 4 function that returns two values
+where its `/Range` asks three, which PDFBox throws from while building a type 6
+shading's pixel table. `TESTDATA.md` has the mechanism of each, and the port's
+own type 4 function raises the same error when it is evaluated -- what differs is
+that its mesh never asks.
+
+The JPEG differences the `images` facet found are two decoders, not a defect:
+Go's `image/jpeg` against the libjpeg-derived reader Java's ImageIO uses, out by
+1 to 3 levels where the image is not subsampled and by up to 38 at colour edges
+where it is 4:2:0, because libjpeg interpolates chroma and `image/jpeg`
+replicates it.
+
+### Still open
+
+Nothing of the suite. One question it hands on: a lenient JPEG decoder, or not
+-- now three files, PDFium's `pixel/bug_603518.pdf` and PoDoFo's two.
+
+PDFBox aborting a page over a malformed type 4 function is filed, as
+`JAVA-BUGS.md` **91**. Certain in what the Java does and uncertain in scope: the
+port carries the same check and panics with the same message, but no document is
+yet known whose mesh it paints and whose function is short, so the carry is
+untested. Filing it showed that the reproduction-group index of that file does
+not carry entries 89 and 90 either; 91 is placed, those two are left for whoever
+judges them.
