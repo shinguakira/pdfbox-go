@@ -97,6 +97,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfjs
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-java,itext-dotnet   # ~1.1 GB, needs git
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite itext-pdfhtml-java,itextpdf,rups   # and iText's other repositories, one name each
 pwsh go/migration/scripts/fetch-corpus.ps1 -Suite podofo   # ~25 MB, needs git
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfium   # ~4 MB, needs git
 ```
 
 | Suite | PDFs | Licence | What it is, and what it reaches |
@@ -112,6 +113,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite podofo   # ~25 MB, needs git
 | [`itext-dotnet`](https://github.com/itext/itext-dotnet) | 6,960, `-Suite itext-dotnet` | AGPL-3.0 or commercial | The same for iText Core for .NET, under `itext.tests`. The library is ported from the Java and so are its tests: 6,678 of its 6,780 distinct contents are also in `itext-java`, and the other 102 are not, 80 of them in `itext.sign.tests`. 240 name an encryption dictionary; [`scripts/passwords/itext-dotnet.tsv`](scripts/passwords/itext-dotnet.tsv) |
 | iText's other 32 repositories | 20,913, one `-Suite` name each | AGPL-3.0 or commercial | Everything else in [github.com/itext](https://github.com/itext) that holds a PDF: pdfHTML 15,279, the published examples and the books 2,446, iText 5 for Java and for .NET 1,703, its archived sandbox 515, pdfSweep 506, pdfOCR 365, and sixteen smaller repositories 99. Each is a suite of its own, fetched the way iText Core is. They are here because "PDFs iText wrote are all alike" is an argument and not a measurement; see "iText's other repositories" below for what measuring them said |
 | [`podofo`](https://github.com/podofo/podofo-resources) | 102, `-Suite podofo` | none declared | PoDoFo's test documents, a repository of their own, one file per failure mode: every RC4 key length and AESV2 and AESV3R6 each with a key-length-violation twin, xref recovery, an image whose length lies, a malformed annotation action, encrypted strings needing escapes, text extraction and rotations, YCCK and YCbCr JPEGs; and under `TechDocs/` 28 Adobe and ISO reference documents. 32 name an encryption dictionary; [`scripts/passwords/podofo.tsv`](scripts/passwords/podofo.tsv) opens the 19 PoDoFo's tests open with a password, and the other 13 open with none. See "PoDoFo against the Java" |
+| [`pdfium`](https://pdfium.googlesource.com/pdfium) | 341, `-Suite pdfium` | BSD-3-Clause | Every PDF PDFium commits, all of them in `testing/resources`: hand-written files of a few kilobytes each, named after what they break — bad xref tables and startxref offsets, a stream whose `/Length` lies, zero-length and truncated streams, damaged fonts and CMaps, annotations and form fields including XFA, JavaScript actions, and the inputs of its pixel tests. Ten name an encryption dictionary; [`scripts/passwords/pdfium.tsv`](scripts/passwords/pdfium.tsv) holds the passwords its own tests use. **325 more inputs exist only as `.in` templates** its Python tooling expands, which are not fetched — of its 562 templates, the other 237 are the ones whose expansion PDFium commits, so those are on disk — see "PDFium against the Java" |
 
 ## Tier 3 — bulk
 
@@ -659,6 +661,168 @@ the two-byte code 0 and extracts a NUL for each such glyph, twice on that page;
 the Go answers nothing, as `track/java-bug-fixes` decided. It is the first
 document found that reaches entry 23 — the entry had supposed only a
 hand-written CMap would.
+
+## PDFium against the Java, 2026-09-29
+
+PDFium keeps its test inputs in `testing/resources`, and every PDF in the
+repository is one of them: 341 on `main` at
+`8e99133990b55ea7023ebbdd6a2fa391bec9e9f4`, 3.5 MB, fetched by partial clone and
+checked against their blob ids like iText's. Hand-written files of a few
+kilobytes, named after what they break. BSD-3-Clause.
+
+```bash
+pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfium
+pwsh go/migration/scripts/run-oracle.ps1 -List <the 341 paths> -Out java-pdfium.tsv `
+    -TimeoutSeconds 60 -Passwords go/testdata/corpus/pdfium/_passwords.tsv
+cd go && go run ./cmd/corpus -passwords testdata/corpus/pdfium/_passwords.tsv `
+    -oracle ../java-pdfium.tsv ./testdata/corpus/pdfium
+```
+
+### The 562 `.in` templates, and why they are left alone
+
+Most of PDFium's test inputs are not PDFs. `testing/resources` holds 562 `.in`
+templates against those 341 PDFs, and `testing/tools/fixup_pdf_template.py`
+expands one into a PDF by replacing nine directives — `{{header}}`,
+`{{object x y}}`, `{{streamlen}}`, `{{xref}}`, `{{trailer}}`, `{{trailersize}}`,
+`{{startxref}}`, `{{startxrefobj x y}}` and `{{include path}}` — with the byte
+offsets a PDF needs.
+
+| | count |
+| --- | ---: |
+| `.in` templates | 562 |
+| of those, committed as a `.pdf` beside the template | 237 |
+| of those, **only** a template | 325 |
+| committed `.pdf` with no template | 104 |
+
+**None of the 325 are worth expanding here, and where they live says why**: 197
+are in `pixel/`, 22 in `pixel/xfa_specific/`, 4 more in its `use_ahem` and
+`use_symbolneu` subdirectories, 49 in `javascript/` and 53 in
+`javascript/xfa_specific/`. Every one is a pixel test, compared against a
+committed `.png` that this comparison does not use, or a JavaScript or XFA test,
+which PDFBox has no engine for. The templates that carry parser and document
+structure — the ones this comparison could ask something of — are exactly the 237
+whose expansion PDFium commits, and those are on disk. Expanding the rest would
+need the Python tooling this repository does not run, and would answer only "does
+it open".
+
+### Encrypted files
+
+Ten name an encryption dictionary, and
+[`scripts/passwords/pdfium.tsv`](scripts/passwords/pdfium.tsv) gives each the way
+`core/fpdfapi/parser/cpdf_security_handler_embeddertest.cpp` does:
+`encrypted.pdf` with `1234` and `5678`, `bug_644.pdf` with `a` and `b` at AESV3
+revision 5, the four `encrypted_hello_world_r{2,3,5,6}.pdf` with `âge` and
+`hôtel`, the two `_bad_okey` twins with `a` — which PDFium expects to fail rather
+than crash, crbug.com/42270437 — and nothing for `bug_1124998.pdf` and
+`bug_424613308.pdf`, which that test does not name and which open with no
+password on both sides.
+
+A password in that table is a string and not a byte sequence. PDFium tests each
+of `âge` and `hôtel` twice, once as UTF-8 bytes and once as Latin-1, and both
+PDFBox and the port encode a password the way the revision asks — ISO-8859-1 for
+revisions 2 to 4, UTF-8 for 5 and 6 — so one line covers both of PDFium's cases.
+
+### The documents, the facets and the write paths
+
+```
+341 files compared in 347 rows, the passwords tables opening some more than one way
+
+  open    both 322, neither 25, behind 0, ahead 0
+  pages   0 disagree
+  text    both 322, neither 0, behind 0, ahead 0
+  chars   322 the same length, 0 not
+  digest  322 of the same length the same text, 0 not
+
+  0 of 341 files disagree (0.00%)
+```
+
+The same 322 open on both sides and the same 25 are refused, with the same page
+counts and the same text. Ten of the twelve facets agree on all 322 —
+positions, information, XMP, XMP schemas, outline, labels, boxes, structure,
+annotations, fields — and so does every one of the seven write paths: save,
+incremental save, encryption, split, merge, overlay and an external signature,
+322 the same each.
+
+`images` differs on 6 openings and `imagepixels` on 7, and every one is a JPEG;
+see below.
+
+### The renders
+
+```
+381 pages compared, 0 in one table only, 0 files one side did not open
+  identical to the last bit   173
+  within 1 level a cell       193
+  within 4 levels a cell      2
+  within 16 levels a cell     2
+  further apart               1
+  one side failed             1
+  both sides failed           9
+```
+
+**One defect in the port, found and fixed here.** `bug_481363.pdf` is damaged in
+a way that leaves its `/CS1` colour space unresolvable, and PDFBox logs that and
+draws the rest of the page: `PDColorSpace.create` throws
+`MissingResourceException`, which `PDFStreamEngine.operatorException` swallows.
+The port ended the page with the error instead, for a reason of its own making —
+Java has one `MissingResourceException` and the port had grown **two** sentinels
+for it, one in `pdmodel` and one in `pdmodel/graphics/color`, because the colour
+spaces cannot import `pdmodel`; `OperatorException` knew only the first. The
+sentinel now lives in `pdmodel/common`, which both already import.
+`TestAMissingColourSpaceDoesNotEndThePage` renders a page whose colour space is
+missing and requires the fill to reach the backend anyway, and
+`TestAMissingColourSpaceIsAMissingResource` pins the sentinel. That page is now
+identical to PDFBox's.
+
+**The JPEG decoders are two different decoders**, which is what the `images` and
+`imagepixels` facets found. Both sides decode, the lengths agree, the bytes do
+not: measured with `oracle/dumpimage` and `oracle/bytediff`,
+`jpeg_reduced_size.pdf` has 90,476 of 480,000 bytes out by 1 or 2 levels and none
+further; `jpeg_reduced_size_with_smask.pdf` and `jpeg_unaligned_no_reduce.pdf`
+the same to 3 levels; and `bug_650.pdf`, whose three images are 4:2:0 subsampled,
+has 12,524 of 2,430,450 bytes out, most by 1 to 5 levels and a few by as much as
+38. Go's `image/jpeg` against the libjpeg-derived reader Java's ImageIO uses: a
+different inverse DCT, both inside the standard's tolerance, and
+nearest-neighbour chroma upsampling where libjpeg interpolates. None of it is a
+defect in the port, and none of it can be closed without a JPEG decoder of our
+own.
+
+**Three pages differ for reasons already recorded**, all of them colour:
+
+| File | Out by | Why |
+| --- | ---: | --- |
+| `bug_42270471.pdf` | 80 levels on a channel, every pixel | `PDICCBased` always takes the `/Alternate` space here, so a profile that says a warm grey comes out as `DeviceGray` |
+| `bug_1549.pdf` | 50 levels | it fills `1 0 0 0` in `DeviceCMYK`, and `PDDeviceCMYK` converts naively where Java converts through an ICC profile |
+| `pattern_stroke.pdf` | 13 levels | the same, in a tiling pattern whose cell is `0 1 0.91 0 k` |
+
+`pixel/bug_42271010.pdf`, out by 34 levels, is `JAVA-BUGS.md` 85: its tiling
+pattern has `/XStep 200.001`, so the port's raster is 201 pixels where Java
+truncates to 200. The port keeps the wider raster on purpose.
+
+**`pixel/bug_603518.pdf` is the lenient-decoder question again.** Its JPEG
+declares 640 by 63,760 pixels in 6,382 bytes. Java's reader returns the whole
+122,419,200-byte buffer; `image/jpeg` stops at "bad Huffman code" and the port has
+no image at all, so the page is 91 levels a cell away from PDFBox's. It is the
+third file to reach this — PoDoFo's `bug1130815.pdf` and `issue9679.pdf` are the
+others — and `tasks/track-testdata-podofo.md` holds the decision.
+
+**One page PDFBox will not render and the port will.**
+`pixel/bug_440028542.pdf`'s type 6 shading names a type 4 function whose program
+is `{ dup }` against a `/Range` of three components, so it returns 2 values where
+3 are asked for. PDFBox throws `IllegalStateException` from
+`PDFunctionType4.eval` while building the shading's pixel table, out through
+`AlphaPaintPipe.startSequence`, and the page dies. The port's own type 4 function
+raises the same error when it is evaluated — measured directly — but its mesh
+paints no pixel for this shading, whose `/Decode` gives the parameter a range of
+plus and minus `FLT_MAX`, so the function is never asked and the page comes out
+white. That PDFBox aborts a page over a malformed function, where its own
+convention for malformed content is to log and carry on, is **`JAVA-BUGS.md` 91**,
+filed from this comparison: certain in what the Java does, since the stack trace
+is PDFBox's own, and uncertain only in scope, because no document is yet known
+whose mesh the port paints *and* whose function is short, which is what it would
+take to see the port carry the defect.
+
+The nine pages both sides fail on fail the same way, and the twenty-five files
+neither side opens are refused by both.
 
 ## Twelve facets against the Java, 2026-09-18
 
