@@ -4979,10 +4979,19 @@ it. The port answers the name. Pinned by
 **Why it matters** it is the difference between "this document uses DCTDecode"
 and a `ClassCastException` out of the caller's own line, on a document written
 the way the specification allows. Found by the corpus comparison of images:
-`go/testdata/corpus/qpdf/indirect-filter-out-0.pdf` is the only file of 40,255
-whose images facet PDFBox cannot describe at all.
+`go/testdata/corpus/qpdf/indirect-filter-out-0.pdf` is a file whose images facet
+PDFBox cannot describe at all.
 
-**Confidence** certain. Both sides were run on the qpdf document, and both
+**Three files reach it, not one.** This entry said "the only file of 40,255",
+which came from the classification of a sample of 313 files rather than from the
+whole run — see [`TESTDATA.md`](TESTDATA.md), "Twelve facets against the Java".
+`track/testdata-qpdf` compared the images facet over all 717 of qpdf's documents
+and found `indirect-filter.pdf`, `indirect-filter-out-0.pdf` and
+`indirect-filter-out-1.pdf`, each with the same `ClassCastException` from PDFBox
+and each described by the port. All three were already on disk when the sample
+was taken; the sample simply did not hold them.
+
+**Confidence** certain. Both sides were run on the qpdf documents, and both
 messages above are theirs.
 
 ---

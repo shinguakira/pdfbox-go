@@ -1,0 +1,100 @@
+# The ways qpdf's tests open the encrypted PDFs of its test data, one line for
+# each way of opening one file, read from the test scripts named above each
+# group. fetch-corpus.ps1 writes these lines to _passwords.tsv with the suite's
+# name in front of each file.
+#
+# A line gives a password a test script holds, and an empty one besides where
+# the file also opens with none. qpdf opens most of these twice, with the user
+# password and with the owner password, and both are here: the owner path is a
+# different key derivation and worth comparing on its own.
+#
+# qpdf.pdf names in this suite are flat: the 639 files of qpdf/qtest/qpdf are at
+# the suite's root, and the other four directories are under their own names.
+
+# qpdf/qtest/encryption.test, @encrypted_files: the basename of each is
+# enc-<name>.pdf, and the second column of that table is the password the test
+# opens it with. The files were written by Acrobat 5.0 (enc-*) and Acrobat XI
+# (enc-XI-*), decrypted and re-encrypted by qpdf, and checked by hand in
+# Acrobat, which is why they are the reference for every revision.
+enc-R2,V1.pdf	
+enc-R2,V1,O=master.pdf	
+enc-R2,V1,O=master.pdf	master
+enc-R2,V1,U=view,O=master.pdf	view
+enc-R2,V1,U=view,O=master.pdf	master
+enc-R2,V1,U=view,O=view.pdf	view
+enc-R3,V2.pdf	
+enc-R3,V2,O=master.pdf	
+enc-R3,V2,O=master.pdf	master
+enc-R3,V2,U=view,O=master.pdf	view
+enc-R3,V2,U=view,O=master.pdf	master
+enc-R3,V2,U=view,O=view.pdf	view
+enc-XI-R6,V5,O=master.pdf	
+enc-XI-R6,V5,O=master.pdf	master
+enc-XI-R6,V5,U=view,O=master.pdf	view
+enc-XI-R6,V5,U=view,O=master.pdf	master
+enc-XI-R6,V5,U=wwwww,O=wwwww.pdf	wwwww
+
+# The same table's long-password rows. R4 truncates a password to 32 bytes and
+# R6 does not, which is what the pair tests: the 32-byte prefix opens the R4
+# file and the whole string is needed for the R6 one.
+enc-long-password.pdf	asdf asdf asdf asdf asdf asdf qw
+enc-long-password.pdf	asdf asdf asdf asdf asdf asdf qwer
+enc-XI-long-password.pdf	qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcv
+enc-XI-long-password.pdf	qwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnmqwertyuiopasdfghjklzxcvbnm
+
+# qpdf/qtest/attachments.test, which opens the attachment-encrypted file with
+# the password its name carries.
+enc-XI-R6,V5,U=attachment,encrypted-attachments.pdf	attachment
+enc-XI-R6,V5,U=view,attachments,cleartext-metadata.pdf	view
+
+# qpdf/qtest/specialized-filter.test and encryption-parameters.test.
+nontrivial-crypt-filter.pdf	asdfqwer
+short-O-U.pdf	19723102477
+
+# qpdf/qtest/encryption.test, @cenc: the C API encryption tests. Each row writes
+# one revision from hybrid-xref.pdf and checks the committed expected output
+# with the password in its last column, and four rows read a committed input
+# with the password in their third. c-r4.pdf is the r4 row's output; no row
+# reads it, so user2 is the password qpdf checks it with.
+c-r2.pdf	user1
+c-r3.pdf	user2
+c-r3.pdf	owner2
+c-r4.pdf	user2
+c-r5-in.pdf	user3
+c-r6-in.pdf	owner4
+
+# qpdf/qtest/check-encryption.test and merge-and-split.test: 20-pages.pdf is
+# opened with the user password and with the owner's, and
+# pages-copy-encryption.pdf is the expected output of a merge that copies
+# 20-pages.pdf's encryption, so it carries the same /O and /U.
+20-pages.pdf	user
+20-pages.pdf	owner
+pages-copy-encryption.pdf	user
+pages-copy-encryption.pdf	owner
+
+# qpdf/qtest/qpdf/job-json-encrypt-40.json and -128.json, which wrote these two:
+# "userPassword": "u", "ownerPassword": "o".
+job-json-encrypt-40.pdf	u
+job-json-encrypt-40.pdf	o
+job-json-encrypt-128.pdf	u
+job-json-encrypt-128.pdf	o
+
+# qpdf/qtest/specific-bugs.test runs test_driver 36 on this one with the
+# password its name hints at.
+unfilterable-with-crypt.pdf	attachment
+
+# encrypted-40-bit-R3.pdf declares 40 bits at revision 3. No script names its
+# password, but qpdf recovers it and the committed expected output says so:
+# "User password = 623" in encrypted-40-bit-R3.out.
+encrypted-40-bit-R3.pdf	623
+
+# examples/qtest/bookmarks.test: pdf-bookmarks --show-targets 4.pdf user.
+examples/bookmarks/4.pdf	user
+
+# **Not here, and why.** bad-encryption-length.pdf has an /Encrypt whose
+# /Length is wrong, and qpdf opens it with an empty user password --
+# bad-encryption-length.out says "User password = " and "Supplied password is
+# user password". PDFBox refuses it with InvalidPasswordException whatever is
+# supplied, so there is no line that opens it; both sides of the comparison
+# refuse it, which is what "PDFBox is the reference" means here. See
+# TESTDATA.md, "qpdf against the Java".

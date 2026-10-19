@@ -104,12 +104,23 @@ $suites = @(
     [pscustomobject]@{
         Name    = 'qpdf'
         Size    = 'small'
-        Bytes   = 44MB
+        Bytes   = 49MB
         Licence = 'Apache-2.0'
-        Covers  = 'cross-reference and object-stream permutations: linearized and not, object streams of every shape, damaged xref recovery, every encryption revision qpdf can write'
+        Covers  = "every PDF qpdf keeps as test data, 717 in five directories of the repository: cross-reference and object-stream permutations -- linearized and not, object streams of every shape, damaged xref recovery, every encryption revision qpdf can write -- in qpdf/qtest/qpdf, and the other 78 beside them under their own names, examples/qtest 49 (the inputs and expected output of the C and C++ examples), compare-for-test/qtest 21 (pairs its comparison tool is run on), libtests/qtest 6 (the filter tests) and qpdf/qtest/storage 2. 24 name an encryption dictionary; scripts/passwords/qpdf.tsv opens them the way qpdf's own test scripts do"
         Exercises = 'pdfparser, pdfwriter, cos, pdmodel/encryption'
         Url     = 'https://codeload.github.com/qpdf/qpdf/tar.gz/refs/heads/main'
         Subtree = 'qpdf/qtest/qpdf'
+        # The other four directories, each under its own name rather than mixed
+        # in with the first: what a test file is for is in the directory it came
+        # from, and the 639 of qpdf/qtest/qpdf have been at the suite's root
+        # since the suite was added.
+        Subtrees = @(
+            @{ Path = 'qpdf/qtest/storage'; Into = 'storage' }
+            @{ Path = 'examples/qtest'; Into = 'examples' }
+            @{ Path = 'compare-for-test/qtest'; Into = 'compare-for-test' }
+            @{ Path = 'libtests/qtest'; Into = 'libtests' }
+        )
+        PasswordTable = 'passwords/qpdf.tsv'
     }
     [pscustomobject]@{
         Name    = 'text-rendering-tests'
@@ -353,6 +364,7 @@ function Get-ArchiveSuite {
         Move-Item -LiteralPath $source -Destination $Dest
 
         Copy-SuiteExtras -S $S -From $extract -Dest $Dest
+        Copy-SuiteSubtrees -S $S -From $extract -Dest $Dest
     }
     finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -374,6 +386,33 @@ function Expand-SuiteArchive {
     & tar -xzf $archive -C $extract --strip-components=1
     if ($LASTEXITCODE -ne 0) { throw "tar exited $LASTEXITCODE" }
     return $extract
+}
+
+# Copy-SuiteSubtrees copies a suite's extra Subtrees out of its unpacked archive
+# into the suite's directory, each under the name the suite gives it.
+#
+# qpdf is the one suite that needs this: its test PDFs are in five directories
+# of the repository, and Subtree names the one that holds 639 of the 717. The
+# other four land beside them rather than mixed in, because what a test file is
+# for is in the directory it came from -- examples/qtest holds the inputs and
+# the expected output of the C and C++ examples, libtests/qtest the filter
+# tests, compare-for-test/qtest the pairs its comparison tool is run on -- and
+# because the 639 have been at the suite's root since the suite was added, where
+# `oracle/list.txt` and every table taken from it still expect them.
+function Copy-SuiteSubtrees {
+    param([object]$S, [string]$From, [string]$Dest)
+
+    if ($S.PSObject.Properties.Name -notcontains 'Subtrees') { return }
+    foreach ($subtree in $S.Subtrees) {
+        $source = Join-Path $From $subtree.Path
+        if (-not (Test-Path -LiteralPath $source)) {
+            throw "subtree '$($subtree.Path)' is not in the archive -- has the repository moved it?"
+        }
+        $to = Join-Path $Dest $subtree.Into
+        if (Test-Path -LiteralPath $to) { Remove-Item -LiteralPath $to -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
+        Copy-Item -LiteralPath $source -Destination $to -Recurse
+    }
 }
 
 # Copy-SuiteExtras copies a suite's Extras out of its unpacked archive into
