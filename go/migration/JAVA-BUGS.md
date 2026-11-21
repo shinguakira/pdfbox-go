@@ -4212,6 +4212,17 @@ failure out of the same class.
 `rollOperator.Execute`, which has the two guards and no modulo; `Pop` panics on
 an empty stack where Java's `Stack.pop` throws.
 
+**Fixed in the Go** `update/sync-original-update`. `rollOperator.Execute`
+returns for a count of zero, takes `j` modulo `n`, and returns again where that
+leaves zero — what Apache wrote, in the order Apache wrote it. Tested by
+`TestRollByMoreThanNTakesTheRemainder`,
+`TestNegativeRollByMoreThanNTakesTheRemainder`,
+`TestRollByAMultipleOfNChangesNothing` and `TestRollOfNothingIsNothing` in
+`go/pdfbox/pdmodel/common/function/type4/pdfbox6331roll_test.go`, whose expected
+stacks are the ones `TestRoll` already holds for the equivalent roll by the
+remainder. `TestRollStillRefusesANegativeCount` sits beside them so the two
+early returns cannot swallow the rangecheck.
+
 **Resolved upstream** Apache `47d20cb71`, PDFBOX-6331, 2026-11-19, in the sync
 of 2026-11-21: a return for `n == 0`, then `j %= n`, then a return for a `j` that
 came out zero, under the comment "rolling by j is the same as rolling by j mod

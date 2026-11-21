@@ -59,6 +59,16 @@ func (rollOperator) Execute(context *ExecutionContext) {
 		// Java throws IllegalArgumentException, which is unchecked.
 		panic(fmt.Sprintf("rangecheck: %d", n))
 	}
+	if n == 0 {
+		return
+	}
+	// PDFBOX-6331: rolling by j is the same as rolling by j mod n. Without the
+	// modulo a |j| greater than n pops elements the operator was never given,
+	// and off the bottom of the stack where there are none under them.
+	j %= n
+	if j == 0 {
+		return
+	}
 	var rolled []any
 	var moved []any
 	if j < 0 {

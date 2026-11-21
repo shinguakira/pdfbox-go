@@ -123,7 +123,7 @@ One row, one unit of work. Nothing here has been written yet.
 | `go/pdfbox/contentstream/text.go`, `ShowType3Glyph` | **done** — level, limit fifty, released in a `defer`, as `drawobject.go` does it; `pdfbox6266_test.go` | entry 87, PDFBOX-6266 |
 | `go/pdfbox/filter/ascii85.go`, `readByte` | Decide whether a group cut short reads as the terminator, as the Java now does, or stops as the port does; whichever way, say so where it happens | entry 32, PDFBOX-6317 |
 | `go/pdfbox/filter/asciihex.go`, `Decode` | Skip white space before the second digit | entry 30, PDFBOX-6330 |
-| `go/pdfbox/pdmodel/common/function/type4/stackoperators.go`, `rollOperator` | `n == 0` returns, `j %= n`, a zero `j` returns | entry 92, PDFBOX-6331 |
+| `go/pdfbox/pdmodel/common/function/type4/stackoperators.go`, `rollOperator` | **done** — `n == 0` returns, `j %= n`, a zero `j` returns; `pdfbox6331roll_test.go` | entry 92, PDFBOX-6331 |
 | `go/pdfbox/pdmodel/common/function/type4/relationaloperators.go` | `eq`, `ge`, `gt`, `le` compare as `float64`; `lt` stays `float32`, because the Java's does, with a comment saying upstream missed it | entry 93, PDFBOX-6331 |
 | `go/pdfbox/pdmodel/common/function/pdfunctiontype4.go`, `Eval` | Recover the stack's panics and return them as errors, as the Java now wraps them; the too-few-outputs panic stays, because the Java's `IllegalStateException` does | entry 91, PDFBOX-6320 |
 | `go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdstandardattributeobject.go` | Decide whether a bad entry is dropped or kept as an empty string, now that the Java keeps a hole | entry 40, PDFBOX-6261 |
