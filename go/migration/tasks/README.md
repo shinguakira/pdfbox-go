@@ -35,6 +35,7 @@ change it to suit one branch — change the copy.
 | `track/java-bug-fixes` | [`track-java-bug-fixes.md`](track-java-bug-fixes.md) | **merged** — not a port; it fixed in the Go what the port carried from the Java |
 | `track/upstream-sync` | [`track-upstream-sync.md`](track-upstream-sync.md) | **merged** — what the Apache merge of 2026-09-07 changed, measured against the frozen snapshot |
 | `update/sync-original-update` | [`update-sync-original-update.md`](update-sync-original-update.md) | open — made 2026-11-21 for the Apache merge of 2026-11-21, 320 commits over 266 files: the `JAVA-BUGS.md` pass is done, the per-file reading of the 172 main Java files is not |
+| `track/forcetypeassert` | [`track-forcetypeassert.md`](track-forcetypeassert.md) | open — made 2026-11-21 from `update/sync-original-update` on the user's instruction; the one linter the gate was missing, and the 182 library type assertions it found |
 | `track/performance` | — | **carried**, not merged: its two commits rode into `track/testdata-sources` when that branch reopened. `../PERFORMANCE-PLAN.md` is its record |
 | `track/testdata-sources` | [`track-testdata-sources.md`](track-testdata-sources.md) | open — reopened 2026-09-15; where the test data stands, and the open tasks |
 | `track/testdata-itext` | [`track-testdata-itext.md`](track-testdata-itext.md) | **merged** into `track/testdata-sources` on 2026-09-16 — iText's PDFs against PDFBox, and the text compared by digest |

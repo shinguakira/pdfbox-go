@@ -200,6 +200,19 @@ cd go && gofmt -l . && go vet ./... && go test ./...
 
 All three must be clean before any Go change is considered done.
 
+One linter runs beside them, for the one defect class none of the three sees —
+a type assertion whose failure is not handled, which panics with
+`*runtime.TypeAssertionError` where the port means to fail in a way its
+`recover` boundaries can read:
+
+```
+cd go && go run github.com/gostaticanalysis/forcetypeassert/cmd/forcetypeassert@v0.2.0 ./...
+```
+
+`go/.golangci.yml` carries the same linter for golangci-lint, and leaves
+`_test.go` out. What it found when it went in, and what counts as a fix, are in
+[go/migration/tasks/track-forcetypeassert.md](go/migration/tasks/track-forcetypeassert.md).
+
 ## Sensitive Areas
 
 The following areas have historically been the source of subtle bugs and

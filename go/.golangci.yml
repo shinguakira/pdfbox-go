@@ -1,0 +1,30 @@
+# The Go port's lint gate. One linter, for one defect class.
+#
+# forcetypeassert reports a type assertion whose failure is not handled: `x.(T)`
+# used as a value, which panics with *runtime.TypeAssertionError. Every such
+# assertion in this tree stands for a Java cast, and a Java cast that fails
+# throws ClassCastException, so the port is meant to fail there too -- but it is
+# meant to fail in a way its callers can tell from a defect of the port. Where a
+# recover stands for a Java catch, as PDFunctionType4.Eval does for PDFBOX-6320,
+# an unrecognised panic is the difference between a lost shading and a lost page.
+#
+# Why this file exists is in go/migration/tasks/track-forcetypeassert.md, with
+# the count it started from.
+#
+# Run it with golangci-lint, or run the linter on its own, which needs no
+# configuration and no golangci-lint:
+#
+#   go run github.com/gostaticanalysis/forcetypeassert/cmd/forcetypeassert@v0.2.0 ./...
+
+version: "2"
+
+run:
+  # A bare assertion in a test is a test failure, loudly, at the line that made
+  # it; there is no caller to mislead and nothing to recover. The 106 findings
+  # in _test.go files are left alone deliberately.
+  tests: false
+
+linters:
+  default: none
+  enable:
+    - forcetypeassert
