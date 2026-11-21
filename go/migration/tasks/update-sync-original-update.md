@@ -120,7 +120,7 @@ One row, one unit of work. Nothing here has been written yet.
 
 | Site | What to do | Comes from |
 | --- | --- | --- |
-| `go/pdfbox/contentstream/text.go`, `ShowType3Glyph` | Bound the recursion the way `drawobject.go` does, in the Java's new shape: level, limit fifty, release in a `defer` | entry 87, PDFBOX-6266 |
+| `go/pdfbox/contentstream/text.go`, `ShowType3Glyph` | **done** — level, limit fifty, released in a `defer`, as `drawobject.go` does it; `pdfbox6266_test.go` | entry 87, PDFBOX-6266 |
 | `go/pdfbox/filter/ascii85.go`, `readByte` | Decide whether a group cut short reads as the terminator, as the Java now does, or stops as the port does; whichever way, say so where it happens | entry 32, PDFBOX-6317 |
 | `go/pdfbox/filter/asciihex.go`, `Decode` | Skip white space before the second digit | entry 30, PDFBOX-6330 |
 | `go/pdfbox/pdmodel/common/function/type4/stackoperators.go`, `rollOperator` | `n == 0` returns, `j %= n`, a zero `j` returns | entry 92, PDFBOX-6331 |
