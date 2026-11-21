@@ -98,6 +98,20 @@ func numberAsFloat(value any) float32 {
 	}
 }
 
+// numberAsFloat64 is Java's Number.doubleValue. PDFBOX-6331 moved the eq, ge,
+// gt and le operators onto it: an int32 widens to float64 exactly, where
+// float32 rounds every integer above 2^24.
+func numberAsFloat64(value any) float64 {
+	switch v := value.(type) {
+	case int32:
+		return float64(v)
+	case float32:
+		return float64(v)
+	default:
+		panic("type4: the value is not a number")
+	}
+}
+
 // numberAsInt is Java's Number.intValue, which truncates a float toward zero
 // and saturates at the int bounds.
 func numberAsInt(value any) int32 {

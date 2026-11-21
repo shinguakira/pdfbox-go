@@ -4268,6 +4268,20 @@ from `eq` takes the other arm of an `if` or `ifelse`, silently.
 `geCompare`, `gtCompare`, `leCompare` and `ltCompare` take `float32`. The comment
 above `operandsEqual` names Java's `Eq.isEqual` as the reason.
 
+**Fixed in the Go** `update/sync-original-update`, four of the five. `eq` and
+`ne` compare through `javaDoubleCompare(numberAsFloat64(...))` — the port's
+`javaFloatCompare` became `javaDoubleCompare`, this being its only caller — and
+`comparisonOperator` hands `float64` to `geCompare`, `gtCompare` and
+`leCompare`. `ltCompare` takes that `float64` and narrows both sides back to
+`float32`, because the Java's `Lt` still calls `floatValue()`: the port follows
+the Java, not the evident intention of the commit. Tested over 16777216 and
+16777217 — 2^24 and the first integer a `float` cannot hold — by
+`TestEqOfTwoIntegersAboveTheFloatMantissa` and the three beside it in
+`go/pdfbox/pdmodel/common/function/type4/pdfbox6331compare_test.go`, with
+`TestLtStillComparesInFloat` pinning the arm upstream left alone and
+`TestComparisonsOfOrdinaryNumbersAreUnchanged` as the guard that the widening
+moved nothing else.
+
 **Resolved upstream** Apache `47d20cb71`, PDFBOX-6331, 2026-11-19, in the sync
 of 2026-11-21 — four of the five. `Eq` compares with `Double.compare`, and `Ge`,
 `Gt` and `Le` with `doubleValue()`; **`Lt` still compares as `float`**, and the
