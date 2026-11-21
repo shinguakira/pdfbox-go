@@ -5599,3 +5599,60 @@ yet known whose mesh it paints and whose function is short, so the carry is
 untested. Filing it showed that the reproduction-group index of that file does
 not carry entries 89 and 90 either; 91 is placed, those two are left for whoever
 judges them.
+
+## Track `testdata-qpdf` — the qpdf files the suite had not taken
+
+Issue #31 of #29; the task file is
+[`tasks/track-testdata-qpdf.md`](tasks/track-testdata-qpdf.md) and the run is in
+[`TESTDATA.md`](TESTDATA.md), "qpdf against the Java".
+
+The suite took `qpdf/qtest/qpdf` alone, 639 of the 717 PDFs qpdf commits.
+`fetch-corpus.ps1` gained a `Subtrees` field -- an archive suite could take one
+subtree -- and the other four directories are on disk beside the first, under
+their own names rather than mirrored at their repository paths, because the 639
+have been at the suite's root since the suite was added and `oracle/list.txt`
+expects them there.
+
+**The 24 encrypted files no table opened are down to one.**
+`scripts/passwords/qpdf.tsv` holds 29 files and 42 ways of opening them, every
+one read from a qpdf script: `encryption.test`'s two tables, which carry the
+Acrobat-written files and the C API's revisions, `check-encryption.test`,
+`merge-and-split.test`, the two `job-json-encrypt-*.json`, `specific-bugs.test`,
+`attachments.test`, `bookmarks.test`, and for `encrypted-40-bit-R3.pdf` the
+password qpdf's own committed check output recovers. The one left is
+`bad-encryption-length.pdf`, whose `/Encrypt` declares the wrong `/Length`: qpdf
+opens it with an empty user password and PDFBox refuses it with any, so both
+sides refuse it and the comparison says so.
+
+**Nothing was found in the port.** The documents agree exactly -- 0 of 717
+disagree, the same 708 open and the same 22 refuse for the same reasons -- as do
+ten of the twelve facets and all seven write paths, and the renders are 115
+pages identical to the last bit with 4,488 more within a level of a cell.
+
+### The two corrections it did make
+
+**`JAVA-BUGS.md` 90 claimed one file and three do it.** PDFBox raises
+`ClassCastException` out of the images facet on `indirect-filter.pdf`,
+`indirect-filter-out-0.pdf` and `indirect-filter-out-1.pdf`, where the port
+answers the image. The entry said `indirect-filter-out-0.pdf` was "the only file
+of 40,255"; all three were on disk when that was written, and the claim came
+from the classification of a sample of 313 files rather than the whole run. The
+entry now carries the correction and how it was measured.
+
+**"A truncated image keeps the rows that read" has three more documents, by
+another route.** That deviation was measured on `itext-java`'s
+`calRgb16bpc.pdf`, 16 bits a component over DCT-decoded 8-bit data. qpdf's
+`png-filters-no-columns.pdf`, `png-filters-no-columns-decoded.pdf` and
+`png-filters-1-column.pdf` reach it with a 16-bit image whose `/Predictor 15`
+carries no `/Columns`: the predictor runs with `/Columns` 1, the data runs short,
+and `SampledImageReader` -- which catches a premature EOF in its bilevel and
+8-bit paths but not in `fromAny` -- throws `EOFException`, loses the image and
+leaves PDFBox drawing a blank page. The port's `imageBitReader` returns zeroes
+and keeps the rows that read. Six pages, the farthest apart in the suite at 246
+levels a cell, and `issue-117.pdf` is a fourth document for the same guard.
+
+### Still open
+
+Nothing of the suite. The question it hands on is the one PoDoFo's and PDFium's
+tracks left: a lenient JPEG decoder, or not. The 57 DCT image lines that differ
+here are that same difference.
