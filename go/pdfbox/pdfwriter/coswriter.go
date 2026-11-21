@@ -1144,9 +1144,14 @@ func (w *COSWriter) VisitDictionary(obj *cos.Dictionary) error {
 				w.signatureLength = w.standardOutput.Pos() - w.signatureOffset
 
 			case w.reachedSignature && key == cos.ByteRange:
-				// Java casts without a check; the port asserts the same way and
-				// panics where the entry is not an array.
-				w.byteRangeArray = value.(*cos.Array)
+				// Java casts without a check; the port panics where the entry
+				// is not an array, which is that ClassCastException said out
+				// loud.
+				byteRange, isArray := value.(*cos.Array)
+				if !isArray {
+					panic(fmt.Sprintf("pdfwriter: /ByteRange is a %T, not an array", value))
+				}
+				w.byteRangeArray = byteRange
 				w.byteRangeOffset = w.standardOutput.Pos() + 1
 				if err := value.Accept(w); err != nil {
 					return err
@@ -1367,9 +1372,15 @@ func (w *COSWriter) VisitStringObj(obj *cos.StringObj) error {
 	if err != nil {
 		return err
 	}
-	// Java casts the result to COSString without a check; the port asserts the
-	// same way and panics where the handler returned something else.
-	return WriteString(encrypted.(*cos.StringObj), w.standardOutput)
+	// Java casts the result to COSString without a check; the port panics where
+	// the handler returned something else, which is that ClassCastException
+	// said out loud.
+	encryptedString, isString := encrypted.(*cos.StringObj)
+	if !isString {
+		panic(fmt.Sprintf(
+			"pdfwriter: the security handler returned a %T, not a string", encrypted))
+	}
+	return WriteString(encryptedString, w.standardOutput)
 }
 
 // securityHandlerLike is the half of a security handler the writer uses.
@@ -1512,7 +1523,12 @@ func (w *COSWriter) WriteSigned(doc PDDocumentLike, signInterface SignatureInter
 			// created for the first time
 			secondID = firstID
 		} else {
-			firstID = idArray.Get(0).(*cos.StringObj)
+			// Java casts the first /ID entry to COSString without a check
+			first, isString := idArray.Get(0).(*cos.StringObj)
+			if !isString {
+				panic(fmt.Sprintf("pdfwriter: /ID[0] is a %T, not a string", idArray.Get(0)))
+			}
+			firstID = first
 			secondID = cos.NewStringObjBytes(digest.Sum(nil))
 		}
 		idArray = cos.NewArray()
