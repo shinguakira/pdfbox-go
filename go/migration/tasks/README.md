@@ -39,13 +39,14 @@ change it to suit one branch — change the copy.
 | `track/testdata-itext` | [`track-testdata-itext.md`](track-testdata-itext.md) | **merged** into `track/testdata-sources` on 2026-09-16 — iText's PDFs against PDFBox, and the text compared by digest |
 | `track/testdata-podofo` | [`track-testdata-podofo.md`](track-testdata-podofo.md) | **merged** 2026-09-19, pull request #39 — PoDoFo's test documents against PDFBox, and the twelve facets, the write paths and rendering compared |
 | `track/render-performance` | [`track-render-performance.md`](track-render-performance.md) | **merged** 2026-09-28, pull request #41 — issue #40, the renderer's speed against PDFBox's: faster than PDFBox on every timed file |
-| `track/testdata-pdfium` | [`track-testdata-pdfium.md`](track-testdata-pdfium.md) | open — made 2026-09-29 from `migration-base` at `90e1a7b42` on the user's instruction; issue #33 of #29, PDFium's 341 test documents against PDFBox over the documents, the facets, the write paths and the renders |
+| `track/testdata-pdfium` | [`track-testdata-pdfium.md`](track-testdata-pdfium.md) | **merged** 2026-10-07, pull request #42 — issue #33 of #29, PDFium's 341 test documents against PDFBox over the documents, the facets, the write paths and the renders |
+| `track/testdata-qpdf` | [`track-testdata-qpdf.md`](track-testdata-qpdf.md) | open — made 2026-10-08 from `migration-base` at `0e5e70abc` on the user's instruction; issue #31 of #29, the 78 qpdf PDFs the suite did not take and the passwords for its encrypted ones |
 
 **The port is merged**, every slice and every track of it, bar the two
 `track/performance` commits that ride in the open branch. What is open is
 `track/testdata-sources`, whose subject is [`../TESTDATA.md`](../TESTDATA.md),
-and `track/testdata-pdfium`, one of its test-data tracks: PDFium's documents
-against PDFBox.
+and `track/testdata-qpdf`, one of its test-data tracks: the qpdf PDFs the suite
+had not taken, and the passwords its encrypted ones need.
 
 The order the branches were taken in, the dependency graph and the argument for
 each edge are in [`../BRANCHING.md`](../BRANCHING.md).

@@ -103,7 +103,7 @@ pwsh go/migration/scripts/fetch-corpus.ps1 -Suite pdfium   # ~4 MB, needs git
 | Suite | PDFs | Licence | What it is, and what it reaches |
 | --- | ---: | --- | --- |
 | [`verapdf`](https://github.com/veraPDF/veraPDF-corpus) | 2,908 | CC BY 4.0 | **The best one-file-one-rule corpus that exists.** Each file asserts a single requirement of ISO 19005 (PDF/A 1–4), ISO 14289 (PDF/UA 1–2), ISO 32000-1 or ISO 32000-2; the directory and filename name the clause, and each file documents itself in its own outline. Reaches `cos`, `pdfparser`, `xmpbox`, `documentinterchange`, `graphics/color` |
-| [`qpdf`](https://github.com/qpdf/qpdf) | 639 | Apache-2.0 | qpdf's own regression inputs: cross-reference tables and streams in every arrangement, object streams of every shape, linearised and not, damaged xrefs, every encryption revision qpdf can write. Reaches `pdfparser`, `pdfwriter`, `cos`, `pdmodel/encryption` |
+| [`qpdf`](https://github.com/qpdf/qpdf) | 717 | Apache-2.0 | qpdf's own regression inputs, from five directories of the repository: cross-reference tables and streams in every arrangement, object streams of every shape, linearised and not, damaged xrefs, every encryption revision qpdf can write, in `qpdf/qtest/qpdf`; and beside them `examples/qtest` 49, the inputs and expected output of the C and C++ examples, `compare-for-test/qtest` 21, `libtests/qtest` 6 and `qpdf/qtest/storage` 2. 29 name an encryption dictionary; [`scripts/passwords/qpdf.tsv`](scripts/passwords/qpdf.tsv) opens them the way qpdf's own test scripts do. Reaches `pdfparser`, `pdfwriter`, `cos`, `pdmodel/encryption`. See "qpdf against the Java" |
 | [`cabinet-of-horrors`](https://github.com/openpreserve/format-corpus/tree/master/pdfCabinetOfHorrors) | 24 | see repo | The files digital preservation keeps tripping over: broken embedded fonts, encrypted-without-password, malformed page trees |
 | [`safedocs-targeted`](https://github.com/pdf-association/safedocs) | 11 | Apache-2.0 | Hand-coded by the DARPA SafeDocs programme to break parsers on purpose: dual `startxref`, Type 3 inside Type 3, a page with no `/Contents`, a font inside a shading pattern, UTF-16LE strings. Its `ContentStreamCycleType3insideType3.pdf` is [`JAVA-BUGS.md`](JAVA-BUGS.md) 87, the unbounded Type 3 recursion neither side guards; it is why `cmd/corpus` isolates each file |
 | [`pdf20examples`](https://github.com/pdf-association/pdf20examples) | 7 | see archive | PDF 2.0 features one per file: UTF-8 strings, page-level output intents, black point compensation, 2.0 reached by incremental save, a non-zero start offset |
@@ -823,6 +823,142 @@ take to see the port carry the defect.
 
 The nine pages both sides fail on fail the same way, and the twenty-five files
 neither side opens are refused by both.
+
+## qpdf against the Java, 2026-10-08
+
+The suite took `qpdf/qtest/qpdf` alone, 639 of the 717 PDFs qpdf commits. All
+717 are on disk now: the archive carries them in five directories, and
+`fetch-corpus.ps1` gained a `Subtrees` field to take the other four, each under
+its own name beside the first.
+
+| In the repository | Here | PDFs | What they are |
+| --- | --- | ---: | --- |
+| `qpdf/qtest/qpdf` | the suite's root | 639 | the regression inputs |
+| `examples/qtest` | `examples/` | 49 | the inputs and expected output of the C and C++ examples |
+| `compare-for-test/qtest` | `compare-for-test/` | 21 | the pairs `qpdf-test-compare` is run on |
+| `libtests/qtest` | `libtests/` | 6 | the filter tests |
+| `qpdf/qtest/storage` | `storage/` | 2 | two files a storage test reads |
+
+The 639 stay at the root, where `oracle/list.txt` and every table taken from it
+already expect them, which is why the four are not mirrored at their repository
+paths.
+
+### The encrypted files
+
+Twenty-four of them refused to open on both sides because no table held their
+passwords, and that refusal was all there was to compare.
+[`scripts/passwords/qpdf.tsv`](scripts/passwords/qpdf.tsv) now holds **29 files
+and 42 ways of opening them**, each read from qpdf's own scripts:
+
+| Where the password comes from | Files |
+| --- | --- |
+| `encryption.test`, `@encrypted_files` -- Acrobat 5.0 and Acrobat XI files qpdf decrypts and re-encrypts, the password in the table's second column | the 15 `enc-*`, with the user password and, where the file has one, the owner's |
+| the same table's long-password rows | `enc-long-password.pdf` and `enc-XI-long-password.pdf`: the 32-byte prefix opens the R4 file, the whole string is needed for the R6 one |
+| `encryption.test`, `@cenc` -- the C API tests, each row writing one revision and checking its committed output with the password in its last column | `c-r2`, `c-r3`, `c-r4`, `c-r5-in`, `c-r6-in` |
+| `check-encryption.test`, `merge-and-split.test` | `20-pages.pdf`, and `pages-copy-encryption.pdf`, which carries the same `/O` and `/U` because the merge copied them |
+| `job-json-encrypt-40.json` and `-128.json`, which wrote the files they name | `job-json-encrypt-40.pdf`, `job-json-encrypt-128.pdf` |
+| `specific-bugs.test`, `attachments.test`, `bookmarks.test` | `unfilterable-with-crypt.pdf`, the two attachment files, `examples/bookmarks/4.pdf` |
+| `encrypted-40-bit-R3.out`, qpdf's own committed check output: "User password = 623" | `encrypted-40-bit-R3.pdf` |
+
+A password there is a string, not a byte sequence: both sides encode it the way
+the revision asks, ISO-8859-1 for revisions 2 to 4 and UTF-8 for 5 and 6.
+
+**One file no password opens.** `bad-encryption-length.pdf` has an `/Encrypt`
+whose `/Length` is wrong. qpdf opens it with an empty user password and its
+committed output says so -- "User password = ", "Supplied password is user
+password" -- and PDFBox refuses it with `InvalidPasswordException` whatever is
+supplied. So no line opens it, both sides refuse it, and that is the
+comparison: PDFBox is the reference here, not qpdf.
+
+### The documents, the facets and the write paths
+
+```
+717 files in 42s, opened 730 ways, 1 of them encrypted and skipped
+
+  open    both 708, neither 22, behind 0, ahead 0
+  pages   0 disagree
+  text    both 707, neither 1, behind 0, ahead 0
+  chars   707 the same length, 0 not
+  digest  707 of the same length the same text, 0 not
+
+  0 of 717 files disagree (0.00%)
+```
+
+The same 708 open and the same 22 are refused -- and for the same reasons, one
+for one: 15 with no `/Root` in the trailer, 2 whose page tree root is not a
+dictionary, 3 that end mid-line, 1 whose object number runs too long, and
+`bad-encryption-length.pdf`. Ten of the twelve facets agree on all 708, and so
+does every one of the seven write paths: save, incremental save, encryption,
+split, merge, overlay and an external signature.
+
+**`images` differs on 25 files and `imagepixels` on 26**, and aligning the two
+sides' lines file by file says what the differences are: **57 lines are
+`DCTDecode`**, which is the JPEG-decoder difference recorded above, and **3 are
+PDFBox throwing** where the port answers. Nothing else differs -- no
+`FlateDecode`, `CCITTFaxDecode`, `RunLengthDecode` or unfiltered image, which is
+the corpus-wide claim of "Twelve facets against the Java" holding on a suite
+chosen for its filters.
+
+**The three throws correct an entry.** `indirect-filter.pdf`,
+`indirect-filter-out-0.pdf` and `indirect-filter-out-1.pdf` each make PDFBox
+raise `ClassCastException: COSObject cannot be cast to COSName` out of the
+images facet -- [`JAVA-BUGS.md`](JAVA-BUGS.md) 90, an indirect `/Filter`. That
+entry said `indirect-filter-out-0.pdf` was "the only file of 40,255" to do it.
+It is three, all three were on disk when the claim was written, and the claim
+came from the classification of a sample of 313 files rather than from the whole
+run. The entry now says so.
+
+### The renders
+
+```
+4617 pages compared, 0 in one table only, 0 files one side did not open
+  identical to the last bit   115
+  within 1 level a cell       4488
+  within 4 levels a cell      0
+  within 16 levels a cell     6
+  further apart               6
+  one side failed             0
+  both sides failed           2
+```
+
+No page where one side draws and the other fails. The twelve that differ by
+more than a level are two recorded deviations and nothing else.
+
+**Six pages, `image-streams.pdf` and `image-streams-small.pdf` 1 to 3**, are 4.3
+levels a cell out with a largest of 48: those pages draw the same photograph
+through DCT and through a CMYK colour space, which is the decoder difference and
+`PDDeviceCMYK` converting naively.
+
+**Six pages are far out -- 246 levels a cell -- and they are the deviation
+`STATUS.md` records as "a truncated image keeps the rows that read".**
+`png-filters-no-columns.pdf`, `png-filters-no-columns-decoded.pdf` and
+`png-filters-1-column.pdf`, pages 1 and 12. The first image of each is 32 by 32
+at **16 bits a component** with `/DecodeParms [<< /Predictor 15 /Colors 3
+/BitsPerComponent 16 >>]` and **no `/Columns`**, so the predictor is applied with
+`/Columns` defaulting to 1 and the data runs out before the image is full.
+PDFBox throws:
+
+```
+java.io.EOFException
+    at javax.imageio.stream.ImageInputStreamImpl.readBits(ImageInputStreamImpl.java:687)
+    at ...SampledImageReader.fromAny(SampledImageReader.java:643)
+    at ...SampledImageReader.getRGBImage(SampledImageReader.java:213)
+    at ...PDImageXObject.getImage(PDImageXObject.java:505)
+```
+
+`SampledImageReader` catches a premature EOF in its bilevel and 8-bit paths and
+not in `fromAny`, so the image is lost and **PDFBox draws a blank page**. The
+port's `imageBitReader` returns zeroes at the end of the stream and keeps the
+rows that read, so it draws the part of the image that was there. The decoded
+stream bytes are identical on both sides -- the `images` facet agrees on these
+three files -- and only the pixels differ, which is exactly the shape of that
+deviation.
+
+It is worth noting where it had been measured before: `itext-java`'s
+`calRgb16bpc.pdf`, 16 bits a component over DCT-decoded 8-bit data. These three
+reach the same guard by another route, a PNG predictor whose `/Columns` is
+missing, and `issue-117.pdf` is a fourth: its one image is pixels on the port
+and an error in PDFBox.
 
 ## Twelve facets against the Java, 2026-09-18
 
