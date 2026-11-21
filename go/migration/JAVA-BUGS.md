@@ -14,6 +14,15 @@ was fixed while the port was being written is in
 branch, its triage columns and the shape an entry takes after a fix are in its
 task file.
 
+An entry Apache has since fixed gains a **Resolved upstream** line naming the
+commit, the issue and the sync that brought it in. The entry stays: it is the
+record of what the port carried, and `track/java-bug-fixes` may have fixed it
+first. Two syncs have closed any —
+[`tasks/track-upstream-sync.md`](tasks/track-upstream-sync.md) for 2026-09-07
+and [`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md)
+for 2026-11-21. Where a sync changed the quoted site and left the defect, the
+entry says that instead, in a **Not resolved upstream** line.
+
 **Do not report any of this upstream.** See [`BRANCHING.md`](BRANCHING.md).
 
 ## How to add an entry
@@ -31,6 +40,16 @@ to write down.
 files, the commit messages and the comments in the Go all cite an entry by its
 number.
 
+**Seventeen numbers are missing**: 12, 16, 17, 18, 20, 23, 24, 27, 29, 32, 37,
+40, 56, 82, 83, 87 and 88. Apache fixed all seventeen, the sync of 2026-11-21
+brought the fixes in, and the entries were removed from this file on 2026-11-21
+on the repository owner's instruction. The numbers are **not reused**: the Go
+still cites every one of them, in a comment at the site or in the name of a test
+file, and so do [`STATUS.md`](STATUS.md),
+[`TESTDATA.md`](TESTDATA.md) and the task files. What each one was, with the
+Apache commit and the issue, is in the commit that removed them and in
+[`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md).
+
 ## How they group
 
 The numbered list below is in the order the defects were found, which is the
@@ -42,23 +61,24 @@ to reach or how much it costs. This is the second index.
 The question anyone judging an entry asks first. Every number it carries appears
 exactly once, but it does not yet carry all of them: **89 and 90 are not placed**,
 and were not when they were written. Whoever places them should correct the count
-below as well; 91 was added to B on `track/testdata-pdfium`.
+below as well; 91 was added to B on `track/testdata-pdfium`, and 92 and 93 to A
+on the sync of 2026-11-21.
 
 | | Group | Entries | | What reproducing one takes |
 | --- | --- | --- | ---: | --- |
-| A | parser and filters | 6, 8, 9, 10, 14, 23, 27, 29, 30, 32, 63, 88 | 12 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream, a TIFF predictor with no columns |
-| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86, 87, 91 | 9 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
-| C | fonts | 12, 13, 16, 17, 18, 19, 20, 21, 74 | 9 | **a font file, not a PDF.** A CID-keyed CFF with a sheared FontMatrix in both DICTs, a `uniXXXX` name with no cmap, a scan of the system fonts |
-| D | XMP | 56, 57 | 2 | a malformed XMP packet, which a PDF can carry |
-| E | writing, merging, round trip | 33, 35, 40, 43, 44, 45, 48, 79, 82, 83 | 10 | **write it and read it back.** `/Type /BEAD`, `/Reasons` written as strings and read as names, a merge that mixes the destination into itself |
-| F | the Java API alone | 1, 5, 24, 25, 26, 34, 38, 39, 41, 52, 53, 54, 55, 58, 59, 60, 61, 64 | 18 | **no PDF reaches these.** The caller has to hold the object and call the method |
+| A | parser and filters | 6, 8, 9, 10, 14, 30, 63, 92, 93 | 9 | **one malformed PDF.** A name ending `/A#2` at end of input, a truncated inline image, an ASCII85 stream carrying `0xFF`, a non-hex digit in an ASCIIHex stream, a predictor on a content stream, a TIFF predictor with no columns |
+| B | rendering and text extraction | 15, 31, 49, 50, 51, 85, 86, 91 | 8 | a PDF, but **opening it is not enough** — it has to be rasterized, or the text pulled out |
+| C | fonts | 13, 19, 21, 74 | 4 | **a font file, not a PDF.** A CID-keyed CFF with a sheared FontMatrix in both DICTs, a `uniXXXX` name with no cmap, a scan of the system fonts |
+| D | XMP | 57 | 1 | a malformed XMP packet, which a PDF can carry |
+| E | writing, merging, round trip | 33, 35, 43, 44, 45, 48, 79 | 7 | **write it and read it back.** `/Type /BEAD`, `/Reasons` written as strings and read as names, a merge that mixes the destination into itself |
+| F | the Java API alone | 1, 5, 25, 26, 34, 38, 39, 41, 52, 53, 54, 55, 58, 59, 60, 61, 64 | 17 | **no PDF reaches these.** The caller has to hold the object and call the method |
 | G | the io layer | 2, 7, 47, 62, 65, 66, 67, 68, 69, 70, 71, 72, 73 | 13 | timing, or the life of the process: a lock order, a leaked handle, a swallowed close failure, a read count that is one too many |
-| H | unreachable code | 3, 11, 22, 28, 36, 37, 42, 80, 84 | 9 | **nothing reproduces these.** The defect is that a branch cannot be taken: `/Suspects` cannot be set to true, `KerningTable`'s version 1 arm cannot run, the merge's page-mode branch cannot run |
+| H | unreachable code | 3, 11, 22, 28, 36, 42, 80, 84 | 8 | **nothing reproduces these.** The defect is that a branch cannot be taken: `/Suspects` cannot be set to true, `KerningTable`'s version 1 arm cannot run, the merge's page-mode branch cannot run |
 | I | a Java test | 4, 46, 78, 81 | 4 | nothing. The library is right and the test is not |
 | J | tools and diagnostics | 75, 76, 77 | 3 | run the command |
 
-So **23 of the 89 this table places are reachable by handing PDFBox a file** —
-A, B and D — and 32 if a font counts. The rest need an API call, a race, or cannot be reached at all.
+So **18 of the 74 this table places are reachable by handing PDFBox a file** —
+A, B and D — and 22 if a font counts. The rest need an API call, a race, or cannot be reached at all.
 
 ### By the shape of the mistake
 
@@ -66,29 +86,28 @@ Not a partition: an entry can be two shapes at once, and 28 is.
 
 | Shape | Entries | |
 | --- | --- | ---: |
-| a setter and its getter disagree on the type, so nothing round-trips | 40, 43, 44, 54, 55 | 5 |
+| a setter and its getter disagree on the type, so nothing round-trips | 43, 44, 54, 55 | 4 |
 | the `-1` a read returns is added to a count | 2, 3, 30 | 3 |
 | fields saved and restored without a `finally`, so a throw leaves the wreckage | 47, 49, 50, 71, 73 | 5 |
 | a null that is never checked | 14, 25, 38, 52, 57, 60, 65, 76 | 8 |
-| bits and integers: `%` for `&`, a truncation to 32, a sign extension, a floor called a ceiling | 1, 16, 19, 20, 28, 74, 85 | 7 |
-| a branch that cannot be taken | 22, 28, 36, 37, 42, 80, 84, 86 | 8 |
-| a guard the class already carries, not applied on every path that needs it | 87 | 1 |
-| a guard that stops one short: `< 0` where nothing at zero can work | 88 | 1 |
+| bits and integers: a truncation to 32, a sign extension, a floor called a ceiling, two integers compared in `float` | 1, 19, 28, 74, 85, 93 | 6 |
+| a branch that cannot be taken | 22, 28, 36, 42, 80, 84, 86 | 7 |
 
-Five of the first six shapes repeat across files that have nothing to do with
-each other, which is the argument that they are mistakes rather than decisions:
-the same `-1` accumulation is written out three times, in three packages, by
-three people. The last two have one entry each and may stay that way; they are
-here because the shapes are worth naming, not because they recur yet.
+Every shape here repeats across files that have nothing to do with each other,
+which is the argument that they are mistakes rather than decisions: the same
+`-1` accumulation is written out three times, in three packages, by three
+people. Two more shapes had one entry each — a guard the class already carried
+and was not applied on every path, and a guard that stopped one short at `< 0` —
+and went with the entries named below.
 
 ### Two things the grouping shows
 
 **Group B has no test upstream that could go red**, because PDFBox has no
 rendering test — see [`STATUS.md`](STATUS.md) under `track/raster`. 85 and 86
 were found by running the JDK as a reference implementation and comparing
-pixels, and 87 by rendering a corpus of [`TESTDATA.md`](TESTDATA.md).
+pixels.
 
-**Group C is CI-dependent for three of its nine.** 19, 20 and 21 are in
+**Group C is CI-dependent for two of its four.** 19 and 21 are in
 `FileSystemFontProvider`, which walks the fonts installed on the machine. What
 reproduces them depends on what is installed.
 
@@ -307,6 +326,14 @@ that drops what it cannot key may lose an object that could still be recovered,
 and one that keeps it may key on null. There is no correct to fix *to*, only a
 choice between two behaviours, and that choice belongs to whoever is reading
 damaged files.
+
+**Not resolved upstream** The sync of 2026-11-21 rewrote this table and left the
+null in it: PDFBOX-6268 (`c11132642`, 2026-09-21) replaced the `HashMap` field
+with an `XrefTable` subclass that indexes its keys so the stored instance can be
+found, and `addXRefTable` is still `xrefTable.putAll(xrefTableValues)` with
+nothing asked of the keys. The entry's open question — whether keeping a null key
+is deliberate — is not answered, but the table has now been rewritten once with
+the null still allowed.
 
 **Confidence** medium. Keeping it may be deliberate — a damaged file's entry is
 arguably data — but the shape of PDFBOX-6132 suggests otherwise.
@@ -546,65 +573,6 @@ the comment above it states an intent the code does not carry out.
 
 ---
 
-## 12. `TrueTypeFont.nameToGID` dereferences a null cmap for a `uniXXXX` name
-
-**Where** `fontbox/src/main/java/org/apache/fontbox/ttf/TrueTypeFont.java`,
-`nameToGID`.
-
-```java
-int uni = parseUniName(name);
-if (uni > -1)
-{
-    CmapLookup cmap = getUnicodeCmapLookup(false);
-    return cmap.getGlyphId(uni);
-}
-```
-
-**What it does** `getUnicodeCmapLookup(false)` is the lenient form, and its
-whole point is that it returns `null` rather than throwing when the font has no
-`cmap` table:
-
-```java
-CmapTable cmapTable = getCmap();
-if (cmapTable == null)
-{
-    if (isStrict) { throw new IOException(...); }
-    else { return null; }
-}
-```
-
-`nameToGID` then calls `getGlyphId` on it without a null check, so the lenient
-path throws a `NullPointerException` instead of the `IOException` it was written
-to avoid.
-
-**What correct would be** a null check returning 0, which is what `nameToGID`
-returns for every other name it cannot resolve.
-
-**Why it matters** `TTFParser` requires a `cmap` table only when the font is not
-embedded — `if (!isEmbedded && font.getCmap() == null) throw` — so an embedded
-TrueType font with no `cmap` parses fine, and is exactly the case this branch
-was written for. Asking such a font for `getWidth("uni0041")` or
-`hasGlyph("uni0041")` — both of which go through `nameToGID` — throws NPE out of
-a method declared to throw `IOException`. The name has to survive the `post`
-table lookup first, which an embedded subset with no `post` names will.
-
-**Where the Go carries it** `go/fontbox/ttf/truetypefont.go`, `NameToGID`.
-`unicodeCmapImpl` returns a nil `*CmapSubtable`, `UnicodeCmapLookup` hands it
-back inside a `CmapLookup` interface, and `cmap.GetGlyphID(uni)` dereferences
-nil and panics — which is what this port does with an unchecked Java exception.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 12. `NameToGID` answers 0
-where the font has no Unicode cmap, which is what it answers for every other
-name it cannot resolve — the branch three lines above and the one three lines
-below both do. Without it the port panicked on a subsetted font, which usually
-has no cmap at all. Tested by `TestNameToGIDOfAUniNameWithoutACmap` in
-`go/fontbox/ttf/javabugfixes_test.go`.
-
-**Confidence** high. The null return is explicit three lines up in the same
-class, and no caller of the lenient form checks it.
-
----
-
 ## 13. `GlyphList.loadList` stops at the first stream that is not ready
 
 **Where**
@@ -793,153 +761,6 @@ the 16 letters reversed. The difference is this fix, and it is expected.
 **Confidence** high. The same method reads the code point for the mirroring
 test and appends the code unit, one line apart.
 
-## 16. `CMap.useCmap` builds a one-byte code with `% 0xFF` instead of `& 0xFF`
-
-**Where** `fontbox/src/main/java/org/apache/fontbox/cmap/CMap.java`, `useCmap`.
-
-**What it does** the `usecmap` operator copies one CMap's mappings into
-another. The forward maps are copied wholesale; the inverted map,
-`unicodeToByteCodes`, is rebuilt from the keys, and for the one-byte table the
-key is turned back into a byte with
-
-```java
-cmap.charToUnicodeOneByte.forEach((k, v) ->
-        unicodeToByteCodes.put(v, new byte[]{(byte) (k % 0xFF)}));
-```
-
-`k` is a one-byte code, so it runs 0 to 255. `k % 0xFF` is `k % 255`, which
-maps 255 to 0 and leaves every other value alone. The two-byte and the three /
-four byte branches directly below both use `& 0xFF` on every byte, so the
-one-byte line is the odd one out.
-
-**What correct would be** `(byte) (k & 0xFF)`, or simply `(byte) (int) k` — the
-key is already a single byte's worth.
-
-**Why it matters** after a `usecmap`, `getCodesFromUnicode` for whatever the
-inherited CMap mapped from code 0xFF hands back code 0x00. The caller is
-`PDType0Font.encode`, which is how text is written into a content stream, so a
-document built on such a CMap gets the wrong byte written for that one
-character. It needs an inherited one-byte CMap with a mapping at 0xFF to show,
-which is why it has gone unnoticed.
-
-**Where the Go carries it** `go/fontbox/cmap/cmap.go`, `useCmap`, with the
-`% 0xFF` written out and a comment pointing here.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 16. `useCmap` masks with
-`& 0xFF`, which is what the two branches beside it do. The two agree for every
-byte but 255, so a parent CMap that maps the code 0xFF used to lose it and the
-reverse map answered the code 0 for that character. Tested by
-`TestUseCmapKeepsTheCodeFF` in `go/fontbox/cmap/javabugfixes_test.go`.
-
-**Confidence** high. The two branches beside it mask with `& 0xFF`, and `%` on
-a value that is already a byte cannot be deliberate.
-
-## 17. `CFFParser.concatenateMatrix` multiplies one cell by the wrong matrix
-
-**Where** `fontbox/src/main/java/org/apache/fontbox/cff/CFFParser.java`,
-`concatenateMatrix`.
-
-**What it does** a CID-keyed CFF font may carry a FontMatrix in its Font DICT
-as well as in the Top DICT, and PDFBOX-3579 needs the two multiplied together.
-The six cells are written out by hand:
-
-```java
-matrixDest.set(0, a1 * a2 + b1 * c2);
-matrixDest.set(1, a1 * b2 + b1 * d1);
-matrixDest.set(2, c1 * a2 + d1 * c2);
-matrixDest.set(3, c1 * b2 + d1 * d2);
-matrixDest.set(4, x1 * a2 + y1 * c2 + x2);
-matrixDest.set(5, x1 * b2 + y1 * d2 + y2);
-```
-
-Row 1 ends `b1 * d1`. Every other cell pairs a value from the destination
-matrix with one from the matrix being concatenated; this one pairs `b1` and
-`d1`, both from the destination. The matrix product wants `b1 * d2`.
-
-**What correct would be** `matrixDest.set(1, a1 * b2 + b1 * d2);`.
-
-**Why it matters** cell 1 is the y shear. For the overwhelmingly common case
-where both matrices are diagonal -- `b1` is 0 -- the term vanishes and the bug
-is invisible, which is why it has gone unnoticed. A CID-keyed CFF font whose
-Font DICT and Top DICT both carry a sheared or rotated FontMatrix gets the
-wrong shear, and every glyph of it is drawn skewed.
-
-**Where the Go carries it** `go/fontbox/cff/cffparser.go`, `concatenateMatrix`,
-with `b1*d1` written out and a comment pointing here.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 17. `matrixDest[1]` reads
-`d2`, as the other five cells read the second matrix. Tested by
-`TestConcatenateMatrixUsesTheSecondMatrixThroughout` in
-`go/fontbox/cff/javabugfixes_test.go`, whose expected values are the product of
-the two matrices the comment above the function draws.
-
-**Confidence** high. The five cells around it are a textbook 3x2 matrix
-product and this one is not.
-
-## 18. `PDType1CFont.getStringWidth` advances one UTF-16 unit at a time
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java`,
-`getStringWidth`.
-
-**What it does** it measures a string by walking it:
-
-```java
-for (int i = 0; i < string.length(); i++)
-{
-    int codePoint = string.codePointAt(i);
-    String name = getGlyphList().codePointToName(codePoint);
-    ...
-    width += cffFont.getType1CharString(name).getWidth();
-}
-```
-
-`String.length()` counts UTF-16 code units and `codePointAt` reads a whole
-character, so a character outside the basic plane is read at its first unit and
-then again at its second. The second read lands on the low surrogate, which is
-not part of a pair from where it starts, and `codePointAt` gives back that bare
-unit — a code point in D800–DFFF.
-
-`PDFont.encode`, six hundred lines away, does the same walk correctly:
-
-```java
-for (int offset = 0; offset < text.length(); )
-{
-    int codePoint = text.codePointAt(offset);
-    ...
-    offset += Character.charCount(codePoint);
-}
-```
-
-**What correct would be** the `charCount` advance `PDFont.encode` uses.
-
-**Why it matters** the character is measured twice, and the second measurement
-is of a lone surrogate. `codePointToName` has no name for one, so the width
-comes out as the width of whatever `.notdef`-ish name it produces, or — much
-more likely — the `hasGlyph` check just above fails and the whole call throws
-`IllegalArgumentException`. Measuring any string with an emoji or a
-supplementary-plane character in a Type 1C font is therefore either wrong or
-fatal. It needs a Type 1C font that actually has such a glyph to show, which is
-why it has gone unnoticed.
-
-**Where the Go carries it** `go/pdfbox/pdmodel/font/pdtype1cfont.go`,
-`StringWidth`, which walks `utf16Units` one at a time with `codePointAt`, both
-written out beside it.
-
-**Kept in the Go** `track/java-bug-fixes`: unobservable. The second visit
-only happens if the first one succeeded, and the first one cannot: the name the
-walk measures by is `getGlyphList().codePointToName(codePoint)`, the Adobe
-Glyph List holds no code point outside the basic plane -- `glyphlist.txt`,
-`additional.txt` and `zapfdingbats.txt` are all four hex digits -- so every
-supplementary code point comes back `.notdef`, and `.notdef` is the one name
-`CFFType1Font.hasGlyph` can never answer true for, because its SID is 0 and
-`getGIDForSID(0)` is the GID 0 the test rejects. The character therefore throws
-on its first unit, before the index that was not advanced can be read. The same
-two facts hold in the Java, so this is the Java's own behaviour and not a
-divergence.
-
-**Confidence** high. The correct walk is in the same package, in the method
-this one exists to complement.
-
 ## 19. `FileSystemFontProvider.writeFontInfo` sign-extends a Panose byte before hex
 
 **Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
@@ -995,48 +816,6 @@ Tested by `TestPanoseHexIsTwoDigits` in
 `go/pdfbox/pdmodel/font/javabug19_test.go`.
 
 **Confidence** high. The reader's own `& 0xff` says what the writer meant.
-
-## 20. `FileSystemFontProvider.addTrueTypeFontImpl` ANDs the two halves of a CID supplement
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java`,
-`addTrueTypeFontImpl`, reading the "gcid" table of an Apple AAT font.
-
-**What it does**
-
-```java
-int supplementVersion = bytes[140] << 8 & (bytes[141] & 0xFF);
-```
-
-**What correct would be** `(bytes[140] & 0xFF) << 8 | (bytes[141] & 0xFF)` —
-the two bytes of a big-endian 16-bit number are ORed together, not ANDed, and
-both are unsigned. `supplementVersion` is a uint16 in the AAT "gcid" table, at
-offset 140: version, format and size take 8 bytes, then registry 2,
-registryName 64, order 2, orderName 64, which is where the surrounding code
-reads its two strings from and lands the next field at 140. Repairing only the
-`&` would leave `bytes[140] << 8` sign-extending, so the bytes FF 01 would
-answer -255 rather than 65281.
-
-**Why it matters** `bytes[140] << 8` has a zero low byte by construction, and
-`bytes[141] & 0xFF` has nothing but a low byte, so the AND is always 0. Every
-AAT font read this way gets supplement 0 in its `CIDSystemInfo`, whatever the
-table says. Nothing in PDFBox compares supplements — `isCharSetMatch` looks at
-registry and ordering only — so the wrong value never changes a substitution,
-but it is written into the on-disk cache and handed to anyone reading
-`FontInfo.getCIDSystemInfo()`.
-
-**Where the Go carries it** `go/pdfbox/pdmodel/font/filesystemfontprovider.go`,
-`addTrueTypeFontImpl`, which writes the same `&` with a comment.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 20. The two bytes are ORed,
-unsigned, in `cidSupplementVersion`, which the test can reach on its own.
-Java's `&` between a value whose low eight bits are zero and one whose high
-bits are zero is zero for every input, so the supplement was always 0. Tested
-by `TestCIDSupplementIsTheTwoBytesJoined` in
-`go/pdfbox/pdmodel/font/javabug20_test.go`, which carries three high bytes so
-that a signed join is told apart from an unsigned one: the field is a uint16,
-so FF 01 is 65281 and not -255.
-
-**Confidence** high. `&` between disjoint byte lanes cannot be what was meant.
 
 ## 21. `FileSystemFontProvider.createFSIgnored` builds an entry with a null parent
 
@@ -1143,109 +922,6 @@ a defect fix.
 **Confidence** high. It is provable from the two lines above it that the case
 label cannot match.
 
-## 23. `CMapStrings.getMapping` reads a zero-length code as the two-byte code 0
-
-**Where** `fontbox/src/main/java/org/apache/fontbox/cmap/CMapStrings.java`,
-`getMapping`, reached from `CMapParser.createStringFromBytes`.
-
-**What it does**
-
-```java
-public static String getMapping(byte[] bytes)
-{
-    if (bytes.length > 2)
-    {
-        return null;
-    }
-    return bytes.length == 1 ? oneByteMappings.get(CMap.toInt(bytes))
-            : twoByteMappings.get(CMap.toInt(bytes));
-}
-```
-
-The ternary has two arms for three cases. A zero-length array is not length 1,
-so it takes the two-byte arm; `CMap.toInt` of no bytes is 0, and
-`twoByteMappings.get(0)` is the one-character string U+0000. An empty
-destination in a `bfchar` or `bfrange` — written `<>` — therefore maps to a NUL
-rather than to the empty string.
-
-The caller makes the inconsistency plain:
-
-```java
-private static String createStringFromBytes(byte[] bytes)
-{
-    if (bytes.length <= 2)
-    {
-        return CMapStrings.getMapping(bytes);
-    }
-    return new String(bytes, StandardCharsets.UTF_16BE);
-}
-```
-
-The same empty array down the other arm would decode as UTF-16BE to the empty
-string.
-
-**What correct would be** an empty string for an empty code, which is what the
-UTF-16BE arm gives and what the two-byte table is not being asked about.
-
-**Why it matters** a CMap with an empty destination maps its code to U+0000
-instead of to nothing, so the extracted text carries a NUL. It was supposed to
-need a hand-written CMap to reach, which is why it has gone unnoticed. **A real
-document reaches it:** `TechDocs/adobe_supplement_iso32000_1.pdf` in PoDoFo's
-test documents, Adobe's own supplement to ISO 32000, whose two CambriaMath
-subsets on page 7 each carry `<0001> <>` in their ToUnicode CMap. PDFBox
-extracts a NUL for each of the two glyphs, 2,002 characters on that page where
-the Go extracts 2,000; found 2026-09-17 by the corpus comparison, and see
-`TESTDATA.md`, "PoDoFo against the Java".
-
-**Where the Go carries it** `go/fontbox/cmap/cmapstrings.go`, `GetMapping`,
-which falls through to the two-byte table for a zero-length code exactly as Java
-does, with a comment saying why the length-0 case is not special-cased.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 23. `GetMapping` answers
-nothing for a zero-length code, which is the answer the arm for a code longer
-than two bytes gives — the ternary has two arms for three cases and no bytes at
-all is the third. Tested by `TestGetMappingOfAnEmptyCode` in
-`go/fontbox/cmap/javabug23_test.go`.
-
-**Confidence** high. The two arms of the caller disagree about the same input.
-
-## 24. `PDEncryption.hasSecurityHandler` answers the opposite of its name
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PDEncryption.java`.
-
-**What it does**
-
-```java
-public boolean hasSecurityHandler()
-{
-    return securityHandler == null;
-}
-```
-
-The field is null when the document has no security handler — when
-`SecurityHandlerFactory.newSecurityHandlerForFilter` did not recognise the
-`/Filter`, or when the dictionary was built empty. So the method returns true
-exactly when the answer is no.
-
-**What correct would be** `securityHandler != null`.
-
-**Why it matters** nothing in PDFBox calls it, so the bug is latent; but it is
-public API, and a caller checking before `getSecurityHandler` — which is what
-the name invites — gets the opposite of what it asked and then the IOException
-it was trying to avoid.
-
-**Where the Go carries it** `go/pdfbox/pdmodel/encryption/pdencryption.go`,
-`HasSecurityHandler`, which returns `e.securityHandler == nil` with a comment
-saying so.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 24. `HasSecurityHandler`
-answers `securityHandler != nil`. Nothing in either tree calls it, so nothing
-was compensating for the inversion, and nothing noticed it either. Tested by
-`TestHasSecurityHandlerAnswersItsName` in
-`go/pdfbox/pdmodel/encryption/javabugfixes_test.go`.
-
-**Confidence** high. The method body and the method name cannot both be right.
-
 ## 25. `PDEncryption.getRecipientsLength` dereferences a missing /Recipients
 
 **Where** `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PDEncryption.java`.
@@ -1346,53 +1022,6 @@ with it.
 **Confidence** high. The javadoc and the method body contradict each other in
 five lines.
 
-## 27. `ASCII85InputStream` reads a 0xFF data byte as the end of the stream
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85InputStream.java`.
-
-**What it does**
-
-```java
-int zz = (byte) in.read();
-if (zz == -1)
-{
-    eof = true;
-    return -1;
-}
-z = (byte) zz;
-```
-
-`InputStream.read` returns 0 to 255, or -1 at the end of the stream. The cast
-to `byte` narrows before the test, so a data byte 0xFF also becomes -1 and is
-taken for the end of the stream. The same three lines appear twice, once for
-the first character of a group and once for the rest.
-
-**What correct would be** testing the int the stream returned, before
-narrowing it.
-
-**Why it matters** only for a malformed stream: 0xFF is not a character an
-ASCII85 stream may contain, so a well-formed one never carries it. On a damaged
-one the difference shows — the decoder ends the stream quietly where it should
-raise `IOException("Invalid data in Ascii85 stream")`, which is what every
-other byte outside the alphabet gets.
-
-**Where the Go carries it** `go/pdfbox/filter/ascii85.go`, `readSignificant`,
-which narrows to `int8` and tests for -1 exactly as the Java does, with a
-comment saying why.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 27. `readSignificant` reports
-the end of the stream from the read error alone, so 0xFF is handed on as the
-data byte it is and reaches the alphabet check, which rejects it with `Invalid
-data in Ascii85 stream` — the answer every other byte outside the alphabet
-already gets, and the one the expected value is read off. The other narrowing
-in the method is kept: `z = (byte)(ascii[k] - OFFSET)` wraps in the Java too,
-and the check beside it, `z < 0 || z > 93`, is written for the wrapped value.
-Tested by `TestASCII85RejectsAnFFByte` in `go/pdfbox/filter/javabug27_test.go`,
-with `TestASCII85StillEndsAtTheEndOfItsSource` beside it so a source that runs
-out mid-group still ends quietly.
-
-**Confidence** high. The narrowing is visible in the expression.
-
 ## 28. `LZWFilter.findPatternCode` returns a negative code for a high byte
 
 **Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java`.
@@ -1435,47 +1064,6 @@ well as against the value.
 
 **Confidence** high, for the arithmetic. That nothing reaches it is from
 reading the one caller.
-
-## 29. Type 4 `not` negates an integer instead of complementing it
-
-**Where**
-`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/BitwiseOperators.java`.
-
-**What it does**
-
-```java
-else if (op1 instanceof Integer)
-{
-    int int1 = (Integer)op1;
-    int result = -int1;
-    stack.push(result);
-}
-```
-
-ISO 32000-1 table 42 gives `not` as "logical | bitwise not", and the PostScript
-Language Reference says of the integer operand that `not` "returns the bitwise
-complement (ones complement) of its value". The ones complement of 52 is -53;
-this returns -52.
-
-**What correct would be** `int result = ~int1;`.
-
-**Why it matters** a type 4 function that applies `not` to an integer computes
-something else, and a tint transform or a shading built on one comes out wrong.
-It is not caught by the Java's own tests because they assert the behaviour:
-`TestOperators.testNot` expects `52 not` to be -52.
-
-**Where the Go carries it** `go/pdfbox/pdmodel/common/function/type4/bitwiseoperators.go`,
-`notOperator`, which writes `-v` with a comment; `TestNot` in
-`type4_test.go` keeps the Java's expected values.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 29. The integer arm of `not`
-is `^v`, the bitwise complement PostScript defines it as. Tested by
-`TestNotOfAnIntegerIsTheComplement` in
-`go/pdfbox/pdmodel/common/function/type4/javabugfixes_test.go`; `TestNot` in
-`type4_test.go` carried the Java's answers -- 52 not = -52, -37 not = 37 -- and
-now carries the complement's, with the Java's kept in its comment.
-
-**Confidence** high. The specification and the code disagree in one character.
 
 ## 30. `ASCIIHexFilter` adds -1 for a digit that is not hexadecimal
 
@@ -1540,6 +1128,14 @@ Read as zero, the same pairs are `0x00`, `0x30` and `0x03`: no name starts, a
 page there. So the Go extracts the first two glyphs of page 10 and PDFBox
 another 193. Whether the fix stays, given this, is open in
 [`tasks/track-testdata-sources.md`](tasks/track-testdata-sources.md).
+
+**Not resolved upstream** PDFBOX-6330 (`46f9e442d`, 2026-11-20) changed the
+quoted method in the sync of 2026-11-21 and not this: white space before the
+second digit is skipped now, where the frozen Java read it as a digit the table
+holds -1 for. The `-1` is still multiplied and added, so the entry stands and
+`4Z` still decodes to 63. What did move is white space: `4 1>` decodes to 0x41 in
+the Java now and to the frozen Java's answer in the Go. That is Go-side work —
+[`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md).
 
 **Confidence** high. The port's test was written expecting 64 and measured 63.
 
@@ -1606,74 +1202,6 @@ keeps the whole-image fast path.
 
 **Confidence** high. The line beside it, for the subsampled case, does the same
 job with a running index and gets it right.
-
-## 32. A truncated ASCII85 stream repeats its last complete group
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85InputStream.java`.
-
-**What it does** `read()` sets `index = 0` before it reads a group, and returns
--1 from inside the group loop where the stream ends part way through one:
-
-```java
-index = 0;
-...
-ascii[0] = z;
-for (k = 1; k < 5; ++k)
-{
-    do
-    {
-        int zz = (byte) in.read();
-        if (zz == -1)
-        {
-            eof = true;
-            return -1;      // n is still the previous group's 4
-        }
-        ...
-```
-
-`n` keeps the previous group's value. The array read then starts with
-
-```java
-if (eof && index >= n) { return -1; }
-```
-
-which is false, because `index` was just reset to 0 and `n` is 4 — so it copies
-`b[0..3]` out a second time. `transferTo` calls it again, gets those four bytes,
-and only then reaches the end.
-
-**What correct would be** setting `n = 0` beside `eof = true` on that path, or
-resetting `index` only once a group has actually been read.
-
-**Why it matters** a truncated ASCII85 stream — which is what a damaged PDF has
-— decodes to the right bytes followed by four bytes of the previous four
-repeated. Silently, and only at the end, which is where a reader is least
-likely to look.
-
-**Where the Go carries it** `go/pdfbox/filter/ascii85.go`, `readByte` and
-`Read`, which keep the same order; `TestASCII85DamageTolerance` in
-`fromsource_test.go` asserts the repeat and says why.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 32. Both paths that give up
-part way through a group set `n` to 0 beside `eof`, which is the first of the
-two answers the entry names; the second — resetting `index` only once a group
-has been read — would move a line the terminator path also depends on. A
-truncated stream now decodes to a prefix of the original and stops. Tested by
-`TestASCII85TruncatedStreamDoesNotRepeatItsLastGroup` in
-`go/pdfbox/filter/javabug32_test.go`, with
-`TestASCII85WholeStreamIsUnchanged` beside it for the end that is not
-truncation. `TestASCII85DamageTolerance` in `fromsource_test.go`, which
-asserted the repeat, now asserts the prefix.
-
-**Seen in the pdf.js corpus** of [`TESTDATA.md`](TESTDATA.md):
-page 15 of `poppler-90-0-fuzzed.pdf` is `/Filter [/ASCII85Decode]` and ends part
-way through a group. PDFBox decodes it to 23,548 bytes and the Go to 23,544, the
-same bytes up to there; PDFBox's last four, `74 26 fe 11`, are the group before
-them again. The page has no text, so the corpus comparison does not see it.
-
-**Confidence** high. Measured: the port decoded 680 bytes from a stream whose
-first 676 are the original, and the last four repeat bytes 672 to 675.
-
----
 
 ## 33. `ToUnicodeWriter.allowDestinationRange` checks only one of its two strings
 
@@ -1908,45 +1436,6 @@ than harmless.
 
 ---
 
-## 37. `PDMarkInfo.setSuspect` ignores its argument
-
-**Where**
-`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDMarkInfo.java`:
-
-```java
-public void setSuspect( boolean suspect )
-{
-    dictionary.setBoolean( "Suspects", false );
-}
-```
-
-**What correct would be** `dictionary.setBoolean("Suspects", suspect)`. The
-three setters beside it --- `setMarked`, `setUserProperties` --- all pass their
-argument through, which is what makes this one stand out as a slip rather than a
-decision.
-
-**Why it matters** `/Suspects` can never be set to true through PDFBox.
-PDF 32000-1:2008 Table 321 gives it as the flag that says the tagged-PDF
-structure may not conform to the standard, so a producer that has reason to
-raise it cannot. Reading is unaffected: `isSuspect` returns whatever the file
-holds.
-
-**Where the Go carries it**
-`go/pdfbox/pdmodel/documentinterchange/logicalstructure/pdmarkinfo.go`,
-`SetSuspect`, with the comment above it naming this entry.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 37. `SetSuspect` writes its
-argument, like the two setters beside it. Tested by
-`TestSetSuspectWritesItsArgument` in
-`go/pdfbox/pdmodel/documentinterchange/logicalstructure/javabug37_test.go`,
-with `TestMarkInfoSettersAreIndependent` beside it so raising one flag leaves
-the others alone. The one caller of this setter in either tree is
-`PDFMergerUtility.mergeMarkInfo`, which calls it twice; that is entry 83 and is
-fixed separately.
-
-**Confidence** high. The parameter is unused and the literal is written in its
-place; there is no reading of the method under which it is correct.
-
 ## 38. `PDUserAttributeObject` reads `/P` without checking it is there
 
 **Where**
@@ -2062,57 +1551,6 @@ check must not swallow.
 
 **Confidence** high. Both the -1 and the throw follow from the two library
 contracts, and the sibling branch shows the check that is missing.
-
-## 40. `PDStandardAttributeObject` writes a string array and reads a name array
-
-**Where**
-`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDStandardAttributeObject.java`:
-
-```java
-protected String[] getArrayOfString(String name)
-{
-    ...
-    strings[i] = ((COSName) array.getObject(i)).getName();
-    ...
-}
-
-protected void setArrayOfString(String name, String[] values)
-{
-    ...
-    array.add(new COSString(value));
-    ...
-}
-```
-
-**What correct would be** The two halves have to agree. PDF 32000-1:2008
-Table 337 gives `/Headers`, the only attribute that uses them, as an array of
-byte strings, so the setter is right and the getter should read `COSString`.
-
-**Why it matters** A round trip throws. `setHeaders(new String[] {"h1"})`
-followed by `getHeaders()` is a `ClassCastException`, on
-`PDTableAttributeObject` and on `PDExportFormatAttributeObject` alike, and
-`toString` calls the getter, so printing a table attribute object that was
-filled in through its own API throws too. Reading a conforming file throws for
-the same reason: the file holds strings.
-
-**Where the Go carries it**
-`go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdstandardattributeobject.go`,
-`GetArrayOfString`, with the comment above it naming this entry. The type
-assertion panics where the cast throws.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 40. `GetArrayOfString` reads
-each entry as a string, which is what `SetArrayOfString` writes and what table
-337 gives `/Headers` as. An entry of another type is left out rather than
-thrown on, so the list can be shorter than the array. Tested by
-`TestHeadersRoundTrip` in
-`go/pdfbox/pdmodel/documentinterchange/taggedpdf/javabug40_test.go`, over both
-classes the entry names, with `TestHeadersInAStringOfTheirOwn` for the
-`toString` that calls the getter and
-`TestHeadersLeaveOutAnEntryThatIsNotAString` for the entry that is left out.
-
-**Confidence** high. The two methods are next to each other and disagree on the
-element type; only one of them can match the specification, and it is not the
-getter.
 
 ## 41. `PDFourColours` pads a short array to five entries
 
@@ -2890,44 +2328,6 @@ its cardinality, so it is unaffected. Tested by `TestVersionsIsASequence` in
 
 **Confidence** high. Read from the annotation and the method, and from the
 neighbouring `addHistory` that does it the other way.
-
----
-
-## 56. `DomXmpParser.parseEndPacket` indexes past the end of a short instruction
-
-**Where** `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java`,
-`parseEndPacket`
-
-```java
-if (xpackData.startsWith("end="))
-{
-    char end = xpackData.charAt(5);
-```
-
-Four characters are checked and the sixth is read.
-
-**What correct would be** checking the length, or matching the whole thing
-against `end=['"][rw]['"]` -- the shape the next two lines assume.
-
-**Why it matters** `<?xpacket end=?>` and `<?xpacket end="?>` are malformed
-input a parser should refuse with its own exception; instead they raise
-StringIndexOutOfBoundsException, which is unchecked and so escapes the
-`XmpParsingException` a caller catches.
-
-**Where the Go carries it** `go/xmpbox/xml/domxmpparser.go`, `parseEndPacket`,
-which indexes the same byte and panics the same way, with a comment naming this
-entry.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 56. `parseEndPacket` checks
-the length before it reads the sixth character, and an instruction too short to
-hold one is refused with the parser's own error — the same one a sixth
-character that is neither `r` nor `w` gets, since both are the same malformed
-input. Tested by `TestShortEndPacketIsRefused` in
-`go/xmpbox/xml/javabug56_test.go`, over both `<?xpacket end=?>` and `<?xpacket
-end="?>`, with `TestWellFormedEndPacketIsStillRead` beside it.
-
-**Confidence** high. Read from the method; `"end="` is four characters and
-`charAt(5)` needs six.
 
 ---
 
@@ -4272,175 +3672,6 @@ from `tools/pom.xml` and from what the writer loop is for: the two
 `com.github.jai-imageio` jars cannot be fetched here, for the reason entry 75
 gives, so the run with them present could not be made.
 
-## 82. `PDFMergerUtility.appendDocument` merges the destination's /Threads into itself
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java`,
-`appendDocument`.
-
-```java
-COSArray destThreads = destCatalog.getCOSObject().getCOSArray(COSName.THREADS);
-COSArray srcThreads = cloner.cloneForNewDocument(destCatalog.getCOSObject().getCOSArray(
-        COSName.THREADS));
-if (destThreads == null)
-{
-    destCatalog.getCOSObject().setItem(COSName.THREADS, srcThreads);
-}
-else
-{
-    destThreads.addAll(srcThreads);
-}
-```
-
-Both lines read `destCatalog`. The variable called `srcThreads` is a clone of
-the **destination's** article thread array, not the source's, and the block
-below then appends the destination's threads to themselves.
-
-**What correct would be** `srcCatalog.getCOSObject().getCOSArray(COSName.THREADS)`
-on the second line. Every other block of `appendDocument` reads the source and
-writes the destination; this one reads the destination twice.
-
-**Why it matters** Two things, in opposite directions. A source document's
-article threads are silently dropped by every merge -- the reading order they
-describe is lost, which is what /Threads is for. And a destination that has
-threads gets them **twice**: the clone is a fresh array of fresh dictionaries,
-and `addAll` appends it, so a document merged with N others ends up with
-2^N copies of its own threads. The second is the one a user would notice.
-
-**Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility.go`,
-`mergeThreads`, which reads the destination twice and says so at the site.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 82. `mergeThreads` clones
-the *source* catalog's `/Threads`, which is the one word the entry names, and
-takes the source catalog as an argument to do it. Tested by
-`TestMergeTakesTheSourcesThreads` in
-`go/pdfbox/multipdf/javabug82_test.go`, which merges a document of two threads
-into one of one and reads the titles back; without the fix the answer is
-`[dest one dest one]`, the destination's thread doubled and the source's gone.
-`TestMergeIntoADocumentWithNoThreadsTakesTheSources` covers the other arm of
-the same block, which answered nothing at all.
-
-**Measured, not argued.** `go/pdfbox/multipdf/testdata/Merge82Drv.java` runs the
-merge through the running Java, JDK 17, against two files this repository
-carries: `javabug82-dest.pdf`, one article thread, and `javabug82-src.pdf`, two.
-Both are written by `testdata/genjavabug82.go`, saved uncompressed so that
-`/Threads` can be read out of them with a text editor, and are as small as a
-legitimate thread gets: one page, one bead per thread, the bead's `/N` and `/V`
-pointing at itself. The driver's output:
-
-```
-before, destination: 1: Destination: quarterly report
-before, source:      2: Source: appendix A | Source: appendix B
-after,  destination: 2: Destination: quarterly report | Destination: quarterly report
-```
-
-Both of the source's threads are gone and the destination's is doubled. The
-same driver then merges the source in three times over, and the doubling is
-what happens:
-
-```
-after 1 merge(s):    2: ...
-after 2 merge(s):    4: ...
-after 3 merge(s):    8: ...
-```
-
-eight copies of one thread, and still nothing of the source's two. The Go
-answers the three titles in order; `TestMergeTheCheckedInPairTakesTheSourcesThreads`
-is that, over the same two files.
-
-Both merges are saved as `javabug82-merged-java.pdf`, from the driver, and
-`javabug82-merged-go.pdf`, from `testdata/genjavabug82merged.go`. The two pages
-of either look the same -- `/Threads` is not something a page draws. The
-difference is one line of the catalog:
-
-```
-java   /Threads 17 0 R  ->  [20 0 R 21 0 R]          both "Destination: quarterly report"
-go     /Threads 17 0 R  ->  [20 0 R 21 0 R 22 0 R]   the destination's, then the source's two
-```
-
-**And the clone is not a dictionary, it is the page.** `cloneForNewDocument`
-deep-copies what it is given, and a thread reaches a long way: thread -> `/F`
-bead -> `/P` **the page** -> `/Parent` **the page tree node** -> the page's
-`/Resources`, its fonts, its content stream. All of it is copied, and none of
-the copy is reachable from the catalog, because the catalog's page tree still
-names the originals. The merged file carries a second whole page as garbage.
-
-In `javabug82-merged-java.pdf`, whose page tree is `[22 0 R 23 0 R]`:
-
-```
-34 0 obj  /Type /Page   /Font 38 0 R  /Contents 39 0 R    <- not in the page tree
-37 0 obj  /Type /Pages  /Kids [34 0 R]  /Count 1          <- an orphan page tree
-39 0 obj  /Length 207                                     <- the content stream, again
-42 0 obj  /Type /Font  /Subtype /Type1                    <- the font, again
-```
-
-So the cost is **the destination's own pages, copied into the file once per
-merge and doubling each time**, measured by the driver over three merges of a
-one-page source into a one-page destination:
-
-| merges | real pages | bytes | objects | `/Type /Page` | `/Type /Pages` |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 2 | 3,486 | 28 | 3 | 2 |
-| 2 | 3 | 7,354 | 54 | 7 | 4 |
-| 3 | 4 | 15,295 | 106 | 15 | 8 |
-
-On a destination whose pages carry embedded fonts or images, that is the file
-size doubling.
-
-**What limits it** is the destination: `destThreads == null` takes the other
-arm, and there the clone of the destination's absent `/Threads` is null, so
-nothing is written and nothing is copied. Only a destination that already has
-article threads pays. That excludes `pdfbox merge`, which starts from
-`new PDDocument()` -- the damage is on the `appendDocument(existing, src)` path,
-which is what a caller merging into a document they loaded is on.
-
-**Confidence** certain, from the source: the two `getCOSArray` calls are on the
-same expression, five words apart.
-
-## 83. `PDFMergerUtility.mergeMarkInfo` writes /Suspect twice and /UserProperties never
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java`,
-`mergeMarkInfo`.
-
-```java
-destMark.setMarked(true);
-destMark.setSuspect(srcMark.isSuspect() || destMark.isSuspect());
-destMark.setSuspect(srcMark.usesUserProperties() || destMark.usesUserProperties());
-destCatalog.setMarkInfo(destMark);
-```
-
-The third line reads `usesUserProperties` and writes `setSuspect`. Its setter
-should be `setUserProperties`, which `PDMarkInfo` has and nothing in this class
-calls.
-
-**What correct would be**
-`destMark.setUserProperties(srcMark.usesUserProperties() || destMark.usesUserProperties());`
-
-**Why it matters** The merged document's /MarkInfo never gets a
-/UserProperties entry, so a viewer is told that no structure element carries
-user properties even when the source said it did. And /Suspect is decided by
-the wrong question: the second call overwrites the first, so a document whose
-structure is suspect but which has no user properties comes out marked as not
-suspect. Both entries are ISO 32000-1 table 321 and both are read by assistive
-technology.
-
-**Where the Go carries it** `go/pdfbox/multipdf/pdfmergerutility_structure.go`,
-`mergeMarkInfo`, which calls `SetSuspect` twice with the same arguments in the
-same order. Said at the site.
-
-**Fixed in the Go** `track/java-bug-fixes`, entry 83. The second line writes
-`SetUserProperties`, which is the setter its own question names and the one
-`PDMarkInfo` has for it, so `/UserProperties` is merged and `/Suspect` keeps
-the answer the line above it computed. Entry 37 is its other half: until that
-was fixed `SetSuspect` ignored its argument, so neither flag could be raised
-at all. Tested by `TestMergeMarkInfoKeepsBothFlags` in
-`go/pdfbox/multipdf/javabug83_test.go`, over the four combinations of the two
-source flags and the two destination ones. The test is in-package: reaching
-`mergeMarkInfo` through `AppendDocument` needs both documents to carry a
-structure tree with a non-empty parent tree, which is the condition the whole
-structure block sits under and not what is being tested.
-
-**Confidence** certain, from the source.
-
 ## 84. `PDFMergerUtility` never merges the page mode, because the branch that would cannot run
 
 **Where** `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java`,
@@ -4499,8 +3730,16 @@ outline nor the thumbnails". Tested by
 `TestMergePageModeTakesTheSourcesWhereThereIsNone` in
 `go/pdfbox/multipdf/javabug84_test.go`, with
 `TestMergePageModeKeepsTheDestinationsOwn` and
-`TestMergePageModeWritesNothingForASourceWithNone` beside it. In-package, for
-the same reason entry 83's test is.
+`TestMergePageModeWritesNothingForASourceWithNone` beside it. In-package,
+because reaching `mergeMarkInfo` and the block around it through
+`AppendDocument` needs both documents to carry a structure tree with a
+non-empty parent tree, which is not what is being tested.
+
+**Not resolved upstream** The sync of 2026-11-21 rewrote much of
+`PDFMergerUtility` — PDFBOX-6283, 6296, 6299 and 6301 — and did not touch this
+block: `if (destPageMode == null)` still asks the question `getPageMode` cannot
+answer, and `PDDocumentCatalog.java` is not among the files the sync changed. The
+branch is still dead.
 
 **Confidence** certain, from the source, both halves quoted above.
 
@@ -4681,167 +3920,6 @@ second half is a reading: it needs two distinct `PDColor` instances to collide
 in a bucket, which identity hashes make unlikely rather than impossible.
 
 ---
-
-## 87. Type 3 glyph recursion is unbounded, and the guard for it is in the same class
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/contentstream/PDFStreamEngine.java`,
-`showType3Glyph` and `processType3Stream`, against `increaseLevel`, `getLevel`
-and `decreaseLevel` in the same file and the three `DrawObject` operators that
-use them.
-
-A Type 3 font's glyph is a content stream. Nothing stops that stream from
-showing text in the same Type 3 font, and `showType3Glyph` runs it without
-asking how deep it already is:
-
-```java
-protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
-        Vector displacement) throws IOException
-{
-    PDType3CharProc charProc = font.getCharProc(code);
-    if (charProc != null)
-    {
-        processType3Stream(charProc, textRenderingMatrix);
-    }
-}
-```
-
-`processType3Stream` pushes resources, saves the graphics stack and calls
-`processStreamOperators`, which dispatches `Tj`, which reaches `showText`,
-`showGlyph` and `showType3Glyph` again. The cycle closes with nothing in it that
-counts.
-
-**The class already has the counter.** `PDFStreamEngine` carries a `level` field
-with `increaseLevel`, `getLevel` and `decreaseLevel`, and its own Javadoc says
-what it is for: *"Get the current level. This can be used to decide whether a
-recursion has done too deep"*. Three classes use it, and all three are
-`DrawObject` — the `Do` operator, in `operator`, `operator/graphics` and
-`operator/markedcontent`:
-
-```java
-context.increaseLevel();
-if (context.getLevel() > 50)
-{
-    LOG.error("recursion is too deep, skipping form XObject");
-    return;
-}
-```
-
-So a Form XObject that draws itself is stopped at fifty and a Type 3 glyph that
-draws itself is not stopped at all. The guard was written for one recursive path
-in the engine and never applied to the other.
-
-**What correct would be** the same three lines around `processType3Stream` that
-`DrawObject` puts around `PDFormXObject`. The bound does not have to be fifty,
-and it does not have to match — it has to exist.
-
-**Why it matters** `showType3Glyph` runs while rasterizing, so the depth is a
-`PageDrawer` frame plus a stream engine frame plus an operator frame per level,
-and it is reached by a file a few hundred bytes long. PDFBox's own
-[`SECURITY.md`](../../SECURITY.md) puts `StackOverflowError` from a malformed PDF
-among the known limitations rather than the vulnerabilities: it is a defect in a
-class that already solved the problem next door, not a security finding.
-
-**Where the Go carries it** `go/pdfbox/contentstream/text.go`,
-`ShowType3Glyph` and `ProcessType3Stream`, which have no bound either;
-`go/pdfbox/contentstream/drawobject.go` carries the `Level() > 50` guard in both
-of its arms, exactly as the Java does. The port reproduces the asymmetry.
-
-The consequence is not the same on both sides, and the difference is Go's rather
-than the port's. Java throws `StackOverflowError`, which is an `Error` and which
-a caller can catch. Go's stack overflow is a fatal runtime error: no deferred
-`recover` runs for it and the process ends. Measured on
-`go/testdata/corpus/safedocs-targeted/ContentStreamCycleType3insideType3.pdf` —
-a SafeDocs file written for this — `raster.RenderPageWithDPI` reaches
-`fatal error: stack overflow` after **3,880,308 elided frames**, with the cycle
-`ShowType3Glyph → ProcessType3Stream → processStreamOperators → ProcessOperator
-→ ShowText.Process → showText → ShowGlyph → PageDrawer.ShowType3Glyph` repeating
-all the way down. Text extraction does not reach it; the file strips in 8 ms.
-
-That is why `go/cmd/corpus` scores each file in a child process by default — see
-[`TESTDATA.md`](TESTDATA.md). Without it, one file ends the run.
-
-**Confidence** certain, on both halves. The absent guard is in the quoted source
-and the present one is quoted from the class that uses it; the Go behaviour is
-measured, not read.
-
----
-
-## 88. `PredictorOutputStream` never returns when a TIFF predictor's row length is zero
-
-**Where** `pdfbox/src/main/java/org/apache/pdfbox/filter/Predictor.java`,
-`PredictorOutputStream`: its constructor and `write(byte[], int, int)`.
-
-The constructor refuses a negative row length, and nothing else:
-
-```java
-this.rowLength = calculateRowLength(colors, bitsPerComponent, columns);
-if (rowLength < 0)
-{
-    throw new IOException("Calculated row length is negative: " + rowLength);
-}
-```
-
-`write` then fills rows like this:
-
-```java
-while (currentOffset < maxOffset)
-{
-    if (predictorPerRow && currentRowData == 0 && !predictorRead)
-    {
-        // PNG predictor; each row starts with predictor type (0, 1, 2, 3, 4)
-        predictor = bytes[currentOffset] + 10;
-        currentOffset++;
-        predictorRead = true;
-    }
-    else
-    {
-        int toRead = Math.min(rowLength - currentRowData, maxOffset - currentOffset);
-        System.arraycopy(bytes, currentOffset, currentRow, currentRowData, toRead);
-        currentRowData += toRead;
-        currentOffset += toRead;
-
-        if (currentRowData == currentRow.length)
-        {
-            decodeAndWriteRow();
-        }
-    }
-}
-```
-
-**What it does** With a row length of zero, `toRead` is always 0, so
-`currentOffset` never moves and the loop condition never changes. The empty row
-counts as full on every pass: the loop decodes it, writes nothing, flips the
-buffers and goes round again. A PNG predictor gets out, because its branch takes
-a byte for the next row's algorithm each time round. Predictor 2, the TIFF one,
-has no such branch, and the call never returns.
-
-A zero row length takes nothing unusual. `/Columns 0` is enough, and so is any
-`/Colors`, `/BitsPerComponent` and `/Columns` whose 32-bit product comes to
-between -14 and 0, since `(product + 7) / 8` truncates towards zero. Measured with `FlateFilter.decode` compiled from this tree:
-`/DecodeParms << /Predictor 2 /Columns 0 >>` over three bytes had given no answer
-after five seconds, where the same parameters over an empty stream answered at
-once, with nothing.
-
-**What correct would be** refusing a zero row length where the negative one is
-refused, or taking no data from a stream whose rows can hold none.
-
-**Where the Go carries it** — **not carried.** `decodePredictor` in
-`go/pdfbox/filter/predictor.go` refused any row length that was not positive
-from the time it was written, together with any `/Colors`, `/BitsPerComponent`
-or `/Columns` that was not. That also refused input PDFBox decodes — a zero PNG
-row length, two negative parameters whose product is a row.
-
-It now refuses the one case PDFBox cannot finish, and nothing else. A TIFF
-predictor with a zero row length and at least one byte to decode answers
-`errZeroRowLength`. An empty stream answers nothing, as PDFBox does, and a PNG
-predictor takes every byte for a row's algorithm and writes nothing, as PDFBox
-does. Tested by `TestZeroTIFFRowLengthIsRefused` in
-`go/pdfbox/filter/javabug88_test.go`; the cases PDFBox does answer are in
-`TestPredictorAnswersWhatPDFBoxAnswers`, with PDFBox's output as the expected
-values.
-
-**Confidence** certain. The loop is quoted, and the hang was run rather than
-read.
 
 ## 89. `PublicKeySecurityHandler` copies a 256-bit key out of a 160-bit digest for an encryption version it does not implement
 
@@ -5066,8 +4144,125 @@ page. The document is a crash regression PDFium keeps because it once broke
 PDFium, so the file is malformed on purpose; what a library does with it is a
 choice, and PDFBox's is to lose everything on the page.
 
+**Not resolved upstream** PDFBOX-6320 (`7611f9329`, 2026-11-19), in the sync of
+2026-11-21, wrapped `instructions.execute(context)` in a catch for
+`EmptyStackException` and `ClassCastException` and rethrows them as `IOException`
+— the answer this entry asks for, two statements above the throw it is about. The
+`IllegalStateException` for too few output values is untouched and still
+unchecked, so the page is still lost. The Go is now behind on the two upstream
+did catch: `Eval` calls `Execute` with no `recover`, and the stack panics with
+`type4: pop from an empty stack` and `type4: the value is not a number`. Both are
+Go-side work —
+[`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md).
+
 **Confidence** certain for what the Java does: the stack trace above is
 PDFBox's own, printed from a JDK 17 run of `PDFRenderer.renderImage`, not a
 reading of the source. Uncertain only in scope -- see the paragraph above.
 Found by the comparison in [`TESTDATA.md`](TESTDATA.md), "PDFium against the
 Java", which is the one page of 381 where a side fails and the other does not.
+
+---
+
+## 92. Type 4 `roll` pops past the bottom of the stack when `|j|` exceeds `n`
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/StackOperators.java`,
+`Roll.execute`
+
+```java
+int j = ((Number)stack.pop()).intValue();
+int n = ((Number)stack.pop()).intValue();
+if (j == 0)
+{
+    return; //Nothing to do
+}
+if (n < 0)
+{
+    throw new IllegalArgumentException("rangecheck: " + n);
+}
+...
+//positive roll
+int n1 = n - j;
+for (int i = j; i > 0; i--)
+{
+    rolled.addFirst(stack.pop());
+}
+```
+
+**What it does** `roll` rotates the top `n` elements of the stack by `j`, and
+PostScript takes `j` modulo `n`, so `3 7 roll` is `3 1 roll`. The method guards
+`n < 0` and `j == 0` and nothing else, then pops `j` elements for a positive roll
+and `|j|` for a negative one. A `j` whose magnitude exceeds `n` therefore takes
+elements the operator was never given — the ones under the top `n` if they are
+there, and `EmptyStackException` off the bottom if they are not. `n1` goes
+negative in that case, so the second loop does not run and what was taken is not
+put back either.
+
+**What correct would be** `j %= n` after the range check, with a return for
+`n == 0` and for a `j` that comes out zero. That is how the PostScript Language
+Reference defines `roll`.
+
+**Why it matters** a type 4 function is reached from a shading or a tint
+transform, so a program holding `0 5 roll` or `2 9 roll` is a malformed PDF
+taking a page down through an unchecked exception. Entry 91 is the same shape of
+failure out of the same class.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/common/function/type4/stackoperators.go`,
+`rollOperator.Execute`, which has the two guards and no modulo; `Pop` panics on
+an empty stack where Java's `Stack.pop` throws.
+
+**Resolved upstream** Apache `47d20cb71`, PDFBOX-6331, 2026-11-19, in the sync
+of 2026-11-21: a return for `n == 0`, then `j %= n`, then a return for a `j` that
+came out zero, under the comment "rolling by j is the same as rolling by j mod
+n". The Go is behind it, and porting it is Go-side work —
+[`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md).
+
+**Confidence** high. Read from the source, with the specification's definition
+beside it. Found on the sync of 2026-11-21, while reading `47d20cb71` for the
+`not` defect the same commit fixed — one of the seventeen removed above; it was
+not recorded when `type4` was ported.
+
+---
+
+## 93. Type 4 comparisons compare two integers as `float`
+
+**Where**
+`pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/RelationalOperators.java`,
+`Eq.isEqual` and the `compare` of `Ge`, `Gt`, `Le` and `Lt`
+
+```java
+result = Float.compare(num1.floatValue(),num2.floatValue()) == 0;
+...
+return num1.floatValue() >= num2.floatValue();
+```
+
+**What it does** the operands of `eq`, `ne`, `ge`, `gt`, `le` and `lt` arrive as
+`Number`, which in a type 4 program is an `Integer` or a `Float`, and every one
+of the comparisons narrows both to `float`. A `float` carries 24 bits of
+mantissa, so two `int`s that differ above 16,777,216 compare equal and the four
+ordering operators answer on the rounded values rather than on the integers.
+
+**What correct would be** comparing as `double`, which holds every `int` exactly.
+
+**Why it matters** least of the three type 4 defects in this file. The large
+integers a program can hold come from `cvi`, `bitshift` and the integer
+arithmetic operators rather than from the function's inputs, which are clipped
+to `/Domain` and small. Where a program does compute with them, a wrong `true`
+from `eq` takes the other arm of an `if` or `ifelse`, silently.
+
+**Where the Go carries it**
+`go/pdfbox/pdmodel/common/function/type4/relationaloperators.go`:
+`operandsEqual` compares through `javaFloatCompare(numberAsFloat(...))`, and
+`geCompare`, `gtCompare`, `leCompare` and `ltCompare` take `float32`. The comment
+above `operandsEqual` names Java's `Eq.isEqual` as the reason.
+
+**Resolved upstream** Apache `47d20cb71`, PDFBOX-6331, 2026-11-19, in the sync
+of 2026-11-21 — four of the five. `Eq` compares with `Double.compare`, and `Ge`,
+`Gt` and `Le` with `doubleValue()`; **`Lt` still compares as `float`**, and the
+commit's subject names only "gt"/"ge". So the defect is closed for `eq`, `ne`,
+`ge`, `gt` and `le` and open for `lt`. The Go is behind on the four —
+[`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md).
+
+**Confidence** high. Read from the source; `float` has 24 bits of mantissa and
+an `int` needs 31.
