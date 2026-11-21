@@ -2,6 +2,7 @@ package pdfio
 
 import (
 	"container/list"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -43,7 +44,7 @@ func (s *fileSource) page(offset int64) ([]byte, error) {
 	defer s.mu.Unlock()
 	if el, ok := s.pages[offset]; ok {
 		s.order.MoveToFront(el)
-		return el.Value.(*cachedPage).data, nil
+		return cachedPageOf(el).data, nil
 	}
 	data := make([]byte, pageSize)
 	n, err := s.file.ReadAt(data, offset)
@@ -61,7 +62,7 @@ func (s *fileSource) page(offset int64) ([]byte, error) {
 		// reading valid bytes rather than someone else's data.
 		oldest := s.order.Back()
 		s.order.Remove(oldest)
-		delete(s.pages, oldest.Value.(*cachedPage).offset)
+		delete(s.pages, cachedPageOf(oldest).offset)
 	}
 	return data, nil
 }
@@ -286,3 +287,16 @@ func (b *BufferedFile) CreateView(start, length int64) (RandomAccessRead, error)
 
 // Path returns the name the file was opened with.
 func (b *BufferedFile) Path() string { return b.src.path }
+
+// cachedPageOf is the page an LRU element holds. container/list hands its value
+// back as any and only this file puts anything there, so the assertion can only
+// fail if the cache itself is wrong -- which is why it is checked rather than
+// assumed. Java has no line to be faithful to here: its cache is a
+// LinkedHashMap of ByteBuffer and needs no cast.
+func cachedPageOf(element *list.Element) *cachedPage {
+	page, isPage := element.Value.(*cachedPage)
+	if !isPage {
+		panic(fmt.Sprintf("pdfio: the page cache holds a %T, not a page", element.Value))
+	}
+	return page
+}
