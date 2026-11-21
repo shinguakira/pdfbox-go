@@ -71,6 +71,14 @@ public abstract class Filter
     public static final String SYSPROP_CCITTFAX_MAXBYTES = "org.apache.pdfbox.filter.ccittmaxbytes";
 
     /**
+     * PredictorOutputStream max rowLength property, obtained by computing
+     * {@code (columns * colors * bitsPerComponent + 7) / 8}. To raise the cap for
+     * high-resolution legitimate documents, use
+     * {@code System.setProperty(Filter.SYSPROP_CCITTFAX_MAXBYTES, String.valueOf(10_000_000));}
+     */
+    public static final String SYSPROP_PREDICTOR_MAX_ROW_LENGTH = "org.apache.pdfbox.filter.predictormaxrowlength";
+
+    /**
      * Constructor.
      */
     protected Filter()
@@ -268,7 +276,7 @@ public abstract class Filter
         }
         InputStream input = encoded;
         RandomAccessReadWriteBuffer randomAccessWriteBuffer = null;
-        OutputStream output = null;
+        OutputStream output;
         // apply filters
         for (int i = 0; i < filterList.size(); i++)
         {
@@ -279,14 +287,20 @@ public abstract class Filter
                 length = randomAccessWriteBuffer.length();
             }
             // we don't know the size of the decoded stream, just estimate a 4 times bigger size than the encoded stream
-            // use the estimated stream size as chunk size, use the default chunk size as limit to avoid to big values
-            if (length <= 0 || length >= RandomAccessReadBuffer.DEFAULT_CHUNK_SIZE_4KB / 4)
+            // use the estimated stream size as chunk size, capped to avoid excessive per-chunk
+            // preallocation, but without collapsing back to the tiny default for large streams -
+            // that would otherwise force thousands of small chunk allocations
+            if (length <= 0)
             {
                 length = RandomAccessReadBuffer.DEFAULT_CHUNK_SIZE_4KB;
             }
             else
             {
-                length = length * 4;
+                // upper bound for the chunk size estimated from the encoded stream length in decode(), to
+                // avoid thousands of small chunk allocations for large streams while still bounding the
+                // worst-case preallocation for a single chunk
+                final int maxEstimatedChunkSize = 1 << 20;
+                length = Math.min(length, maxEstimatedChunkSize / 4) * 4;
             }
             randomAccessWriteBuffer = new RandomAccessReadWriteBuffer((int) length);
             output = new RandomAccessOutputStream(randomAccessWriteBuffer);

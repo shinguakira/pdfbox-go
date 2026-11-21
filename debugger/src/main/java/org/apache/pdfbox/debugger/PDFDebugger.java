@@ -165,7 +165,7 @@ import picocli.CommandLine.Model.CommandSpec;
  * @author Khyrul Bashar
  */
 @SuppressWarnings({ "serial", "squid:MaximumInheritanceDepth", "squid:S1948" })
-@Command(name = "pdfdebugger", description = "Analyzes and inspects the internal structure of a PDF document")
+@Command(name = "debug", description = "Analyzes and inspects the internal structure of a PDF document")
 public class PDFDebugger extends JFrame implements Callable<Integer>, HyperlinkListener
 {
     private static Logger LOG; // needs late initialization
@@ -1356,7 +1356,10 @@ public class PDFDebugger extends JFrame implements Callable<Integer>, HyperlinkL
         try
         {
             PrinterJob job = PrinterJob.getPrinterJob();
-            job.setPageable(new PDFPageable(document, Orientation.AUTO, printBorder.isSelected(), PrintDpiMenu.getDpiSelection()));
+            PDFPageable pageable = new PDFPageable(document, Orientation.AUTO, printBorder.isSelected(), PrintDpiMenu.getDpiSelection());
+            pageable.setSubsamplingAllowed(ViewMenu.isAllowSubsampling());
+            pageable.setHintingEnabled(ViewMenu.isHintingEnabled());
+            job.setPageable(pageable);
             PrintRequestAttributeSet pras = new HashPrintRequestAttributeSet();
             PDViewerPreferences vp = document.getDocumentCatalog().getViewerPreferences();
             if (vp != null && vp.getDuplex() != null)

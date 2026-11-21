@@ -19,11 +19,6 @@ package org.apache.pdfbox.pdfparser;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
@@ -105,8 +100,6 @@ public class COSParser extends BaseParser implements ICOSParser
      */
     private static final String STREAM_STRING = "stream";
 
-    private static final char[] STARTXREF = { 's','t','a','r','t','x','r','e','f' };
-
     private static final byte[] ENDSTREAM = { E, N, D, S, T, R, E, A, M };
 
     private static final byte[] ENDOBJ = { E, N, D, O, B, J };
@@ -135,30 +128,6 @@ public class COSParser extends BaseParser implements ICOSParser
     private String password = "";
     private String keyAlias = null;
 
-    private static final Charset ALTERNATIVE_CHARSET;
-
-    static
-    {
-        Charset cs;
-        String charsetName = "Windows-1252";
-        try
-        {
-            cs = Charset.forName(charsetName);
-        }
-        catch (IllegalArgumentException | UnsupportedOperationException e)
-        {
-            cs = StandardCharsets.ISO_8859_1;
-            LOG.warn(() -> "Charset is not supported: " + charsetName + ", falling back to "
-                    + StandardCharsets.ISO_8859_1.name(), e);
-        }
-        ALTERNATIVE_CHARSET = cs;
-    }
-
-    // CharSetDecoders are not threadsafe so not static
-    private final CharsetDecoder utf8Decoder = StandardCharsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT);
-
     /**
      * The range within the %%EOF marker will be searched.
      * Useful if there are additional characters after %%EOF within the PDF. 
@@ -170,10 +139,6 @@ public class COSParser extends BaseParser implements ICOSParser
      * How many trailing bytes to read for EOF marker.
      */
     private static final int DEFAULT_TRAIL_BYTECOUNT = 2048;
-    /**
-     * EOF-marker.
-     */
-    private static final char[] EOF_MARKER = { '%', '%', 'E', 'O', 'F' };
     /**
      * obj-marker.
      */
@@ -201,9 +166,6 @@ public class COSParser extends BaseParser implements ICOSParser
     
     private BruteForceParser bruteForceParser = null;
     private PDEncryption encryption = null;
-    private final Map<COSObjectKey, Long> xrefTable = new HashMap<>();
-
-    private final Map<Long, COSObjectKey> keyCache = new HashMap<>();
 
     /**
      * This is the document that will be parsed.
@@ -318,6 +280,11 @@ public class COSParser extends BaseParser implements ICOSParser
         }
     }
 
+    public int getEOFLookupRange()
+    {
+        return readTrailBytes;
+    }
+
     /**
      * Read the trailer information and provide a COSDictionary containing the trailer information.
      * 
@@ -326,164 +293,22 @@ public class COSParser extends BaseParser implements ICOSParser
      */
     protected COSDictionary retrieveTrailer() throws IOException
     {
-        COSDictionary trailer = null;
-        boolean rebuildTrailer = false;
-        try
-        {
-            // parse startxref
-            // TODO FDF files don't have a startxref value, so that rebuildTrailer is triggered
-            long startXRefOffset = getStartxrefOffset();
-            if (startXRefOffset > -1)
-            {
-                XrefParser xrefParser = new XrefParser(this);
-                trailer = xrefParser.parseXref(document, startXRefOffset);
-                xrefTable.putAll(xrefParser.getXrefTable());
-            }
-            else
-            {
-                rebuildTrailer = isLenient();
-            }
-        }
-        catch (IOException exception)
-        {
-            if (isLenient())
-            {
-                rebuildTrailer = true;
-            }
-            else
-            {
-                throw exception;
-            }
-        }
-        // check if the trailer contains a Root object
-        if (trailer != null && trailer.getItem(COSName.ROOT) == null)
-        {
-            rebuildTrailer = isLenient();
-        }
-        if (rebuildTrailer)
-        {
-            // reset cross reference table
-            xrefTable.clear();
-            trailer = getBruteForceParser().rebuildTrailer(xrefTable);
-            trailerWasRebuild = true;
-        }
-        else
+        TrailerParser trailerParser = new TrailerParser(document, this);
+        COSDictionary trailer = trailerParser.retrieveTrailer();
+        trailerWasRebuild = trailerParser.trailerWasRebuild();
+        if (!trailerWasRebuild)
         {
             // prepare decryption if necessary
             prepareDecryption();
             // don't use the getter as it creates an instance of BruteForceParser
             if (bruteForceParser != null && bruteForceParser.bfSearchTriggered())
             {
-                getBruteForceParser().bfSearchForObjStreams(xrefTable);
+                getBruteForceParser().bfSearchForObjStreams(trailerParser.getXrefTable());
             }
         }
         return trailer;
     }
 
-    /**
-     * Looks for and parses startxref. We first look for last '%%EOF' marker (within last
-     * {@link #DEFAULT_TRAIL_BYTECOUNT} bytes (or range set via {@link #setEOFLookupRange(int)}) and go back to find
-     * <code>startxref</code>.
-     * 
-     * @return the offset of StartXref
-     * @throws IOException If something went wrong.
-     */
-    private long getStartxrefOffset() throws IOException
-    {
-        byte[] buf;
-        long skipBytes;
-        // read trailing bytes into buffer
-        try
-        {
-            final int trailByteCount = (fileLen < readTrailBytes) ? (int) fileLen : readTrailBytes;
-            buf = new byte[trailByteCount];
-            skipBytes = fileLen - trailByteCount;
-            source.seek(skipBytes);
-            int off = 0;
-            int readBytes;
-            while (off < trailByteCount)
-            {
-                readBytes = source.read(buf, off, trailByteCount - off);
-                // in order to not get stuck in a loop we check readBytes (this should never happen)
-                if (readBytes < 1)
-                {
-                    throw new IOException(
-                            "No more bytes to read for trailing buffer, but expected: "
-                                    + (trailByteCount - off));
-                }
-                off += readBytes;
-            }
-        }
-        finally
-        {
-            source.seek(0);
-        }
-        // find last '%%EOF'
-        int bufOff = lastIndexOf(EOF_MARKER, buf, buf.length);
-        if (bufOff < 0)
-        {
-            if (isLenient) 
-            {
-                // in lenient mode the '%%EOF' isn't needed
-                bufOff = buf.length;
-                LOG.debug("Missing end of file marker '{}'", new String(EOF_MARKER));
-            } 
-            else 
-            {
-                throw new IOException("Missing end of file marker '" + new String(EOF_MARKER) + "'");
-            }
-        }
-        // find last startxref preceding EOF marker
-        bufOff = lastIndexOf(STARTXREF, buf, bufOff);
-        if (bufOff < 0)
-        {
-            throw new IOException("Missing 'startxref' marker.");
-        }
-        else
-        {
-            return skipBytes + bufOff;
-        }
-    }
-    
-    /**
-     * Searches last appearance of pattern within buffer. Lookup before _lastOff and goes back until 0.
-     * 
-     * @param pattern pattern to search for
-     * @param buf buffer to search pattern in
-     * @param endOff offset (exclusive) where lookup starts at
-     * 
-     * @return start offset of pattern within buffer or <code>-1</code> if pattern could not be found
-     */
-    private int lastIndexOf(final char[] pattern, final byte[] buf, final int endOff)
-    {
-        final int lastPatternChOff = pattern.length - 1;
-
-        int bufOff = endOff;
-        int patOff = lastPatternChOff;
-        char lookupCh = pattern[patOff];
-
-        while (--bufOff >= 0)
-        {
-            if (buf[bufOff] == lookupCh)
-            {
-                if (--patOff < 0)
-                {
-                    // whole pattern matched
-                    return bufOff;
-                }
-                // matched current char, advance to preceding one
-                lookupCh = pattern[patOff];
-            }
-            else if (patOff < lastPatternChOff)
-            {
-                // no char match but already matched some chars; reset
-                patOff = lastPatternChOff;
-                lookupCh = pattern[patOff];
-            }
-        }
-        return -1;
-    }
-    
     /**
      * Return true if parser is lenient. Meaning auto healing capacity of the parser are used.
      *
@@ -719,6 +544,11 @@ public class COSParser extends BaseParser implements ICOSParser
             return objectStreamObject;
         }
         final COSObjectKey objKey = getObjectKey(objstmObjNr, 0);
+        if (document == null)
+        {
+            // likely programming error by derived class
+            throw new IllegalStateException("document not initialized");
+        }
         final COSBase objstmBaseObj = document.getObjectFromPool(objKey).getObject();
         if (objstmBaseObj instanceof COSStream)
         {
@@ -1419,7 +1249,7 @@ public class COSParser extends BaseParser implements ICOSParser
         return true;
     }
 
-    protected BruteForceParser getBruteForceParser() throws IOException
+    protected BruteForceParser getBruteForceParser()
     {
         if (bruteForceParser == null)
         {
@@ -1797,10 +1627,6 @@ public class COSParser extends BaseParser implements ICOSParser
                     decryptionMaterial);
             accessPermission = securityHandler.getCurrentAccessPermission();
         }
-        catch (IOException e)
-        {
-            throw e;
-        }
         catch (GeneralSecurityException e)
         {
             throw new IOException("Error (" + e.getClass().getSimpleName()
@@ -1972,29 +1798,9 @@ public class COSParser extends BaseParser implements ICOSParser
     }
 
     /**
-     * Tries to decode the buffer content to an UTF-8 String. If that fails, tries the alternative Encoding.
-     * 
-     * @param buffer the {@link ByteArrayOutputStream} containing the bytes to decode
-     * @return the decoded String
-     */
-    private String decodeBuffer(ByteArrayOutputStream buffer)
-    {
-        try
-        {
-            return utf8Decoder.decode(ByteBuffer.wrap(buffer.toByteArray())).toString();
-        }
-        catch (CharacterCodingException e)
-        {
-            // some malformed PDFs don't use UTF-8 see PDFBOX-3347
-            LOG.debug(() -> "Buffer could not be decoded using StandardCharsets.UTF_8 - trying "
-                    + ALTERNATIVE_CHARSET.name(), e);
-            return buffer.toString(ALTERNATIVE_CHARSET);
-        }
-    }
-
-    /**
      * Returns the object key for the given combination of object and generation number. The object key from the cross
-     * reference table/stream will be reused if available. Otherwise a newly created object will be returned.
+     * reference table/stream will be reused if available. Otherwise, and when this parser has no document, a newly
+     * created object key will be returned.
      * 
      * @param num the given object number
      * @param gen the given generation number
@@ -2003,23 +1809,8 @@ public class COSParser extends BaseParser implements ICOSParser
      */
     protected COSObjectKey getObjectKey(long num, int gen)
     {
-        if (document == null || document.getXrefTable().isEmpty())
-        {
-            return new COSObjectKey(num, gen);
-        }
-        // use a cache to get the COSObjectKey as iterating over the xref-table-map gets slow for big pdfs
-        // in the long run we have to overhaul the object pool or even better remove it
-        Map<COSObjectKey, Long> xrefTable = document.getXrefTable();
-        if (xrefTable.size() > keyCache.size())
-        {
-            for (COSObjectKey key : xrefTable.keySet())
-            {
-                keyCache.putIfAbsent(key.getInternalHash(), key);
-            }
-        }
-        long internalHashCode = COSObjectKey.computeInternalHash(num, gen);
-        COSObjectKey foundKey = keyCache.get(internalHashCode);
-        return foundKey != null ? foundKey : new COSObjectKey(num, gen);
+        COSObjectKey key = document == null ? null : document.getXrefKey(num, gen);
+        return key != null ? key : new COSObjectKey(num, gen);
     }
 
 }

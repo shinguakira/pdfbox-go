@@ -78,15 +78,6 @@ public class PDFunctionType0 extends PDFunction
     }
 
     /**
-     * {@inheritDoc}
-     */
-    @Override
-    public int getFunctionType()
-    {
-        return 0;
-    }
-
-    /**
      * The "Size" entry, which is the number of samples in each input dimension
      * of the sample table.
      *
@@ -97,6 +88,10 @@ public class PDFunctionType0 extends PDFunction
         if (size == null)
         {
             size = getCOSObject().getCOSArray(COSName.SIZE);
+            if (size == null)
+            {
+                size = new COSArray();
+            }
         }
         return size;
     }
@@ -192,7 +187,7 @@ public class PDFunctionType0 extends PDFunction
     {
         PDRange retval = null;
         COSArray encodeValues = getEncodeValues();
-        if (encodeValues != null && encodeValues.size() >= paramNum * 2 + 1)
+        if (encodeValues != null && encodeValues.size() >= paramNum * 2 + 2)
         {
             retval = new PDRange(encodeValues, paramNum);
         }
@@ -221,7 +216,7 @@ public class PDFunctionType0 extends PDFunction
     {
         PDRange retval = null;
         COSArray decodeValues = getDecodeValues();
-        if (decodeValues != null && decodeValues.size() >= paramNum * 2 + 1)
+        if (decodeValues != null && decodeValues.size() >= paramNum * 2 + 2)
         {
             retval = new PDRange(decodeValues, paramNum);
         }

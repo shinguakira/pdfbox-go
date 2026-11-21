@@ -285,9 +285,38 @@ public final class Predictor
             this.bitsPerComponent = bitsPerComponent;
             this.columns = columns;
             this.rowLength = calculateRowLength(colors, bitsPerComponent, columns);
-            if (rowLength < 0)
+            if (rowLength <= 0)
             {
-                throw new IOException("Calculated row length is negative: " + rowLength);
+                // A zero row length (e.g. /Columns 0) would leave write() making no progress,
+                // a non-terminating loop for non-PNG predictors; reject it alongside negatives.
+                throw new IOException("Calculated row length is not positive: " + rowLength);
+            }
+            // PDFBOX-6265: prevent OOM with extreme values
+            long maxRowLength = 10_000_000L;
+            String sysProp = System.getProperty(Filter.SYSPROP_PREDICTOR_MAX_ROW_LENGTH);
+            if (sysProp != null)
+            {
+                try
+                {
+                    long parsed = Long.parseLong(sysProp);
+                    if (parsed > 0)
+                    {
+                        maxRowLength = parsed;
+                    }
+                    // else ignore zero/negative values
+                }
+                catch (NumberFormatException e)
+                {
+                    // ignore invalid value, keep default
+                }
+            }
+            if (rowLength > maxRowLength)
+            {
+                String msg =
+                        String.format("Calculated row length is too high: %d "
+                                + "(colors: %d, bitsPerComponent: %d, columns: %d)",
+                                rowLength, colors, bitsPerComponent, columns);
+                throw new IOException(msg);
             }
             this.predictorPerRow = predictor >= 10;
             currentRow = new byte[rowLength];

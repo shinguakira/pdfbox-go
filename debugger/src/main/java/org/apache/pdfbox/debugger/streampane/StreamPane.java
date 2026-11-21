@@ -266,13 +266,15 @@ public class StreamPane implements ActionListener
         }
         synchronized (stream)
         {
-            InputStream is = stream.getStream(command);
-            if (is == null)
+            try (InputStream is = stream.getStream(command))
             {
-                JOptionPane.showMessageDialog(panel, command + " text not available (filter missing?)");
-                return;
+                if (is == null)
+                {
+                    JOptionPane.showMessageDialog(panel, command + " text not available (filter missing?)");
+                    return;
+                }
+                hexView.changeData(is.readAllBytes());
             }
-            hexView.changeData(is.readAllBytes());
         }
     }
 
@@ -295,7 +297,7 @@ public class StreamPane implements ActionListener
         }
 
         @Override
-        protected StyledDocument doInBackground()
+        protected StyledDocument doInBackground() throws IOException
         {
             // default encoding to use when reading text base content
             String encoding = "ISO-8859-1";
@@ -305,21 +307,26 @@ public class StreamPane implements ActionListener
                 {
                     encoding = "UTF-8";
                 }
-                InputStream inputStream = stream.getStream(filterKey);
-                if (nice && Stream.DECODED.equals(filterKey))
+                try (InputStream inputStream = stream.getStream(filterKey))
                 {
-                    if (stream.isXmlMetadata())
+                    if (inputStream == null)
                     {
-                        return getXMLDocument(inputStream);
+                        return new DefaultStyledDocument();
                     }
-                    StyledDocument document = getContentStreamDocument(inputStream);
-                    if (document != null)
+                    if (nice && Stream.DECODED.equals(filterKey))
                     {
-                        return document;
+                        if (stream.isXmlMetadata())
+                        {
+                            return getXMLDocument(inputStream);
+                        }
+                        StyledDocument document = getContentStreamDocument(inputStream);
+                        if (document != null)
+                        {
+                            return document;
+                        }
                     }
                     return getDocument(inputStream, encoding);
                 }
-                return getDocument(inputStream, encoding);
             }
         }
 
@@ -336,44 +343,34 @@ public class StreamPane implements ActionListener
             }
         }
 
-        private String getStringOfStream(InputStream in, String encoding)
+        private StyledDocument getDocument(InputStream inputStream, String encoding)
         {
+            StyledDocument docu = new DefaultStyledDocument();
+            String data;
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try
             {
-                in.transferTo(baos);
-                return baos.toString(encoding);
+                inputStream.transferTo(baos);
+                data = baos.toString(encoding);
             }
             catch (IOException e)
             {
                 LOG.error(e.getMessage(), e);
-                return null;
+                return docu;
             }
-        }
 
-        private StyledDocument getDocument(InputStream inputStream, String encoding)
-        {
-            StyledDocument docu = new DefaultStyledDocument();
-            if (inputStream != null)
+            // CR is not displayed in the raw view (see file from PDFBOX-4964),
+            // but LF is displayed, so lets first replace CR LF with LF and then
+            // replace the remaining CRs with LF
+            data = data.replaceAll("\\R", "\n");
+
+            try
             {
-                String data = getStringOfStream(inputStream, encoding);
-
-                // CR is not displayed in the raw view (see file from PDFBOX-4964),
-                // but LF is displayed, so lets first replace CR LF with LF and then
-                // replace the remaining CRs with LF
-                if (data != null)
-                {
-                    data = data.replaceAll("\\R", "\n");
-                }
-
-                try
-                {
-                    docu.insertString(0, data, null);
-                }
-                catch (BadLocationException e)
-                {
-                    LOG.error(e.getMessage(), e);
-                }
+                docu.insertString(0, data, null);
+            }
+            catch (BadLocationException e)
+            {
+                LOG.error(e.getMessage(), e);
             }
             return docu;
         }
@@ -381,30 +378,27 @@ public class StreamPane implements ActionListener
         private StyledDocument getXMLDocument(InputStream inputStream)
         {
             StyledDocument docu = new DefaultStyledDocument();
-            if (inputStream != null)
+            try
             {
-                try
-                {
-                    Document doc = XMLUtil.parse(inputStream);
-                    TransformerFactory transformerFactory = TransformerFactory.newInstance();
-                    transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-                    transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-                    transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
-                    Transformer transformer = transformerFactory.newTransformer();
-                    transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-                    transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
-                    StringWriter sw = new StringWriter();
-                    StreamResult result = new StreamResult(sw);
-                    DOMSource source = new DOMSource(doc);
-                    transformer.transform(source, result);
-                    // replaceAll because of JDK-8262285. Alternatively pass an XSLT to newTransformer()
-                    docu.insertString(0, sw.toString().replaceAll("(\\r\\n|\\r|\\n) +(\\r\\n|\\r|\\n)","\n"), null);
-                }
-                catch (IOException | TransformerFactoryConfigurationError | IllegalArgumentException |
-                       TransformerException | BadLocationException ex)
-                {
-                    LOG.error(ex.getMessage(), ex);
-                }
+                Document doc = XMLUtil.parse(inputStream);
+                TransformerFactory transformerFactory = TransformerFactory.newInstance();
+                transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+                transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+                Transformer transformer = transformerFactory.newTransformer();
+                transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+                transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+                StringWriter sw = new StringWriter();
+                StreamResult result = new StreamResult(sw);
+                DOMSource source = new DOMSource(doc);
+                transformer.transform(source, result);
+                // replaceAll because of JDK-8262285. Alternatively pass an XSLT to newTransformer()
+                docu.insertString(0, sw.toString().replaceAll("(\\r\\n|\\r|\\n) +(\\r\\n|\\r|\\n)", "\n"), null);
+            }
+            catch (IOException | TransformerFactoryConfigurationError | IllegalArgumentException
+                    | TransformerException | BadLocationException ex)
+            {
+                LOG.error(ex.getMessage(), ex);
             }
             return docu;
         }

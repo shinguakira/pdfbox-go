@@ -21,10 +21,12 @@ import java.awt.geom.GeneralPath;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
+import org.apache.fontbox.cff.CFFCIDFont;
 import org.apache.fontbox.cff.CFFFont;
 import org.apache.fontbox.cff.Type2CharString;
 import org.apache.fontbox.cmap.CMap;
@@ -55,6 +57,11 @@ public class PDCIDFontType2 extends PDCIDFont
     private final OpenTypeFont otf;
     private final int[] cid2gid;
     private final CmapLookup cmap; // may be null
+    // PDFBOX-6293: substitute is CID-keyed with a different ROS: this font's CIDs are meaningless in it,
+    // resolve glyphs via Unicode instead (only when ordering is identity)
+    private final boolean isForeignCIDSubstitute;
+    private boolean hasEqualName = false;
+    private boolean warnedOnce = false;
     private Matrix fontMatrix;
     private BoundingBox fontBBox;
     private final Set<Integer> noMapping = new HashSet<>();
@@ -153,6 +160,48 @@ public class PDCIDFontType2 extends PDCIDFont
         }
         cmap = ttf.getUnicodeCmapLookup(false);
         cid2gid = readCIDToGIDMap();
+        isForeignCIDSubstitute = !isEmbedded && isForeignCIDFont(otf);
+        initNameEquality();
+    }
+
+    private void initNameEquality() throws IOException
+    {
+        String name = getBaseFont();
+        String ttfName = ttf.getName();
+        if (name == null || ttfName == null)
+        {
+            return;
+        }
+        if (name.equals(ttfName))
+        {
+            hasEqualName = true;
+            return;
+        }
+        name = name.replaceAll("[,-]", "");
+        ttfName = ttfName.replaceAll("[,-]", "");
+        if (ttfName.startsWith(name) || name.startsWith(ttfName)) // e.g. Arial/ArialMT, Tahoma,Italic/Tahoma
+        {
+            hasEqualName = true;
+            return;
+        }
+        if (!isEmbedded && !hasEqualName)
+        {
+            LOG.debug("name: {}, ttfName: {} not equal", name, ttfName);
+        }
+    }
+
+    private boolean isForeignCIDFont(OpenTypeFont substitute) throws IOException
+    {
+        if (substitute == null || !substitute.isPostScript() ||
+            !(substitute.getCFF().getFont() instanceof CFFCIDFont))
+        {
+            return false;
+        }
+        CFFCIDFont cff = (CFFCIDFont) substitute.getCFF().getFont();
+        PDCIDSystemInfo ros = getCIDSystemInfo();
+        return "Identity".equals(cff.getOrdering()) && (ros == null ||
+            !Objects.equals(ros.getRegistry(), cff.getRegistry()) ||
+            !Objects.equals(ros.getOrdering(), cff.getOrdering()));
     }
 
     private TrueTypeFont findFontOrSubstitute() throws IOException
@@ -257,13 +306,25 @@ public class PDCIDFontType2 extends PDCIDFont
             // dependent.
             // omit the CID2GID mapping if the embedded font is replaced by an external font
             String name = getBaseFont();
-            if (cid2gid != null && !isDamaged && name != null && name.equals(ttf.getName()))
+            if (cid2gid == null && parent.getCMap() != null && "Identity".equals(parent.getCMap().getOrdering()) && hasEqualName)
+            {
+                // PDFBOX-6288, PDFBOX-5384: treat CID as GID for missing fonts if we have the correct font
+                if (!warnedOnce)
+                {
+                    LOG.warn("Using non-embedded CID2GID identity for font {} / {}", name, ttf.getName());
+                    warnedOnce = true;
+                }
+                return code < ttf.getNumberOfGlyphs() ? code : 0;
+            }
+            if (cid2gid != null && !isDamaged && name != null && hasEqualName)
             {
                 // Acrobat allows non-embedded GIDs - todo: can we find a test PDF for this?
                 // PDFBOX-5612: should happen only if it's really the same font
-                // this is not perfect, we may have to improve this because some identical fonts
-                // have different names
-                LOG.warn("Using non-embedded GIDs in font {}", getBaseFont());
+                if (!warnedOnce)
+                {
+                    LOG.warn("Using non-embedded GIDs in font {}", getBaseFont());
+                    warnedOnce = true;
+                }
                 int cid = codeToCID(code, parent);
                 if (cid < cid2gid.length)
                 {
@@ -289,6 +350,13 @@ public class PDCIDFontType2 extends PDCIDFont
                     }
                     // Acrobat is willing to use the CID as a GID, even when the font isn't embedded
                     // see PDFBOX-2599
+                    return codeToCID(code, parent);
+                }
+                else if (otf != null && otf.isPostScript() && !isForeignCIDSubstitute)
+                {
+                    // "Identity" is the default for CFF-based OpenTypeFonts
+                    // (copied from segment below where font is embedded)
+                    // PDFBOX-6251 for the file from PDFBOX-122
                     return codeToCID(code, parent);
                 }
                 else if (unicode.length() > 1)
@@ -391,6 +459,20 @@ public class PDCIDFontType2 extends PDCIDFont
                 cid = 0;
             }
         }
+        else if (!parent.getCMap().getName().startsWith("Identity-") &&
+                 parent.getCMap().getName().startsWith("Uni") &&
+                 parent.getCMapUCS2() != null)
+        {
+            // PDFBOX-5953: predefined "Uni...-UCS2/UTF16" CMaps use the raw UTF-16BE
+            // Unicode value as their codespace/code by definition (see e.g. the
+            // UniGB-UTF16-H resource, whose begincidchar entries map codes that are
+            // themselves Unicode code points, e.g. <00a4> to a CID). Writing the
+            // substituted font's own glyph index here instead (as done below for the
+            // general case) produces a code that decodes to a wrong, essentially
+            // arbitrary character once the CID/Unicode round trip in
+            // PDCIDFontType2#codeToGID or PDType0Font#toUnicode is applied to it.
+            cid = unicode;
+        }
         else
         {
             // a non-embedded font always has a cmap (otherwise it we wouldn't load it)
@@ -442,9 +524,35 @@ public class PDCIDFontType2 extends PDCIDFont
     }
 
     @Override
+    protected GeneralPath getHintedNormalizedPath(int code, int ppem, PDType0Font parent)
+            throws IOException
+    {
+        if (!isEmbedded() || (otf != null && otf.isPostScript()))
+        {
+            return null;
+        }
+        int gid = codeToGID(code, parent);
+        if (gid == 0)
+        {
+            return null;
+        }
+        GeneralPath path = ttf.getHintedPath(gid, ppem);
+        if (path == null)
+        {
+            return null;
+        }
+        if (ttf.getUnitsPerEm() != 1000)
+        {
+            float scale = 1000f / ttf.getUnitsPerEm();
+            path.transform(AffineTransform.getScaleInstance(scale, scale));
+        }
+        return path;
+    }
+
+    @Override
     protected GeneralPath getNormalizedPath(int code, PDType0Font parent) throws IOException
     {
-        GeneralPath path = null;
+        GeneralPath path;
         if (otf != null && otf.isPostScript())
         {
             path = getPathFromOutlines(code, parent);

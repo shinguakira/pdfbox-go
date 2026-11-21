@@ -28,7 +28,6 @@ import java.util.NavigableSet;
 import java.util.TreeSet;
 
 import org.apache.pdfbox.cos.COSArray;
-import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
@@ -47,7 +46,7 @@ public class PDPageLabels implements COSObjectable
     private final PDDocument doc;
 
     /**
-     * Creates an empty page label dictionary for the given document.
+     * Creates an empty page label dictionary with a page 0 entry for the given document.
      * 
      * <p>
      * Note that the page label dictionary won't be automatically added to the
@@ -69,8 +68,8 @@ public class PDPageLabels implements COSObjectable
     }
 
     /**
-     * Creates an page label dictionary for a document using the information in
-     * the given COS dictionary.
+     * Creates an empty page label dictionary with a page 0 entry for the given document, then adds
+     * the information from the given COS dictionary.
      * 
      * <p>
      * Note that the page label dictionary won't be automatically added to the
@@ -114,7 +113,7 @@ public class PDPageLabels implements COSObjectable
             {
                 numbers.forEach((key, pageLabelRange) ->
                 {
-                    if (key >= 0)
+                    if (key >= 0 && pageLabelRange instanceof PDPageLabelRange)
                     {
                         labels.put(key, (PDPageLabelRange) pageLabelRange);
                     }
@@ -175,11 +174,12 @@ public class PDPageLabels implements COSObjectable
     }
     
     /**
-     * {@inheritDoc} 
+     * {@inheritDoc}
      */
     @Override
-    public COSBase getCOSObject()
+    public COSDictionary getCOSObject()
     {
+        //TODO this is very inefficient
         COSArray arr = new COSArray();
         labels.forEach((key, value) ->
         {

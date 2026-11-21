@@ -17,10 +17,12 @@
 package org.apache.pdfbox.pdmodel.font;
 
 import java.awt.geom.GeneralPath;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -383,7 +385,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
     /**
      * Fetches the corresponding UCS2 CMap if the font's CMap is predefined.
      */
-    private void fetchCMapUCS2() throws IOException
+    private void fetchCMapUCS2()
     {
         // if the font is composite and uses a predefined cmap (excluding Identity-H/V)
         // or whose descendant CIDFont uses the Adobe-GB1, Adobe-CNS1, Adobe-Japan1, or
@@ -415,7 +417,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
                 strName = name.getName();
             }
             
-            // try to find the corresponding Unicode (UC2) CMap
+            // try to find the corresponding Unicode (UCS2) CMap
             if (strName != null)
             {
                 try
@@ -426,7 +428,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
                 }
                 catch (IOException ex)
                 {
-                    LOG.warn("Could not get {} UC2 map for font {}", strName, getName(), ex);
+                    LOG.warn("Could not get {} UCS2 map for font {}", strName, getName(), ex);
                 }
             }
         }
@@ -463,7 +465,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
     }
 
     /**
-     * Returns the font's UCS2 CMap, only present this font uses a predefined CMap.
+     * Returns the font's UCS2 CMap, only present if this font uses a predefined CMap.
      * 
      * @return the font's UCS2 CMap if present
      */
@@ -499,7 +501,14 @@ public class PDType0Font extends PDFont implements PDVectorFont
     @Override
     protected byte[] encode(int unicode) throws IOException
     {
-        return descendantFont.encode(unicode, this);
+        byte[] encodedCodepoint = codepointToEncodingMap.get(unicode);
+        if (encodedCodepoint != null)
+        {
+            return encodedCodepoint;
+        }
+        encodedCodepoint = descendantFont.encode(unicode, this);
+        codepointToEncodingMap.put(unicode, encodedCodepoint);
+        return encodedCodepoint;
     }
 
     @Override
@@ -550,6 +559,15 @@ public class PDType0Font extends PDFont implements PDVectorFont
     public float getWidthFromFont(int code) throws IOException
     {
         return descendantFont.getWidthFromFont(code, this);
+    }
+
+    @Override
+    protected boolean isEncodedViaSubstitute()
+    {
+        // PDFBOX-6292: Identity CMap without ToUnicode: encode() returns the substitute's GIDs
+        return !isEmbedded() && descendantFont instanceof PDCIDFontType2 &&
+                cMap != null && cMap.getName() != null && cMap.getName().startsWith("Identity-") &&
+                !getCOSObject().containsKey(COSName.TO_UNICODE);
     }
 
     @Override
@@ -650,6 +668,31 @@ public class PDType0Font extends PDFont implements PDVectorFont
     }
 
     @Override
+    public float getStringWidth(String text) throws IOException
+    {
+        float width = 0;
+        Iterator<Integer> codePoints = text.codePoints().iterator();
+        while (codePoints.hasNext())
+        {
+            int codePoint = codePoints.next();
+            Float codePointWidth = codepointToWidthMap.get(codePoint);
+            if (codePointWidth == null)
+            {
+                codePointWidth = Float.valueOf(0);
+                byte[] encodedBytes = encode(codePoint);
+                ByteArrayInputStream in = new ByteArrayInputStream(encodedBytes);
+                while (in.available() > 0)
+                {
+                    codePointWidth += getWidth(readCode(in));
+                }
+                codepointToWidthMap.put(codePoint, codePointWidth);
+            }
+            width += codePointWidth;
+        }
+        return width;
+    }
+
+    @Override
     public int readCode(InputStream in) throws IOException
     {
         if (cMap == null)
@@ -717,7 +760,16 @@ public class PDType0Font extends PDFont implements PDVectorFont
     {
         return descendantFont.getNormalizedPath(code, this);
     }
-    
+
+    @Override
+    public GeneralPath getHintedNormalizedPath(int code, int ppem) throws IOException
+    {
+        // PDCIDFont's implementation returns null and only PDCIDFontType2 overrides it, so the
+        // dispatch alone gives the hinted path for a TrueType-based descendant and null for a
+        // CFF-based one.
+        return descendantFont.getHintedNormalizedPath(code, ppem, this);
+    }
+
     @Override
     public boolean hasGlyph(int code) throws IOException
     {

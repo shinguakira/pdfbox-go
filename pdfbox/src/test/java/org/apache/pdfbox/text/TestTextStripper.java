@@ -53,9 +53,13 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.fontbox.util.BoundingBox;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
@@ -64,6 +68,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
+import org.apache.pdfbox.pdmodel.interactive.pagenavigation.PDThreadBead;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -736,5 +741,122 @@ class TestTextStripper
             String text = localStripper.getText(doc);
             assertEquals("( overlap )\n", text);
         }
+    }
+
+    /**
+     * Test that text in two articles (beads) on the same line doesn't cause an exception when the
+     * second article starts with a word separator.
+     *
+     * @throws IOException
+     */
+    @Test
+    void testArticlesOnSameLine() throws IOException
+    {
+        try (PDDocument doc = new PDDocument())
+        {
+            PDPage page = new PDPage();
+            float y = page.getMediaBox().getHeight() - 100;
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page))
+            {
+                PDFont font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+                cs.beginText();
+                cs.setFont(font, 12);
+                cs.newLineAtOffset(50, y);
+                cs.showText("LEFT");
+                cs.endText();
+                cs.beginText();
+                cs.setFont(font, 12);
+                cs.newLineAtOffset(350, y);
+                cs.showText("RIGHT");
+                cs.endText();
+            }
+            PDThreadBead leftBead = new PDThreadBead();
+            leftBead.setRectangle(new PDRectangle(40, y - 50, 200, 100));
+            PDThreadBead rightBead = new PDThreadBead();
+            rightBead.setRectangle(new PDRectangle(340, y - 50, 200, 100));
+            page.setThreadBeads(List.of(leftBead, rightBead));
+            doc.addPage(page);
+
+            PDFTextStripper localStripper = new PDFTextStripper();
+            localStripper.setLineSeparator("\n");
+            localStripper.setPageEnd("\n");
+            String text = localStripper.getText(doc);
+            assertEquals("LEFT RIGHT\n", text);
+        }
+    }
+
+    /**
+     * Test that marked content nested in an /ActualText sequence doesn't end the replacement.
+     *
+     * @throws IOException
+     */
+    @Test
+    void testActualTextWithNestedMarkedContent() throws IOException
+    {
+        try (PDDocument doc = new PDDocument())
+        {
+            PDPage page = new PDPage();
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page))
+            {
+                cs.beginText();
+                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                cs.newLineAtOffset(50, 700);
+                cs.beginMarkedContent(COSName.SPAN, createActualText("XYZ"));
+                cs.beginMarkedContent(COSName.getPDFName("Foo"));
+                cs.showText("abc");
+                cs.endMarkedContent();
+                cs.showText("def");
+                cs.endMarkedContent();
+                cs.endText();
+            }
+            doc.addPage(page);
+
+            PDFTextStripper localStripper = new PDFTextStripper();
+            localStripper.setLineSeparator("\n");
+            localStripper.setPageEnd("\n");
+            assertEquals("XYZ\n", localStripper.getText(doc));
+        }
+    }
+
+    /**
+     * Test that an /ActualText sequence nested in another one is ignored, because the outer one
+     * replaces all of its content.
+     *
+     * @throws IOException
+     */
+    @Test
+    void testNestedActualText() throws IOException
+    {
+        try (PDDocument doc = new PDDocument())
+        {
+            PDPage page = new PDPage();
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page))
+            {
+                cs.beginText();
+                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                cs.newLineAtOffset(50, 700);
+                cs.beginMarkedContent(COSName.SPAN, createActualText("X"));
+                cs.showText("a");
+                cs.beginMarkedContent(COSName.SPAN, createActualText("Y"));
+                cs.showText("b");
+                cs.endMarkedContent();
+                cs.showText("tail");
+                cs.endMarkedContent();
+                cs.endText();
+            }
+            doc.addPage(page);
+
+            PDFTextStripper localStripper = new PDFTextStripper();
+            localStripper.setLineSeparator("\n");
+            localStripper.setPageEnd("\n");
+            assertEquals("X\n", localStripper.getText(doc));
+        }
+    }
+
+    private static PDPropertyList createActualText(String actualText)
+    {
+        COSDictionary dict = new COSDictionary();
+        dict.setString(COSName.ACTUAL_TEXT, actualText);
+        return PDPropertyList.create(dict);
     }
 }

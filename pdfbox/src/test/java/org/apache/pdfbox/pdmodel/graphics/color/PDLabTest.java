@@ -15,6 +15,7 @@
  */
 package org.apache.pdfbox.pdmodel.graphics.color;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -93,4 +94,64 @@ class PDLabTest
         assertTrue(Arrays.equals(new float[]{0,0,3}, pdLab.getInitialColor().getComponents()));
     }
 
+    @Test
+    void testClamp()
+    {
+        PDLab lab = new PDLab();
+        assertEquals(-100, lab.getARange().getMin(), 0f);
+        assertEquals(100, lab.getARange().getMax(), 0f);
+        assertEquals(-100, lab.getBRange().getMin(), 0f);
+        assertEquals(100, lab.getBRange().getMax(), 0f);
+        assertEquals("[0.0, 100.0, -100.0, 100.0, -100.0, 100.0]", 
+                Arrays.toString(lab.getDefaultDecode(1)));
+        PDRange aRange = new PDRange();
+        aRange.setMin(-160);
+        aRange.setMax(160);
+        lab.setARange(aRange);
+        PDRange bRange = new PDRange();
+        bRange.setMin(-160);
+        bRange.setMax(160);
+        lab.setBRange(bRange);
+        float[] lab1 = new float[]{-101, -161, -161};
+        float[] lab2 = new float[]{-100, -160, -160};
+        float[] lab3 = new float[]{0, 0, 0};
+        float[] lab4 = new float[]{100, 160, 160};
+        float[] lab5 = new float[]{101, 161, 161};
+        lab.clamp(lab1);
+        lab.clamp(lab2);
+        lab.clamp(lab3);
+        lab.clamp(lab4);
+        lab.clamp(lab5);
+        assertEquals("[0.0, -160.0, -160.0]", Arrays.toString(lab1));
+        assertEquals("[0.0, -160.0, -160.0]", Arrays.toString(lab2));
+        assertEquals("[0.0, 0.0, 0.0]", Arrays.toString(lab3));
+        assertEquals("[100.0, 160.0, 160.0]", Arrays.toString(lab4));
+        assertEquals("[100.0, 160.0, 160.0]", Arrays.toString(lab5));
+    }
+
+    @Test
+    void testToRGB()
+    {
+        // Author: ChatGPT
+        PDLab lab = new PDLab();
+
+        // PDF Lab values: L* is 0..100, a* and b* are -100..100.
+        float[] black = lab.toRGB(new float[] { 0, 0, 0 });
+        float[] white = lab.toRGB(new float[] { 100, 0, 0 });
+        float[] red = lab.toRGB(new float[] { 53, 80, 67 });
+
+        // Black and white should be at the ends of the RGB range.
+        assertArrayEquals(new float[] { 0, 0, 0 }, black, 0.01f);
+        assertArrayEquals(new float[] { 1, 1, 1 }, white, 0.02f);
+
+        // Red should have a higher red component than green and blue.
+        assertTrue(red[0] > red[1]);
+        assertTrue(red[0] > red[2]);
+
+        // All RGB components must be in the valid range.
+        for (float component : red)
+        {
+            assertTrue(component >= 0 && component <= 1);
+        }
+    }
 }

@@ -116,8 +116,7 @@ abstract class PDTriangleBasedShadingType extends PDShading
     {
         if (numberOfColorComponents == -1)
         {
-            numberOfColorComponents = getFunction() != null ? 1
-                    : getColorSpace().getNumberOfComponents();
+            numberOfColorComponents = getFunction() == null ? getColorSpace().getNumberOfComponents() : 1;
             LOG.debug("numberOfColorComponents: {}", numberOfColorComponents);
         }
         return numberOfColorComponents;
@@ -158,7 +157,7 @@ abstract class PDTriangleBasedShadingType extends PDShading
     {
         PDRange retval = null;
         COSArray decodeValues = getDecodeValues();
-        if (decodeValues != null && decodeValues.size() >= paramNum * 2 + 1)
+        if (decodeValues != null && decodeValues.size() >= paramNum * 2 + 2)
         {
             retval = new PDRange(decodeValues, paramNum);
         }

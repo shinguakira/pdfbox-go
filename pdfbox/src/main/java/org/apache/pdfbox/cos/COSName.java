@@ -68,6 +68,7 @@ public final class COSName extends COSBase implements Comparable<COSName>
     public static final COSName ALT = getPDFName("Alt");
     public static final COSName ALPHA = getPDFName("Alpha");
     public static final COSName ALTERNATE = getPDFName("Alternate");
+    public static final COSName AN = getPDFName("AN");
     public static final COSName ANNOT = getPDFName("Annot");
     public static final COSName ANNOTS = getPDFName("Annots");
     public static final COSName ANTI_ALIAS = getPDFName("AntiAlias");
@@ -559,6 +560,7 @@ public final class COSName extends COSBase implements Comparable<COSName>
     public static final COSName SORT = getPDFName("Sort");
     public static final COSName SOUND = getPDFName("Sound");
     public static final COSName SPLIT = getPDFName("Split");
+    public static final COSName SPAN = getPDFName("Span");
     public static final COSName SS = getPDFName("SS");
     public static final COSName ST = getPDFName("St");
     public static final COSName STANDARD_ENCODING = getPDFName("StandardEncoding");
@@ -568,6 +570,7 @@ public final class COSName extends COSBase implements Comparable<COSName>
     public static final COSName STD_CF = getPDFName("StdCF");
     public static final COSName STEM_H = getPDFName("StemH");
     public static final COSName STEM_V = getPDFName("StemV");
+    public static final COSName STM = getPDFName("Stm");
     public static final COSName STM_F = getPDFName("StmF");
     public static final COSName STR_F = getPDFName("StrF");
     public static final COSName STRUCT_ELEM = getPDFName("StructElem");

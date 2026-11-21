@@ -174,6 +174,10 @@ public final class StandardSecurityHandler extends SecurityHandler<StandardProte
         int dicPermissions = encryption.getPermissions();
         int dicRevision = encryption.getRevision();
         int dicLength = encryptionVersion == 1 ? 5 : encryption.getLength() / 8;
+        if (dicLength < 5)
+        {
+            throw new IOException("Invalid encryption dictionary length: " + encryption.getLength());
+        }
         
         if (encryptionVersion == REVISION_4 || encryptionVersion == REVISION_5)
         {
@@ -228,6 +232,14 @@ public final class StandardSecurityHandler extends SecurityHandler<StandardProte
         
         byte[] userKey = encryption.getUserKey();
         byte[] ownerKey = encryption.getOwnerKey();
+        if (userKey == null)
+        {
+            throw new IOException("/Encrypt/U entry is missing");
+        }
+        if (ownerKey == null)
+        {
+            throw new IOException("/Encrypt/O entry is missing");
+        }
         byte[] ue = null, oe = null;
 
         Charset passwordCharset = StandardCharsets.ISO_8859_1;

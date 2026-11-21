@@ -16,12 +16,12 @@
  */
 package org.apache.pdfbox.pdmodel.font;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -67,6 +67,8 @@ public abstract class PDFont implements COSObjectable, PDFontLike
     private float avgFontWidth;
     private float fontWidthOfSpace = -1f;
     private final Map<Integer, Float> codeToWidthMap;
+    protected final Map<Integer, byte[]> codepointToEncodingMap;
+    protected final Map<Integer, Float> codepointToWidthMap;
 
     /**
      * Constructor for embedding.
@@ -79,6 +81,8 @@ public abstract class PDFont implements COSObjectable, PDFontLike
         fontDescriptor = null;
         afmStandard14 = null;
         codeToWidthMap = new HashMap<>();
+        codepointToEncodingMap = new HashMap<>();
+        codepointToWidthMap = new HashMap<>();
     }
 
     /**
@@ -97,6 +101,8 @@ public abstract class PDFont implements COSObjectable, PDFontLike
         fontDescriptor = PDType1FontEmbedder.buildFontDescriptor(afmStandard14);
         // standard 14 fonts may be accessed concurrently, as they are singletons
         codeToWidthMap = new ConcurrentHashMap<>();
+        codepointToEncodingMap = new ConcurrentHashMap<>();
+        codepointToWidthMap = new ConcurrentHashMap<>();
     }
 
     /**
@@ -109,6 +115,8 @@ public abstract class PDFont implements COSObjectable, PDFontLike
     {
         dict = fontDictionary;
         codeToWidthMap = new HashMap<>();
+        codepointToEncodingMap = new HashMap<>();
+        codepointToWidthMap = new HashMap<>();
 
         // standard 14 fonts use an AFM
         afmStandard14 = Standard14Fonts.getAFM(getName()); // may be null (it usually is)
@@ -343,16 +351,11 @@ public abstract class PDFont implements COSObjectable, PDFontLike
     public final byte[] encode(String text) throws IOException
     {
         ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(32, text.length()));
-        int offset = 0;
-        while (offset < text.length())
+        Iterator<Integer> codePoints = text.codePoints().iterator();
+        while (codePoints.hasNext())
         {
-            int codePoint = text.codePointAt(offset);
-
-            // multi-byte encoding with 1 to 4 bytes
-            byte[] bytes = encode(codePoint);
+            byte[] bytes = encode(codePoints.next());
             out.writeBytes(bytes);
-
-            offset += Character.charCount(codePoint);
         }
         return out.toByteArray();
     }
@@ -380,16 +383,25 @@ public abstract class PDFont implements COSObjectable, PDFontLike
      */
     public float getStringWidth(String text) throws IOException
     {
-        byte[] bytes = encode(text);
-        ByteArrayInputStream in = new ByteArrayInputStream(bytes);
-        
         float width = 0;
-        while (in.available() > 0)
+        Iterator<Integer> codePoints = text.codePoints().iterator();
+        while (codePoints.hasNext())
         {
-            int code = readCode(in);
-            width += getWidth(code);
+            Integer codePoint = codePoints.next();
+            Float codePointWidth = codepointToWidthMap.get(codePoint);
+            if (codePointWidth == null)
+            {
+                codePointWidth = Float.valueOf(0);
+                byte[] bytes = encode(codePoint);
+                for (byte value : bytes)
+                {
+                    // skip readCode as it simply reads the next int value in most cases
+                    codePointWidth += getWidth(value & 0xff);
+                }
+                codepointToWidthMap.put(codePoint, codePointWidth);
+            }
+            width += codePointWidth;
         }
-        
         return width;
     }
 
@@ -450,7 +462,11 @@ public abstract class PDFont implements COSObjectable, PDFontLike
      * @return character code
      * @throws IOException if the CMap or stream cannot be read
      */
-    public abstract int readCode(InputStream in) throws IOException;
+    public int readCode(InputStream in) throws IOException
+    {
+        // implementation that works for most of the different kind of fonts
+        return in.read();
+    }
 
     /**
      * Returns the Unicode character sequence which corresponds to the given character code.
@@ -560,6 +576,17 @@ public abstract class PDFont implements COSObjectable, PDFontLike
     }
 
     /**
+     * Whether {@link #encode(int)} derives codes from a substitute font program rather than from
+     * this font's encoding, so that the codes need not exist in the PDF.
+     *
+     * @return true if encoded codes depend on the installed substitute
+     */
+    protected boolean isEncodedViaSubstitute()
+    {
+        return false;
+    }
+
+    /**
      * Determines the width of the space character. This is very important for text extraction.
      *
      * @return the width of the space character
@@ -580,16 +607,19 @@ public abstract class PDFont implements COSObjectable, PDFontLike
                 }
                 else
                 {
-                    try
+                    if (!isEncodedViaSubstitute())
                     {
-                        // PDFBOX-5920: try with encoding, which gets the correct code
-                        fontWidthOfSpace = getStringWidth(" ");
-                    }
-                    catch (IllegalArgumentException | UnsupportedOperationException ex)
-                    {
-                        // Happens if space is not available in the font
-                        // or if encoding isn't implemented
-                        LOG.debug(ex.getMessage(), ex);
+                        try
+                        {
+                            // PDFBOX-5920: try with encoding, which gets the correct code
+                            fontWidthOfSpace = getStringWidth(" ");
+                        }
+                        catch (IllegalArgumentException | UnsupportedOperationException ex)
+                        {
+                            // Happens if space is not available in the font
+                            // or if encoding isn't implemented
+                            LOG.debug(ex.getMessage(), ex);
+                        }
                     }
                     if (fontWidthOfSpace <= 0)
                     {

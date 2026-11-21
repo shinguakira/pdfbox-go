@@ -23,7 +23,7 @@
   <parent>
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
-    <version>39</version>
+    <version>40</version>
     <relativePath />
   </parent>
 
@@ -55,10 +55,10 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-    <bouncycastle.version>1.85.2</bouncycastle.version>
+    <bouncycastle.version>1.87</bouncycastle.version>
     <log4j2.version>2.26.1</log4j2.version>
     <!-- can't update to 6.0.0, needs jdk17 -->
-    <junit.version>5.13.4</junit.version>
+    <junit.version>5.14.4</junit.version>
     <jbig2.version>3.0.5</jbig2.version>
     <jai.version>1.4.0</jai.version>
     <commons-io.version>2.22.0</commons-io.version>
@@ -80,7 +80,7 @@
         <dependency>
             <groupId>org.apache.maven.plugin-tools</groupId>
             <artifactId>maven-plugin-annotations</artifactId>
-            <version>3.15.2</version>
+            <version>3.16.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
@@ -104,7 +104,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.15</version>
+                <version>0.8.16</version>
                 <configuration>
                     <skip>${skipTests}</skip>
                 </configuration>
@@ -229,7 +229,7 @@
                 </plugin>
                 <plugin>
                     <artifactId>maven-enforcer-plugin</artifactId>
-                    <version>3.6.3</version>
+                    <version>3.7.0</version>
                     <executions>
                         <execution>
                             <goals>

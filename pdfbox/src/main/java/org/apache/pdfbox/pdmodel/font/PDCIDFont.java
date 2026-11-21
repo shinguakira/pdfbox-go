@@ -52,6 +52,7 @@ public abstract class PDCIDFont implements COSObjectable
     private static final Logger LOG = LogManager.getLogger(PDCIDFont.class);
 
     private final Map<Integer, Float> widths = new HashMap<>();
+    private final Map<Integer, Float> codeToWidth = new HashMap<>();
     private float defaultWidth;
     private float averageWidth;
 
@@ -150,7 +151,7 @@ public abstract class PDCIDFont implements COSObjectable
                     }
                     COSBase secondCodeBase = next;
                     COSBase rangeWidthBase = wArray.getObject(counter++);
-                    if (!(secondCodeBase instanceof COSNumber) || !(rangeWidthBase instanceof COSNumber))
+                    if (!(secondCodeBase instanceof COSNumber && rangeWidthBase instanceof COSNumber))
                     {
                         LOG.warn("Expected two numbers, got {} and {}", secondCodeBase,
                                 rangeWidthBase);
@@ -191,30 +192,51 @@ public abstract class PDCIDFont implements COSObjectable
         {
             for (int i = 0; i < w2Array.size(); i++)
             {
-                COSNumber c = (COSNumber) w2Array.getObject(i);
+                COSBase base = w2Array.getObject(i);
+                if (!(base instanceof COSNumber))
+                {
+                    continue;
+                }
+                COSNumber c = (COSNumber) base;
                 COSBase next = w2Array.getObject(++i);
                 if (next instanceof COSArray)
                 {
                     COSArray array = (COSArray)next;
-                    for (int j = 0; j < array.size(); j++)
+                    for (int j = 0; j < array.size() - 2; j++)
                     {
                         int cid = c.intValue() + j / 3;
-                        COSNumber w1y = (COSNumber) array.getObject(j);
-                        COSNumber v1x = (COSNumber) array.getObject(++j);
-                        COSNumber v1y = (COSNumber) array.getObject(++j);
-                        verticalDisplacementY.put(cid, w1y.floatValue());
-                        positionVectors.put(cid, new Vector(v1x.floatValue(), v1y.floatValue()));
+                        COSBase w1y = array.getObject(j);
+                        COSBase v1x = array.getObject(++j);
+                        COSBase v1y = array.getObject(++j);
+                        if (!(w1y instanceof COSNumber && v1x instanceof COSNumber && v1y instanceof COSNumber))
+                        {
+                            LOG.warn("Expected three numbers, got {}, {}, and {}", w1y, v1x, v1y);
+                            break;
+                        }
+                        verticalDisplacementY.put(cid, ((COSNumber) w1y).floatValue());
+                        positionVectors.put(cid, new Vector(((COSNumber) v1x).floatValue(), ((COSNumber) v1y).floatValue()));
                     }
                 }
-                else
+                else if (next instanceof COSNumber)
                 {
+                    if (i + 3 >= w2Array.size())
+                    {
+                        LOG.warn("Aborting read of 3 elements of /W2 table at index {} with size {}", i, w2Array.size());
+                        break;
+                    }
                     int first = c.intValue();
                     int last = ((COSNumber) next).intValue();
-                    COSNumber w1y = (COSNumber) w2Array.getObject(++i);
-                    COSNumber v1x = (COSNumber) w2Array.getObject(++i);
-                    COSNumber v1y = (COSNumber) w2Array.getObject(++i);
+                    COSBase w1y = w2Array.getObject(++i);
+                    COSBase v1x = w2Array.getObject(++i);
+                    COSBase v1y = w2Array.getObject(++i);
+                    if (!(w1y instanceof COSNumber && v1x instanceof COSNumber && v1y instanceof COSNumber))
+                    {
+                        LOG.warn("Expected three numbers, got {}, {}, and {}", w1y, v1x, v1y);
+                        break;
+                    }
                     displacementRanges.add(new VerticalDisplacementRange(first, last,
-                            new Vector(v1x.floatValue(), v1y.floatValue()), w1y.floatValue()));
+                            new Vector(((COSNumber) v1x).floatValue(), ((COSNumber) v1y).floatValue()),
+                            ((COSNumber) w1y).floatValue()));
                 }
             }
         }
@@ -313,6 +335,26 @@ public abstract class PDCIDFont implements COSObjectable
             throws IOException;
 
     /**
+     * Returns the grid-fitted (TrueType-hinted) normalized glyph path for the given character code at
+     * the given ppem, or {@code null} if hinting does not apply. Like
+     * {@link #getNormalizedPath(int, PDType0Font)} the result is normalized to the 1000 unit square.
+     * Only a descendant with embedded TrueType outlines can hint, so this returns {@code null} unless
+     * overridden.
+     *
+     * @param code character code in a PDF. Not to be confused with unicode.
+     * @param ppem the pixels-per-em the glyph will be rendered at
+     * @param parent the parent Type0 font.
+     *
+     * @return the hinted normalized glyph path, or null to use the unhinted path
+     * @throws java.io.IOException if the font could not be read
+     */
+    protected GeneralPath getHintedNormalizedPath(int code, int ppem, PDType0Font parent)
+            throws IOException
+    {
+        return null;
+    }
+
+    /**
      * Returns true if this font contains a glyph for the given character code in a PDF.
      *
      * @param code character code in a PDF. Not to be confused with unicode.
@@ -393,9 +435,8 @@ public abstract class PDCIDFont implements COSObjectable
      * @param parent the parent Type0 font.
      * 
      * @return true if the Font dictionary specifies an explicit width for the given glyph
-     * @throws IOException if the font could not be read
      */
-    protected boolean hasExplicitWidth(int code, PDType0Font parent) throws IOException
+    protected boolean hasExplicitWidth(int code, PDType0Font parent)
     {
         return widths.get(codeToCID(code, parent)) != null;
     }
@@ -472,14 +513,13 @@ public abstract class PDCIDFont implements COSObjectable
      * @param parent the parent Type0 font.
      * 
      * @return the width of the given character
-     * @throws IOException if the width could not be read
      */
-    protected float getWidth(int code, PDType0Font parent) throws IOException
+    protected float getWidth(int code, PDType0Font parent)
     {
         // these widths are supposed to be consistent with the actual widths given in the CIDFont
         // program, but PDFBOX-563 shows that when they are not, Acrobat overrides the embedded
         // font widths with the widths given in the font dictionary
-        return getWidthForCID(codeToCID(code, parent));
+        return codeToWidth.computeIfAbsent(code, key -> getWidthForCID(codeToCID(key, parent)));
     }
 
     // todo: this method is highly suspicious, the average glyph width is not usually a good metric
@@ -557,9 +597,8 @@ public abstract class PDCIDFont implements COSObjectable
      * @param parent the parent Type0 font.
      * 
      * @return Array of 1 to 4 PDF content stream bytes.
-     * @throws IOException If the text could not be encoded.
      */
-    protected byte[] encode(int unicode, PDType0Font parent) throws IOException
+    protected byte[] encode(int unicode, PDType0Font parent)
     {
         if (this instanceof PDCIDFontType0)
         {

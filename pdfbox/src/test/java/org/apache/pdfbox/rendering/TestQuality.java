@@ -19,13 +19,20 @@ package org.apache.pdfbox.rendering;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.concurrent.TimeUnit;
+import javax.imageio.ImageIO;
+
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.ValidateXImage;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /**
  *
@@ -125,5 +132,107 @@ class TestQuality
             Assertions.assertTrue(red < 100,
                     "expected a dark text pixel but was too light: " + Integer.toHexString(rgb));
         }
+    }
+
+    /**
+     * PDFBOX-5250: a mesh shading pattern used inside a transparency group that has its own
+     * non-trivial /Matrix must be positioned using that group's own initial matrix, not the
+     * parent's. Before the fix, the transparency group's /Matrix was concatenated into the CTM
+     * only after the initial matrix had already been captured, so any pattern painted inside the
+     * group (here, a colored tiling pattern whose cell is itself a transparency group filled
+     * with a type 7 shading) was placed using the wrong reference matrix. That shifted the mesh
+     * shading far out of position, so instead of the intended multicolor gradient, only a
+     * single, mostly-green sliver of it ever landed on the visible glyphs.
+     *
+     * @throws IOException
+     */
+    @Test
+    void testPDFBox5250() throws IOException
+    {
+        File file = new File(TARGET_PDF_DIR, "PDFBOX-5250-pattern-reduced3.pdf");
+        try (PDDocument doc = Loader.loadPDF(file))
+        {
+            PDFRenderer renderer = new PDFRenderer(doc);
+            BufferedImage renderedImage = renderer.renderImageWithDPI(0, 100);
+            // a pixel within the shading-pattern-filled text; before the fix, the mesh shading
+            // was shifted out of view here, leaving this pixel blank white instead of the
+            // gradient's red-ish color. Checking red without also ruling out green isn't enough
+            // because white also has a maxed-out red channel.
+            int rgb = renderedImage.getRGB(190, 331);
+            int red = (rgb >> 16) & 0xFF;
+            int green = (rgb >> 8) & 0xFF;
+            Assertions.assertTrue(red > 150 && green < 150,
+                    "expected a red-ish gradient pixel but was: " + Integer.toHexString(rgb));
+        }
+    }
+
+    /**
+     * PDFBOX-5079: a CalRGB image whose whitepoint is neither (1 1 1) nor D65 must still be CIE
+     * calibrated instead of having its raw component values used directly as RGB. Before the
+     * fix, {@code PDCalRGB.toRGB()} only performed the calibration for whitepoint (1 1 1); any
+     * other whitepoint (here, D50 - 0.9643 1.0 0.8251) fell into the D65-only shortcut meant for
+     * a different, uncalibrated whitepoint, so the image's intended red rendered as orange
+     * instead, identical to the uncalibrated DeviceRGB image placed alongside it.
+     *
+     * @throws IOException
+     */
+    @Test
+    void testPDFBox5079() throws IOException
+    {
+        File file = new File(TARGET_PDF_DIR, "PDFBOX-5079-PDF2.0imagewithBPC.pdf");
+        try (PDDocument doc = Loader.loadPDF(file))
+        {
+            PDFRenderer renderer = new PDFRenderer(doc);
+            BufferedImage renderedImage = renderer.renderImageWithDPI(0, 100);
+            // a pixel within the CalRGB image, whose own caption says "should appear red" was orange
+            // before the fix, same as the uncalibrated DeviceRGB image
+            int rgb = renderedImage.getRGB(170, 200);
+            int red = (rgb >> 16) & 0xFF;
+            int green = (rgb >> 8) & 0xFF;
+            int blue = rgb & 0xFF;
+            Assertions.assertTrue(red > 200 && green < 50 && blue < 50,
+                    "expected a red pixel but was: " + Integer.toHexString(rgb));
+        }
+    }
+
+    /**
+     * PDFBOX-5876: rendering a page containing a very large JPEG 2000 (JPX) image at reduced
+     * scale must not decode the image at full resolution first just to read its width, height
+     * and color space. Before the fix, {@code PDImageXObject.initJPXValues()} did exactly that,
+     * on top of the properly subsampled decode done afterwards for the actual rendering, so
+     * memory usage was driven by the full image size regardless of how small the rendered output
+     * was. This must run in a separate, heap-constrained JVM, since the heap size of the JVM
+     * already running the test suite can't be changed after the fact, and the failure (an
+     * OutOfMemoryError) only reproduces below a certain heap size.
+     *
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    @Test
+    @EnabledIfSystemProperty(named = "TestOOM", matches = "true")
+    void testPDFBox5876() throws IOException, InterruptedException
+    {
+        File file = new File(TARGET_PDF_DIR, "PDFBOX-5876-jpeg2000.pdf");
+        File outputFile = new File("target/test-output", file.getName() + "-p1.png");
+        outputFile.delete(); // in case it exists from older test
+        String javaBin = System.getProperty("java.home") + File.separator + "bin" +
+                File.separator + "java";
+        ProcessBuilder builder = new ProcessBuilder(javaBin, "-Xmx600m",
+                "-cp", System.getProperty("java.class.path"),
+                JPXLowMemoryRenderMain.class.getName(), file.getAbsolutePath());
+        builder.redirectErrorStream(true);
+        Process process = builder.start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        boolean finished = process.waitFor(120, TimeUnit.SECONDS);
+        if (!finished)
+        {
+            process.destroy();
+        }
+        Assertions.assertTrue(finished, "subprocess timed out");
+        Assertions.assertEquals(0, process.exitValue(), "subprocess failed:\n" + output);
+        BufferedImage bim = ImageIO.read(outputFile);
+        Assertions.assertEquals(297, bim.getWidth());
+        Assertions.assertEquals(421, bim.getHeight());
+        Files.delete(outputFile.toPath());
     }
 }

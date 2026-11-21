@@ -21,8 +21,8 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Point2D;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.Logger;
@@ -309,12 +309,6 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     }
     
     @Override
-    public int readCode(InputStream in) throws IOException
-    {
-        return in.read();
-    }
-
-    @Override
     public final Matrix getFontMatrix()
     {
         if (fontMatrix == null)
@@ -394,6 +388,12 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
     @Override
     protected byte[] encode(int unicode) throws IOException
     {
+        byte[] encodedCodepoint = codepointToEncodingMap.get(unicode);
+        if (encodedCodepoint != null)
+        {
+            return encodedCodepoint;
+        }
+
         String name = getGlyphList().codePointToName(unicode);
         if (!encoding.contains(name))
         {
@@ -404,16 +404,16 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
 
         String nameInFont = getNameInFont(name);
         
-        Map<String, Integer> inverted = encoding.getNameToCodeMap();
-
         if (nameInFont.equals(".notdef") || !genericFont.hasGlyph(nameInFont))
         {
             throw new IllegalArgumentException(
                     String.format("No glyph for U+%04X in font %s", unicode, getName()));
         }
 
-        int code = inverted.get(name);
-        return new byte[] { (byte)code };
+        int code = encoding.getCode(name);
+        encodedCodepoint = new byte[] { (byte) code };
+        codepointToEncodingMap.put(unicode, encodedCodepoint);
+        return encodedCodepoint;
     }
 
     @Override
@@ -425,17 +425,24 @@ public class PDType1CFont extends PDSimpleFont implements PDVectorFont
             return 0;
         }
         float width = 0;
-        for (int i = 0; i < string.length(); i++)
+        Iterator<Integer> codePoints = string.codePoints().iterator();
+        while (codePoints.hasNext())
         {
-            int codePoint = string.codePointAt(i);
-            String name = getGlyphList().codePointToName(codePoint);
-            if (!cffFont.hasGlyph(name))
+            int codePoint = codePoints.next();
+            Float codePointWidth = codepointToWidthMap.get(codePoint);
+            if (codePointWidth == null)
             {
-                throw new IllegalArgumentException(
-                    String.format("U+%04X ('%s') is not available in font %s",
-                                  codePoint, name, getName()));
+                String name = getGlyphList().codePointToName(codePoint);
+                if (!cffFont.hasGlyph(name))
+                {
+                    throw new IllegalArgumentException(
+                            String.format("U+%04X ('%s') is not available in font %s", codePoint,
+                                    name, getName()));
+                }
+                codePointWidth = cffFont.getWidth(name);
+                codepointToWidthMap.put(codePoint, codePointWidth);
             }
-            width += cffFont.getType1CharString(name).getWidth();
+            width += codePointWidth;
         }
         return width;
     }

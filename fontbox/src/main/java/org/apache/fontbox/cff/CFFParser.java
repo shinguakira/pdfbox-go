@@ -712,7 +712,7 @@ public class CFFParser
         return font;
     }
 
-    private void concatenateMatrix(List<Number> matrixDest, List<Number> matrixConcat)
+    void concatenateMatrix(List<Number> matrixDest, List<Number> matrixConcat)
     {
         // concatenate matrices
         // (a b 0)
@@ -733,7 +733,7 @@ public class CFFParser
         double y2 = matrixConcat.get(5).doubleValue();
 
         matrixDest.set(0, a1 * a2 + b1 * c2);
-        matrixDest.set(1, a1 * b2 + b1 * d1);
+        matrixDest.set(1, a1 * b2 + b1 * d2);
         matrixDest.set(2, c1 * a2 + d1 * c2);
         matrixDest.set(3, c1 * b2 + d1 * d2);
         matrixDest.set(4, x1 * a2 + y1 * c2 + x2);

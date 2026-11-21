@@ -46,7 +46,7 @@ import picocli.CommandLine.Option;
  *
  * @author Ben Litchfield
  */
-@Command(name = "pdftoimage", header = "Converts a PDF document to image(s)", versionProvider = Version.class, mixinStandardHelpOptions = true)
+@Command(name = "render", header = "Converts a PDF document to image(s)", versionProvider = Version.class, mixinStandardHelpOptions = true)
 public final class PDFToImage implements Callable<Integer>
 {
     // Expected for CLI app to write to System.out/System.err
@@ -89,6 +89,9 @@ public final class PDFToImage implements Callable<Integer>
 
     @Option(names = "-subsampling", description = "activate subsampling (for PDFs with huge images)")
     private boolean subsampling;
+
+    @Option(names = "-hinting", description = "activate TrueType hinting")
+    private boolean hinting;
 
     @Option(names = {"-i", "--input"}, description = "the PDF files to convert.", required = true)
     private File infile;
@@ -171,6 +174,7 @@ public final class PDFToImage implements Callable<Integer>
             endPage = Math.min(endPage, document.getNumberOfPages());
             PDFRenderer renderer = new PDFRenderer(document);
             renderer.setSubsamplingAllowed(subsampling);
+            renderer.setHintingEnabled(hinting);
             for (int i = startPage - 1; i < endPage; i++)
             {
                 BufferedImage image = renderer.renderImageWithDPI(i, dpi, imageType);

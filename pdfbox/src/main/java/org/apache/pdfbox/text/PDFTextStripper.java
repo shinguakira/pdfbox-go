@@ -162,6 +162,8 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     // to replace the unicode of the first TextPosition and empty the others
     private boolean firstActualTextPosition = false; 
     private String actualText = null;
+    // the marked content that set actualText, so that only its end resets it
+    private PDMarkedContent actualTextMarkedContent = null;
 
     /**
      * The charactersByArticle is used to extract text by article divisions. For example a PDF that has two columns like
@@ -861,11 +863,16 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     {
         PDMarkedContent markedContent = PDMarkedContent.create(tag, properties);
         currentMarkedContents.push(markedContent);
-        actualText = markedContent.getActualText();
-        if (actualText != null)
+        // the outermost /ActualText replaces all nested content, so ignore any nested one
+        if (actualText == null)
         {
-            actualText = actualText.replace("\u00ad", ""); // remove soft hyphens
-            firstActualTextPosition = true;
+            String markedContentActualText = markedContent.getActualText();
+            if (markedContentActualText != null)
+            {
+                actualText = markedContentActualText.replace("\u00ad", ""); // remove soft hyphens
+                actualTextMarkedContent = markedContent;
+                firstActualTextPosition = true;
+            }
         }
         super.beginMarkedContentSequence(tag, properties);
     }
@@ -876,9 +883,10 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         PDMarkedContent markedContent = currentMarkedContents.peek();
         if (markedContent != null)
         {
-            if (markedContent.getActualText() != null)
+            if (markedContent == actualTextMarkedContent)
             {
                 actualText = null;
+                actualTextMarkedContent = null;
             }
             currentMarkedContents.pop();
         }
@@ -898,6 +906,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         {
             if (firstActualTextPosition)
             {
+                text.setFromActualText(true);
                 text.setUnicode(actualText);
                 firstActualTextPosition = false;
             }
@@ -2037,7 +2046,18 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      */
     private WordWithTextPositions createWord(String word, List<TextPosition> wordPositions)
     {
-        return new WordWithTextPositions(normalizeWord(word), wordPositions);
+        WordWithTextPositions wordWithTextPositions;
+        // wordPositions is empty if a word separator starts the line, e.g. when a new
+        // article continues on the same line as the previous one
+        if (!wordPositions.isEmpty() && wordPositions.get(0).isFromActualText())
+        {
+            wordWithTextPositions = new WordWithTextPositions(word, wordPositions);
+        }
+        else
+        {
+            wordWithTextPositions = new WordWithTextPositions(normalizeWord(word), wordPositions);
+        }
+        return wordWithTextPositions;
     }
 
     /**
@@ -2124,7 +2144,14 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         else
         {
             TextPosition text = item.getTextPosition();
-            lineBuilder.append(text.getVisuallyOrderedUnicode());
+            if (text.isFromActualText())
+            {
+                lineBuilder.append(text.getUnicode());
+            }
+            else
+            {
+                lineBuilder.append(text.getVisuallyOrderedUnicode());
+            }
             wordPositions.add(text);
         }
         return lineBuilder;
@@ -2161,7 +2188,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
         public boolean isWordSeparator()
         {
-            return textPosition == null;
+            return this == WORD_SEPARATOR;
         }
     }
 

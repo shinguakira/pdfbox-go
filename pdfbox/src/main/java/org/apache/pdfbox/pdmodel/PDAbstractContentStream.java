@@ -46,6 +46,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdfwriter.COSWriter;
 import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.font.PDFont;
@@ -78,9 +79,9 @@ abstract class PDAbstractContentStream implements ContentStreamForGlyphLayoutInt
 {
     private static final Logger LOG = LogManager.getLogger(PDAbstractContentStream.class);
 
-    private static final byte[] ASCII_SPACE = new byte[] { 0x20 };
-    private static final byte[] ASCII_LEFT_SQUARE_BRACKET = new byte[] { 0x5B };
-    private static final byte[] ASCII_RIGHT_SQUARE_BRACKET_SPACE = new byte[] { 0x5D, 0x20 };
+    private static final byte[] ASCII_SPACE = { 0x20 };
+    private static final byte[] ASCII_LEFT_SQUARE_BRACKET = { 0x5B };
+    private static final byte[] ASCII_RIGHT_SQUARE_BRACKET_SPACE = { 0x5D, 0x20 };
 
     protected final PDDocument document; // may be null
 
@@ -208,7 +209,7 @@ abstract class PDAbstractContentStream implements ContentStreamForGlyphLayoutInt
         {
             if (document != null)
             {
-                document.getFontsToSubset().add(font);
+                document.addFontForSubsetting(font);
             }
             else
             {
@@ -1489,11 +1490,16 @@ abstract class PDAbstractContentStream implements ContentStreamForGlyphLayoutInt
 
     /**
      * Begin a marked content sequence with a reference to an entry in the page resources' Properties dictionary.
+     * <p>
+     * Except for conditions visible in the source code, this will create a resource entry, which
+     * may seem inefficient if there's only one element in the property list. If this bothers you,
+     * bring it up in the PDFBox users mailing list.
      *
      * @param tag the tag to be added to the content stream
      * @param propertyList property list to be added to the content stream
      * @throws IOException If the content stream could not be written
      */
+    @Override
     public void beginMarkedContent(COSName tag, PDPropertyList propertyList) throws IOException
     {
         writeOperand(tag);
@@ -1503,6 +1509,19 @@ abstract class PDAbstractContentStream implements ContentStreamForGlyphLayoutInt
         {
             // PDFBOX-5890: use simplified notation if there's only an MCID
             write("<</MCID " + dict.getInt(COSName.MCID) + ">> ");
+        }
+        else if (dict.containsKey(COSName.ACTUAL_TEXT) && dict.size() == 1)
+        {
+            // PDFBOX-6256: use simplified notation
+            COSBase base = dict.getItem(COSName.ACTUAL_TEXT);
+            if (base instanceof COSString)
+            {
+                write("<</" + COSName.ACTUAL_TEXT.getName() + " <" + ((COSString) base).toHexString() + ">>> ");
+            }
+            else
+            {
+                throw new IllegalArgumentException("ActualText parameter must be a string, but is: " + base);
+            }
         }
         else
         {

@@ -24,13 +24,20 @@ import java.awt.GraphicsDevice;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageTree;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
 import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
@@ -44,6 +51,8 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.AnnotationFilter;
  */
 public class PDFRenderer
 {
+    private static final Logger LOG = LogManager.getLogger(PDFRenderer.class);
+
     protected final PDDocument document;
     // TODO keep rendering state such as caches here
     
@@ -53,6 +62,7 @@ public class PDFRenderer
     private AnnotationFilter annotationFilter = annotation -> true;
 
     private boolean subsamplingAllowed = false;
+    private boolean hintingEnabled = false;
 
     private RenderDestination defaultDestination;
 
@@ -122,6 +132,29 @@ public class PDFRenderer
     public void setSubsamplingAllowed(boolean subsamplingAllowed)
     {
         this.subsamplingAllowed = subsamplingAllowed;
+    }
+
+    /**
+     * Value indicating whether the renderer grid-fits (hints) TrueType glyph outlines by running the
+     * font's bytecode instructions at the size the glyph is drawn at. Hinting is off by default.
+     *
+     * @return true if TrueType hinting is enabled, false otherwise.
+     */
+    public boolean isHintingEnabled()
+    {
+        return hintingEnabled;
+    }
+
+    /**
+     * Sets a value instructing the renderer whether to grid-fit (hint) TrueType glyph outlines by
+     * running the font's bytecode instructions at the size the glyph is drawn at. Only embedded
+     * TrueType outline fonts are affected; other fonts render as before. Hinting is off by default.
+     *
+     * @param hintingEnabled The new value indicating if TrueType hinting is enabled.
+     */
+    public void setHintingEnabled(boolean hintingEnabled)
+    {
+        this.hintingEnabled = hintingEnabled;
     }
 
     /**
@@ -344,7 +377,7 @@ public class PDFRenderer
             RenderingHints actualRenderingHints
                     = renderingHints == null ? createDefaultRenderingHints(g) : renderingHints;
             PageDrawerParameters parameters
-                    = new PageDrawerParameters(this, page, subsamplingAllowed, destination,
+                    = new PageDrawerParameters(this, page, subsamplingAllowed, hintingEnabled, destination,
                             actualRenderingHints, imageDownscalingOptimizationThreshold);
             PageDrawer drawer = createPageDrawer(parameters);
             drawer.drawPage(g, cropBox);
@@ -460,7 +493,7 @@ public class PDFRenderer
         RenderingHints actualRenderingHints =
                 renderingHints == null ? createDefaultRenderingHints(graphics) : renderingHints;
         PageDrawerParameters parameters =
-                new PageDrawerParameters(this, page, subsamplingAllowed, destination,
+                new PageDrawerParameters(this, page, subsamplingAllowed, hintingEnabled, destination,
                         actualRenderingHints, imageDownscalingOptimizationThreshold);
         PageDrawer drawer = createPageDrawer(parameters);
         drawer.drawPage(graphics, cropBox);
@@ -556,9 +589,25 @@ public class PDFRenderer
 
     private boolean hasBlendMode(PDPage page)
     {
-        // check the current resources for blend modes
-        PDResources resources = page.getResources();
-        if (resources == null)
+        // check the page resources and the resources of nested form XObjects
+        return hasBlendMode(page.getResources(), new HashSet<>());
+    }
+
+    /**
+     * Checks whether the given resources, or the resources of any form XObject reachable from
+     * them, contain an extended graphics state with a blend mode other than Normal.
+     * Blend modes are often set inside form XObjects (e.g. artwork placed into a layout), so
+     * checking only the page level resources is not enough: a blend mode like ColorBurn or
+     * Multiply applied to an opaque white backdrop would make the content disappear.
+     *
+     * @param resources the resources to check, may be null.
+     * @param visited the resource dictionaries that have already been checked, to avoid endless
+     * recursion for self-referencing forms.
+     * @return true if a blend mode other than Normal was found.
+     */
+    private boolean hasBlendMode(PDResources resources, Set<COSDictionary> visited)
+    {
+        if (resources == null || !visited.add(resources.getCOSObject()))
         {
             return false;
         }
@@ -574,6 +623,30 @@ public class PDFRenderer
                 {
                     return true;
                 }
+            }
+        }
+        for (COSName name : resources.getXObjectNames())
+        {
+            if (resources.isImageXObject(name))
+            {
+                // avoid creating image XObjects, they can't have resources
+                continue;
+            }
+            PDXObject xObject;
+            try
+            {
+                xObject = resources.getXObject(name);
+            }
+            catch (IOException ex)
+            {
+                // broken XObject, will be reported again when the page is drawn
+                LOG.debug("Can't check XObject {} for blend modes", name, ex);
+                continue;
+            }
+            if (xObject instanceof PDFormXObject
+                    && hasBlendMode(((PDFormXObject) xObject).getResources(), visited))
+            {
+                return true;
             }
         }
         return false;

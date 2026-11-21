@@ -26,7 +26,7 @@ import java.io.InputStream;
  * @author Ben Litchfield
  *
  */
-final class ASCII85InputStream extends FilterInputStream
+public class ASCII85InputStream extends FilterInputStream //TH
 {
     private int index;
     private int n;
@@ -48,7 +48,7 @@ final class ASCII85InputStream extends FilterInputStream
      *
      * @param is The input stream to actually read from.
      */
-    ASCII85InputStream(InputStream is)
+    public ASCII85InputStream(InputStream is) //TH
     {
         super(is);
         index = 0;
@@ -79,14 +79,16 @@ final class ASCII85InputStream extends FilterInputStream
             byte z;
             do
             {
-                int zz = (byte) in.read();
+                int zz = in.read();
                 if (zz == -1)
                 {
+                    n = 0;
                     eof = true;
                     return -1;
                 }
                 z = (byte) zz;
-            } while (z == NEWLINE || z == RETURN || z == SPACE);
+            }
+            while (isWhitespace(z));
 
             if (z == TERMINATOR)
             {
@@ -107,14 +109,11 @@ final class ASCII85InputStream extends FilterInputStream
                 {
                     do
                     {
-                        int zz = (byte) in.read();
-                        if (zz == -1)
-                        {
-                            eof = true;
-                            return -1;
-                        }
-                        z = (byte) zz;
-                    } while (z == NEWLINE || z == RETURN || z == SPACE);
+                        int zz = in.read();
+                        // PDFBOX-6317: a missing end-of-data marker ends the last group like ~>
+                        z = zz == -1 ? (byte) TERMINATOR : (byte) zz;
+                    }
+                    while (isWhitespace(z));
                     ascii[k] = z;
                     if (z == TERMINATOR)
                     {
@@ -270,5 +269,11 @@ final class ASCII85InputStream extends FilterInputStream
     public synchronized void reset() throws IOException
     {
         throw new IOException("Reset is not supported");
+    }
+
+    // PDF white-space characters: NUL, HT, LF, FF, CR and SP
+    private static boolean isWhitespace(byte c)
+    {
+        return c == 0 || c == '\t' || c == NEWLINE || c == '\f' || c == RETURN || c == SPACE;
     }
 }

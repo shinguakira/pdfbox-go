@@ -90,10 +90,6 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
     private final boolean isEmbedded;
     private final boolean isDamaged;
     private final AffineTransform fontMatrixTransform;
-    /**
-     * to improve encoding speed.
-     */
-    private final Map<Integer, byte[]> codeToBytesMap = new HashMap<>();
     private Matrix fontMatrix;
     private BoundingBox fontBBox;
 
@@ -393,7 +389,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
     @Override
     protected byte[] encode(int unicode) throws IOException
     {
-        byte[] bytes = codeToBytesMap.get(unicode);
+        byte[] bytes = codepointToEncodingMap.get(unicode);
         if (bytes != null)
         {
             return bytes;
@@ -434,8 +430,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
             }
         }
 
-        Map<String, Integer> inverted = encoding.getNameToCodeMap();
-        int code = inverted.get(name);
+        int code = encoding.getCode(name);
         if (code < 0)
         {
             throw new IllegalArgumentException(
@@ -443,7 +438,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
                             unicode, name, getName(), genericFont.getName(), encoding.getEncodingName()));
         }
         bytes = new byte[] { (byte)code };
-        codeToBytesMap.put(unicode, bytes);
+        codepointToEncodingMap.put(unicode, bytes);
         return bytes;
     }
 
@@ -481,12 +476,6 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
         {
             return super.getAverageFontWidth();
         }
-    }
-
-    @Override
-    public int readCode(InputStream in) throws IOException
-    {
-        return in.read();
     }
 
     @Override
@@ -598,7 +587,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
             //TODO bring up better solution than this
             if ("SymbolMT".equals(genericFont.getName()))
             {
-                Integer code = SymbolEncoding.INSTANCE.getNameToCodeMap().get(name);
+                Integer code = SymbolEncoding.INSTANCE.getCode(name);
                 if (code != null)
                 {
                     uniName = getUniNameOfCodePoint(code + 0xF000);

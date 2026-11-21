@@ -17,6 +17,8 @@
 package org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +40,7 @@ import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDMarkedContent;
 import org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf.PDLayoutAttributeObject;
+import org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf.PDListAttributeObject;
 import org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf.PDTableAttributeObject;
 
 import org.junit.jupiter.api.Test;
@@ -64,10 +67,26 @@ class PDStructureElementTest
         {
             PDStructureTreeRoot structureTreeRoot = doc.getDocumentCatalog().getStructureTreeRoot();
             checkElement(structureTreeRoot.getK(), attributeSet, structureTreeRoot.getClassMap(), classSet);
+
+            COSArray k = (COSArray) structureTreeRoot.getK();
+            assertEquals(1, k.size());
+            PDStructureElement documentStructElemen = new PDStructureElement((COSDictionary) k.getObject(0));
+            assertEquals("Document", documentStructElemen.getStructureType());
+            List<Object> kids = documentStructElemen.getKids();
+            assertEquals(14, kids.size());
+            PDStructureElement elem = (PDStructureElement) documentStructElemen.getKids().get(9);
+            assertNotNull(elem.getPage());
+            assertEquals("Standard", elem.getStructureType());
+            assertEquals("P", elem.getStandardStructureType()); // uses rolemap
+            Revisions<PDAttributeObject> attributes = elem.getAttributes();
+            assertEquals(1, attributes.size());
+            PDLayoutAttributeObject layoutObj = (PDLayoutAttributeObject) attributes.getObject(0);
+            assertEquals("Block", layoutObj.getPlacement());
+            assertEquals(24, layoutObj.getSpaceBefore());
         }
 
         // collect attributes and check their count.
-        assertEquals(117, attributeSet.size());
+        assertEquals(108, attributeSet.size());
         int cnt = attributeSet.stream().map(Revisions::size).reduce(0, Integer::sum);
         assertEquals(111, cnt); // this one was 105 before PDFBOX-4197 was fixed
         assertEquals(0, classSet.size());
@@ -113,14 +132,53 @@ class PDStructureElementTest
         }
 
         // collect attributes and check their count.
-        assertEquals(72, attributeSet.size());
+        assertEquals(50, attributeSet.size());
         int cnt = attributeSet.stream().map(Revisions::size).reduce(0, Integer::sum);
-        assertEquals(45, cnt);
-        assertEquals(10, classSet.size());
+        assertEquals(54, cnt);
+        assertEquals(12, classSet.size());
+    }
+
+    /**
+     * Check that all classes are caught and are in the /ClassMap
+     *
+     * @throws IOException 
+     */
+    @Test
+    void testClassMap2() throws IOException
+    {
+        Set<Revisions<PDAttributeObject>> attributeSet = new HashSet<>();
+        Set<String> classSet = new HashSet<>();
+        try (PDDocument doc = Loader.loadPDF(
+                RandomAccessReadBuffer.createBufferFromStream(PDStructureElementTest.class
+                        .getResourceAsStream("PDFBOX-6261-085992.pdf"))))
+        {
+            PDStructureTreeRoot structureTreeRoot = doc.getDocumentCatalog().getStructureTreeRoot();
+            checkElement(structureTreeRoot.getK(), attributeSet, structureTreeRoot.getClassMap(), classSet);
+        }
+        for (Revisions<PDAttributeObject> r : attributeSet)
+        {
+            // check a few that we know
+            if (r.size() == 1)
+            {
+                PDLayoutAttributeObject obj0 = (PDLayoutAttributeObject) r.getObject(0);
+                assertEquals("Layout", obj0.getOwner());
+                assertEquals(0f, obj0.getSpaceBefore());
+                assertEquals(0f, obj0.getSpaceAfter());
+                assertTrue(obj0.getTextIndent() == 0f || obj0.getTextIndent() == 36f);
+                assertTrue("Start".equals(obj0.getTextAlign()) || "Center".equals(obj0.getTextAlign()));
+                assertEquals(0, r.getRevisionNumber(0));
+            }
+        }
+
+        // collect attributes and check their count.
+        assertEquals(21, attributeSet.size());
+        int cnt = attributeSet.stream().map(Revisions::size).reduce(0, Integer::sum);
+        assertEquals(21, cnt);
     }
 
     // Each element can be an array, a dictionary or a number.
     // See PDF specification Table 323 - Entries in a structure element dictionary
+    // There is some overlapping with PDMergerUtilityTest.checkElement()
     private void checkElement(COSBase base, Set<Revisions<PDAttributeObject>>attributeSet,
                                Map<String, Object> classMap, Set<String> classSet)
     {
@@ -138,23 +196,53 @@ class PDStructureElementTest
         else if (base instanceof COSDictionary)
         {
             COSDictionary kdict = (COSDictionary) base;
-            if (kdict.containsKey(COSName.PG))
+            PDStructureElement structureElement = new PDStructureElement(kdict);
+            Revisions<PDAttributeObject> attributes = structureElement.getAttributes();
+            if (attributes.size() > 0)
             {
-                PDStructureElement structureElement = new PDStructureElement(kdict);
-                Revisions<PDAttributeObject> attributes = structureElement.getAttributes();
                 attributeSet.add(attributes);
-                Revisions<String> classNames = structureElement.getClassNames();
-
-                // "If both the A and C entries are present and a given attribute is specified by both, 
-                // the one specified by the A entry shall take precedence."
-                if (kdict.containsKey(COSName.C) && !kdict.containsKey(COSName.A))
+                PDAttributeObject obj0 = attributes.getObject(0);
+                assertFalse(obj0.isEmpty());
+                if (obj0 instanceof PDTableAttributeObject) // Table 349
                 {
-                    for (int i = 0; i < classNames.size(); ++i)
+                    String[] headers = ((PDTableAttributeObject) obj0).getHeaders();
+                    if (headers != null)
                     {
-                        String className = classNames.getObject(i);
-                        classSet.add(className);
-                        assertTrue(classMap.containsKey(className), "'" + className + "' not in ClassMap " + classMap);
+                        for (String header : headers)
+                        {
+                            // not a real test, just so that we have something with table headers
+                            // after doing TIKA-4891 / PDFBOX-6261
+                            assertTrue(header.startsWith("node0"), "header: " + header);
+                            // PDFBOX-3999-GeneralForbearance.pdf has
+                            // form1[0].#subform[5].CapitalizationTable[0].HeaderRow[0].Cell1[0]
+                        }
                     }
+                }
+                if (obj0 instanceof PDLayoutAttributeObject)
+                {
+                    PDLayoutAttributeObject layoutAttributeObject = (PDLayoutAttributeObject) obj0;
+                    // will have to be changed if we test more files
+                    assertEquals(PDLayoutAttributeObject.WRITING_MODE_LRTB, layoutAttributeObject.getWritingMode());
+                }
+                if (obj0 instanceof PDListAttributeObject)
+                {
+                    PDListAttributeObject listAttributeObject = (PDListAttributeObject) obj0;
+                    // will have to be changed if we test more files
+                    assertEquals(PDListAttributeObject.LIST_NUMBERING_DECIMAL, listAttributeObject.getListNumbering());
+                }
+                // Missing: PDPrintFieldAttributeObject, PDExportFormatAttributeObject, PDUserAttributeObject
+            }
+            Revisions<String> classNames = structureElement.getClassNames();
+
+            // "If both the A and C entries are present and a given attribute is specified by both, 
+            // the one specified by the A entry shall take precedence."
+            if (kdict.containsKey(COSName.C) && !kdict.containsKey(COSName.A))
+            {
+                for (int i = 0; i < classNames.size(); ++i)
+                {
+                    String className = classNames.getObject(i);
+                    classSet.add(className);
+                    assertTrue(classMap.containsKey(className), "'" + className + "' not in ClassMap " + classMap);
                 }
             }
             if (kdict.containsKey(COSName.K))
@@ -163,7 +251,7 @@ class PDStructureElementTest
             }
         }
     }
-    
+
     @Test
     void testSimple()
     {

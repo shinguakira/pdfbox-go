@@ -17,7 +17,6 @@
 package org.apache.pdfbox.multipdf;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -25,7 +24,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,9 +34,7 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.IOUtils;
@@ -61,12 +57,17 @@ import org.apache.pdfbox.pdmodel.common.PDDestinationOrAction;
 import org.apache.pdfbox.pdmodel.common.PDMetadata;
 import org.apache.pdfbox.pdmodel.common.PDNameTreeNode;
 import org.apache.pdfbox.pdmodel.common.PDNumberTreeNode;
+import org.apache.pdfbox.pdmodel.common.PDPageLabelRange;
+import org.apache.pdfbox.pdmodel.common.PDPageLabels;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDMarkInfo;
 import org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDParentTreeValue;
 import org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDStructureElement;
 import org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDStructureTreeRoot;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.color.PDOutputIntent;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.action.PDAction;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionFactory;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
@@ -81,7 +82,7 @@ import org.apache.pdfbox.pdmodel.interactive.viewerpreferences.PDViewerPreferenc
 
 /**
  * This class will take a list of pdf documents and merge them, saving the
- * result in a new document.
+ * result in a new document. The class is not thread-safe.
  *
  * @author Ben Litchfield
  */
@@ -98,6 +99,7 @@ public class PDFMergerUtility
     private boolean ignoreAcroFormErrors = false;
     private PDDocumentInformation destinationDocumentInformation = null;
     private PDMetadata destinationMetadata = null;
+    private int nextFieldNum = 1;
 
     private DocumentMergeMode documentMergeMode = DocumentMergeMode.PDFBOX_LEGACY_MODE;
     private AcroFormMergeMode acroFormMergeMode = AcroFormMergeMode.PDFBOX_LEGACY_MODE;
@@ -106,15 +108,26 @@ public class PDFMergerUtility
      * The mode to use when merging documents:
      * 
      * <ul>
-     * <li>{@link DocumentMergeMode#OPTIMIZE_RESOURCES_MODE} Optimizes resource handling such as
-     *      closing documents early. <strong>Not all document elements are merged</strong> compared to
+     * <li>{@link DocumentMergeMode#OPTIMIZE_RESOURCES_MODE} Optimizes resource handling.
+     * <strong>Not all document elements are merged</strong> compared to
      *      the PDFBOX_LEGACY_MODE. Currently supported are:
      *      <ul>
-     *          <li>Page content and resources
-     *      </ul>  
-     * <li>{@link DocumentMergeMode#PDFBOX_LEGACY_MODE} Keeps all files open until the
-     *      merge has been completed. This is  currently necessary to merge documents
-     *      containing a Structure Tree.
+     *          <li>page content and resources
+     *      </ul>
+     *      Not supported:
+     *      <ul>
+     *          <li>metadata
+     *          <li>document information
+     *          <li>outlines
+     *          <li>named destinations
+     *          <li>acroForm
+     *          <li>page labels
+     *          <li>structure tree (the merged document will not be tagged)
+     *          <li>viewer preferences
+     *          <li>language
+     *      </ul>
+     * <li>{@link DocumentMergeMode#PDFBOX_LEGACY_MODE} tries to merge as many document elements as
+     * possible. Contact us on the user mailing list if you miss any.
      * </ul>
      */
     public enum DocumentMergeMode
@@ -240,8 +253,9 @@ public class PDFMergerUtility
 
     /**
      * Get the destination document information that is to be set in
-     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
-     * The default is null, which means that it is ignored.
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction)}
+     * when using {@link DocumentMergeMode#PDFBOX_LEGACY_MODE}. The default is null, which means
+     * that it is ignored.
      *
      * @return The destination document information.
      */
@@ -252,8 +266,9 @@ public class PDFMergerUtility
 
     /**
      * Set the destination document information that is to be set in
-     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
-     * The default is null, which means that it is ignored.
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction)}
+     * when using {@link DocumentMergeMode#PDFBOX_LEGACY_MODE}. The default is null, which means
+     * that it is ignored.
      *
      * @param info The destination document information.
      */
@@ -263,9 +278,10 @@ public class PDFMergerUtility
     }
 
     /**
-     * Set the destination metadata that is to be set in
-     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
-     * The default is null, which means that it is ignored.
+     * Get the destination metadata that is to be set in
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction)}
+     * when using {@link DocumentMergeMode#PDFBOX_LEGACY_MODE}. The default is null, which means
+     * that it is ignored.
      *
      * @return The destination metadata.
      */
@@ -276,8 +292,9 @@ public class PDFMergerUtility
 
     /**
      * Set the destination metadata that is to be set in
-     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
-     * The default is null, which means that it is ignored.
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction)}
+     * when using {@link DocumentMergeMode#PDFBOX_LEGACY_MODE}. The default is null, which means
+     * that it is ignored.
      *
      * @param meta The destination metadata.
      */
@@ -290,10 +307,8 @@ public class PDFMergerUtility
      * Add a source file to the list of files to merge.
      *
      * @param source Full path and file name of source document.
-     * 
-     * @throws FileNotFoundException If the file doesn't exist
      */
-    public void addSource(String source) throws FileNotFoundException
+    public void addSource(String source)
     {
         addSource(new File(source));
     }
@@ -302,10 +317,8 @@ public class PDFMergerUtility
      * Add a source file to the list of files to merge.
      *
      * @param source File representing source document
-     * 
-     * @throws FileNotFoundException If the file doesn't exist
      */
-    public void addSource(File source) throws FileNotFoundException
+    public void addSource(File source)
     {
         sources.add(source);
     }
@@ -358,10 +371,19 @@ public class PDFMergerUtility
      * @param compressParameters defines if compressed object streams are enabled
      * 
      * @throws IOException If there is an error saving the document.
+     * @throws IllegalStateException if neither destination filename nor stream has been set.
      */
     public void mergeDocuments(StreamCacheCreateFunction streamCacheCreateFunction,
             CompressParameters compressParameters) throws IOException
     {
+        if (destinationFileName == null && destinationStream == null)
+        {
+            throw new IllegalStateException("Neither destination filename nor stream has been set");
+        }
+        if (sources.isEmpty())
+        {
+            return;
+        }
         if (documentMergeMode == DocumentMergeMode.PDFBOX_LEGACY_MODE)
         {
             legacyMergeDocuments(streamCacheCreateFunction, compressParameters);
@@ -381,6 +403,7 @@ public class PDFMergerUtility
         {
             PDFCloneUtility cloner = new PDFCloneUtility(destination);
             PDPageTree destinationPageTree = destination.getPages(); // cache PageTree
+            float maxVersion = destination.getVersion();
             for (Object sourceObject : sources)
             {
                 PDDocument sourceDoc = null;
@@ -388,12 +411,13 @@ public class PDFMergerUtility
                 {
                     if (sourceObject instanceof File)
                     {
-                        sourceDoc = Loader.loadPDF((File) sourceObject);
+                        sourceDoc = Loader.loadPDF((File) sourceObject, streamCacheCreateFunction);
                     }
                     else
                     {
-                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject);
+                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject, streamCacheCreateFunction);
                     }
+                    maxVersion = Math.max(maxVersion, sourceDoc.getVersion());
                     for (PDPage page : sourceDoc.getPages())
                     {
                         PDPage newPage = new PDPage(cloner.cloneForNewDocument(page.getCOSObject()));
@@ -420,7 +444,10 @@ public class PDFMergerUtility
                     IOUtils.closeQuietly(sourceDoc);
                 }
             }
-            
+            if (maxVersion > destination.getVersion())
+            {
+                destination.setVersion(maxVersion);
+            }
             if (destinationStream == null)
             {
                 destination.save(destinationFileName, compressParameters);
@@ -444,56 +471,48 @@ public class PDFMergerUtility
     private void legacyMergeDocuments(StreamCacheCreateFunction streamCacheCreateFunction,
             CompressParameters compressParameters) throws IOException
     {
-        if (!sources.isEmpty())
+        StreamCacheCreateFunction strmCacheFunc = streamCacheCreateFunction != null ? streamCacheCreateFunction
+                : IOUtils.createMemoryOnlyStreamCache();
+        try (PDDocument destination = new PDDocument(strmCacheFunc))
         {
-            // Make sure that:
-            // - first Exception is kept
-            // - all PDDocuments are closed
-            // - all FileInputStreams are closed
-            // - there's a way to see which errors occurred
-            StreamCacheCreateFunction strmCacheFunc = streamCacheCreateFunction != null ? streamCacheCreateFunction
-                    : IOUtils.createMemoryOnlyStreamCache();
-            try (PDDocument destination = new PDDocument(strmCacheFunc))
+            for (Object sourceObject : sources)
             {
-                for (Object sourceObject : sources)
+                PDDocument sourceDoc;
+                if (sourceObject instanceof File)
                 {
-                    PDDocument sourceDoc;
-                    if (sourceObject instanceof File)
-                    {
-                        sourceDoc = Loader.loadPDF((File) sourceObject);
-                    }
-                    else
-                    {
-                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject);
-                    }
-                    try
-                    {
-                        appendDocument(destination, sourceDoc);
-                    }
-                    finally
-                    {
-                        IOUtils.closeAndLogException(sourceDoc, LOG, "PDDocument", null);
-                    }
-                }
-                
-                // optionally set meta data
-                if (destinationDocumentInformation != null)
-                {
-                    destination.setDocumentInformation(destinationDocumentInformation);
-                }
-                if (destinationMetadata != null)
-                {
-                    destination.getDocumentCatalog().setMetadata(destinationMetadata);
-                }
-                
-                if (destinationStream == null)
-                {
-                    destination.save(destinationFileName, compressParameters);
+                    sourceDoc = Loader.loadPDF((File) sourceObject, streamCacheCreateFunction);
                 }
                 else
                 {
-                    destination.save(destinationStream, compressParameters);
+                    sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject, streamCacheCreateFunction);
                 }
+                try
+                {
+                    appendDocument(destination, sourceDoc);
+                }
+                finally
+                {
+                    IOUtils.closeAndLogException(sourceDoc, LOG, "PDDocument", null);
+                }
+            }
+
+            // optionally set meta data
+            if (destinationDocumentInformation != null)
+            {
+                destination.setDocumentInformation(destinationDocumentInformation);
+            }
+            if (destinationMetadata != null)
+            {
+                destination.getDocumentCatalog().setMetadata(destinationMetadata);
+            }
+
+            if (destinationStream == null)
+            {
+                destination.save(destinationFileName, compressParameters);
+            }
+            else
+            {
+                destination.save(destinationStream, compressParameters);
             }
         }
     }
@@ -543,7 +562,7 @@ public class PDFMergerUtility
         mergeAcroForm(cloner, destCatalog, srcCatalog);
 
         COSArray destThreads = destCatalog.getCOSObject().getCOSArray(COSName.THREADS);
-        COSArray srcThreads = cloner.cloneForNewDocument(destCatalog.getCOSObject().getCOSArray(
+        COSArray srcThreads = cloner.cloneForNewDocument(srcCatalog.getCOSObject().getCOSArray(
                 COSName.THREADS));
         if (destThreads == null)
         {
@@ -568,7 +587,8 @@ public class PDFMergerUtility
                 cloner.cloneMerge(srcNames, destNames);
             }
         }
-        
+        destNames = destCatalog.getNames();
+
         if (destNames != null && destNames.getCOSObject().containsKey(COSName.ID_TREE))
         {
             // found in 001031.pdf from PDFBOX-4417 and doesn't belong there
@@ -610,7 +630,7 @@ public class PDFMergerUtility
                 {
                     if (!visited.add(destLastOutlineItem.getCOSObject()))
                     {
-                        LOG.warn("Outline ignored:  {}", destLastOutlineItem.getCOSObject());
+                        LOG.warn("Outline ignored: {}", destLastOutlineItem.getCOSObject());
                         break; // Cycle detected
                     }
                     PDOutlineItem outlineItem = destLastOutlineItem.getNextSibling();
@@ -641,48 +661,7 @@ public class PDFMergerUtility
             destCatalog.setPageMode(srcPageMode);
         }
 
-        COSDictionary srcLabels = srcCatalog.getCOSObject().getCOSDictionary(COSName.PAGE_LABELS);
-        if (srcLabels != null)
-        {
-            int destPageCount = destination.getNumberOfPages();
-            COSArray destNums;
-            COSDictionary destLabels = destCatalog.getCOSObject().getCOSDictionary(COSName.PAGE_LABELS);
-            if (destLabels == null)
-            {
-                destLabels = new COSDictionary();
-                destNums = new COSArray();
-                destLabels.setItem(COSName.NUMS, destNums);
-                destCatalog.getCOSObject().setItem(COSName.PAGE_LABELS, destLabels);
-            }
-            else
-            {
-                destNums = destLabels.getCOSArray(COSName.NUMS);
-            }
-            COSArray srcNums = srcLabels.getCOSArray(COSName.NUMS);
-            if (srcNums != null)
-            {
-                int startSize = destNums.size();
-                for (int i = 0; i < srcNums.size(); i += 2)
-                {
-                    COSBase base = srcNums.getObject(i);
-                    if (!(base instanceof COSNumber))
-                    {
-                        LOG.error("page labels ignored, index {} should be a number, but is {}", i,
-                                base);
-                        // remove what we added
-                        while (destNums.size() > startSize)
-                        {
-                            destNums.remove(startSize);
-                        }
-                        break;
-                    }
-                    COSNumber labelIndex = (COSNumber) base;
-                    long labelIndexValue = labelIndex.intValue();
-                    destNums.add(COSInteger.get(labelIndexValue + destPageCount));
-                    destNums.add(cloner.cloneForNewDocument(srcNums.getObject(i + 1)));
-                }
-            }
-        }
+        mergePageLabels(source, destination, srcCatalog, destCatalog, cloner);
 
         COSStream destMetadata = destCatalog.getCOSObject().getCOSStream(COSName.METADATA);
         COSStream srcMetadata = srcCatalog.getCOSObject().getCOSStream(COSName.METADATA);
@@ -745,7 +724,7 @@ public class PDFMergerUtility
             destParentTreeNextKey = destStructTree.getParentTreeNextKey();
             if (destParentTree != null)
             {
-                destNumberTreeAsMap = getNumberTreeAsMap(destParentTree);
+                destNumberTreeAsMap = destParentTree.getTreeAsMap();
                 if (destParentTreeNextKey < 0)
                 {
                     if (destNumberTreeAsMap.isEmpty())
@@ -757,12 +736,12 @@ public class PDFMergerUtility
                         destParentTreeNextKey = Collections.max(destNumberTreeAsMap.keySet()) + 1;
                     }
                 }
-                if (destParentTreeNextKey >= 0 && srcStructTree != null)
+                if (srcStructTree != null)
                 {
                     PDNumberTreeNode srcParentTree = srcStructTree.getParentTree();
                     if (srcParentTree != null)
                     {
-                        srcNumberTreeAsMap = getNumberTreeAsMap(srcParentTree);
+                        srcNumberTreeAsMap = srcParentTree.getTreeAsMap();
                         if (!srcNumberTreeAsMap.isEmpty())
                         {
                             mergeStructTree = true;
@@ -773,6 +752,7 @@ public class PDFMergerUtility
         }
 
         Map<COSDictionary, COSDictionary> objMapping = new HashMap<>();
+        Set<COSDictionary> visitedXObjects = new HashSet<>();
         PDPageTree destinationPageTree = destination.getPages(); // cache PageTree
         for (PDPage page : srcCatalog.getPages())
         {
@@ -804,15 +784,7 @@ public class PDFMergerUtility
             {
                 // add the value of the destination ParentTreeNextKey to every source element 
                 // StructParent(s) value so that these don't overlap with the existing values
-                updateStructParentEntries(newPage, destParentTreeNextKey);
-                objMapping.put(page.getCOSObject(), newPage.getCOSObject());
-                List<PDAnnotation> oldAnnots = page.getAnnotations();
-                List<PDAnnotation> newAnnots = newPage.getAnnotations();
-                for (int i = 0; i < oldAnnots.size(); i++)
-                {
-                    objMapping.put(oldAnnots.get(i).getCOSObject(), newAnnots.get(i).getCOSObject());
-                }
-                // TODO update mapping for XObjects
+                updateStructParentEntries(page, newPage, destParentTreeNextKey, objMapping, visitedXObjects);
             }
             destinationPageTree.add(newPage);
         }
@@ -848,9 +820,46 @@ public class PDFMergerUtility
             mergeRoleMap(srcStructTree, destStructTree, cloner);
             mergeIDTree(cloner, srcStructTree, destStructTree);
             mergeMarkInfo(destCatalog, srcCatalog);
-            mergeLanguage(destCatalog, srcCatalog);
-            mergeViewerPreferences(destCatalog, srcCatalog, cloner);
         }
+        mergeLanguage(destCatalog, srcCatalog);
+        mergeViewerPreferences(destCatalog, srcCatalog, cloner);
+    }
+
+    private void mergePageLabels(PDDocument srcDoc, PDDocument dstDoc,
+            PDDocumentCatalog srcCatalog, PDDocumentCatalog destCatalog,
+            PDFCloneUtility cloner) throws IOException
+    {
+        PDPageLabels srcPageLabels = srcCatalog.getPageLabels();
+        PDPageLabels dstPageLabels = destCatalog.getPageLabels();
+        if (srcPageLabels == null && dstPageLabels == null)
+        {
+            return;
+        }
+        // Set default entries so that the documents don't influence each other, and
+        // that there is always a range at key 0 (seeded by the constructor).
+        if (srcPageLabels == null)
+        {
+            // PDFBOX-6300: create a mandatory 0 entry
+            srcPageLabels = new PDPageLabels(srcDoc);
+        }
+        if (dstPageLabels == null)
+        {
+            // PDFBOX-6277: create a mandatory 0 entry
+            dstPageLabels = new PDPageLabels(dstDoc);
+        }
+        int destPageCount = dstDoc.getNumberOfPages();
+        for (int index : srcPageLabels.getPageIndices())
+        {
+            PDPageLabelRange range = srcPageLabels.getPageLabelRange(index);
+            if (range == null)
+            {
+                LOG.warn("page label range at {} ignored, null", index);
+                continue;
+            }
+            COSDictionary clone = cloner.cloneForNewDocument(range.getCOSObject());
+            dstPageLabels.setLabelItem(index + destPageCount, new PDPageLabelRange(clone));
+        }
+        destCatalog.setPageLabels(dstPageLabels);
     }
 
     private void mergeOpenAction(PDDocumentCatalog srcCatalog, PDDocumentCatalog dstCatalog,
@@ -958,6 +967,10 @@ public class PDFMergerUtility
     {
         PDMarkInfo destMark = destCatalog.getMarkInfo();
         PDMarkInfo srcMark = srcCatalog.getMarkInfo();
+        if (srcMark == null && destMark == null)
+        {
+            return;
+        }
         if (destMark == null)
         {
             destMark = new PDMarkInfo();
@@ -966,9 +979,9 @@ public class PDFMergerUtility
         {
             srcMark = new PDMarkInfo();
         }
-        destMark.setMarked(true);
+        destMark.setMarked(srcMark.isMarked() || destMark.isMarked());
         destMark.setSuspect(srcMark.isSuspect() || destMark.isSuspect());
-        destMark.setSuspect(srcMark.usesUserProperties() || destMark.usesUserProperties());
+        destMark.setUserProperties(srcMark.usesUserProperties() || destMark.usesUserProperties());
         destCatalog.setMarkInfo(destMark);
     }
 
@@ -1106,8 +1119,8 @@ public class PDFMergerUtility
         {
             destIDTree = new PDStructureElementNameTreeNode();
         }
-        Map<String, PDStructureElement> srcNames = getIDTreeAsMap(srcIDTree);
-        Map<String, PDStructureElement> destNames = getIDTreeAsMap(destIDTree);
+        Map<String, PDStructureElement> srcNames = srcIDTree.getTreeAsMap();
+        Map<String, PDStructureElement> destNames = destIDTree.getTreeAsMap();
         for (Map.Entry<String, PDStructureElement> entry : srcNames.entrySet())
         {
             if (destNames.containsKey(entry.getKey()))
@@ -1131,66 +1144,6 @@ public class PDFMergerUtility
         // when these are opened in a viewer that uses the tagging information.
         // If this happens, then PDNameTreeNode should be improved with a convenience method that
         // stores the map into a B+Tree, see https://en.wikipedia.org/wiki/B+_tree
-    }
-
-    // PDNameTreeNode.getNames() only brings one level, this is why we need this
-    // might be made public at a later time, or integrated into PDNameTreeNode with template.
-    static Map<String, PDStructureElement> getIDTreeAsMap(PDNameTreeNode<PDStructureElement> idTree)
-            throws IOException
-    {
-        if (idTree == null)
-        {
-            return new LinkedHashMap<>();
-        }
-        Map<String, PDStructureElement> names = idTree.getNames();
-        if (names == null)
-        {
-            names = new LinkedHashMap<>();
-        }
-        else
-        {
-            // must copy because the map is read only
-            names = new LinkedHashMap<>(names);
-        }
-        List<PDNameTreeNode<PDStructureElement>> kids = idTree.getKids();
-        if (kids != null)
-        {
-            for (PDNameTreeNode<PDStructureElement> kid : kids)
-            {
-                names.putAll(getIDTreeAsMap(kid));
-            }
-        }
-        return names;
-    }
-
-    // PDNumberTreeNode.getNumbers() only brings one level, this is why we need this
-    // might be made public at a later time, or integrated into PDNumberTreeNode.
-    static Map<Integer, COSObjectable> getNumberTreeAsMap(PDNumberTreeNode tree)
-            throws IOException
-    {
-        if (tree == null)
-        {
-            return new LinkedHashMap<>();
-        }
-        Map<Integer, COSObjectable> numbers = tree.getNumbers();
-        if (numbers == null)
-        {
-            numbers = new LinkedHashMap<>();
-        }
-        else
-        {
-            // must copy because the map is read only
-            numbers = new LinkedHashMap<>(numbers);
-        }
-        List<PDNumberTreeNode> kids = tree.getKids();
-        if (kids != null)
-        {
-            for (PDNumberTreeNode kid : kids)
-            {
-                numbers.putAll(getNumberTreeAsMap(kid));
-            }
-        }
-        return numbers;
     }
 
     private void mergeRoleMap(PDStructureTreeRoot srcStructTree, PDStructureTreeRoot destStructTree,
@@ -1375,9 +1328,6 @@ public class PDFMergerUtility
         }
     }
 
-    private int nextFieldNum = 1;
-
-
     /**
      * Indicates if acroform errors are ignored or not.
      *
@@ -1505,18 +1455,22 @@ public class PDFMergerUtility
     /**
      * Update the StructParents and StructParent values in a PDPage.
      *
-     * @param page the new page
-     * @param structParentOffset the offset which should be applied
+     * @param oldPage the old page.
+     * @param newPage the new page.
+     * @param structParentOffset the offset which should be applied.
+     * @param objMapping mapping between old and new references.
+     * @throws IOException if there is an error creating an XObject.
      */
-    private void updateStructParentEntries(PDPage page, int structParentOffset)
+    private void updateStructParentEntries(PDPage oldPage, PDPage newPage,
+            int structParentOffset, Map<COSDictionary, COSDictionary> objMapping,
+            Set<COSDictionary> visited) throws IOException
     {
-        int structParents = page.getStructParents();
+        int structParents = newPage.getStructParents();
         if (structParents >= 0)
         {
-            page.setStructParents(structParents + structParentOffset);
+            newPage.setStructParents(structParents + structParentOffset);
         }
-        List<PDAnnotation> annots = page.getAnnotations();
-        List<PDAnnotation> newannots = new ArrayList<>(annots.size());
+        List<PDAnnotation> annots = newPage.getAnnotations();
         annots.forEach(annot ->
         {
             int structParent = annot.getStructParent();
@@ -1524,11 +1478,59 @@ public class PDFMergerUtility
             {
                 annot.setStructParent(structParent + structParentOffset);
             }
-            newannots.add(annot);
         });
-        page.setAnnotations(newannots);
+        objMapping.put(oldPage.getCOSObject(), newPage.getCOSObject());
+        List<PDAnnotation> oldAnnots = oldPage.getAnnotations();
+        List<PDAnnotation> newAnnots = newPage.getAnnotations();
+        for (int i = 0; i < oldAnnots.size(); i++)
+        {
+            objMapping.put(oldAnnots.get(i).getCOSObject(), newAnnots.get(i).getCOSObject());
+        }
+        updateStructParentEntries(oldPage.getResources(), newPage.getResources(),
+                structParentOffset, objMapping, visited);
     }
-    
+
+    private void updateStructParentEntries(PDResources oldResources, PDResources newResources,
+            int structParentOffset, Map<COSDictionary, COSDictionary> objMapping,
+            Set<COSDictionary> visited) throws IOException
+    {
+        if (oldResources == null || newResources == null)
+        {
+            return;
+        }
+        for (COSName name : newResources.getXObjectNames())
+        {
+            PDXObject newXObject = newResources.getXObject(name);
+            PDXObject oldXObject = oldResources.getXObject(name);
+            if (oldXObject == null || !visited.add(oldXObject.getCOSObject()))
+            {
+                continue;
+            }
+            if (newXObject instanceof PDImageXObject)
+            {
+                PDImageXObject img = (PDImageXObject) newXObject;
+                int structParent = img.getStructParent();
+                if (structParent >= 0)
+                {
+                    img.setStructParent(structParent + structParentOffset);
+                    objMapping.put(oldXObject.getCOSObject(), newXObject.getCOSObject());
+                }
+            }
+            else if (newXObject instanceof PDFormXObject)
+            {
+                PDFormXObject form = (PDFormXObject) newXObject;
+                int structParent = form.getStructParents();
+                if (structParent >= 0)
+                {
+                    form.setStructParents(structParent + structParentOffset);
+                    objMapping.put(oldXObject.getCOSObject(), newXObject.getCOSObject());
+                }
+                updateStructParentEntries(((PDFormXObject) oldXObject).getResources(), form.getResources(), 
+                        structParentOffset, objMapping, visited);
+            }
+        }
+    }
+
     /**
      * Test for dynamic XFA content.
      * 
