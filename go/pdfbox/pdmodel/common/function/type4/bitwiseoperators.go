@@ -1,5 +1,7 @@
 package type4
 
+import "fmt"
+
 // The boolean and bitwise operators of the calculator language.
 //
 // Port of org.apache.pdfbox.pdmodel.common.function.type4.BitwiseOperators.
@@ -32,7 +34,7 @@ func (o logicalOperator) Execute(context *ExecutionContext) {
 		return
 	}
 	// Java throws ClassCastException, which is unchecked.
-	panic("Operands must be bool/bool or int/int")
+	panic(fmt.Errorf("type4: %w: Operands must be bool/bool or int/int", ErrWrongType))
 }
 
 type andLogic struct{}
@@ -86,6 +88,6 @@ func (notOperator) Execute(context *ExecutionContext) {
 		context.Push(^v)
 	default:
 		// Java throws ClassCastException, which is unchecked.
-		panic("Operand must be bool or int")
+		panic(fmt.Errorf("type4: %w: Operand must be bool or int", ErrWrongType))
 	}
 }

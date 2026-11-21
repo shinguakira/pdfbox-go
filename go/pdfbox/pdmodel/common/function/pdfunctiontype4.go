@@ -1,6 +1,7 @@
 package function
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
@@ -56,7 +57,16 @@ func (f *PDFunctionType4) Eval(input []float32) ([]float32, error) {
 	}
 
 	// Execute the type 4 function.
-	f.instructions.Execute(context)
+	//
+	// PDFBOX-6320: the EmptyStackException and the ClassCastException a program
+	// can raise become an IOException here, which every caller on the paint path
+	// already handles; before that commit they went past all of them. The
+	// unchecked failures upstream left alone still do: `rangecheck`, a negative
+	// `sqrt`, an unknown operator, a token that is not a number, and the too
+	// few output values below.
+	if err := executeType4(f.instructions, context); err != nil {
+		return nil, err
+	}
 
 	// Extract the output values
 	numberOfOutputValues := f.NumberOfOutputParameters()
@@ -76,4 +86,27 @@ func (f *PDFunctionType4) Eval(input []float32) ([]float32, error) {
 
 	// Return the resulting array
 	return outputValues, nil
+}
+
+// executeType4 runs a calculator program and returns the two failures
+// PDFBOX-6320 catches -- EmptyStackException and ClassCastException, which the
+// port raises as panics wrapping type4.ErrEmptyStack and type4.ErrWrongType --
+// as an error. Anything else is re-panicked, because the Java leaves it
+// unchecked and eval's callers are not written for it.
+func executeType4(instructions *type4.InstructionSequence, context *type4.ExecutionContext) (err error) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		failure, isError := recovered.(error)
+		if isError && (errors.Is(failure, type4.ErrEmptyStack) ||
+			errors.Is(failure, type4.ErrWrongType)) {
+			err = failure
+			return
+		}
+		panic(recovered)
+	}()
+	instructions.Execute(context)
+	return nil
 }

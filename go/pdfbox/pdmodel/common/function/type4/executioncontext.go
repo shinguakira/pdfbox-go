@@ -1,5 +1,7 @@
 package type4
 
+import "fmt"
+
 // ExecutionContext is the stack a calculator function runs against, and the
 // operators it may use.
 //
@@ -32,7 +34,7 @@ func (c *ExecutionContext) Push(value any) { c.stack = append(c.stack, value) }
 // unchecked; the port panics for the same.
 func (c *ExecutionContext) Pop() any {
 	if len(c.stack) == 0 {
-		panic("type4: pop from an empty stack")
+		panic(fmt.Errorf("type4: %w: pop", ErrEmptyStack))
 	}
 	value := c.stack[len(c.stack)-1]
 	c.stack = c.stack[:len(c.stack)-1]
@@ -42,7 +44,7 @@ func (c *ExecutionContext) Pop() any {
 // Peek returns the top value without taking it off.
 func (c *ExecutionContext) Peek() any {
 	if len(c.stack) == 0 {
-		panic("type4: peek at an empty stack")
+		panic(fmt.Errorf("type4: %w: peek", ErrEmptyStack))
 	}
 	return c.stack[len(c.stack)-1]
 }
@@ -69,7 +71,7 @@ func (c *ExecutionContext) PopNumber() any {
 	case int32, float32:
 		return value
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -78,7 +80,7 @@ func (c *ExecutionContext) PopInt() int32 {
 	value := c.Pop()
 	i, ok := value.(int32)
 	if !ok {
-		panic("type4: the value is not an integer")
+		panic(fmt.Errorf("type4: %w: the value is not an integer", ErrWrongType))
 	}
 	return i
 }
@@ -94,7 +96,7 @@ func numberAsFloat(value any) float32 {
 	case float32:
 		return v
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -108,7 +110,7 @@ func numberAsFloat64(value any) float64 {
 	case float32:
 		return float64(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -121,7 +123,7 @@ func numberAsInt(value any) int32 {
 	case float32:
 		return floatToInt32(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -133,7 +135,7 @@ func numberAsLong(value any) int64 {
 	case float32:
 		return int64(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -145,6 +147,6 @@ func numberAsDouble(value any) float64 {
 	case float32:
 		return float64(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }

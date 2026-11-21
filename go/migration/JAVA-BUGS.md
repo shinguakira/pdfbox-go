@@ -4144,6 +4144,18 @@ page. The document is a crash regression PDFium keeps because it once broke
 PDFium, so the file is malformed on purpose; what a library does with it is a
 choice, and PDFBox's is to lose everything on the page.
 
+**Kept in the Go** `update/sync-original-update`. The panic for too few output
+values stays where it is, because the Java's `IllegalStateException` stays
+unchecked and the Java is the specification. What that branch did change is the
+two failures beside it: `Eval` recovers the panics wrapping
+`type4.ErrEmptyStack` and `type4.ErrWrongType` and returns them as errors,
+which is PDFBOX-6320. So a program that runs out of operands, or adds a
+boolean, now loses its shading where it used to take the page, and a program
+that leaves too few values still takes the page — the defect this entry is
+about. Tested by `TestEvalWithTooFewOutputValuesStillPanics` in
+`go/pdfbox/pdmodel/common/function/pdfbox6320_test.go`, beside the two tests
+that pin the new errors.
+
 **Not resolved upstream** PDFBOX-6320 (`7611f9329`, 2026-11-19), in the sync of
 2026-11-21, wrapped `instructions.execute(context)` in a catch for
 `EmptyStackException` and `ClassCastException` and rethrows them as `IOException`
