@@ -1,5 +1,7 @@
 package type4
 
+import "fmt"
+
 // ExecutionContext is the stack a calculator function runs against, and the
 // operators it may use.
 //
@@ -32,7 +34,7 @@ func (c *ExecutionContext) Push(value any) { c.stack = append(c.stack, value) }
 // unchecked; the port panics for the same.
 func (c *ExecutionContext) Pop() any {
 	if len(c.stack) == 0 {
-		panic("type4: pop from an empty stack")
+		panic(fmt.Errorf("type4: %w: pop", ErrEmptyStack))
 	}
 	value := c.stack[len(c.stack)-1]
 	c.stack = c.stack[:len(c.stack)-1]
@@ -42,7 +44,7 @@ func (c *ExecutionContext) Pop() any {
 // Peek returns the top value without taking it off.
 func (c *ExecutionContext) Peek() any {
 	if len(c.stack) == 0 {
-		panic("type4: peek at an empty stack")
+		panic(fmt.Errorf("type4: %w: peek", ErrEmptyStack))
 	}
 	return c.stack[len(c.stack)-1]
 }
@@ -69,7 +71,7 @@ func (c *ExecutionContext) PopNumber() any {
 	case int32, float32:
 		return value
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -78,9 +80,37 @@ func (c *ExecutionContext) PopInt() int32 {
 	value := c.Pop()
 	i, ok := value.(int32)
 	if !ok {
-		panic("type4: the value is not an integer")
+		panic(fmt.Errorf("type4: %w: the value is not an integer", ErrWrongType))
 	}
 	return i
+}
+
+// PopBool takes a boolean off the stack.
+//
+// Java casts to Boolean and throws ClassCastException for anything else; the
+// port raises ErrWrongType, which PDFunctionType4.eval takes (PDFBOX-6320). A
+// plain Go type assertion here would panic with *runtime.TypeAssertionError,
+// which wraps nothing and so would escape that boundary — a hole the Java
+// cannot have, since catch (ClassCastException) takes every failed cast.
+func (c *ExecutionContext) PopBool() bool {
+	value := c.Pop()
+	b, isBool := value.(bool)
+	if !isBool {
+		panic(fmt.Errorf("type4: %w: the value is not a boolean", ErrWrongType))
+	}
+	return b
+}
+
+// PopProcedure takes a procedure off the stack.
+//
+// Java casts to InstructionSequence, and the same reasoning as PopBool applies.
+func (c *ExecutionContext) PopProcedure() *InstructionSequence {
+	value := c.Pop()
+	procedure, isProcedure := value.(*InstructionSequence)
+	if !isProcedure {
+		panic(fmt.Errorf("type4: %w: the value is not a procedure", ErrWrongType))
+	}
+	return procedure
 }
 
 // PopReal takes a number off the stack as a float.
@@ -94,7 +124,21 @@ func numberAsFloat(value any) float32 {
 	case float32:
 		return v
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
+	}
+}
+
+// numberAsFloat64 is Java's Number.doubleValue. PDFBOX-6331 moved the eq, ge,
+// gt and le operators onto it: an int32 widens to float64 exactly, where
+// float32 rounds every integer above 2^24.
+func numberAsFloat64(value any) float64 {
+	switch v := value.(type) {
+	case int32:
+		return float64(v)
+	case float32:
+		return float64(v)
+	default:
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -107,7 +151,7 @@ func numberAsInt(value any) int32 {
 	case float32:
 		return floatToInt32(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -119,7 +163,7 @@ func numberAsLong(value any) int64 {
 	case float32:
 		return int64(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }
 
@@ -131,6 +175,6 @@ func numberAsDouble(value any) float64 {
 	case float32:
 		return float64(v)
 	default:
-		panic("type4: the value is not a number")
+		panic(fmt.Errorf("type4: %w: the value is not a number", ErrWrongType))
 	}
 }

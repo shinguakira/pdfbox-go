@@ -134,7 +134,7 @@ func TestBadXPacketEnd2(t *testing.T) {
         </rdf:Description>
     </rdf:RDF>
 </x:xmpmeta><?xpacket end="k" ?>`
-	parseFails(t, s, "Expected xpacket 'end' attribute with value 'r' or 'w' ")
+	parseFails(t, s, "Expected xpacket 'end' attribute with value 'r' or 'w'")
 }
 
 func TestNoRdfChildren(t *testing.T) {

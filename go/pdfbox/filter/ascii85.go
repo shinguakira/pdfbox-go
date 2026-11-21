@@ -79,7 +79,7 @@ func newASCII85Reader(r io.Reader) *ascii85Reader {
 // errInvalidASCII85 is Java's IOException("Invalid data in Ascii85 stream").
 var errInvalidASCII85 = errors.New("Invalid data in Ascii85 stream")
 
-// readSignificant reads the next byte that is not a line break or a space.
+// readSignificant reads the next byte that is not white space.
 //
 // It reports ok false at the end of the stream. Java writes `int zz = (byte)
 // in.read(); if (zz == -1)`, which narrows before it tests, so a data byte
@@ -94,9 +94,24 @@ func (a *ascii85Reader) readSignificant() (z int8, ok bool) {
 			return 0, false
 		}
 		z = int8(c)
-		if z != ascii85Newline && z != ascii85Return && z != ascii85Space {
+		if !isASCII85Whitespace(z) {
 			return z, true
 		}
+	}
+}
+
+// isASCII85Whitespace reports whether the byte is one of the six white-space
+// characters ISO 32000-1 table 1 gives: NUL, HT, LF, FF, CR and SP.
+//
+// PDFBOX-6330 widened the decoder's test from the three it had -- LF, CR and
+// SP -- so that a stream wrapped with tabs or padded with NUL decodes instead
+// of reaching the alphabet check and being refused as invalid data.
+func isASCII85Whitespace(z int8) bool {
+	switch z {
+	case 0, '\t', ascii85Newline, '\f', ascii85Return, ascii85Space:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -136,10 +151,14 @@ func (a *ascii85Reader) readByte() (byte, error) {
 			for ; k < 5; k++ {
 				z, ok = a.readSignificant()
 				if !ok {
-					// the same repeat, from inside the group: JAVA-BUGS 32
-					a.eof = true
-					a.n = 0
-					return 0, io.EOF
+					// PDFBOX-6317: a missing end-of-data marker ends the last
+					// group like ~>, so a group cut short decodes under the
+					// padding rule below instead of being dropped. The repeat
+					// the entry that was JAVA-BUGS.md 32 describes is gone
+					// either way: this path used to return with n still at the
+					// previous group's count, and now it does not return at
+					// all.
+					z = ascii85Terminator
 				}
 				a.ascii[k] = z
 				if z == ascii85Terminator {

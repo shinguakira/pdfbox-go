@@ -6,6 +6,8 @@
 package taggedpdf
 
 import (
+	"log/slog"
+
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/documentinterchange/logicalstructure"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel/graphics/color"
@@ -61,26 +63,34 @@ func (a *PDStandardAttributeObject) SetString(name string, value string) {
 
 // GetArrayOfString returns an array attribute of strings, or nil.
 //
-// Java reads each entry as a name where SetArrayOfString writes strings, so a
-// round trip throws ClassCastException. /Headers, the one attribute that uses
+// Java read each entry as a name where SetArrayOfString writes strings, so a
+// round trip threw ClassCastException. /Headers, the one attribute that uses
 // these, is an array of byte strings in PDF 32000-1:2008 table 337, so the
-// setter is the half that is right and the entries are read as strings. An
-// entry of any other type is left out rather than thrown on, which is what the
-// rest of this class does with a value it cannot read -- left in as the empty
-// string it would be a header identifier no cell carries, and no caller could
-// tell it from an entry that really is empty. So the list can be shorter than
-// the array. See migration/JAVA-BUGS.md 40.
+// setter is the half that is right and the entries are read as strings. That
+// was the entry which was migration/JAVA-BUGS.md 40.
+//
+// PDFBOX-6261 (Apache 691e7d100, in the sync of 2026-11-21) fixed it upstream
+// by reading every entry with COSArray.getString, which answers null for an
+// entry that is not a string and leaves that null in the array it returns, with
+// a warning logged. So the list is the array's length, holes and all. Go has no
+// nil inside a []string and the hole is the empty string; the port used to
+// leave such an entry out, which made the list shorter than the array, and
+// follows the Java's length now.
 func (a *PDStandardAttributeObject) GetArrayOfString(name string) []string {
 	v := a.Dictionary().GetDictionaryObject(cos.GetPDFName(name))
 	array, isArray := v.(*cos.Array)
 	if !isArray {
 		return nil
 	}
-	strings := make([]string, 0, array.Size())
+	strings := make([]string, array.Size())
 	for i := 0; i < array.Size(); i++ {
-		if value, isString := array.GetObject(i).(*cos.StringObj); isString {
-			strings = append(strings, value.Value())
+		value, isString := array.GetObject(i).(*cos.StringObj)
+		if !isString {
+			slog.Warn("taggedpdf: element should be a string",
+				"index", i, "value", array.GetObject(i))
+			continue
 		}
+		strings[i] = value.Value()
 	}
 	return strings
 }

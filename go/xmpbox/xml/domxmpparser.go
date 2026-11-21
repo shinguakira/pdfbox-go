@@ -852,15 +852,19 @@ func parseEndPacket(metadata *xmpbox.XMPMetadata, pi *ProcessingInstruction) err
 	// unchecked, so it escapes the XmpParsingException a caller catches. A
 	// shorter instruction gets the same answer as a sixth character that is
 	// neither 'r' nor 'w'. See migration/JAVA-BUGS.md 56.
+	//
+	// Apache has since made the same check, in 642cbcc0f (PDFBOX-6334), and
+	// dropped the trailing space from the message while it was there; the text
+	// below follows the Java as it now stands.
 	if len(xpackData) < 6 {
 		return NewXmpParsingError(XpacketBadEnd,
-			"Expected xpacket 'end' attribute with value 'r' or 'w' ")
+			"Expected xpacket 'end' attribute with value 'r' or 'w'")
 	}
 	end := xpackData[5]
 	// check value (5 for end='X')
 	if end != 'r' && end != 'w' {
 		return NewXmpParsingError(XpacketBadEnd,
-			"Expected xpacket 'end' attribute with value 'r' or 'w' ")
+			"Expected xpacket 'end' attribute with value 'r' or 'w'")
 	}
 	metadata.SetEndXPacket(string(end))
 	return nil

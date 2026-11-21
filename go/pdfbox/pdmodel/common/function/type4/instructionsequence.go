@@ -181,18 +181,19 @@ func ParseReal(token string) float32 {
 	return float32(value)
 }
 
-// javaFloatCompare is java.lang.Float.compare, which the eq operator uses: it
-// orders NaN above every number and -0.0 below 0.0, where == says NaN equals
-// nothing and the two zeroes are equal.
-func javaFloatCompare(a, b float32) int {
+// javaDoubleCompare is java.lang.Double.compare, which the eq operator uses
+// since PDFBOX-6331 -- Float.compare before it: it orders NaN above every
+// number and -0.0 below 0.0, where == says NaN equals nothing and the two
+// zeroes are equal.
+func javaDoubleCompare(a, b float64) int {
 	if a < b {
 		return -1
 	}
 	if a > b {
 		return 1
 	}
-	aBits := int32(math.Float32bits(a))
-	bBits := int32(math.Float32bits(b))
+	aBits := int64(math.Float64bits(a))
+	bBits := int64(math.Float64bits(b))
 	switch {
 	case aBits == bBits:
 		return 0

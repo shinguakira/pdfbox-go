@@ -91,6 +91,15 @@ func (ASCIIHex) Decode(w io.Writer, r io.Reader, parameters *cos.Dictionary,
 		}
 		value := firstNibble * 16
 		secondByte, err := encoded.ReadByte()
+		// PDFBOX-6330: white space between the two digits of a pair is skipped,
+		// as it is before the first digit. Without this the space in `4 1>` was
+		// read as a digit the table holds -1 for, so one byte came out as two:
+		// 0x40 from the pair `4` and the space, then 0x10 from `1` and the end
+		// of data. A read error here leaves the arm below to write the high
+		// nibble alone, which is what Java's `secondByte == -1` does.
+		for err == nil && isHexWhitespace(secondByte) {
+			secondByte, err = encoded.ReadByte()
+		}
 		if err != nil || isHexEOD(secondByte) {
 			// second value behaves like 0 in case of EOD
 			if err2 := decoded.WriteByte(byte(value)); err2 != nil {

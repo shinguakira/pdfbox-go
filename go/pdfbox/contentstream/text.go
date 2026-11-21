@@ -2,6 +2,7 @@ package contentstream
 
 import (
 	"bytes"
+	"log/slog"
 
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/cos"
 	"github.com/shinguakira/pdfbox-go/go/pdfbox/pdmodel"
@@ -179,14 +180,19 @@ func (e *PDFStreamEngine) ShowFontGlyph(textRenderingMatrix *util.Matrix, f font
 //
 // Port of showType3Glyph.
 //
-// There is no depth bound here, because Java has none: a glyph procedure that
-// shows text in the same Type 3 font recurses until the stack runs out. The
-// engine's own Level counter -- IncreaseLevel, Level, DecreaseLevel -- is the
-// guard for exactly this, and the Java wires it into the three DrawObject
-// operators and not into this path. Carried, including the asymmetry. See
-// migration/JAVA-BUGS.md 87, which measures what it costs on the Go side:
-// Java's StackOverflowError is catchable and Go's stack overflow is fatal.
+// PDFBOX-6266: a glyph procedure may show text in the same Type 3 font, so the
+// engine's own level counter bounds the recursion here, the way the three
+// DrawObject operators bound a form XObject that draws itself. Java gives the
+// level back in a finally; the defer is that. Above fifty the glyph is skipped
+// and the page goes on; before this guard the stream ran until the stack ran
+// out, which is StackOverflowError in Java and a fatal stack overflow in Go.
 func (e *PDFStreamEngine) ShowType3Glyph(textRenderingMatrix *util.Matrix, f *font.PDType3Font, code int, displacement util.Vector) error {
+	e.IncreaseLevel()
+	defer e.DecreaseLevel()
+	if e.Level() > 50 {
+		slog.Error("contentstream: recursion is too deep, skipping Type3 glyph")
+		return nil
+	}
 	charProc := f.CharProc(code)
 	if charProc != nil {
 		return e.ProcessType3Stream(charProc, textRenderingMatrix)

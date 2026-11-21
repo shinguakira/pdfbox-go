@@ -7,8 +7,8 @@ package type4
 type ifOperator struct{}
 
 func (ifOperator) Execute(context *ExecutionContext) {
-	proc := context.Pop().(*InstructionSequence)
-	condition := context.Pop().(bool)
+	proc := context.PopProcedure()
+	condition := context.PopBool()
 	if condition {
 		proc.Execute(context)
 	}
@@ -17,9 +17,9 @@ func (ifOperator) Execute(context *ExecutionContext) {
 type ifElseOperator struct{}
 
 func (ifElseOperator) Execute(context *ExecutionContext) {
-	proc2 := context.Pop().(*InstructionSequence)
-	proc1 := context.Pop().(*InstructionSequence)
-	condition := context.Pop().(bool)
+	proc2 := context.PopProcedure()
+	proc1 := context.PopProcedure()
+	condition := context.PopBool()
 	if condition {
 		proc1.Execute(context)
 	} else {

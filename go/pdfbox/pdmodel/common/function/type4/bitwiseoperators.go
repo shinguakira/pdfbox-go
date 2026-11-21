@@ -1,5 +1,7 @@
 package type4
 
+import "fmt"
+
 // The boolean and bitwise operators of the calculator language.
 //
 // Port of org.apache.pdfbox.pdmodel.common.function.type4.BitwiseOperators.
@@ -32,7 +34,7 @@ func (o logicalOperator) Execute(context *ExecutionContext) {
 		return
 	}
 	// Java throws ClassCastException, which is unchecked.
-	panic("Operands must be bool/bool or int/int")
+	panic(fmt.Errorf("type4: %w: Operands must be bool/bool or int/int", ErrWrongType))
 }
 
 type andLogic struct{}
@@ -53,8 +55,10 @@ func (xorLogic) applyForInteger(int1, int2 int32) int32 { return int1 ^ int2 }
 type bitshiftOperator struct{}
 
 func (bitshiftOperator) Execute(context *ExecutionContext) {
-	shift := context.Pop().(int32)
-	int1 := context.Pop().(int32)
+	// Java casts both operands to Integer, which throws ClassCastException for
+	// anything else; PopInt raises ErrWrongType, which eval takes.
+	shift := context.PopInt()
+	int1 := context.PopInt()
 	if shift < 0 {
 		// Java's >> is arithmetic, and Go's is too for a signed left operand.
 		context.Push(int1 >> uint(-shift))
@@ -86,6 +90,6 @@ func (notOperator) Execute(context *ExecutionContext) {
 		context.Push(^v)
 	default:
 		// Java throws ClassCastException, which is unchecked.
-		panic("Operand must be bool or int")
+		panic(fmt.Errorf("type4: %w: Operand must be bool or int", ErrWrongType))
 	}
 }

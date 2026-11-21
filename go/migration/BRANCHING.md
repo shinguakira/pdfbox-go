@@ -35,7 +35,16 @@ the merge `3d024173c` of 2026-09-07 brought 25 Apache commits into
 is the record of what that cost — which `JAVA-BUGS.md` entries it closed, and
 which five sites left the Go behind the new reference. Its task file,
 [`tasks/track-upstream-sync.md`](tasks/track-upstream-sync.md), has the ten
-in-scope files one by one. The rule above is what stands now.
+in-scope files one by one.
+
+It has now happened twice. The merge `9fb3ce265` of 2026-11-21 brought 320
+Apache commits over 266 files, 172 of them Java under `*/src/main`, and
+[`tasks/update-sync-original-update.md`](tasks/update-sync-original-update.md)
+is its record: the seventeen `JAVA-BUGS.md` entries it closed, the four whose
+site it changed without closing, the two it added, and the eight sites where the
+Go is behind the new reference. The per-file reading `track/upstream-sync` did
+for sixteen files has not been done for these 172. The rule above is what stands
+between syncs; the snapshot is frozen only while nobody merges into it.
 
 **Mirroring the Java package layout has lost its main justification.** The
 argument for `pdfbox/pdmodel/interchange/logicalstructure` over a Go-shaped
