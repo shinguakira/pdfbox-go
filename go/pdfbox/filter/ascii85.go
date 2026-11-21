@@ -79,7 +79,7 @@ func newASCII85Reader(r io.Reader) *ascii85Reader {
 // errInvalidASCII85 is Java's IOException("Invalid data in Ascii85 stream").
 var errInvalidASCII85 = errors.New("Invalid data in Ascii85 stream")
 
-// readSignificant reads the next byte that is not a line break or a space.
+// readSignificant reads the next byte that is not white space.
 //
 // It reports ok false at the end of the stream. Java writes `int zz = (byte)
 // in.read(); if (zz == -1)`, which narrows before it tests, so a data byte
@@ -94,9 +94,24 @@ func (a *ascii85Reader) readSignificant() (z int8, ok bool) {
 			return 0, false
 		}
 		z = int8(c)
-		if z != ascii85Newline && z != ascii85Return && z != ascii85Space {
+		if !isASCII85Whitespace(z) {
 			return z, true
 		}
+	}
+}
+
+// isASCII85Whitespace reports whether the byte is one of the six white-space
+// characters ISO 32000-1 table 1 gives: NUL, HT, LF, FF, CR and SP.
+//
+// PDFBOX-6330 widened the decoder's test from the three it had -- LF, CR and
+// SP -- so that a stream wrapped with tabs or padded with NUL decodes instead
+// of reaching the alphabet check and being refused as invalid data.
+func isASCII85Whitespace(z int8) bool {
+	switch z {
+	case 0, '\t', ascii85Newline, '\f', ascii85Return, ascii85Space:
+		return true
+	default:
+		return false
 	}
 }
 

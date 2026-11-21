@@ -116,12 +116,16 @@ Both carry a **Resolved upstream** line and both leave the Go behind.
 
 ## What the Go needs
 
-One row, one unit of work. Nothing here has been written yet.
+One row, one unit of work, one commit. A row says **done** once that commit has
+landed on this branch. The `readSignificant` row was missing from the first
+pass of this file: PDFBOX-6330 touched both filters, and only the ASCIIHex half
+was written down.
 
 | Site | What to do | Comes from |
 | --- | --- | --- |
 | `go/pdfbox/contentstream/text.go`, `ShowType3Glyph` | **done** — level, limit fifty, released in a `defer`, as `drawobject.go` does it; `pdfbox6266_test.go` | entry 87, PDFBOX-6266 |
 | `go/pdfbox/filter/ascii85.go`, `readByte` | Decide whether a group cut short reads as the terminator, as the Java now does, or stops as the port does; whichever way, say so where it happens | entry 32, PDFBOX-6317 |
+| `go/pdfbox/filter/ascii85.go`, `readSignificant` | **done** — the white-space test is the six characters of ISO 32000-1 table 1, not the three it had; `pdfbox6330ascii85_test.go` | PDFBOX-6330 |
 | `go/pdfbox/filter/asciihex.go`, `Decode` | Skip white space before the second digit | entry 30, PDFBOX-6330 |
 | `go/pdfbox/pdmodel/common/function/type4/stackoperators.go`, `rollOperator` | **done** — `n == 0` returns, `j %= n`, a zero `j` returns; `pdfbox6331roll_test.go` | entry 92, PDFBOX-6331 |
 | `go/pdfbox/pdmodel/common/function/type4/relationaloperators.go` | **done** — `eq`, `ne`, `ge`, `gt`, `le` compare as `float64`; `lt` narrows back to `float32`, because the Java's `Lt` does, and a test pins it; `pdfbox6331compare_test.go` | entry 93, PDFBOX-6331 |
