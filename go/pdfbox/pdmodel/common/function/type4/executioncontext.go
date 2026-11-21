@@ -85,6 +85,34 @@ func (c *ExecutionContext) PopInt() int32 {
 	return i
 }
 
+// PopBool takes a boolean off the stack.
+//
+// Java casts to Boolean and throws ClassCastException for anything else; the
+// port raises ErrWrongType, which PDFunctionType4.eval takes (PDFBOX-6320). A
+// plain Go type assertion here would panic with *runtime.TypeAssertionError,
+// which wraps nothing and so would escape that boundary — a hole the Java
+// cannot have, since catch (ClassCastException) takes every failed cast.
+func (c *ExecutionContext) PopBool() bool {
+	value := c.Pop()
+	b, isBool := value.(bool)
+	if !isBool {
+		panic(fmt.Errorf("type4: %w: the value is not a boolean", ErrWrongType))
+	}
+	return b
+}
+
+// PopProcedure takes a procedure off the stack.
+//
+// Java casts to InstructionSequence, and the same reasoning as PopBool applies.
+func (c *ExecutionContext) PopProcedure() *InstructionSequence {
+	value := c.Pop()
+	procedure, isProcedure := value.(*InstructionSequence)
+	if !isProcedure {
+		panic(fmt.Errorf("type4: %w: the value is not a procedure", ErrWrongType))
+	}
+	return procedure
+}
+
 // PopReal takes a number off the stack as a float.
 func (c *ExecutionContext) PopReal() float32 { return numberAsFloat(c.PopNumber()) }
 

@@ -85,3 +85,39 @@ func TestEvalOfAWholeProgramIsUnaffected(t *testing.T) {
 		t.Errorf("output = %v, want [0.75]", output)
 	}
 }
+
+// TestEvalOfAProgramWhoseCastFailsIsAnError is the rest of the
+// ClassCastException arm, found in review of the commit above.
+//
+// ExecutionContext's accessors raise type4.ErrWrongType, but five casts in the
+// operators were plain Go type assertions -- bitshift's two operands, and the
+// procedures and conditions of `if` and `ifelse`. Those panic with
+// *runtime.TypeAssertionError, which is an error and wraps nothing, so the
+// recover let them past and the page died for a program the Java loses only the
+// shading of.
+// One program per cast, because a program only reaches the cast its own
+// operand order puts in the way: `{ true 1 bitshift }` has the wrong type under
+// the shift and `{ 1 true bitshift }` has it in the shift itself.
+func TestEvalOfAProgramWhoseCastFailsIsAnError(t *testing.T) {
+	for _, program := range []string{
+		"{ true 1 bitshift }",  // bitshift's second operand
+		"{ 1 true bitshift }",  // bitshift's shift
+		"{ 1 {} if }",          // if's condition
+		"{ true 1 if }",        // if's procedure
+		"{ 1 {} {} ifelse }",   // ifelse's condition
+		"{ true {} 1 ifelse }", // ifelse's second procedure
+		"{ true 1 {} ifelse }", // ifelse's first procedure
+	} {
+		f := createFunction(t, program, []float32{0, 1}, []float32{0, 1})
+
+		output, err := f.Eval([]float32{0.5})
+		if err == nil {
+			t.Errorf("%s was accepted, output %v", program, output)
+			continue
+		}
+		if !errors.Is(err, type4.ErrWrongType) {
+			t.Errorf("%s: Eval err = %v, want one wrapping %v",
+				program, err, type4.ErrWrongType)
+		}
+	}
+}

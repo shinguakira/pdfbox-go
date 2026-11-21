@@ -55,8 +55,10 @@ func (xorLogic) applyForInteger(int1, int2 int32) int32 { return int1 ^ int2 }
 type bitshiftOperator struct{}
 
 func (bitshiftOperator) Execute(context *ExecutionContext) {
-	shift := context.Pop().(int32)
-	int1 := context.Pop().(int32)
+	// Java casts both operands to Integer, which throws ClassCastException for
+	// anything else; PopInt raises ErrWrongType, which eval takes.
+	shift := context.PopInt()
+	int1 := context.PopInt()
 	if shift < 0 {
 		// Java's >> is arithmetic, and Go's is too for a signed left operand.
 		context.Push(int1 >> uint(-shift))
