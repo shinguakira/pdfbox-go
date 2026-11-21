@@ -151,10 +151,14 @@ func (a *ascii85Reader) readByte() (byte, error) {
 			for ; k < 5; k++ {
 				z, ok = a.readSignificant()
 				if !ok {
-					// the same repeat, from inside the group: JAVA-BUGS 32
-					a.eof = true
-					a.n = 0
-					return 0, io.EOF
+					// PDFBOX-6317: a missing end-of-data marker ends the last
+					// group like ~>, so a group cut short decodes under the
+					// padding rule below instead of being dropped. The repeat
+					// the entry that was JAVA-BUGS.md 32 describes is gone
+					// either way: this path used to return with n still at the
+					// previous group's count, and now it does not return at
+					// all.
+					z = ascii85Terminator
 				}
 				a.ascii[k] = z
 				if z == ascii85Terminator {

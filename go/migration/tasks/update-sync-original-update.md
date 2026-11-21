@@ -124,7 +124,7 @@ was written down.
 | Site | What to do | Comes from |
 | --- | --- | --- |
 | `go/pdfbox/contentstream/text.go`, `ShowType3Glyph` | **done** — level, limit fifty, released in a `defer`, as `drawobject.go` does it; `pdfbox6266_test.go` | entry 87, PDFBOX-6266 |
-| `go/pdfbox/filter/ascii85.go`, `readByte` | Decide whether a group cut short reads as the terminator, as the Java now does, or stops as the port does; whichever way, say so where it happens | entry 32, PDFBOX-6317 |
+| `go/pdfbox/filter/ascii85.go`, `readByte` | **done** — a group cut short reads as the terminator, as the Java now does, so one to three more bytes come back; `pdfbox6317_test.go` | entry 32, PDFBOX-6317 |
 | `go/pdfbox/filter/ascii85.go`, `readSignificant` | **done** — the white-space test is the six characters of ISO 32000-1 table 1, not the three it had; `pdfbox6330ascii85_test.go` | PDFBOX-6330 |
 | `go/pdfbox/filter/asciihex.go`, `Decode` | **done** — white space before the second digit is skipped, as before the first; `pdfbox6330asciihex_test.go` | entry 30, PDFBOX-6330 |
 | `go/pdfbox/pdmodel/common/function/type4/stackoperators.go`, `rollOperator` | **done** — `n == 0` returns, `j %= n`, a zero `j` returns; `pdfbox6331roll_test.go` | entry 92, PDFBOX-6331 |

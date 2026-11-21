@@ -35,16 +35,22 @@ func TestASCII85RejectsAnFFByte(t *testing.T) {
 }
 
 // TestASCII85StillEndsAtTheEndOfItsSource keeps the end the narrowing was
-// standing in for: a source that runs out mid-group ends the stream quietly,
-// which is what Java's `in.read()` returning a real -1 does.
+// standing in for: a source that runs out ends the stream quietly rather than
+// reporting invalid data, which is what Java's `in.read()` returning a real -1
+// does.
+//
+// What those two characters decode to moved with PDFBOX-6317: they are a group
+// cut short, which the Java now reads as though `~>` had closed it, so they
+// decode to one byte under the padding rule where they used to decode to
+// nothing. See pdfbox6317_test.go.
 func TestASCII85StillEndsAtTheEndOfItsSource(t *testing.T) {
 	var out bytes.Buffer
-	// two characters and then nothing -- not a group, and not an error
+	// two characters and then nothing -- a group cut short, and not an error
 	if _, err := (ASCII85{}).Decode(&out, bytes.NewReader([]byte{'!', '!'}),
 		cos.NewDictionary(), 0); err != nil {
 		t.Fatalf("a truncated source should end quietly: %v", err)
 	}
-	if out.Len() != 0 {
-		t.Errorf("a truncated group decoded to %v, want nothing", out.Bytes())
+	if !bytes.Equal(out.Bytes(), []byte{0}) {
+		t.Errorf("a group cut short decoded to %v, want one zero byte", out.Bytes())
 	}
 }

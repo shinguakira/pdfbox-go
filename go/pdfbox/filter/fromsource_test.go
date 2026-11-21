@@ -497,9 +497,12 @@ func TestCCITTDamageTolerance(t *testing.T) {
 // TestASCII85DamageTolerance is ASCII85's own answer: a truncated stream hands
 // back everything that decoded, in whole groups of four bytes.
 //
-// Java hands back those bytes and then repeats the last group, which is
-// JAVA-BUGS 32 and fixed here; see TestASCII85TruncatedStreamDoesNotRepeatIts-
-// LastGroup in javabug32_test.go.
+// Java used to hand back those bytes and then repeat the last group, which was
+// JAVA-BUGS 32; see TestASCII85TruncatedStreamDoesNotRepeatItsLastGroup in
+// javabug32_test.go. Apache fixed it in d219d4140 (PDFBOX-6317) by reading the
+// missing end-of-data marker as `~>`, so a group cut short now decodes to one
+// to three bytes rather than being dropped, and this stream's cut happens to
+// fall on a group boundary.
 func TestASCII85DamageTolerance(t *testing.T) {
 	original := bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 30)
 
