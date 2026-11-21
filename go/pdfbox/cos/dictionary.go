@@ -664,8 +664,15 @@ func (d *Dictionary) resetObjectKeys(indirectObjects map[int64]bool) map[int64]b
 			if indirectObjects[indirectObjectKey.InternalHash()] {
 				continue
 			}
-			// dereference object first
-			dereferenced := cosBase.(*Object).Object()
+			// dereference object first. Java writes
+			// ((COSObject) cosBase).getObject(), whose cast throws
+			// ClassCastException for anything else; the panic is that.
+			indirect, isIndirect := cosBase.(*Object)
+			if !isIndirect {
+				panic(fmt.Sprintf(
+					"cos: %T carries an object key but is not an indirect object", cosBase))
+			}
+			dereferenced := indirect.Object()
 			// reset object key
 			cosBase.SetKey(nil)
 			cosBase = dereferenced

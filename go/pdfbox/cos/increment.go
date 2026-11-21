@@ -59,12 +59,12 @@ func (in *Increment) collect(base Base) bool {
 	// handle updatable objects:
 	switch value := base.(type) {
 	case *Dictionary:
-		return in.collectDictionary(base, value.Values())
+		return in.collectDictionary(value, value.Values())
 	case *Stream:
 		// COSStream is a COSDictionary in Java, so it takes the same branch.
 		// The object added to the increment is the stream itself, not the
 		// dictionary in it, or the stream data would not be written.
-		return in.collectDictionary(base, value.Values())
+		return in.collectDictionary(value, value.Values())
 	case *Object:
 		in.collectObject(value)
 		// COSObjects by definition are indirect and shall never cause a parent
@@ -84,8 +84,8 @@ func (in *Increment) collect(base Base) bool {
 // would require its parent to be updated instead.
 //
 // Port of collect(COSDictionary).
-func (in *Increment) collectDictionary(dictionary Base, values []Base) bool {
-	updateState := dictionary.(UpdateInfo).UpdateState()
+func (in *Increment) collectDictionary(dictionary updatableBase, values []Base) bool {
+	updateState := dictionary.UpdateState()
 	// Is definitely part of the increment?
 	if !in.isExcluded(dictionary) && !in.Contains(dictionary) && updateState.IsUpdated() {
 		in.add(dictionary)
@@ -246,4 +246,15 @@ func (in *Increment) Objects() []Base {
 		in.initialized = true
 	}
 	return in.objects
+}
+
+// updatableBase is what both callers of collectDictionary pass: a Base that
+// carries an update state. Java's collect(COSDictionary) has that statically,
+// COSDictionary implementing COSUpdateInfo, where the port had widened the
+// parameter to Base and asserted the interface back out of it. No Java cast
+// stood behind that assertion, so there was nothing for it to be faithful to
+// and a wrong caller would have met a panic instead of the compiler.
+type updatableBase interface {
+	Base
+	UpdateInfo
 }
