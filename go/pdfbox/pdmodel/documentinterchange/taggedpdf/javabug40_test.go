@@ -51,13 +51,18 @@ func TestHeadersInAStringOfTheirOwn(t *testing.T) {
 	}
 }
 
-// TestHeadersLeaveOutAnEntryThatIsNotAString is the malformed array.
+// TestHeadersKeepAHoleForAnEntryThatIsNotAString is the malformed array.
 //
-// The fix reads strings where Java read names; an entry that is neither is
-// left out. Kept in as the empty string it would be a header identifier no
-// cell carries, and indistinguishable from an entry that really is empty, so
-// the list is shorter than the array instead.
-func TestHeadersLeaveOutAnEntryThatIsNotAString(t *testing.T) {
+// The fix reads strings where Java read names. What happens to an entry that is
+// neither moved with PDFBOX-6261 (Apache 691e7d100, in the sync of
+// 2026-11-21): the Java reads every entry with COSArray.getString, which
+// answers null for one that is not a string, and leaves that null in the array
+// it hands back, so the list is the array's length with holes in it. Go has no
+// nil inside a []string, so the hole is the empty string.
+//
+// The port used to leave the entry out, which made the list shorter than the
+// array. The Java is the specification, so the length follows it.
+func TestHeadersKeepAHoleForAnEntryThatIsNotAString(t *testing.T) {
 	o := taggedpdf.NewPDTableAttributeObject()
 	o.SetHeaders([]string{"h1", "h2"})
 
@@ -70,7 +75,7 @@ func TestHeadersLeaveOutAnEntryThatIsNotAString(t *testing.T) {
 	headers.AddAt(1, cos.GetInteger(3))
 
 	got := o.Headers()
-	want := []string{"h1", "h2"}
+	want := []string{"h1", "", "h2"}
 	if len(got) != len(want) {
 		t.Fatalf("Headers() = %q, want %q", got, want)
 	}

@@ -130,7 +130,7 @@ was written down.
 | `go/pdfbox/pdmodel/common/function/type4/stackoperators.go`, `rollOperator` | **done** — `n == 0` returns, `j %= n`, a zero `j` returns; `pdfbox6331roll_test.go` | entry 92, PDFBOX-6331 |
 | `go/pdfbox/pdmodel/common/function/type4/relationaloperators.go` | **done** — `eq`, `ne`, `ge`, `gt`, `le` compare as `float64`; `lt` narrows back to `float32`, because the Java's `Lt` does, and a test pins it; `pdfbox6331compare_test.go` | entry 93, PDFBOX-6331 |
 | `go/pdfbox/pdmodel/common/function/pdfunctiontype4.go`, `Eval` | **done** — `executeType4` recovers the panics wrapping `type4.ErrEmptyStack` and `type4.ErrWrongType` and returns them as errors; the too-few-outputs panic stays, because the Java's `IllegalStateException` does; `pdfbox6320_test.go` | entry 91, PDFBOX-6320 |
-| `go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdstandardattributeobject.go` | Decide whether a bad entry is dropped or kept as an empty string, now that the Java keeps a hole | entry 40, PDFBOX-6261 |
+| `go/pdfbox/pdmodel/documentinterchange/taggedpdf/pdstandardattributeobject.go` | **done** — a bad entry is a hole, the empty string standing in for the Java's null, so the list is the array's length; `javabug40_test.go` | entry 40, PDFBOX-6261 |
 | `go/xmpbox/xml/domxmpparser.go` and its two tests | **done** — the trailing space is out of the `XpacketBadEnd` message, as upstream dropped it; `javabug56_test.go`, `domxmpparser2_test.go` | entry 56, PDFBOX-6334 |
 
 ## What has not been done
