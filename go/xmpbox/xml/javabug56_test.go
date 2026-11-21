@@ -4,6 +4,12 @@ package xml_test
 // `end=` and then reads the sixth, so a shorter instruction raises
 // StringIndexOutOfBoundsException -- which is unchecked, and so escapes the
 // XmpParsingException a caller catches.
+//
+// Apache fixed it the same way in 642cbcc0f (PDFBOX-6334), in the sync of
+// 2026-11-21, and dropped the trailing space from the message on the way. The
+// expected text below is the Java's as it now stands, which is what the
+// convention asks: upstream's own test for that commit asserts the same
+// string.
 
 import (
 	"testing"
@@ -31,7 +37,7 @@ func TestShortEndPacketIsRefused(t *testing.T) {
 			t.Errorf("the packet ending %q was accepted", end)
 			continue
 		}
-		const want = "Expected xpacket 'end' attribute with value 'r' or 'w' "
+		const want = "Expected xpacket 'end' attribute with value 'r' or 'w'"
 		if err.Error() != want {
 			t.Errorf("the packet ending %q was refused with %q, want %q", end, err, want)
 		}
