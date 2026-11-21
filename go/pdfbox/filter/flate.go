@@ -126,9 +126,16 @@ var inflaters interface {
 } = &sync.Pool{}
 
 func acquireInflater(r io.Reader) io.ReadCloser {
-	if pooled, ok := inflaters.Get().(io.ReadCloser); ok {
-		if err := pooled.(flate.Resetter).Reset(r, nil); err == nil {
-			return pooled
+	// Everything this pool holds came from flate.NewReader, whose reader is a
+	// Resetter, so the second value is a formality -- but the pool is an
+	// optimisation, and one that cannot be reset is simply not reused rather
+	// than a reason to fail. Nothing in the Java corresponds: it makes a new
+	// Inflater per stream.
+	if pooled, isReadCloser := inflaters.Get().(io.ReadCloser); isReadCloser {
+		if resetter, isResetter := pooled.(flate.Resetter); isResetter {
+			if err := resetter.Reset(r, nil); err == nil {
+				return pooled
+			}
 		}
 	}
 	return flate.NewReader(r)
@@ -137,7 +144,11 @@ func acquireInflater(r io.Reader) io.ReadCloser {
 // releaseInflater pools a decompressor, pointed at nothing first so that it
 // does not keep the last stream's source reachable while it waits.
 func releaseInflater(inflater io.ReadCloser) {
-	if err := inflater.(flate.Resetter).Reset(noData{}, nil); err != nil {
+	resetter, isResetter := inflater.(flate.Resetter)
+	if !isResetter {
+		return // not ours to pool
+	}
+	if err := resetter.Reset(noData{}, nil); err != nil {
 		return
 	}
 	inflaters.Put(inflater)

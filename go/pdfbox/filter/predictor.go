@@ -45,9 +45,13 @@ var (
 	errZeroRowLength = errors.New("filter: predictor row length is zero")
 )
 
+// copyBufferSize is io.Copy's own buffer size, which is what these stand in
+// for.
+const copyBufferSize = 32 * 1024
+
 // copyBuffers holds the buffers decodePredictor copies unpredicted data through.
 var copyBuffers = sync.Pool{New: func() any {
-	buffer := make([]byte, 32*1024)
+	buffer := make([]byte, copyBufferSize)
 	return &buffer
 }}
 
@@ -304,7 +308,14 @@ func decodePredictor(w io.Writer, r io.Reader, params predictorParams) error {
 		// WriteTo and whose destination has no ReadFrom, which is a flate
 		// stream going into a ReadWriteBuffer. A source that has WriteTo still
 		// uses it; the buffer is only taken when io.Copy would have made one.
-		buffer := copyBuffers.Get().(*[]byte)
+		// the pool holds *[]byte and nothing else puts anything in it; a Get
+		// that somehow answers otherwise takes a fresh buffer rather than
+		// failing, since the pool is an optimisation
+		buffer, isBuffer := copyBuffers.Get().(*[]byte)
+		if !isBuffer {
+			fresh := make([]byte, copyBufferSize)
+			buffer = &fresh
+		}
 		defer copyBuffers.Put(buffer)
 		_, err := io.CopyBuffer(w, r, *buffer)
 		return err
